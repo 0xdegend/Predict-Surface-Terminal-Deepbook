@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — §10.3 "engineered minimalism".
+ * Dark only. Elevation from near-black steps + 1px hairlines, never shadows.
+ * The 3-D surface is the only element that glows; everything else is quiet.
+ */
+:root {
+  /* Surfaces — base + 3 elevation steps */
+  --bg-0: #0a0b0d; /* app base */
+  --bg-1: #0e1013; /* panel */
+  --bg-2: #131619; /* raised */
+  --bg-3: #181c20; /* control */
+
+  /* Hairline borders */
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --line-strong: rgba(255, 255, 255, 0.12);
+
+  /* Text — three steps only */
+  --text-1: #e6e8eb; /* primary */
+  --text-2: #8b9099; /* secondary */
+  --text-3: #5a5f66; /* tertiary / labels */
+
+  /* Semantic up/down (desaturated) — also PnL */
+  --up: #4dd6b0; /* teal-green */
+  --down: #f0796b; /* coral-red */
+}
+
+@theme inline {
+  --color-bg-0: var(--bg-0);
+  --color-bg-1: var(--bg-1);
+  --color-bg-2: var(--bg-2);
+  --color-bg-3: var(--bg-3);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-line: var(--line);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--bg-0);
+  color: var(--text-1);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Tabular figures everywhere numbers live (defensive; components also set it). */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Crisp focus ring for keyboard nav (§10.7) */
+:focus-visible {
+  outline: 1px solid var(--up);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ *
+ * Elevation system (§10.3). Depth comes from a near-black top-light
+ * gradient + a crisp hairline + a 1px inner bevel — NOT drop shadows.
+ * The 3-D surface stays the only thing that truly glows.
+ * ------------------------------------------------------------------ */
+.panel {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0) 40%),
+    var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Subtler nested card (inside a panel). */
+.card {
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 50%),
+    var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+/* Interactive cards/rows: hairline + lift on hover, never a bouncy shadow. */
+.interactive {
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    transform 0.16s ease;
+}
+.interactive:hover {
+  border-color: var(--line-strong);
+}
+
+/* Left accent rail marking an UP / DOWN card (semantic, no glow). */
+.accent-up::before,
+.accent-down::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+}
+.accent-up::before {
+  background: var(--up);
+}
+.accent-down::before {
+  background: var(--down);
+}
+
+/* Thin data meter (probability / utilization). */
+.meter {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+.meter > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Eyebrow / micro-label — tracked uppercase, tertiary. */
+.eyebrow {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* Modal entrance (kept subtle; clamped by reduced-motion below). */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
