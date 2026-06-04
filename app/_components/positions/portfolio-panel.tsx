@@ -8,12 +8,15 @@
  */
 import { useState } from 'react';
 import Link from 'next/link';
+import type { IconType } from 'react-icons';
+import { LuWallet, LuWalletMinimal, LuTrendingUp, LuTrendingDown, LuLayers, LuCoins, LuDownload } from 'react-icons/lu';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote, signed } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
+import { HUE, IconChip } from '../ui/metric';
 import { PositionCard } from './position-card';
 import { RedeemModal } from './redeem-modal';
 import type { PositionSummary } from '@/lib/api/types';
@@ -83,32 +86,64 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const unrealizedPct = s && s.open_exposure > 0 ? s.unrealized_pnl / s.open_exposure : 0;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 py-6">
-      {/* Account header */}
-      <div className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line-soft shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] sm:grid-cols-3 lg:grid-cols-5">
-        <Tile label="Account value" value={s ? fmtQuote(fromQuote(s.account_value)) : '…'} accent />
-        <Tile
+    <div className="mx-auto w-full max-w-7xl px-5 py-6">
+      {/* Account header — bento: a tall hero value beside a 2×2 of stats */}
+      <div className="glass-card mb-6 grid grid-cols-2 gap-2.5 p-2.5 font-mono tabular-nums lg:grid-cols-3">
+        {/* Account value — hero */}
+        <div className="glass-inset relative col-span-2 flex flex-col justify-between gap-6 overflow-hidden p-5 lg:col-span-1 lg:row-span-2">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'radial-gradient(120% 90% at 0% 0%, var(--accent-soft), transparent 60%)' }}
+          />
+          <div className="relative flex items-center gap-2.5">
+            <IconChip icon={LuWallet} color={HUE.teal} size={30} />
+            <span className="eyebrow">Account value</span>
+          </div>
+          <div className="relative flex flex-col gap-2">
+            <span className="text-[34px] leading-none tracking-tight text-text-1">
+              {s ? fmtQuote(fromQuote(s.account_value)) : '…'}
+            </span>
+            <span className="text-[10px] uppercase tracking-[0.12em] text-text-3">
+              {predictConfig.quote.symbol} · {predictConfig.network}
+            </span>
+          </div>
+        </div>
+
+        <SmallStat
+          icon={totalPnl >= 0 ? LuTrendingUp : LuTrendingDown}
+          color={totalPnl >= 0 ? HUE.teal : HUE.coral}
           label="Total PnL"
           value={s ? signed(totalPnl) : '…'}
           tone={totalPnl >= 0 ? 'up' : 'down'}
         />
-        <Tile label="Open exposure" value={s ? fmtQuote(fromQuote(s.open_exposure)) : '…'} />
-        <Tile
+        <SmallStat
+          icon={LuLayers}
+          color={HUE.blue}
+          label="Open exposure"
+          value={s ? fmtQuote(fromQuote(s.open_exposure)) : '…'}
+        />
+        <SmallStat
+          icon={LuCoins}
+          color={HUE.amber}
           label="Free balance"
           value={s ? fmtQuote(fromQuote(s.trading_balance)) : '…'}
-          sub={
+          action={
             acct.tradingBalanceBase > 0n ? (
               <button
                 onClick={() => acct.withdrawAll()}
                 disabled={acct.busy === 'withdraw'}
-                className="text-[10px] text-text-2 underline hover:text-text-1 disabled:opacity-50"
+                className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-1 transition-colors hover:border-up/40 hover:bg-up/5 hover:text-up disabled:opacity-50"
               >
-                {acct.busy === 'withdraw' ? 'withdrawing…' : 'withdraw'}
+                <LuDownload size={12} />
+                {acct.busy === 'withdraw' ? 'withdrawing…' : 'Withdraw'}
               </button>
             ) : undefined
           }
         />
-        <Tile
+        <SmallStat
+          icon={LuWalletMinimal}
+          color={HUE.violet}
           label="Wallet DUSDC"
           value={acct.dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(acct.dusdcBalance))}
         />
@@ -198,35 +233,30 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   );
 }
 
-function Tile({
+function SmallStat({
+  icon,
+  color,
   label,
   value,
-  sub,
   tone,
-  accent,
+  action,
 }: {
+  icon: IconType;
+  color: string;
   label: string;
   value: string;
-  sub?: React.ReactNode;
   tone?: 'up' | 'down';
-  accent?: boolean;
+  action?: React.ReactNode;
 }) {
-  const color = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-1';
+  const valueColor = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-1';
   return (
-    <div
-      className={`flex flex-col gap-1.5 px-4 py-3.5 ${
-        accent
-          ? 'bg-linear-to-b from-[var(--accent-soft)] to-transparent'
-          : 'bg-bg-1'
-      }`}
-    >
-      <span className="eyebrow">{label}</span>
-      <span
-        className={`font-mono leading-none tabular-nums ${accent ? 'text-[22px]' : 'text-[16px]'} ${color}`}
-      >
-        {value}
-      </span>
-      {sub}
+    <div className="glass-inset flex flex-col gap-2 p-4">
+      <div className="flex items-center gap-2">
+        <IconChip icon={icon} color={color} size={22} />
+        <span className="eyebrow">{label}</span>
+      </div>
+      <span className={`text-[20px] leading-none tracking-tight ${valueColor}`}>{value}</span>
+      {action}
     </div>
   );
 }
@@ -265,7 +295,7 @@ function Section({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 gap-3 md:grid-cols-2">{children}</div>;
+  return <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{children}</div>;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

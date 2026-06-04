@@ -154,6 +154,169 @@ body {
 }
 
 /* ------------------------------------------------------------------ *
+ * Glassmorphism card system (reusable across the app). A translucent
+ * surface with a faint top-light, a soft hairline, and a restrained
+ * inner glow. Where there is content behind (e.g. floating over the 3-D
+ * surface) the backdrop blur reads as true glass; on flat backgrounds the
+ * gradients carry the look. The 3-D surface is still the only true bloom.
+ * ------------------------------------------------------------------ */
+.glass-card {
+  position: relative;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  /* deep near-black panel with a soft top-light and a faint diagonal sheen,
+     like the reference. The blur still makes it true glass over the surface. */
+  background:
+    linear-gradient(135deg, transparent 54%, rgba(255, 255, 255, 0.022) 70%, transparent 76%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006) 32%),
+    color-mix(in srgb, var(--bg-1) 92%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(135%);
+  backdrop-filter: blur(22px) saturate(135%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 16px 40px -18px rgba(0, 0, 0, 0.85);
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006) 32%),
+      var(--bg-1);
+  }
+}
+.glass-card.interactive:hover {
+  border-color: var(--line-strong);
+}
+
+/* A faint directional wash bled in from the top-left — up/down semantics
+   without a literal accent stripe. */
+.glass-card.up {
+  border-color: color-mix(in srgb, var(--up) 22%, var(--line));
+  background:
+    radial-gradient(130% 90% at 0% 0%, rgba(77, 214, 176, 0.1), transparent 46%),
+    linear-gradient(135deg, transparent 54%, rgba(255, 255, 255, 0.022) 70%, transparent 76%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006) 32%),
+    color-mix(in srgb, var(--bg-1) 92%, transparent);
+}
+.glass-card.down {
+  border-color: color-mix(in srgb, var(--down) 22%, var(--line));
+  background:
+    radial-gradient(130% 90% at 0% 0%, rgba(240, 121, 107, 0.1), transparent 46%),
+    linear-gradient(135deg, transparent 54%, rgba(255, 255, 255, 0.022) 70%, transparent 76%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006) 32%),
+    color-mix(in srgb, var(--bg-1) 92%, transparent);
+}
+/* a decided (won/lost) card sits back a touch so live positions lead the eye */
+.glass-card.decided {
+  opacity: 0.94;
+}
+.glass-card.decided:hover {
+  opacity: 1;
+}
+
+/* Raised translucent sub-panel inside a glass card (metric rows, footer).
+   Distinguished by its lighter fill — NOT a stark hairline. The border is a
+   barely-there cool edge so tiles read as one cohesive surface, not boxes. */
+.glass-inset {
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012) 60%),
+    rgba(255, 255, 255, 0.022);
+}
+
+/* Small square icon chip (tinted) sitting beside a metric label. */
+.icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-2);
+}
+
+/* The directional orb — a glowing ring around the up/down arrow (the
+   one bloom we allow off the canvas, kept small and on-token). */
+.dir-orb {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+}
+.dir-orb.up {
+  color: var(--up);
+  border-color: var(--accent-line);
+  background: radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 72%);
+  box-shadow:
+    0 0 22px -6px var(--accent-glow),
+    inset 0 0 16px -8px var(--accent-glow);
+}
+.dir-orb.down {
+  color: var(--down);
+  border-color: rgba(240, 121, 107, 0.36);
+  background: radial-gradient(circle at 50% 42%, var(--down-soft), transparent 72%);
+  box-shadow:
+    0 0 22px -6px rgba(240, 121, 107, 0.3),
+    inset 0 0 16px -8px rgba(240, 121, 107, 0.3);
+}
+
+/* The probability track — 0 → 100%, entry tick vs live/settled mark. */
+.prob-rail {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+/* segment swept from entry → now, colored by which way the bet is going */
+.prob-seg {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  opacity: 0.5;
+}
+/* entry: a quiet vertical tick that overhangs the rail */
+.prob-entry {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--text-2);
+}
+/* now / settled: the filled mark, with an optional breathing halo when live */
+.prob-mark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.28);
+}
+.prob-ping {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------------ *
  * Premium chrome (redesign Phase 1). A frosted-glass header rail, the
  * live "market chip", compact diagnostics, and the breathing live dot.
  * Still token-driven; the only off-canvas glow is the accent ring.
