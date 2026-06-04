@@ -7,7 +7,7 @@ import { TopChrome } from './_components/top-chrome';
 import { FlowPanel } from './_components/flow-panel';
 import { SurfaceMount } from './_components/surface/surface-mount';
 import { LiveSviPanel } from './_components/live-svi-panel';
-import { OracleTable } from './_components/oracle-table';
+import { MarketPicker } from './_components/market-picker';
 import { ErrorState } from './_components/ui/error-state';
 import type { Oracle } from '@/lib/api/types';
 
@@ -118,11 +118,11 @@ export default async function Page() {
                 <SurfaceMount oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
               </div>
 
-              {/* Oracle grid — clickable: selects on the surface + loads ticket.
-                  flex-1 so the panel fills the column (the right rail is taller),
-                  instead of leaving an empty band under the rows. */}
+              {/* Market picker — cards (beginner) or table (dense), both clickable:
+                  select on the surface + load the ticket. flex-1 so the panel fills
+                  the column (the right rail is taller) instead of leaving an empty band. */}
               <div className="flex-1 bg-bg-0 p-4 sm:p-5">
-                <OracleTable
+                <MarketPicker
                   oracles={snapshot.oracles}
                   inputs={snapshot.surfaceInputs}
                   serverNow={serverNow}

@@ -417,6 +417,43 @@ body {
   box-shadow: 0 0 0 6px var(--accent-soft);
 }
 
+/* Quiet scrollbar — the bar stays invisible at rest and only fades in, faintly,
+   while the pointer is over the region (or it's keyboard-focused). Keeps the
+   chrome mute so nothing competes with the surface (§10.2). Reusable anywhere a
+   panel scrolls. The transparent border + content-box clip gives the thumb a
+   slim inset pill with breathing room rather than a hard edge-to-edge bar. */
+.scroll-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent; /* Firefox: invisible at rest */
+}
+.scroll-quiet:hover,
+.scroll-quiet:focus-within {
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+.scroll-quiet::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.scroll-quiet::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-quiet::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+.scroll-quiet:hover::-webkit-scrollbar-thumb,
+.scroll-quiet:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  background-clip: content-box;
+}
+.scroll-quiet::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+  background-clip: content-box;
+}
+
 /* One restrained page-load rise — chrome settles in, never bounces (§10.6). */
 @keyframes riseIn {
   from { opacity: 0; transform: translateY(10px); }

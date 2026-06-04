@@ -88,10 +88,14 @@ export function OracleTable({
           <span className="text-[11px] text-text-3">Waiting for the next expiry to open.</span>
         </div>
       ) : (
-      <div className="mt-3 overflow-x-auto">
+      // Self-contained scroll box: the header sticks to the TOP OF THIS BOX
+      // (top-0), not the page. `overflow-auto` + a height cap makes this element
+      // the sticky scroll container, so the header can never detach mid-table or
+      // occlude a row the way a page-level `top-16` sticky did.
+      <div className="scroll-quiet mt-3 max-h-[70vh] overflow-auto">
         <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
           <thead>
-            <tr className="sticky top-16 z-10 bg-[var(--bg-0)] text-left text-[10px] uppercase tracking-wider text-text-3">
+            <tr className="sticky top-0 z-10 bg-bg-0 text-left text-[10px] uppercase tracking-wider text-text-3">
               <Th>Underlying</Th>
               <Th>Expiry (UTC)</Th>
               <Th>TTL</Th>
