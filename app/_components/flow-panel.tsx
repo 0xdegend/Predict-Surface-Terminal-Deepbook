@@ -123,6 +123,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // only spend ~2. A 1-contract probe quote gives the authoritative per-unit ask
   // independent of the size we're solving for, so there's no feedback loop.
   const sideFair = clientUp == null ? null : isUp ? clientUp : 1 - clientUp; // bootstrap only
+  // Sizing probe — converts a DUSDC target into a contract count. Fetched ONCE
+  // per market/strike/side and held (no interval): if this re-priced every few
+  // seconds it would nudge `contracts`, churn the main quote's key, and make the
+  // reward card blink. Sizing stays stable; the live cost comes from `quoteQ`.
   const unitQuoteQ = useQuery({
     queryKey: ['quote-unit', oracle?.oracle_id, strike.toString(), isUp, owner],
     queryFn: () =>
@@ -136,7 +140,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       }),
     enabled: !!owner && !!oracle && strike > 0n && tradeable && !expired && sizeMode === 'amount',
     placeholderData: keepPreviousData,
-    refetchInterval: 6000,
+    staleTime: 30_000,
     retry: 0,
   });
   // Per-contract ask in DUSDC (cost of exactly 1 contract); fair as a bootstrap.
@@ -168,7 +172,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
         quantity: qtyBase,
       }),
     enabled: !!owner && !!oracle && strike > 0n && qtyBase > 0n && tradeable && !expired,
-    refetchInterval: 4000,
+    // Keep the last quote on screen while a refetch (or a strike/size change) is
+    // in flight, so figures update in place instead of blanking the card.
+    placeholderData: keepPreviousData,
+    refetchInterval: 5000,
+    refetchOnWindowFocus: false,
     retry: 0,
   });
   const q: TradeQuote | undefined = tradeable ? quoteQ.data : undefined;
@@ -418,10 +426,15 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 Strike too far from spot to trade — pick one nearer {price(forward)} (the market
                 quotes ~1%–99% only).
               </span>
-            ) : quoteQ.isError ? (
-              <span className="text-down">{humanizeError(quoteQ.error)}</span>
             ) : !q ? (
-              <span className="text-text-3">quoting…</span>
+              // Only surface an error / loading state when we have NO quote to
+              // show. A transient devInspect failure during a background refetch
+              // keeps the last good quote on screen rather than flashing red.
+              quoteQ.isError ? (
+                <span className="text-down">{humanizeError(quoteQ.error)}</span>
+              ) : (
+                <span className="text-text-3">quoting…</span>
+              )
             ) : (
               (() => {
                 const cost = fromQuote(q.mintCost);

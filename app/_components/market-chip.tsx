@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getLatestPrices, qk } from '@/lib/api/client';
+import { useFrontOracleId } from '@/lib/hooks/use-front-oracle';
 import { toFloat } from '@/config/scale';
 import { price, timeUTC } from '@/lib/format';
 import type { PriceEvent } from '@/lib/api/types';
@@ -38,10 +39,18 @@ export function MarketChip({
   const prevSpot = useRef<number | null>(null);
   const [tick, setTick] = useState<'up' | 'down' | null>(null);
 
+  // Follow the live front oracle, not the one pinned at server-render — otherwise
+  // the tape freezes once that market settles (showed a stale spot vs the table).
+  const liveOracleId = useFrontOracleId(oracleId);
+
   const { data, isFetching } = useQuery({
-    queryKey: qk.latestPrices(oracleId),
-    queryFn: ({ signal }) => getLatestPrices(oracleId, { signal }),
-    initialData: initial ?? undefined,
+    queryKey: qk.latestPrices(liveOracleId),
+    queryFn: ({ signal }) => getLatestPrices(liveOracleId, { signal }),
+    // The SSR `initial` belongs to the originally-pinned oracle; only seed with
+    // it while we're still on that one. When the front advances, keep the last
+    // shown price (no blank flash) until the new oracle's first tick lands.
+    initialData: liveOracleId === oracleId ? (initial ?? undefined) : undefined,
+    placeholderData: keepPreviousData,
     refetchInterval: 1000,
   });
 
