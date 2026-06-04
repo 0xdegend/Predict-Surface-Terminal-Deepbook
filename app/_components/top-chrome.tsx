@@ -1,43 +1,53 @@
 import Link from 'next/link';
 import { WalletBar } from './wallet-bar';
-import { LiveTape } from './live-tape';
+import { MarketChip, type MarketDiagnostics } from './market-chip';
 import type { PriceEvent } from '@/lib/api/types';
 
 /**
- * Persistent terminal chrome shared by the surface and risk screens (§10.5):
- * title, screen nav, live spot tape, wallet. Server component; client leaves
- * (WalletBar, LiveTape) isolate browser-only state.
+ * Persistent terminal chrome shared by the surface and risk screens (§10.5),
+ * redesigned as a premium frosted-glass rail (Phase 1). Three zones: brand +
+ * nav · the Live Market Chip · wallet. The old second status bar is gone — its
+ * diagnostics now live inside the chip's popover. Server component; client
+ * leaves (WalletBar, MarketChip) isolate browser-only state.
  */
 export function TopChrome({
-  phase,
   active,
   tape,
+  diagnostics,
 }: {
-  phase: string;
   active: 'surface' | 'risk' | 'portfolio';
   tape?: { oracleId: string; underlying: string; initial: PriceEvent | null } | null;
+  diagnostics?: MarketDiagnostics | null;
 }) {
   return (
-    <header className="flex items-center justify-between border-b border-white/[0.08] px-5 py-3">
-      <div className="flex items-center gap-5">
-        <span className="text-[13px] font-medium tracking-tight text-[#E6E8EB]">
-          Predict Surface Terminal
-        </span>
+    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5">
+      {/* Zone 1 — brand + screen nav */}
+      <div className="flex items-center gap-3 sm:gap-5">
+        <Link href="/" className="group flex items-center gap-2">
+          <span className="live-dot" />
+          <span className="text-[14px] font-semibold tracking-tight text-text-1">Predict</span>
+        </Link>
         <nav className="flex items-center gap-1">
           <NavLink href="/" label="Surface" active={active === 'surface'} />
           <NavLink href="/portfolio" label="Portfolio" active={active === 'portfolio'} />
-          <NavLink href="/risk" label="PLP Risk" active={active === 'risk'} />
+          <NavLink href="/risk" label="Risk" active={active === 'risk'} />
         </nav>
-        <span className="hidden text-[11px] uppercase tracking-wider text-[#5A5F66] sm:inline">
-          {phase}
-        </span>
       </div>
-      <div className="flex items-center gap-5">
-        {tape?.initial && (
-          <div className="hidden md:block">
-            <LiveTape oracleId={tape.oracleId} underlying={tape.underlying} initial={tape.initial} />
-          </div>
-        )}
+
+      {/* Zone 2 — the Live Market Chip (centerpiece) */}
+      <div className="flex justify-center">
+        {tape?.initial && diagnostics ? (
+          <MarketChip
+            oracleId={tape.oracleId}
+            underlying={tape.underlying}
+            initial={tape.initial}
+            diagnostics={diagnostics}
+          />
+        ) : null}
+      </div>
+
+      {/* Zone 3 — wallet */}
+      <div className="flex items-center justify-end">
         <WalletBar />
       </div>
     </header>
@@ -48,10 +58,10 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
   return (
     <Link
       href={href}
-      className={`rounded-md border px-2.5 py-1 text-[12px] tracking-tight transition-colors ${
+      className={`rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
         active
-          ? 'border-white/10 bg-white/[0.04] text-[#E6E8EB]'
-          : 'border-transparent text-[#8B9099] hover:text-[#E6E8EB]'
+          ? 'bg-[var(--accent-soft)] text-text-1'
+          : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
       }`}
     >
       {label}

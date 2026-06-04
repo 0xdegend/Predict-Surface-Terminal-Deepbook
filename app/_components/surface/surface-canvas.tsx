@@ -54,6 +54,7 @@ export function SurfaceCanvas({
   const { inputs, isLive, currentTime, historyReady } = useSurfaceInputs(oracles, initialInputs);
   const showNoArb = useSurfaceStore((s) => s.showNoArb);
   const select = useSurfaceStore((s) => s.select);
+  const selection = useSurfaceStore((s) => s.selection);
   const reduced = usePrefersReducedMotion();
 
   const { surface, mesh } = useMemo(() => {
@@ -83,6 +84,11 @@ export function SurfaceCanvas({
       strike: toFloat(Number(strikeScaled)),
       isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
     });
+    // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
+    // into view. Desktop keeps it in the right rail, so don't scroll there.
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   return (
@@ -139,9 +145,18 @@ export function SurfaceCanvas({
         showNoArb={showNoArb}
       />
       <SurfaceControls isLive={isLive} currentTime={currentTime} historyReady={historyReady} />
-      <span className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2 font-mono text-[10px] uppercase tracking-wider text-text-3">
-        click a node to trade it
-      </span>
+
+      {/* Empty-state hint — fades out once a node is selected. */}
+      <div
+        className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 -translate-x-1/2 transition-all duration-300 ${
+          selection ? 'translate-y-1 opacity-0' : 'opacity-100'
+        }`}
+      >
+        <span className="chip h-7 px-3 text-[11px] text-text-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          Tap a point on the surface to build a trade
+        </span>
+      </div>
     </div>
   );
 }
@@ -328,22 +343,47 @@ function locate(
 function SelectedMarker({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) {
   const selection = useSurfaceStore((s) => s.selection);
   const ref = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+  const lineRef = useRef<THREE.Mesh>(null);
+  const isUp = selection?.isUp ?? true;
+  const accent = isUp ? '#4dd6b0' : '#f0796b';
   const pos = useMemo(
     () => (selection ? locate(mesh, surface, selection.oracleId, selection.strike) : null),
     [mesh, surface, selection],
   );
   useFrame((state) => {
-    if (ref.current) {
-      const s = 1 + 0.18 * Math.sin(state.clock.elapsedTime * 4);
-      ref.current.scale.setScalar(s);
+    const t = state.clock.elapsedTime;
+    if (ref.current) ref.current.scale.setScalar(1 + 0.16 * Math.sin(t * 4));
+    if (ringRef.current) {
+      const s = 1 + 0.22 * Math.sin(t * 2.6);
+      ringRef.current.scale.set(s, s, s);
+      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.3 * Math.sin(t * 2.6);
     }
   });
   if (!pos) return null;
   return (
-    <mesh ref={ref} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
-      <sphereGeometry args={[0.12, 16, 16]} />
-      <meshBasicMaterial color="#e6e8eb" />
-    </mesh>
+    <group>
+      {/* Drop-line to the floor — anchors the selection in 3-D space. */}
+      <mesh ref={lineRef} position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.35} />
+      </mesh>
+      {/* Pulsing accent ring under the node. */}
+      <mesh
+        ref={ringRef}
+        position={[pos.x, pos.y + 0.02, pos.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
+        <ringGeometry args={[0.16, 0.21, 40]} />
+        <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} />
+      </mesh>
+      {/* The node itself. */}
+      <mesh ref={ref} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.1, 20, 20]} />
+        <meshBasicMaterial color="#f4f6f8" />
+      </mesh>
+    </group>
   );
 }
 
@@ -384,16 +424,22 @@ function FillRipple({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) 
 function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
   return (
     <div
-      className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+12px)] rounded border border-line bg-bg-1/95 px-2.5 py-2 font-mono text-[11px] tabular-nums shadow-lg backdrop-blur"
+      className="popover-in glass pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+14px)] rounded-[10px] px-3 py-2.5 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.7)]"
       style={{ left: hover.x, top: hover.y }}
     >
-      <div className="text-text-1">{price(hover.strike)}</div>
-      <div className="mt-0.5 flex gap-3 text-[10px] text-text-3">
-        <span>IV {pct(hover.iv, 1)}</span>
-        <span className="text-up">UP {pct(hover.up, 1)}</span>
-        <span className="text-down">DN {pct(1 - hover.up, 1)}</span>
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="font-mono text-[14px] tabular-nums text-text-1">{price(hover.strike)}</span>
+        <span className="font-mono text-[10px] tabular-nums text-text-3">IV {pct(hover.iv, 1)}</span>
       </div>
-      <div className="mt-0.5 text-[10px] text-text-3">
+      <div className="mt-2 flex items-center gap-1.5">
+        <span className="flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-up">
+          UP {pct(hover.up, 1)}
+        </span>
+        <span className="flex items-center gap-1 rounded-md bg-[var(--down-soft)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-down">
+          DN {pct(1 - hover.up, 1)}
+        </span>
+      </div>
+      <div className="mt-2 font-mono text-[10px] tabular-nums text-text-3">
         {dateUTC(hover.expiry)} · {ttl(hover.expiry)}
       </div>
     </div>
@@ -401,25 +447,26 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
 }
 
 function SurfaceLegend({ ivMin, ivMax }: { ivMin: number; ivMax: number }) {
+  // Top of the rail = high IV (warm), bottom = low IV (cool).
   const stops = useMemo(
     () =>
       Array.from({ length: 24 }, (_, i) => {
-        const [r, g, b] = ivColor(i / 23);
+        const [r, g, b] = ivColor(1 - i / 23);
         return `rgb(${r * 255},${g * 255},${b * 255})`;
       }),
     [],
   );
   return (
-    <div className="pointer-events-none absolute bottom-4 left-4 flex flex-col gap-1">
-      <span className="font-mono text-[10px] uppercase tracking-wider text-text-3">Implied vol</span>
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMin, 0)}</span>
-        <div
-          className="h-1.5 w-32 rounded-full"
-          style={{ background: `linear-gradient(90deg, ${stops.join(',')})` }}
-        />
-        <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMax, 0)}</span>
-      </div>
+    <div className="pointer-events-none absolute left-5 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2">
+      <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMax, 0)}</span>
+      <div
+        className="h-40 w-1.5 rounded-full ring-1 ring-inset ring-white/5"
+        style={{ background: `linear-gradient(180deg, ${stops.join(',')})` }}
+      />
+      <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMin, 0)}</span>
+      <span className="mt-1 [writing-mode:vertical-rl] rotate-180 text-[9px] uppercase tracking-[0.18em] text-text-3">
+        Implied vol
+      </span>
     </div>
   );
 }
@@ -439,17 +486,35 @@ function SurfaceMeta({
 }) {
   const arb = hasCalendar || hasButterfly;
   return (
-    <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-1 font-mono text-[10px] tabular-nums text-text-3">
-      <span className="text-text-2">{underlying} · SVI surface</span>
-      <span>{expiries} expiries</span>
-      {showNoArb &&
-        (arb ? (
-          <span className="text-down">
-            {hasButterfly && 'butterfly'} {hasButterfly && hasCalendar && '·'} {hasCalendar && 'calendar'} arb ⚠
-          </span>
-        ) : (
-          <span className="text-up">no-arb ✓</span>
-        ))}
+    <div className="pointer-events-none absolute right-5 top-5 flex flex-col items-end gap-2">
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-[11px] font-medium tracking-tight text-text-1">
+          {underlying}
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-3">
+          SVI surface
+        </span>
+      </div>
+      <span className="font-mono text-[10px] tabular-nums text-text-3">{expiries} expiries</span>
+      {showNoArb && (
+        <span
+          className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
+            arb ? 'bg-[var(--down-soft)] text-down' : 'bg-[var(--accent-soft)] text-accent'
+          }`}
+        >
+          {arb ? (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-down" />
+              {[hasButterfly && 'butterfly', hasCalendar && 'calendar'].filter(Boolean).join(' · ')} arb
+            </>
+          ) : (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              no-arb
+            </>
+          )}
+        </span>
+      )}
     </div>
   );
 }

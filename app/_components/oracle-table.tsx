@@ -68,24 +68,30 @@ export function OracleTable({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-[#8B9099]">
-          Active oracles
+        <h2 className="flex items-center gap-2">
+          <span className="eyebrow">Active oracles</span>
+          {visible.length > 0 && (
+            <span className="rounded-full bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
+              {visible.length}
+            </span>
+          )}
         </h2>
-        <span className="font-mono text-[10px] text-[#5A5F66]">
+        <span className="font-mono text-[10px] text-text-3">
           {hiddenCount > 0 && <span className="mr-3">{hiddenCount} expired hidden</span>}
           click a row → loads the ticket
         </span>
       </div>
 
       {visible.length === 0 ? (
-        <p className="mt-6 text-center text-[12px] text-[#5A5F66]">
-          No active markets right now — waiting for the next expiry to open.
-        </p>
+        <div className="card mt-3 flex flex-col items-center gap-1 px-4 py-10 text-center">
+          <span className="text-[12px] text-text-2">No active markets right now</span>
+          <span className="text-[11px] text-text-3">Waiting for the next expiry to open.</span>
+        </div>
       ) : (
       <div className="mt-3 overflow-x-auto">
         <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-wider text-[#5A5F66]">
+            <tr className="sticky top-16 z-10 bg-[var(--bg-0)] text-left text-[10px] uppercase tracking-wider text-text-3">
               <Th>Underlying</Th>
               <Th>Expiry (UTC)</Th>
               <Th>TTL</Th>
@@ -93,14 +99,16 @@ export function OracleTable({
               <Th className="text-right">ATM IV</Th>
               <Th className="text-right">Min strike</Th>
               <Th className="text-right">Tick</Th>
-              <Th>Oracle</Th>
+              <Th className="text-right">Oracle</Th>
             </tr>
           </thead>
           <tbody>
             {visible.map((o) => {
               const input = inputById.get(o.oracle_id);
               const selected = selection?.oracleId === o.oracle_id;
-              const closingSoon = o.expiry - now < CLOSING_SOON_MS;
+              const msLeft = o.expiry - now;
+              const closingSoon = msLeft < CLOSING_SOON_MS;
+              const urgent = !closingSoon && msLeft < 15 * 60_000;
               const pickable = !!input;
               const atmIv = input
                 ? impliedVol(input.forward, input.forward, input.svi, Math.max(timeToExpiryYears(o.expiry, now), 0))
@@ -122,32 +130,45 @@ export function OracleTable({
                   }
                   aria-selected={selected}
                   className={[
-                    'border-t border-white/[0.05] transition-colors',
+                    'group border-t border-line-soft transition-colors',
                     pickable
-                      ? 'cursor-pointer hover:bg-white/[0.04] focus-visible:bg-white/[0.04] focus-visible:outline-none'
+                      ? 'cursor-pointer hover:bg-white/[0.03] focus-visible:bg-white/[0.04] focus-visible:outline-none'
                       : 'opacity-40',
-                    selected ? 'bg-up/[0.07]' : '',
+                    selected ? 'bg-[var(--accent-soft)]' : '',
                   ].join(' ')}
                 >
-                  <Td className="text-[#E6E8EB]">
-                    <span className="inline-flex items-center gap-2">
+                  <Td className="text-text-1">
+                    <span className="relative inline-flex items-center gap-2.5 pl-2.5">
+                      {/* selected accent rail */}
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${selected ? 'bg-up' : 'bg-transparent'}`}
+                        className={`absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full transition-colors ${
+                          selected ? 'bg-accent' : 'bg-transparent'
+                        }`}
                       />
-                      {o.underlying_asset}
+                      <span className="font-medium">{o.underlying_asset}</span>
                     </span>
                   </Td>
-                  <Td className="text-[#B4B8BE]">{dateUTC(o.expiry)}</Td>
-                  <Td className={closingSoon ? 'text-down' : 'text-[#8B9099]'}>
-                    {countdown(o.expiry, now)}
+                  <Td className="text-text-2">{dateUTC(o.expiry)}</Td>
+                  <Td>
+                    {closingSoon ? (
+                      <span className="rounded bg-[var(--down-soft)] px-1.5 py-0.5 text-down">
+                        {countdown(o.expiry, now)}
+                      </span>
+                    ) : urgent ? (
+                      <span className="rounded bg-[var(--warn-soft)] px-1.5 py-0.5 text-warn">
+                        {countdown(o.expiry, now)}
+                      </span>
+                    ) : (
+                      <span className="text-text-2">{countdown(o.expiry, now)}</span>
+                    )}
                   </Td>
-                  <Td className="text-right text-[#B4B8BE]">
-                    {input ? price(input.forward, 0) : '—'}
+                  <Td className="text-right text-text-2">{input ? price(input.forward, 0) : '—'}</Td>
+                  <Td className="text-right text-text-1">{atmIv != null ? pct(atmIv, 1) : '—'}</Td>
+                  <Td className="text-right text-text-3">{price(toFloat(o.min_strike), 0)}</Td>
+                  <Td className="text-right text-text-3">{num(toFloat(o.tick_size), 2)}</Td>
+                  <Td className="text-right text-text-3 group-hover:text-text-2">
+                    {shortId(o.oracle_id)}
                   </Td>
-                  <Td className="text-right text-[#B4B8BE]">{atmIv != null ? pct(atmIv, 1) : '—'}</Td>
-                  <Td className="text-right text-[#8B9099]">{price(toFloat(o.min_strike), 0)}</Td>
-                  <Td className="text-right text-[#8B9099]">{num(toFloat(o.tick_size), 2)}</Td>
-                  <Td className="text-[#5A5F66]">{shortId(o.oracle_id)}</Td>
                 </tr>
               );
             })}
@@ -160,9 +181,9 @@ export function OracleTable({
 }
 
 function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`pb-2 pr-4 font-normal ${className}`}>{children}</th>;
+  return <th className={`px-3 pb-2.5 pt-1 font-normal ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`py-1.5 pr-4 ${className}`}>{children}</td>;
+  return <td className={`px-3 py-2.5 ${className}`}>{children}</td>;
 }

@@ -22,14 +22,22 @@ export function WalletBar() {
   const account = useCurrentAccount();
   const network = useCurrentNetwork();
 
+  const isTestnet = /test|dev|local/i.test(network);
+
   return (
-    <div className="flex items-center gap-3">
-      <span className="inline-flex items-center gap-1.5 rounded border border-white/10 px-2 py-1 text-[11px] uppercase tracking-wider text-[#8B9099]">
-        <span className="h-1.5 w-1.5 rounded-full bg-teal-400/80" />
+    <div className="flex items-center gap-2.5">
+      <span
+        className={`hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider sm:inline-flex ${
+          isTestnet
+            ? 'border-[var(--warn-soft)] bg-[var(--warn-soft)] text-warn'
+            : 'border-[var(--line)] text-text-2'
+        }`}
+      >
+        <span className={`h-1.5 w-1.5 rounded-full ${isTestnet ? 'bg-warn' : 'bg-accent'}`} />
         {network}
       </span>
       {account && (
-        <span className="font-mono text-[11px] text-[#8B9099] tabular-nums">
+        <span className="chip hidden h-9 px-2.5 font-mono text-[11px] tabular-nums text-text-2 md:inline-flex">
           {shortId(account.address)}
         </span>
       )}

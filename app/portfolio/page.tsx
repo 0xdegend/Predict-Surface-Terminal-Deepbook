@@ -10,7 +10,7 @@ export default function PortfolioRoute() {
   const serverNow = Date.now();
   return (
     <div className="flex min-h-screen flex-col">
-      <TopChrome phase="Phase 4 · portfolio" active="portfolio" />
+      <TopChrome active="portfolio" />
       <main className="flex flex-1 flex-col">
         <PortfolioPanel serverNow={serverNow} />
       </main>

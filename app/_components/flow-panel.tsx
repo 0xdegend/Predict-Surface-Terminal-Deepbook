@@ -219,43 +219,66 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
-      <div className="flex flex-col gap-1">
-        <Row label="Wallet DUSDC">
-          {dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(dusdcBalance))}
-          {dusdcBalance !== undefined && dusdcBalance < 1_000_000n && predictConfig.faucetUrl && (
-            <a href={predictConfig.faucetUrl} target="_blank" rel="noreferrer" className="ml-2 text-up underline">
-              get DUSDC
-            </a>
+      <div className="card flex flex-col gap-2.5 p-3">
+        <div className="flex items-end justify-between">
+          <div className="flex flex-col gap-1">
+            <span className="eyebrow">Wallet · {predictConfig.quote.symbol}</span>
+            <span className="font-mono text-[16px] leading-none tabular-nums text-text-1">
+              {dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(dusdcBalance))}
+            </span>
+          </div>
+          {managerId && (
+            <div className="flex flex-col items-end gap-1">
+              <span className="eyebrow">Free balance</span>
+              <span className="font-mono text-[16px] leading-none tabular-nums text-text-1">
+                {fmtQuote(fromQuote(tradingBalance))}
+              </span>
+            </div>
           )}
-        </Row>
-        <Row label="Manager">
+        </div>
+        {dusdcBalance !== undefined && dusdcBalance < 1_000_000n && predictConfig.faucetUrl && (
+          <a
+            href={predictConfig.faucetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            Low balance — get testnet DUSDC →
+          </a>
+        )}
+        <div className="flex items-center justify-between border-t border-line-soft pt-2.5">
+          <span className="eyebrow">Manager</span>
           {managerId ? (
-            <span className="text-text-2">
+            <span className="font-mono text-[11px] tabular-nums text-text-2">
               {managerId.slice(0, 10)}…{managerId.slice(-4)}
             </span>
           ) : (
             <button
               onClick={() => createManager()}
               disabled={busy === 'create'}
-              className="rounded border border-line-strong px-2 py-0.5 text-up hover:bg-white/5 disabled:opacity-50"
+              className="rounded-md border border-line-strong px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-white/5 disabled:opacity-50"
             >
               {busy === 'create' ? 'creating…' : 'Create manager'}
             </button>
           )}
-        </Row>
-        {managerId && <Row label="Free balance">{fmtQuote(fromQuote(tradingBalance))}</Row>}
+        </div>
       </div>
 
       {managerId && (
         <div className="flex flex-col gap-2 border-t border-line-soft pt-3">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-text-3">
+            <span className="font-mono text-[11px] tabular-nums text-text-2">
               {oracle.underlying_asset} · {dateUTC(oracle.expiry)} ·{' '}
-              <span className={expired || closingSoon ? 'text-down' : 'text-text-2'}>
+              <span className={expired || closingSoon ? 'text-down' : 'text-text-3'}>
                 {expired ? 'expired' : `${countdown(oracle.expiry, now)} left`}
               </span>
             </span>
-            {fromSurface && <span className="text-[10px] text-up">↑ from surface</span>}
+            {fromSurface && (
+              <span className="flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
+                <span className="h-1 w-1 rounded-full bg-accent" />
+                From surface
+              </span>
+            )}
           </div>
 
           <div className="flex gap-2">
@@ -279,12 +302,22 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </p>
 
           <Row label={`Strike (settles ${isUp ? 'above' : 'below'})`}>
-            <div className="flex items-center gap-2">
-              <button onClick={() => stepStrike(-1)} className="px-1.5 text-text-2 hover:text-text-1">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => stepStrike(-1)}
+                aria-label="Lower strike"
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-line text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
+              >
                 −
               </button>
-              <span className="text-text-1">{price(toFloat(Number(strike)))}</span>
-              <button onClick={() => stepStrike(1)} className="px-1.5 text-text-2 hover:text-text-1">
+              <span className="min-w-[5.5rem] text-center text-[13px] text-text-1">
+                {price(toFloat(Number(strike)))}
+              </span>
+              <button
+                onClick={() => stepStrike(1)}
+                aria-label="Raise strike"
+                className="flex h-6 w-6 items-center justify-center rounded-md border border-line text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
+              >
                 +
               </button>
             </div>
@@ -294,7 +327,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <span className="text-text-3">Bet size</span>
-              <div className="flex overflow-hidden rounded border border-line">
+              <div className="flex items-center gap-0.5 rounded-md border border-line bg-[var(--bg-2)] p-0.5">
                 <SizeTab active={sizeMode === 'amount'} onClick={switchToAmount}>
                   {predictConfig.quote.symbol}
                 </SizeTab>
@@ -324,10 +357,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                     <button
                       key={n}
                       onClick={() => setAmount(n)}
-                      className={`flex-1 rounded border px-1.5 py-0.5 text-[10px] tabular-nums ${
+                      className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
                         amount === n
-                          ? 'border-line-strong text-text-1'
-                          : 'border-line text-text-3 hover:text-text-2'
+                          ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
+                          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
                       }`}
                     >
                       {n}
@@ -356,10 +389,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                     <button
                       key={n}
                       onClick={() => setContractsInput(n)}
-                      className={`flex-1 rounded border px-1.5 py-0.5 text-[10px] tabular-nums ${
+                      className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
                         contractsInput === n
-                          ? 'border-line-strong text-text-1'
-                          : 'border-line text-text-3 hover:text-text-2'
+                          ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
+                          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
                       }`}
                     >
                       {n}
@@ -374,7 +407,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </div>
 
           {/* Risk → Reward: the answer to "what do I pay and what can I win?" */}
-          <div className="card p-3">
+          <div className={`card p-3.5 ${q && tradeable && !expired ? 'glow-accent' : ''}`}>
             {expired ? (
               <span className="text-text-3">
                 This market has expired and is awaiting settlement — pick another expiry on the
@@ -399,27 +432,27 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="flex flex-col gap-1">
+                      <div className="flex flex-col gap-1.5">
                         <span className="eyebrow">You pay</span>
-                        <span className="text-[19px] leading-none text-text-1">{fmtQuote(cost)}</span>
+                        <span className="text-[22px] leading-none text-text-1">{fmtQuote(cost)}</span>
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="eyebrow">If you win</span>
+                      <div className="flex flex-col gap-1.5">
+                        <span className="eyebrow">You win</span>
                         <span className="flex items-baseline gap-1.5">
-                          <span className="text-[19px] leading-none text-up">{fmtQuote(maxPayout)}</span>
-                          <span className="rounded bg-up/10 px-1 py-0.5 text-[10px] leading-none text-up">
+                          <span className="text-[22px] leading-none text-up">{fmtQuote(maxPayout)}</span>
+                          <span className="rounded bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] leading-none text-up">
                             {mult.toFixed(2)}×
                           </span>
                         </span>
                       </div>
                     </div>
-                    <span className="mt-1.5 text-[10px] text-text-3">
+                    <span className="mt-2 text-[10px] text-text-3">
                       net profit if right <span className="text-up">{signed(profit)}</span>
                     </span>
 
                     <div className="mt-3 flex flex-col gap-1.5">
                       <div className="flex items-center justify-between">
-                        <span className="eyebrow">Market-implied chance</span>
+                        <span className="eyebrow">Implied chance</span>
                         <span className="text-[12px] tabular-nums text-text-2">{pct(chance, 1)}</span>
                       </div>
                       <div className="meter">
@@ -433,7 +466,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                     </div>
 
                     <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-2.5">
-                      <span className="text-[11px] text-text-3">Sell now (redeem)</span>
+                      <span className="text-[11px] text-text-3">Sell now</span>
                       <span className="text-[11px] tabular-nums text-text-2">
                         {fmtQuote(fromQuote(q.redeemPayout))}
                       </span>
@@ -455,10 +488,13 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           <button
             onClick={handleMint}
             disabled={!q || !tradeable || expired || busy === 'mint'}
-            className="rounded-lg border border-up/40 bg-linear-to-b from-up/20 to-up/5 px-3 py-2.5 text-[13px] font-medium text-up transition-colors hover:from-up/25 hover:to-up/10 disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3"
+            className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
           >
+            {busy === 'mint' && (
+              <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
+            )}
             {busy === 'mint'
-              ? 'minting…'
+              ? 'Confirming in wallet…'
               : expired
                 ? 'Market expired'
                 : q
@@ -583,8 +619,9 @@ function SizeTab({
   return (
     <button
       onClick={onClick}
-      className={`px-2 py-0.5 text-[10px] uppercase tracking-wider ${
-        active ? 'bg-white/10 text-text-1' : 'text-text-3 hover:text-text-2'
+      aria-pressed={active}
+      className={`rounded-[5px] px-2 py-1 text-[10px] uppercase tracking-wider transition-colors ${
+        active ? 'bg-[var(--bg-3)] text-text-1' : 'text-text-3 hover:text-text-2'
       }`}
     >
       {children}
@@ -603,17 +640,22 @@ function Toggle({
   tone: 'up' | 'down';
   children: React.ReactNode;
 }) {
+  const glyph = tone === 'up' ? '▲' : '▼';
   const activeCls =
     tone === 'up'
-      ? 'border-up/40 bg-linear-to-b from-up/20 to-up/5 text-up'
-      : 'border-down/40 bg-linear-to-b from-down/20 to-down/5 text-down';
+      ? 'border-up/50 bg-[var(--accent-soft)] text-up'
+      : 'border-down/50 bg-[var(--down-soft)] text-down';
   return (
     <button
       onClick={onClick}
-      className={`flex-1 rounded-md border px-2 py-1.5 text-[12px] font-medium tracking-wide transition-colors ${
-        active ? activeCls : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
+      aria-pressed={active}
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-[13px] font-semibold tracking-wide transition-all ${
+        active
+          ? activeCls
+          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
       }`}
     >
+      <span className="text-[9px]">{glyph}</span>
       {children}
     </button>
   );

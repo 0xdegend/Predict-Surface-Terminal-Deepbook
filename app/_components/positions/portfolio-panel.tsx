@@ -85,7 +85,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-6">
       {/* Account header */}
-      <div className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line-soft bg-line-soft sm:grid-cols-3 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line-soft shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)] sm:grid-cols-3 lg:grid-cols-5">
         <Tile label="Account value" value={s ? fmtQuote(fromQuote(s.account_value)) : '…'} accent />
         <Tile
           label="Total PnL"
@@ -213,9 +213,17 @@ function Tile({
 }) {
   const color = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-1';
   return (
-    <div className="flex flex-col gap-1.5 bg-bg-1 px-4 py-3.5">
+    <div
+      className={`flex flex-col gap-1.5 px-4 py-3.5 ${
+        accent
+          ? 'bg-linear-to-b from-[var(--accent-soft)] to-transparent'
+          : 'bg-bg-1'
+      }`}
+    >
       <span className="eyebrow">{label}</span>
-      <span className={`font-mono tabular-nums ${accent ? 'text-[20px]' : 'text-[15px]'} ${color}`}>
+      <span
+        className={`font-mono leading-none tabular-nums ${accent ? 'text-[22px]' : 'text-[16px]'} ${color}`}
+      >
         {value}
       </span>
       {sub}
@@ -237,7 +245,10 @@ function Section({
   return (
     <section className="mb-6">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-[11px] font-medium uppercase tracking-wider text-text-2">{title}</h2>
+        <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+          <span className="h-3 w-px bg-accent/70" />
+          {title}
+        </h2>
         {hint && (
           <span
             className={`font-mono text-[11px] tabular-nums ${

@@ -6,9 +6,11 @@ import { useSurfaceStore } from '@/lib/store/surface-store';
 import { timeUTC } from '@/lib/format';
 
 /**
- * Surface control bar: time-travel scrub (GSAP-snapped LIVE), no-arb overlay,
- * and the demo stress toggle. The scrub is the signature interaction — dragging
- * morphs the surface through SVI history; LIVE snaps smoothly back to the stream.
+ * Floating glass control bar (redesign Phase 2). Sits lifted off the canvas as
+ * the surface's only chrome: a LIVE snap-pill + time-travel scrub on the left,
+ * and a segmented overlay group (no-arb / stress) on the right. The scrub is the
+ * signature interaction — dragging morphs the surface through SVI history; LIVE
+ * snaps smoothly back to the stream.
  */
 export function SurfaceControls({
   isLive,
@@ -42,52 +44,75 @@ export function SurfaceControls({
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-bg-1/90 px-3 py-2 backdrop-blur">
+    <div className="pointer-events-auto absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass">
+      {/* LIVE snap-pill */}
       <button
         onClick={snapToLive}
-        className={`flex items-center gap-1.5 rounded px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
-          isLive ? 'text-up' : 'text-text-3 hover:text-text-2'
+        className={`flex h-8 items-center gap-2 rounded-lg px-3 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+          isLive
+            ? 'bg-[var(--accent-soft)] text-accent'
+            : 'text-text-3 hover:bg-white/[0.04] hover:text-text-2'
         }`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'animate-pulse bg-up' : 'bg-text-3'}`} />
+        <span className={isLive ? 'live-dot' : 'h-[7px] w-[7px] rounded-full bg-text-3'} />
         Live
       </button>
 
-      <input
-        type="range"
-        min={0}
-        max={1}
-        step={0.001}
-        value={scrub}
-        disabled={!historyReady}
-        onChange={(e) => setScrub(Number(e.target.value))}
-        className="h-1 w-56 cursor-pointer appearance-none rounded-full bg-bg-3 accent-[var(--up)] disabled:opacity-40"
-        aria-label="Time-travel scrub"
-      />
+      {/* Scrub group */}
+      <div className="flex items-center gap-2.5 px-2">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.001}
+          value={scrub}
+          disabled={!historyReady}
+          onChange={(e) => setScrub(Number(e.target.value))}
+          className="surface-scrub h-1 w-52 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+          aria-label="Time-travel scrub"
+        />
+        <span className="w-14 text-center font-mono text-[10px] tabular-nums text-text-2">
+          {isLive ? 'now' : timeUTC(currentTime)}
+        </span>
+      </div>
 
-      <span className="w-16 text-center font-mono text-[10px] tabular-nums text-text-2">
-        {isLive ? 'now' : timeUTC(currentTime)}
-      </span>
-
-      <div className="mx-1 h-5 w-px bg-line" />
-
-      <button
-        onClick={toggleNoArb}
-        className={`rounded px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
-          showNoArb ? 'text-text-1' : 'text-text-3 hover:text-text-2'
-        }`}
-      >
-        no-arb
-      </button>
-
-      <button
-        onClick={() => setStress(stress > 0 ? 0 : 0.6)}
-        className={`rounded px-2 py-1 font-mono text-[11px] uppercase tracking-wider ${
-          stress > 0 ? 'text-down' : 'text-text-3 hover:text-text-2'
-        }`}
-      >
-        stress
-      </button>
+      {/* Segmented overlay toggles */}
+      <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
+        <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
+          No-arb
+        </SegToggle>
+        <SegToggle active={stress > 0} onClick={() => setStress(stress > 0 ? 0 : 0.6)} tone="down">
+          Stress
+        </SegToggle>
+      </div>
     </div>
+  );
+}
+
+function SegToggle({
+  active,
+  onClick,
+  tone,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  tone: 'accent' | 'down';
+  children: React.ReactNode;
+}) {
+  const activeCls =
+    tone === 'down'
+      ? 'bg-[var(--down-soft)] text-down'
+      : 'bg-[var(--accent-soft)] text-accent';
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`h-7 rounded-md px-2.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+        active ? activeCls : 'text-text-3 hover:text-text-2'
+      }`}
+    >
+      {children}
+    </button>
   );
 }

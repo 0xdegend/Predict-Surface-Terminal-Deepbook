@@ -30,13 +30,16 @@ export function SurfaceMount({
 
 function SurfaceSkeleton() {
   return (
-    <div className="flex h-full w-full items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <div className="h-24 w-48 animate-pulse rounded bg-[radial-gradient(ellipse_at_center,rgba(45,120,140,0.25),transparent_70%)]" />
-        <span className="font-mono text-[10px] uppercase tracking-wider text-text-3">
-          assembling surface…
-        </span>
-      </div>
+    <div className="relative h-full w-full overflow-hidden">
+      {/* Soft horizon glow standing in for the surface while Three.js hydrates. */}
+      <div className="absolute inset-x-0 bottom-1/4 top-1/4 animate-pulse bg-[radial-gradient(60%_80%_at_50%_60%,rgba(45,130,150,0.22),transparent_72%)]" />
+      {/* Skeleton chrome that matches the final overlay positions (§10.7). */}
+      <div className="absolute left-5 top-1/2 h-40 w-1.5 -translate-y-1/2 animate-pulse rounded-full bg-white/[0.05]" />
+      <div className="absolute right-5 top-5 h-4 w-24 animate-pulse rounded bg-white/[0.05]" />
+      <div className="absolute bottom-5 left-1/2 h-12 w-80 -translate-x-1/2 animate-pulse rounded-xl bg-white/[0.04]" />
+      <span className="absolute bottom-[5.25rem] left-1/2 -translate-x-1/2 font-mono text-[10px] uppercase tracking-[0.18em] text-text-3">
+        assembling surface…
+      </span>
     </div>
   );
 }

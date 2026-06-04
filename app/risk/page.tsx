@@ -13,7 +13,7 @@ import type { SmileInput } from '@/lib/svi/surface';
 import type { VaultSummary, VaultPerformancePoint } from '@/lib/api/types';
 import { TopChrome } from '../_components/top-chrome';
 import { RiskPanel } from '../_components/risk/risk-panel';
-import { RetryButton } from '../_components/retry-button';
+import { ErrorState } from '../_components/ui/error-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,16 +66,13 @@ export default async function RiskRoute() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <TopChrome phase="Phase 5 · PLP risk" active="risk" />
+      <TopChrome active="risk" />
       {error ? (
-        <div className="m-5 rounded border border-red-500/30 bg-red-500/[0.06] p-4">
-          <p className="text-[12px] font-medium text-red-300">Failed to load vault data</p>
-          <p className="mt-1 font-mono text-[11px] text-[#8B9099]">{error}</p>
-          <p className="mt-2 text-[11px] text-[#5A5F66]">
-            Usually a transient local network/DNS hiccup — the server is reachable.
-          </p>
-          <RetryButton />
-        </div>
+        <ErrorState
+          title="Failed to load vault data"
+          message={error}
+          note="Usually a transient local network/DNS hiccup — the server is reachable."
+        />
       ) : data ? (
         <main className="flex-1">
           <RiskPanel

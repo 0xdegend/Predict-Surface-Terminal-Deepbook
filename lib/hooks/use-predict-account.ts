@@ -23,12 +23,30 @@ import {
 } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
 import { humanizeError } from '@/lib/sui/abort';
+import { toast } from '@/lib/store/toast-store';
 import {
   buildCreateManagerTx,
   buildRedeemTx,
   buildWithdrawFromManagerTx,
 } from '@/lib/sui/predict-tx';
 import type { PositionSummary } from '@/lib/api/types';
+
+/** Friendly label for a runTx action (label may be "redeem-<oracle>-..."). */
+function txLabel(label: string): string {
+  if (label === 'create') return 'Create account';
+  if (label === 'mint') return 'Mint';
+  if (label === 'withdraw') return 'Withdraw';
+  if (label.startsWith('redeem')) return 'Close position';
+  return 'Transaction';
+}
+
+function txSuccessTitle(label: string): string {
+  if (label === 'create') return 'Trading account created';
+  if (label === 'mint') return 'Position minted';
+  if (label === 'withdraw') return 'Withdrawn to wallet';
+  if (label.startsWith('redeem')) return 'Position closed';
+  return 'Transaction confirmed';
+}
 
 export function usePredictAccount() {
   const account = useCurrentAccount();
@@ -97,6 +115,10 @@ export function usePredictAccount() {
       await client.core.waitForTransaction({ digest });
       await new Promise((r) => setTimeout(r, 1200));
       for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
+      toast.success(txSuccessTitle(label), {
+        desc: `${digest.slice(0, 14)}…`,
+        href: `https://suiscan.xyz/${predictConfig.network}/tx/${digest}`,
+      });
       return digest;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -104,6 +126,7 @@ export function usePredictAccount() {
       // approval — best-effort refetch so state still surfaces.
       const lostPopup = /closed the wallet window|window closed|popup/i.test(msg);
       setError(lostPopup ? `${humanizeError(e)} Checking…` : humanizeError(e));
+      if (!lostPopup) toast.error(`${txLabel(label)} failed`, { desc: humanizeError(e) });
       setTimeout(() => {
         for (const key of invalidate) queryClient.invalidateQueries({ queryKey: key });
         queryClient.invalidateQueries({ queryKey: qk.managers(owner ?? '') });

@@ -25,6 +25,20 @@
   /* Semantic up/down (desaturated) — also PnL */
   --up: #4dd6b0; /* teal-green */
   --down: #f0796b; /* coral-red */
+
+  /* Accent = the single functional mint. Used for live / brand / primary CTA.
+     Saturated color otherwise lives ONLY on the surface canvas (§10.3). */
+  --accent: var(--up);
+  --accent-soft: rgba(77, 214, 176, 0.1); /* fills, selected tint */
+  --accent-line: rgba(77, 214, 176, 0.32); /* accent hairline */
+  --accent-glow: rgba(77, 214, 176, 0.22); /* the only glow off-canvas */
+
+  /* Soft loss fill — DOWN side selected state, mirrors --accent-soft. */
+  --down-soft: rgba(240, 121, 107, 0.12);
+
+  /* One warm signal — testnet tag + urgent TTL. Never a third "accent". */
+  --warn: #e6b450;
+  --warn-soft: rgba(230, 180, 80, 0.12);
 }
 
 @theme inline {
@@ -37,6 +51,8 @@
   --color-text-3: var(--text-3);
   --color-up: var(--up);
   --color-down: var(--down);
+  --color-accent: var(--accent);
+  --color-warn: var(--warn);
   --color-line: var(--line);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -135,6 +151,126 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+/* ------------------------------------------------------------------ *
+ * Premium chrome (redesign Phase 1). A frosted-glass header rail, the
+ * live "market chip", compact diagnostics, and the breathing live dot.
+ * Still token-driven; the only off-canvas glow is the accent ring.
+ * ------------------------------------------------------------------ */
+
+/* Sticky frosted bar — header + floating control surfaces. Falls back to a
+   solid raised panel where backdrop-filter is unsupported. */
+.glass {
+  background: color-mix(in srgb, var(--bg-1) 78%, transparent);
+  border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--bg-1);
+  }
+}
+
+/* Pill / capsule used for chips, nav, and status. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 60%),
+    var(--bg-2);
+}
+
+/* The breathing live dot — calm, not blinking (§10.6). */
+.live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.35;
+  animation: breathe 2s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.35; }
+  50% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Accent ring — selected node / CTA hover. The one glow off the canvas. */
+.glow-accent {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px var(--accent-line),
+    0 0 22px -2px var(--accent-glow);
+}
+
+/* Time-travel scrubber — slim track, accent thumb with a soft halo. */
+.surface-scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.surface-scrub::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--bg-3);
+}
+.surface-scrub::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--bg-3);
+}
+.surface-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -4.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  transition: box-shadow 0.16s ease;
+}
+.surface-scrub::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.surface-scrub:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+
+/* One restrained page-load rise — chrome settles in, never bounces (§10.6). */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise {
+  animation: riseIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Popover entrance for the diagnostics panel. */
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.popover-in {
+  animation: popoverIn 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top right;
 }
 
 /* Modal entrance (kept subtle; clamped by reduced-motion below). */
