@@ -232,6 +232,8 @@ export interface PositionMintedEvent extends EventEnvelope {
 export interface PositionRedeemedEvent extends EventEnvelope {
   predict_id: string;
   manager_id: string;
+  owner: string; // manager owner (the trader credited the payout)
+  executor: string; // who submitted the redeem (== owner unless permissionless)
   quote_asset: string;
   expiry: number;
   strike: number; // @1e9

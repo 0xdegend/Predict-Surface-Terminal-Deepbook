@@ -97,6 +97,10 @@ export const getPriceHistory = (oracleId: string, limit?: number, o?: GetOptions
 export const getManagersByOwner = (owner: string, o?: GetOptions) =>
   get<ManagerRow[]>(`/managers?owner=${owner}`, o);
 
+/** All managers (no owner filter) — powers the leaderboard owner→managers map. */
+export const getManagers = (limit = 5000, o?: GetOptions) =>
+  get<ManagerRow[]>(`/managers?limit=${limit}`, o);
+
 export const getManagerSummary = (managerId: string, o?: GetOptions) =>
   get<ManagerSummary>(`/managers/${managerId}/summary`, o);
 
@@ -141,4 +145,6 @@ export const qk = {
   vaultPerformance: (range: string) => ['vault', 'performance', range] as const,
   openInterest: ['open-interest'] as const,
   predictConfig: ['predict', 'config'] as const,
+  leaderboardBase: ['leaderboard', 'base'] as const,
+  leaderboardPnl: (ids: string) => ['leaderboard', 'pnl', ids] as const,
 };

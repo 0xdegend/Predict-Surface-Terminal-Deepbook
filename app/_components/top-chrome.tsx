@@ -15,7 +15,7 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: 'surface' | 'risk' | 'portfolio';
+  active: 'surface' | 'risk' | 'portfolio' | 'leaderboard';
   tape?: { oracleId: string; underlying: string; initial: PriceEvent | null } | null;
   diagnostics?: MarketDiagnostics | null;
 }) {
@@ -30,6 +30,7 @@ export function TopChrome({
         <nav className="flex items-center gap-1">
           <NavLink href="/" label="Surface" active={active === 'surface'} />
           <NavLink href="/portfolio" label="Portfolio" active={active === 'portfolio'} />
+          <NavLink href="/leaderboard" label="Leaderboard" active={active === 'leaderboard'} />
           <NavLink href="/risk" label="Risk" active={active === 'risk'} />
         </nav>
       </div>
