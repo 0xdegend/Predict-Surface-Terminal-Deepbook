@@ -171,6 +171,19 @@ body {
   background-size: 100% 1px;
 }
 
+/* Standalone faded hairline (between metric rows etc.) — same quiet,
+   edge-fading 1px line as the table dividers, as a flex/block element. */
+.hairline-fade {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.06) 10%,
+    rgba(255, 255, 255, 0.06) 90%,
+    transparent
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Glassmorphism card system (reusable across the app). A translucent
  * surface with a faint top-light, a soft hairline, and a restrained
@@ -354,6 +367,57 @@ body {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Glass segmented control (Cards/Table view toggle, mode switches). A
+ * frosted track with a sliding translucent THUMB — no hard borders. The
+ * thumb's own top-light + soft drop reads as a raised piece of glass that
+ * glides under the labels; the track just frosts whatever sits behind it.
+ * ------------------------------------------------------------------ */
+.segmented {
+  position: relative;
+  display: inline-flex;
+  isolation: isolate; /* keep the thumb's shadow under the labels */
+  border-radius: 11px;
+  padding: 0; /* segments measure exactly 50% so the thumb tracks them */
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0) 60%),
+    color-mix(in srgb, var(--bg-1) 66%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  backdrop-filter: blur(16px) saturate(145%);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.035);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .segmented {
+    background: var(--bg-2);
+  }
+}
+/* The gliding glass thumb. Width is one inset segment; translateX(100%) lands
+   it exactly on the second segment (symmetric 3px inset both sides). */
+.segmented-thumb {
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.022) 62%),
+    rgba(255, 255, 255, 0.028);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px -12px rgba(0, 0, 0, 0.9);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .segmented-thumb {
+    transition: none;
+  }
+}
+
 /* Pill / capsule used for chips, nav, and status. */
 .chip {
   display: inline-flex;
@@ -394,6 +458,33 @@ body {
     inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
     0 0 0 1px var(--accent-line),
     0 0 22px -2px var(--accent-glow);
+}
+/* DOWN-side mirror of the accent glow — coral ring for a bearish quote/CTA. */
+.glow-down {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(240, 121, 107, 0.34),
+    0 0 22px -2px rgba(240, 121, 107, 0.22);
+}
+
+/* Soft glass control — small steppers / chips with a translucent fill and a
+   barely-there edge instead of a hard 1px line (the look the ticket wants). */
+.ctrl-soft {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.014) 60%),
+    rgba(255, 255, 255, 0.018);
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+.ctrl-soft:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02) 60%),
+    rgba(255, 255, 255, 0.03);
+  color: var(--text-1);
 }
 
 /* Time-travel scrubber — slim track, accent thumb with a soft halo. */

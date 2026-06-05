@@ -18,7 +18,6 @@ import {
   LuCircleX,
   LuDownload,
   LuShare2,
-  LuInfo,
   LuCheck,
 } from 'react-icons/lu';
 import {
@@ -32,7 +31,6 @@ import {
 } from '@/lib/format';
 import { toFloat } from '@/config/scale';
 import { usePositionSpark } from '@/lib/hooks/use-position-spark';
-import { HUE, IconChip } from '../ui/metric';
 import { positionMetrics } from './position-metrics';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -78,15 +76,29 @@ export function PositionCard({
     `${decided ? 'Realized' : 'Unrealized'} PnL ${signed(m.pnl)} DUSDC (${signed(m.pnlPct * 100, 1)}%)\n` +
     `Oracle ${p.oracle_id}`;
 
+  // The single accent in the card — a faded top hairline that tells result at a
+  // glance (teal won, coral lost, quiet direction-tint while live).
+  const accentColor = result === 'won' ? 'var(--up)' : result === 'lost' ? 'var(--down)' : up ? 'var(--up)' : 'var(--down)';
+
   return (
     <div
-      className={`glass-card interactive font-mono text-[12px] tabular-nums ${up ? 'up' : 'down'} ${
+      className={`glass-card interactive relative overflow-hidden font-mono text-[12px] tabular-nums ${up ? 'up' : 'down'} ${
         decided ? 'decided' : ''
       }`}
     >
-      <div className="@container flex flex-col gap-2 p-3 sm:p-3.5">
+      {/* result hairline */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
+        style={{
+          background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)`,
+          opacity: result === 'live' ? 0.3 : 0.7,
+        }}
+      />
+
+      <div className="@container flex flex-col gap-3 p-3.5 sm:p-4">
         {/* top rail */}
-        <div className="flex items-center justify-between px-0.5">
+        <div className="flex items-center justify-between">
           <span className="flex items-center gap-2">
             <span className={`h-1.5 w-1.5 rounded-full ${up ? 'bg-up' : 'bg-down'}`} />
             <span className="eyebrow">{p.underlying_asset} Position</span>
@@ -98,21 +110,21 @@ export function PositionCard({
               target="_blank"
               rel="noreferrer"
               aria-label="View oracle on Suiscan"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
+              className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
             >
-              <LuExternalLink size={14} />
+              <LuExternalLink size={13} />
             </a>
           </div>
         </div>
 
-        {/* hero — direction, the bet, live PnL + sparkline */}
-        <div className="glass-inset flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-3.5">
+        {/* hero — direction, the bet, live PnL + sparkline (the one raised plane) */}
+        <div className="glass-inset flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-4">
           <div className="flex items-center gap-3">
             <span className={`dir-orb ${up ? 'up' : 'down'}`} aria-hidden>
               {up ? <LuArrowUp size={20} /> : <LuArrowDown size={20} />}
             </span>
             <div className="flex flex-col gap-1">
-              <h3 className="text-[16px] leading-none text-text-1">
+              <h3 className="text-[15px] leading-none text-text-1">
                 {p.underlying_asset} <span className="text-text-3">·</span> {dateUTC(p.expiry)}
               </h3>
               <p className="font-sans text-[11px] text-text-2">
@@ -129,11 +141,11 @@ export function PositionCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end gap-0.5">
+          <div className="flex items-center gap-3.5">
+            <div className="flex flex-col items-end gap-1">
               <span className="eyebrow">{decided ? 'Realized' : 'Unrealized'} PnL</span>
               <span className={`flex items-baseline gap-1.5 ${positive ? 'text-up' : 'text-down'}`}>
-                <span className="text-[24px] leading-none tracking-tight">{signed(m.pnl)}</span>
+                <span className="text-[30px] leading-none tracking-tight">{signed(m.pnl)}</span>
                 <span className="text-[11px] text-text-3">DUSDC</span>
               </span>
               <span className={`text-[12px] ${positive ? 'text-up' : 'text-down'}`}>
@@ -146,63 +158,60 @@ export function PositionCard({
           </div>
         </div>
 
-        {/* primary metrics */}
-        <div className="glass-inset grid grid-cols-2 gap-y-1 @lg:grid-cols-4 @lg:gap-0 @lg:divide-x @lg:divide-(--line-soft)">
-          <Metric icon={LuLayers} color={HUE.teal} label="Size" value={fmtQuote(m.contracts)} sub="Contracts" />
-          <Metric icon={LuPercent} color={HUE.violet} label="Avg entry" value={pct(m.entryPrice, 1)} sub="Implied" />
-          <Metric
-            icon={LuTarget}
-            color={HUE.blue}
-            label={decided ? 'Settled' : 'Mark'}
-            value={m.markPrice != null ? pct(m.markPrice, 1) : '—'}
-            sub="Implied"
-          />
-          <Metric
-            icon={LuTrendingUp}
-            color={HUE.teal}
-            label={decided ? (won ? 'Payout' : 'Final') : 'Value'}
-            value={m.value != null ? fmtQuote(m.value) : '—'}
-            sub="DUSDC"
-          />
+        {/* metrics — monochrome, on the bare card surface, one faded hairline between
+            the two tiers (no nested boxes, no vertical rules) */}
+        <div className="flex flex-col gap-3 px-1">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @lg:grid-cols-4">
+            <Metric icon={LuLayers} label="Size" value={fmtQuote(m.contracts)} sub="contracts" />
+            <Metric icon={LuPercent} label="Avg entry" value={pct(m.entryPrice, 1)} sub="implied" />
+            <Metric
+              icon={LuTarget}
+              label={decided ? 'Settled' : 'Mark'}
+              value={m.markPrice != null ? pct(m.markPrice, 1) : '—'}
+              sub="implied"
+            />
+            <Metric
+              icon={LuTrendingUp}
+              label={decided ? (won ? 'Payout' : 'Final') : 'Value'}
+              value={m.value != null ? fmtQuote(m.value) : '—'}
+              sub="DUSDC"
+            />
+          </div>
+
+          <div className="hairline-fade" />
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @md:grid-cols-3 @xl:grid-cols-5">
+            <MiniMetric icon={LuClock} label="Entered" value={dateUTC(p.first_minted_at)} />
+            <MiniMetric icon={LuDollarSign} label="Cost" value={`${fmtQuote(m.cost)} DUSDC`} />
+            <MiniMetric icon={LuShieldCheck} label="Max payout" value={`${fmtQuote(m.maxPayout)} DUSDC`} />
+            <MiniMetric
+              icon={LuActivity}
+              label="Net move"
+              value={deltaPp != null ? `${signed(deltaPp, 1)} pp` : '—'}
+              tone={deltaPp != null ? (deltaPp >= 0 ? 'up' : 'down') : undefined}
+            />
+            <MiniMetric
+              icon={LuHexagon}
+              label="Oracle"
+              value={shortId(p.oracle_id)}
+              href={OBJECT_EXPLORER(p.oracle_id)}
+            />
+          </div>
         </div>
 
-        {/* secondary detail strip */}
-        <div className="glass-inset grid grid-cols-2 gap-y-1 @md:grid-cols-3 @xl:grid-cols-5 @xl:gap-0 @xl:divide-x @xl:divide-(--line-soft)">
-          <MiniMetric icon={LuClock} color={HUE.blue} label="Entered" value={dateUTC(p.first_minted_at)} />
-          <MiniMetric icon={LuDollarSign} color={HUE.amber} label="Cost" value={`${fmtQuote(m.cost)} DUSDC`} />
-          <MiniMetric icon={LuShieldCheck} color={HUE.amber} label="Max payout" value={`${fmtQuote(m.maxPayout)} DUSDC`} />
-          <MiniMetric
-            icon={LuActivity}
-            color={HUE.teal}
-            label="Net move"
-            value={deltaPp != null ? `${signed(deltaPp, 1)} pp` : '—'}
-            tone={deltaPp != null ? (deltaPp >= 0 ? 'up' : 'down') : undefined}
-          />
-          <MiniMetric
-            icon={LuHexagon}
-            color={HUE.blue}
-            label="Oracle"
-            value={shortId(p.oracle_id)}
-            href={OBJECT_EXPLORER(p.oracle_id)}
-          />
-        </div>
-
-        {/* footer — disclaimer + actions */}
-        <div className="glass-inset flex flex-wrap items-center justify-between gap-3 px-3.5 py-3">
-          <p className="flex items-center gap-2.5 font-sans text-[10px] leading-snug text-text-3">
-            <span className="icon-chip h-5.5 w-5.5">
-              <LuInfo size={12} />
-            </span>
-            Prediction markets are probabilistic · resolved by oracle data.
+        {/* footer — quiet one-line disclaimer + actions (redeem is the only glow) */}
+        <div className="mt-0.5 flex flex-wrap items-center justify-between gap-3 px-1">
+          <p className="font-sans text-[10px] leading-snug text-text-3">
+            Probabilistic · resolved by oracle data.
           </p>
           <div className="flex items-center gap-2">
             <ShareButton text={shareText} />
             <button
               onClick={() => onRedeem(p)}
               disabled={busy}
-              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 ${
+              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
                 isRedeem
-                  ? 'border-(--accent-line) bg-(--accent-soft) text-up hover:bg-up/20'
+                  ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
                   : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
               }`}
             >
@@ -233,10 +242,8 @@ function ShareButton({ text, icon }: { text: string; icon?: boolean }) {
       <button
         onClick={share}
         aria-label="Copy position summary"
-        className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
-          copied
-            ? 'border-(--accent-line) text-up'
-            : 'border-line text-text-2 hover:border-line-strong hover:text-text-1'
+        className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 ${
+          copied ? 'border border-(--accent-line) text-up' : 'ctrl-soft'
         }`}
       >
         {copied ? <LuCheck size={13} /> : <LuShare2 size={13} />}
@@ -246,10 +253,8 @@ function ShareButton({ text, icon }: { text: string; icon?: boolean }) {
   return (
     <button
       onClick={share}
-      className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-colors ${
-        copied
-          ? 'border-(--accent-line) text-up'
-          : 'border-line text-text-2 hover:border-line-strong hover:text-text-1'
+      className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-2 ${
+        copied ? 'border border-(--accent-line) text-up' : 'ctrl-soft'
       }`}
     >
       {copied ? 'Copied' : 'Share position'}
@@ -294,72 +299,66 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-/** One primary metric: tinted chip + label, big value, unit. */
+/** One primary metric: muted icon + label, value, quiet inline unit. */
 function Metric({
-  icon,
-  color,
+  icon: Icon,
   label,
   value,
   sub,
 }: {
   icon: IconType;
-  color: string;
   label: string;
   value: string;
   sub: string;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-3 py-2.5">
-      <div className="flex items-center gap-2">
-        <IconChip icon={icon} color={color} />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5 text-text-3">
+        <Icon size={12} className="flex-none" />
         <span className="eyebrow">{label}</span>
       </div>
-      <div className="flex flex-col gap-0.5">
-        <span className="text-[20px] leading-none tracking-tight text-text-1">{value}</span>
-        <span className="text-[10px] uppercase tracking-[0.12em] text-text-3">{sub}</span>
-      </div>
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-[16px] leading-none tracking-tight text-text-1">{value}</span>
+        <span className="text-[9px] uppercase tracking-widest text-text-3">{sub}</span>
+      </span>
     </div>
   );
 }
 
-/** One secondary metric: bare tinted icon + label, value below. */
+/** One secondary metric: muted icon + label, value below. */
 function MiniMetric({
   icon: Icon,
-  color,
   label,
   value,
   href,
   tone,
 }: {
   icon: IconType;
-  color: string;
   label: string;
   value: string;
   href?: string;
   tone?: 'up' | 'down';
 }) {
-  const valueColor = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-1';
+  const valueColor = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-2';
   const inner = (
     <>
-      <div className="flex items-center gap-1.5">
-        <span style={{ color }} className="flex-none">
-          <Icon size={13} />
-        </span>
+      <div className="flex items-center gap-1.5 text-text-3">
+        <Icon size={12} className="flex-none" />
         <span className="eyebrow">{label}</span>
       </div>
       <span className={`flex items-center gap-1 whitespace-nowrap text-[12px] ${valueColor}`}>
         {value}
-        {href && <LuExternalLink size={11} className="text-text-3" />}
+        {href && <LuExternalLink size={11} className="text-text-3 transition-colors group-hover/mini:text-text-2" />}
       </span>
     </>
   );
-  const cls = 'flex flex-col gap-1.5 px-3 py-2.5';
+  const cls = 'flex flex-col gap-1.5';
   return href ? (
     <a
       href={href}
       target="_blank"
       rel="noreferrer"
-      className={`${cls} rounded-lg transition-colors hover:bg-white/[0.02]`}
+      className={`group/mini ${cls} -mx-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-white/2.5`}
     >
       {inner}
     </a>

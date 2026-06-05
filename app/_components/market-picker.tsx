@@ -59,7 +59,13 @@ export function MarketPicker({
   return (
     <div>
       <div className="mb-3 flex justify-end">
-        <div className="inline-flex rounded-md border border-line-soft p-0.5" role="tablist" aria-label="Market view">
+        <div className="segmented" role="tablist" aria-label="Market view">
+          {/* gliding glass thumb — sits under the labels, tracks the active tab */}
+          <span
+            aria-hidden
+            className="segmented-thumb"
+            style={{ transform: view === 'table' ? 'translateX(100%)' : 'translateX(0)' }}
+          />
           <ToggleButton icon={LuLayoutGrid} label="Cards" active={view === 'cards'} onClick={() => choose('cards')} />
           <ToggleButton icon={LuTable2} label="Table" active={view === 'table'} onClick={() => choose('table')} />
         </div>
@@ -92,11 +98,13 @@ function ToggleButton({
       aria-selected={active}
       onClick={onClick}
       className={[
-        'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
-        active ? 'bg-bg-3 text-text-1' : 'text-text-3 hover:text-text-2',
+        // relative z-10 keeps the label above the gliding thumb; flex-1 makes the
+        // two segments exactly equal so translateX(100%) lands the thumb cleanly.
+        'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        active ? 'text-text-1' : 'text-text-3 hover:text-text-2',
       ].join(' ')}
     >
-      <Icon size={13} />
+      <Icon size={13} className={active ? 'text-accent' : ''} />
       {label}
     </button>
   );

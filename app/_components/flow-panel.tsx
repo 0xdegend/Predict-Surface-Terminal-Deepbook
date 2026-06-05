@@ -9,6 +9,8 @@
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { LuWallet, LuCoins } from 'react-icons/lu';
+import { HUE, IconChip } from './ui/metric';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -183,21 +185,28 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     setStrike((s) => snapStrikeToTick(s + BigInt(dir) * grid.tickSize, oracle));
   const openPositions = positions.filter((p) => p.open_quantity > 0);
   const fromSurface = !!selection && selection.oracleId === oracle.oracle_id;
+  const sym = predictConfig.quote.symbol;
 
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
-      <div className="card flex flex-col gap-2.5 p-3">
-        <div className="flex items-end justify-between">
-          <div className="flex flex-col gap-1">
-            <span className="eyebrow">Wallet · {predictConfig.quote.symbol}</span>
-            <span className="font-mono text-[16px] leading-none tabular-nums text-text-1">
+      <div className="glass-card flex flex-col gap-2.5 p-2.5">
+        <div className={`grid gap-2.5 ${managerId ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className="glass-inset flex flex-col gap-2 p-3">
+            <div className="flex items-center gap-2">
+              <IconChip icon={LuWallet} color={HUE.violet} size={22} />
+              <span className="eyebrow">Wallet · {sym}</span>
+            </div>
+            <span className="text-[18px] leading-none tabular-nums text-text-1">
               {dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(dusdcBalance))}
             </span>
           </div>
           {managerId && (
-            <div className="flex flex-col items-end gap-1">
-              <span className="eyebrow">Free balance</span>
-              <span className="font-mono text-[16px] leading-none tabular-nums text-text-1">
+            <div className="glass-inset flex flex-col gap-2 p-3">
+              <div className="flex items-center gap-2">
+                <IconChip icon={LuCoins} color={HUE.amber} size={22} />
+                <span className="eyebrow">Free balance</span>
+              </div>
+              <span className="text-[18px] leading-none tabular-nums text-text-1">
                 {fmtQuote(fromQuote(tradingBalance))}
               </span>
             </div>
@@ -208,12 +217,12 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             href={predictConfig.faucetUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-[11px] text-accent underline-offset-2 hover:underline"
+            className="px-1 text-[11px] text-accent underline-offset-2 hover:underline"
           >
             Low balance — get testnet DUSDC →
           </a>
         )}
-        <div className="flex items-center justify-between border-t border-line-soft pt-2.5">
+        <div className="flex items-center justify-between px-1 pb-0.5">
           <span className="eyebrow">Manager</span>
           {managerId ? (
             <span className="font-mono text-[11px] tabular-nums text-text-2">
@@ -223,7 +232,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             <button
               onClick={() => createManager()}
               disabled={busy === 'create'}
-              className="rounded-md border border-line-strong px-2.5 py-1 text-[11px] text-accent transition-colors hover:bg-white/5 disabled:opacity-50"
+              className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-accent disabled:opacity-50"
             >
               {busy === 'create' ? 'creating…' : 'Create manager'}
             </button>
@@ -269,11 +278,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </p>
 
           <Row label={`Strike (settles ${isUp ? 'above' : 'below'})`}>
-            <div className="flex items-center gap-1.5">
+            <div className="glass-inset inline-flex items-center gap-0.5 rounded-lg p-0.5">
               <button
                 onClick={() => stepStrike(-1)}
                 aria-label="Lower strike"
-                className="flex h-6 w-6 items-center justify-center rounded-md border border-line text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
+                className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
               >
                 −
               </button>
@@ -283,7 +292,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               <button
                 onClick={() => stepStrike(1)}
                 aria-label="Raise strike"
-                className="flex h-6 w-6 items-center justify-center rounded-md border border-line text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
+                className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
               >
                 +
               </button>
@@ -299,7 +308,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 step={1}
                 value={contractsInput}
                 onChange={(e) => setContractsInput(Math.max(1, Number(e.target.value) || 1))}
-                className="w-20 rounded border border-line bg-bg-2 px-2 py-0.5 text-right text-text-1 outline-none focus:border-line-strong"
+                className="ctrl-soft w-20 rounded-md px-2 py-1 text-right text-text-1 outline-none focus:border-white/20"
               />
             </Row>
             <div className="flex gap-1.5">
@@ -307,10 +316,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 <button
                   key={n}
                   onClick={() => setContractsInput(n)}
-                  className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
+                  className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
                     contractsInput === n
-                      ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
-                      : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
+                      ? 'border border-up/40 bg-[var(--accent-soft)] text-accent'
+                      : 'ctrl-soft text-text-3'
                   }`}
                 >
                   {n}
@@ -323,7 +332,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </div>
 
           {/* Risk → Reward: the answer to "what do I pay and what can I win?" */}
-          <div className={`card p-3.5 ${q && tradeable && !expired ? 'glow-accent' : ''}`}>
+          <div
+            className={`glass-card p-3.5 ${q && tradeable && !expired ? (isUp ? 'up glow-accent' : 'down glow-down') : ''}`}
+          >
             {expired ? (
               <span className="text-text-3">
                 This market has expired and is awaiting settlement — pick another expiry on the
@@ -350,7 +361,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 const profit = maxPayout - cost;
                 const mult = cost > 0 ? maxPayout / cost : 0;
                 const chance = Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
-                const sym = predictConfig.quote.symbol;
                 // Funding split — mint pays from the manager's FREE BALANCE first;
                 // only the shortfall (cost+2% buffer − free balance) is pulled from
                 // the wallet now. This mirrors `handleMint`'s `depositAmount`, so the
@@ -397,7 +407,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-2.5">
+                    <div className="glass-inset mt-3 flex flex-col gap-2 p-3">
                       {/* What actually leaves the wallet now — reconciles the total
                           cost above with the smaller "coin outflow" the wallet shows,
                           since the manager's free balance funds the rest. */}
@@ -442,7 +452,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           <button
             onClick={handleMint}
             disabled={!q || !tradeable || expired || busy === 'mint'}
-            className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
+            className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
+              isUp
+                ? 'border-up/50 from-up/25 to-up/10 text-up shadow-[0_0_24px_-6px_var(--accent-glow)] hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)]'
+                : 'border-down/50 from-down/25 to-down/10 text-down shadow-[0_0_24px_-6px_rgba(240,121,107,0.3)] hover:from-down/35 hover:to-down/15 hover:shadow-[0_0_30px_-4px_rgba(240,121,107,0.34)]'
+            }`}
           >
             {busy === 'mint' && (
               <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
@@ -482,8 +496,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 return (
                   <div
                     key={`${p.oracle_id}-${p.strike}-${p.is_up}`}
-                    className={`card interactive flex items-center justify-between py-2 pl-3.5 pr-2 ${
-                      p.is_up ? 'accent-up' : 'accent-down'
+                    className={`glass-card interactive flex items-center justify-between py-2 pl-3.5 pr-2 ${
+                      p.is_up ? 'up' : 'down'
                     }`}
                   >
                     <div className="flex flex-col gap-0.5">
@@ -507,7 +521,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                     <button
                       onClick={() => setRedeeming(p)}
                       disabled={!!busy}
-                      className="rounded border border-line px-2.5 py-1 text-[11px] text-text-2 transition-colors hover:border-line-strong hover:text-text-1 disabled:opacity-50"
+                      className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
                     >
                       {m.isSettled ? 'Redeem' : 'Close'}
                     </button>
@@ -575,16 +589,14 @@ function Toggle({
   const glyph = tone === 'up' ? '▲' : '▼';
   const activeCls =
     tone === 'up'
-      ? 'border-up/50 bg-[var(--accent-soft)] text-up'
-      : 'border-down/50 bg-[var(--down-soft)] text-down';
+      ? 'border border-up/50 bg-[var(--accent-soft)] text-up shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_22px_-8px_var(--accent-glow)]'
+      : 'border border-down/50 bg-[var(--down-soft)] text-down shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_22px_-8px_rgba(240,121,107,0.3)]';
   return (
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-2.5 text-[13px] font-semibold tracking-wide transition-all ${
-        active
-          ? activeCls
-          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold tracking-wide transition-all ${
+        active ? activeCls : 'ctrl-soft text-text-3'
       }`}
     >
       <span className="text-[9px]">{glyph}</span>
