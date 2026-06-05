@@ -12,7 +12,7 @@ import { LuTrophy, LuUsers, LuActivity, LuCoins, LuRefreshCw } from 'react-icons
 import { useLeaderboard, ENRICH_OWNERS } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
-import { num, signed, shortId } from '@/lib/format';
+import { num, signed, shortId, pct } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { ErrorState } from '../ui/error-state';
@@ -74,19 +74,21 @@ export function LeaderboardPanel() {
       <div className="mb-3 flex items-center gap-1">
         <SortTab label="Volume" active={sort === 'volume'} onClick={() => setSort('volume')} />
         <SortTab label="Trades" active={sort === 'trades'} onClick={() => setSort('trades')} />
+        <SortTab label="Win rate" active={sort === 'winrate'} onClick={() => setSort('winrate')} />
         <SortTab label="PnL" active={sort === 'pnl'} onClick={() => setSort('pnl')} />
         <span className="ml-auto text-[10px] text-text-3">
-          PnL ranked among the {ENRICH_OWNERS} most active accounts
+          Win rate &amp; PnL ranked among the {ENRICH_OWNERS} most active accounts
         </span>
       </div>
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
-        <div className="grid grid-cols-[2.5rem_1fr_6rem_4.5rem_7rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-text-3">
+        <div className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-text-3">
           <span className="text-right">#</span>
           <span>Trader</span>
           <span className="text-right">Volume</span>
           <span className="text-right">Trades</span>
+          <span className="text-right">Win</span>
           <span className="text-right">PnL</span>
         </div>
 
@@ -101,7 +103,7 @@ export function LeaderboardPanel() {
             return (
               <div
                 key={r.owner}
-                className={`grid grid-cols-[2.5rem_1fr_6rem_4.5rem_7rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 font-mono text-[12px] tabular-nums transition-colors last:border-0 hover:bg-white/[0.02] ${
+                className={`grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 font-mono text-[12px] tabular-nums transition-colors last:border-0 hover:bg-white/[0.02] ${
                   isMe ? 'bg-[var(--accent-soft)]' : ''
                 }`}
               >
@@ -123,6 +125,7 @@ export function LeaderboardPanel() {
                 </a>
                 <span className="text-right text-text-1">{num(r.volume, 2)}</span>
                 <span className="text-right text-text-2">{r.trades}</span>
+                <WinCell row={r} />
                 <PnlCell row={r} />
               </div>
             );
@@ -136,6 +139,17 @@ export function LeaderboardPanel() {
         trader&apos;s accounts. Quote asset · {predictConfig.quote.symbol}.
       </p>
     </div>
+  );
+}
+
+function WinCell({ row }: { row: ReturnType<typeof sortRows>[number] }) {
+  if (!row.pnlLoaded) return <span className="text-right text-text-3">…</span>;
+  if (row.winRate === undefined) return <span className="text-right text-text-3">—</span>;
+  return (
+    <span className="text-right text-text-1">
+      {pct(row.winRate, 0)}
+      <span className="ml-1 text-[10px] text-text-3">·{row.decided}</span>
+    </span>
   );
 }
 
@@ -195,12 +209,13 @@ function SkeletonRows() {
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="grid grid-cols-[2.5rem_1fr_6rem_4.5rem_7rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 last:border-0"
+          className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 last:border-0"
         >
           <div className="ml-auto h-3 w-3 rounded bg-white/[0.04]" />
           <div className="h-3 w-32 rounded bg-white/[0.04]" />
           <div className="ml-auto h-3 w-12 rounded bg-white/[0.04]" />
           <div className="ml-auto h-3 w-8 rounded bg-white/[0.04]" />
+          <div className="ml-auto h-3 w-10 rounded bg-white/[0.04]" />
           <div className="ml-auto h-3 w-14 rounded bg-white/[0.04]" />
         </div>
       ))}

@@ -1,0 +1,18 @@
+{
+  "name": "predict-settled-redeem-keeper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Permissionless keeper that auto-claims settled, in-the-money Predict positions on behalf of their owners.",
+  "scripts": {
+    "start": "node --env-file=.env src/index.mjs",
+    "scan": "DRY_RUN=true node --env-file=.env src/index.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.17.0"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

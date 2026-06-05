@@ -17,35 +17,56 @@ import { useQuery } from '@tanstack/react-query';
 import {
   getManagers,
   getManagerSummary,
+  getManagerPositions,
   getPositionsMinted,
   getPositionsRedeemed,
   qk,
 } from '@/lib/api/client';
 import {
   aggregateLeaderboard,
-  attachPnl,
+  attachEnrichment,
   type LeaderboardRow,
+  type ManagerEnrichment,
 } from '@/lib/leaderboard/aggregate';
-import type { ManagerSummary } from '@/lib/api/types';
+import { derivePortfolioHistory } from '@/lib/portfolio/history';
+import { fromQuote } from '@/config/scale';
 
 /** Event-window depth pulled for the volume/activity board. */
 const EVENT_LIMIT = 2000;
-/** How many top-by-volume owners get authoritative PnL enrichment. */
-export const ENRICH_OWNERS = 60;
-/** Parallel manager-summary fetches (politeness to the public server). */
+/** How many top-by-volume owners get authoritative PnL + win-rate enrichment. */
+export const ENRICH_OWNERS = 50;
+/** Hard cap on enriched managers — bounds the per-manager fetch fan-out. */
+const MAX_ENRICH_MANAGERS = 120;
+/** Parallel manager fetches (politeness to the public server). */
 const CONCURRENCY = 8;
 
-/** Fetch many manager summaries with a bounded worker pool. Failures are skipped. */
-async function fetchSummaries(ids: string[]): Promise<Map<string, ManagerSummary>> {
-  const out = new Map<string, ManagerSummary>();
+/**
+ * Fetch per-manager enrichment (summary → PnL, positions → win/loss) with a
+ * bounded worker pool. Win/loss reuses the canonical portfolio derivation so the
+ * leaderboard and portfolio never disagree. Failures are skipped.
+ */
+async function fetchEnrichment(ids: string[]): Promise<Map<string, ManagerEnrichment>> {
+  const out = new Map<string, ManagerEnrichment>();
   let cursor = 0;
   async function worker() {
     while (cursor < ids.length) {
       const id = ids[cursor++];
       try {
-        out.set(id, await getManagerSummary(id));
+        const [summary, positions] = await Promise.all([
+          getManagerSummary(id),
+          getManagerPositions(id),
+        ]);
+        const { stats } = derivePortfolioHistory(positions);
+        out.set(id, {
+          realizedPnl: fromQuote(summary.realized_pnl),
+          unrealizedPnl: fromQuote(summary.unrealized_pnl),
+          accountValue: fromQuote(summary.account_value),
+          openPositions: summary.open_positions ?? 0,
+          wins: stats.wins,
+          decided: stats.total,
+        });
       } catch {
-        /* skip — a missing summary just leaves that row PnL-less */
+        /* skip — a missing fetch just leaves that row un-enriched */
       }
     }
   }
@@ -77,33 +98,33 @@ export function useLeaderboard(): UseLeaderboard {
 
   const base = useMemo(() => baseQ.data ?? [], [baseQ.data]);
 
-  // Manager ids of the top contenders → the stage-2 enrichment set.
+  // Manager ids of the top contenders → the stage-2 enrichment set (capped).
   const enrichIds = useMemo(
-    () => base.slice(0, ENRICH_OWNERS).flatMap((r) => r.managerIds),
+    () => base.slice(0, ENRICH_OWNERS).flatMap((r) => r.managerIds).slice(0, MAX_ENRICH_MANAGERS),
     [base],
   );
   const idKey = enrichIds.join(',');
 
-  const pnlQ = useQuery({
+  const enrichQ = useQuery({
     queryKey: qk.leaderboardPnl(idKey),
-    queryFn: () => fetchSummaries(enrichIds),
+    queryFn: () => fetchEnrichment(enrichIds),
     enabled: enrichIds.length > 0,
     staleTime: 30_000,
   });
 
   const rows = useMemo(
-    () => (pnlQ.data ? attachPnl(base, pnlQ.data) : base),
-    [base, pnlQ.data],
+    () => (enrichQ.data ? attachEnrichment(base, enrichQ.data) : base),
+    [base, enrichQ.data],
   );
 
   return {
     rows,
     baseLoading: baseQ.isLoading,
-    pnlLoading: pnlQ.isFetching,
+    pnlLoading: enrichQ.isFetching,
     error: baseQ.error instanceof Error ? baseQ.error.message : null,
     refetch: () => {
       baseQ.refetch();
-      pnlQ.refetch();
+      enrichQ.refetch();
     },
   };
 }

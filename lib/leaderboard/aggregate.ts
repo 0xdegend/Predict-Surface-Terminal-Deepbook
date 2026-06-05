@@ -18,7 +18,6 @@ import type {
   PositionMintedEvent,
   PositionRedeemedEvent,
   ManagerRow,
-  ManagerSummary,
 } from '@/lib/api/types';
 
 export interface LeaderboardRow {
@@ -34,16 +33,36 @@ export interface LeaderboardRow {
   payout: number;
   /** Most recent activity (ms epoch) across mint + redeem. */
   lastActiveMs: number;
-  /** Every PredictManager this owner controls (for the PnL enrichment pass). */
+  /** Every PredictManager this owner controls (for the enrichment pass). */
   managerIds: string[];
-  /** Stage-2 PnL fields — undefined until summaries are folded in. */
+  /** Stage-2 fields — undefined until manager summaries/positions are folded in. */
   realizedPnl?: number;
   unrealizedPnl?: number;
   totalPnl?: number;
   accountValue?: number;
   openPositions?: number;
-  /** True once this row's summaries have been fetched + attached. */
+  /** Decided (settled & done) positions, the win-rate denominator. */
+  wins?: number;
+  decided?: number;
+  /** wins / decided, 0..1 — undefined if no decided positions yet. */
+  winRate?: number;
+  /** True once this row's enrichment has been fetched + attached. */
   pnlLoaded?: boolean;
+}
+
+/**
+ * Per-manager enrichment, already de-scaled by the hook. PnL is from the
+ * authoritative manager summary; wins/decided come from the canonical
+ * `derivePortfolioHistory` over the manager's position list, so the leaderboard
+ * and the portfolio agree on what a "win" is.
+ */
+export interface ManagerEnrichment {
+  realizedPnl: number;
+  unrealizedPnl: number;
+  accountValue: number;
+  openPositions: number;
+  wins: number;
+  decided: number;
 }
 
 function blankRow(owner: string): LeaderboardRow {
@@ -107,23 +126,25 @@ export function aggregateLeaderboard(
 }
 
 /**
- * Stage 2: fold authoritative manager summaries into the rows. An owner's PnL is
- * the sum of realized + unrealized across all their managers. Rows whose
- * managers aren't in the map are returned unchanged (still pnlLoaded=false).
+ * Stage 2: fold per-manager enrichment into the rows. An owner's PnL and
+ * win/loss are summed across all their managers. Rows whose managers aren't in
+ * the map are returned unchanged (still pnlLoaded=false).
  */
-export function attachPnl(
+export function attachEnrichment(
   rows: LeaderboardRow[],
-  summaries: Map<string, ManagerSummary>,
+  enrich: Map<string, ManagerEnrichment>,
 ): LeaderboardRow[] {
   return rows.map((r) => {
-    const mgrs = r.managerIds
-      .map((id) => summaries.get(id))
-      .filter((s): s is ManagerSummary => s != null);
-    if (mgrs.length === 0) return r;
-    const realizedPnl = mgrs.reduce((s, m) => s + fromQuote(m.realized_pnl), 0);
-    const unrealizedPnl = mgrs.reduce((s, m) => s + fromQuote(m.unrealized_pnl), 0);
-    const accountValue = mgrs.reduce((s, m) => s + fromQuote(m.account_value), 0);
-    const openPositions = mgrs.reduce((s, m) => s + (m.open_positions ?? 0), 0);
+    const parts = r.managerIds
+      .map((id) => enrich.get(id))
+      .filter((e): e is ManagerEnrichment => e != null);
+    if (parts.length === 0) return r;
+    const realizedPnl = parts.reduce((s, m) => s + m.realizedPnl, 0);
+    const unrealizedPnl = parts.reduce((s, m) => s + m.unrealizedPnl, 0);
+    const accountValue = parts.reduce((s, m) => s + m.accountValue, 0);
+    const openPositions = parts.reduce((s, m) => s + m.openPositions, 0);
+    const wins = parts.reduce((s, m) => s + m.wins, 0);
+    const decided = parts.reduce((s, m) => s + m.decided, 0);
     return {
       ...r,
       realizedPnl,
@@ -131,14 +152,17 @@ export function attachPnl(
       totalPnl: realizedPnl + unrealizedPnl,
       accountValue,
       openPositions,
+      wins,
+      decided,
+      winRate: decided > 0 ? wins / decided : undefined,
       pnlLoaded: true,
     };
   });
 }
 
-export type SortKey = 'volume' | 'trades' | 'pnl';
+export type SortKey = 'volume' | 'trades' | 'winrate' | 'pnl';
 
-/** Sort a copy of the rows by the chosen column (desc). Undefined PnL sinks. */
+/** Sort a copy of the rows by the chosen column (desc). Unloaded values sink. */
 export function sortRows(rows: LeaderboardRow[], key: SortKey): LeaderboardRow[] {
   const copy = [...rows];
   copy.sort((a, b) => {
@@ -147,6 +171,13 @@ export function sortRows(rows: LeaderboardRow[], key: SortKey): LeaderboardRow[]
       const av = a.totalPnl ?? Number.NEGATIVE_INFINITY;
       const bv = b.totalPnl ?? Number.NEGATIVE_INFINITY;
       if (av === bv) return b.volume - a.volume;
+      return bv - av;
+    }
+    if (key === 'winrate') {
+      // Rank by win rate; break ties by sample size so 1/1 doesn't beat 9/10.
+      const av = a.winRate ?? Number.NEGATIVE_INFINITY;
+      const bv = b.winRate ?? Number.NEGATIVE_INFINITY;
+      if (av === bv) return (b.decided ?? 0) - (a.decided ?? 0);
       return bv - av;
     }
     return b.volume - a.volume;

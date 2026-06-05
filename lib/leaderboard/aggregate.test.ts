@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   aggregateLeaderboard,
-  attachPnl,
+  attachEnrichment,
   sortRows,
   leaderboardTotals,
   type LeaderboardRow,
+  type ManagerEnrichment,
 } from './aggregate';
 import type {
   PositionMintedEvent,
   PositionRedeemedEvent,
   ManagerRow,
-  ManagerSummary,
 } from '@/lib/api/types';
 
 function minted(over: Partial<PositionMintedEvent>): PositionMintedEvent {
@@ -41,11 +41,10 @@ function manager(manager_id: string, owner: string): ManagerRow {
   };
 }
 
-function summary(manager_id: string, owner: string, realized: number, unrealized: number): ManagerSummary {
+function enrich(over: Partial<ManagerEnrichment>): ManagerEnrichment {
   return {
-    manager_id, owner, balances: [], trading_balance: 0, open_exposure: 0, redeemable_value: 0,
-    realized_pnl: realized, unrealized_pnl: unrealized, account_value: realized + unrealized,
-    open_positions: 1, awaiting_settlement_positions: 0,
+    realizedPnl: 0, unrealizedPnl: 0, accountValue: 0, openPositions: 0, wins: 0, decided: 0,
+    ...over,
   };
 }
 
@@ -87,37 +86,50 @@ describe('aggregateLeaderboard', () => {
   });
 });
 
-describe('attachPnl', () => {
-  it('sums realized + unrealized across an owner’s managers', () => {
+describe('attachEnrichment', () => {
+  it('sums PnL and win/loss across an owner’s managers', () => {
     const base: LeaderboardRow[] = [
       { owner: '0xA', volume: 5, trades: 3, redeems: 1, payout: 2, lastActiveMs: 0, managerIds: ['0xm1', '0xm2'] },
     ];
-    const summaries = new Map<string, ManagerSummary>([
-      ['0xm1', summary('0xm1', '0xA', 1_000_000, -250_000)], // +1.0 / -0.25
-      ['0xm2', summary('0xm2', '0xA', 2_000_000, 500_000)], //  +2.0 / +0.5
+    const map = new Map<string, ManagerEnrichment>([
+      ['0xm1', enrich({ realizedPnl: 1, unrealizedPnl: -0.25, wins: 2, decided: 3 })],
+      ['0xm2', enrich({ realizedPnl: 2, unrealizedPnl: 0.5, wins: 3, decided: 5 })],
     ]);
-    const [a] = attachPnl(base, summaries);
+    const [a] = attachEnrichment(base, map);
     expect(a.realizedPnl).toBeCloseTo(3, 9);
     expect(a.unrealizedPnl).toBeCloseTo(0.25, 9);
     expect(a.totalPnl).toBeCloseTo(3.25, 9);
+    expect(a.wins).toBe(5);
+    expect(a.decided).toBe(8);
+    expect(a.winRate).toBeCloseTo(5 / 8, 9);
     expect(a.pnlLoaded).toBe(true);
   });
 
-  it('leaves rows without fetched summaries unchanged (pnlLoaded falsy)', () => {
+  it('leaves winRate undefined when no positions are decided yet', () => {
+    const base: LeaderboardRow[] = [
+      { owner: '0xA', volume: 1, trades: 2, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: ['0xm1'] },
+    ];
+    const [a] = attachEnrichment(base, new Map([['0xm1', enrich({ wins: 0, decided: 0 })]]));
+    expect(a.pnlLoaded).toBe(true);
+    expect(a.winRate).toBeUndefined();
+  });
+
+  it('leaves rows without fetched enrichment unchanged (pnlLoaded falsy)', () => {
     const base: LeaderboardRow[] = [
       { owner: '0xB', volume: 1, trades: 1, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: ['0xmX'] },
     ];
-    const [b] = attachPnl(base, new Map());
+    const [b] = attachEnrichment(base, new Map());
     expect(b.totalPnl).toBeUndefined();
+    expect(b.winRate).toBeUndefined();
     expect(b.pnlLoaded).toBeFalsy();
   });
 });
 
 describe('sortRows', () => {
   const rows: LeaderboardRow[] = [
-    { owner: '0xA', volume: 1, trades: 9, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [], totalPnl: -5, pnlLoaded: true },
-    { owner: '0xB', volume: 9, trades: 1, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [], totalPnl: 10, pnlLoaded: true },
-    { owner: '0xC', volume: 5, trades: 5, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [] }, // pnl not loaded
+    { owner: '0xA', volume: 1, trades: 9, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [], totalPnl: -5, winRate: 0.9, decided: 10, pnlLoaded: true },
+    { owner: '0xB', volume: 9, trades: 1, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [], totalPnl: 10, winRate: 1, decided: 1, pnlLoaded: true },
+    { owner: '0xC', volume: 5, trades: 5, redeems: 0, payout: 0, lastActiveMs: 0, managerIds: [] }, // not loaded
   ];
 
   it('sorts by volume / trades / pnl', () => {
@@ -125,6 +137,11 @@ describe('sortRows', () => {
     expect(sortRows(rows, 'trades').map((r) => r.owner)).toEqual(['0xA', '0xC', '0xB']);
     // pnl: B (+10) then A (-5) then C (unloaded → sinks).
     expect(sortRows(rows, 'pnl').map((r) => r.owner)).toEqual(['0xB', '0xA', '0xC']);
+  });
+
+  it('sorts by win rate, unloaded rows sinking', () => {
+    // B 100% (1/1) then A 90% (9/10) then C (unloaded → sinks).
+    expect(sortRows(rows, 'winrate').map((r) => r.owner)).toEqual(['0xB', '0xA', '0xC']);
   });
 });
 
