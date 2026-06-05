@@ -7,15 +7,22 @@
  * it settled, won/lost, size, cost, and realized PnL. The last cell links the
  * oracle out to the explorer. Newest first.
  */
-import { LuArrowUp, LuArrowDown, LuExternalLink } from 'react-icons/lu';
+import { useState } from 'react';
+import { LuArrowUp, LuArrowDown, LuExternalLink, LuShare2 } from 'react-icons/lu';
 import { price, dateUTC, quote as fmtQuote, signed, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
+import { usePositionSpark } from '@/lib/hooks/use-position-spark';
+import { ShareCardModal } from './share-card-modal';
+import type { ShareCardData } from './share-card-canvas';
 import type { PastPrediction } from '@/lib/portfolio/history';
 
 const ORACLE_EXPLORER = (id: string) =>
   `https://suiscan.xyz/${predictConfig.network}/object/${id}`;
 
 export function HistoryTable({ history }: { history: PastPrediction[] }) {
+  // The row being shared (if any). One spark query runs only while the modal is open.
+  const [sharing, setSharing] = useState<PastPrediction | null>(null);
+
   return (
     <div className="glass-card overflow-hidden">
       <div className="scroll-quiet max-h-[70vh] overflow-auto">
@@ -30,6 +37,7 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
               <Th className="text-right">ROI</Th>
               <Th className="text-right">Settled (UTC)</Th>
               <Th className="text-right">Oracle</Th>
+              <Th className="text-right">Share</Th>
             </tr>
           </thead>
           <tbody className="row-divider">
@@ -79,14 +87,57 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
                       <LuExternalLink size={11} />
                     </a>
                   </Td>
+                  <Td className="text-right">
+                    <button
+                      onClick={() => setSharing(h)}
+                      aria-label="Share this trade as an image"
+                      className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
+                    >
+                      <LuShare2 size={13} />
+                    </button>
+                  </Td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {/* Mounted only while a row is selected — keeps the spark query scoped to one. */}
+      {sharing && <HistoryShareModal prediction={sharing} onClose={() => setSharing(null)} />}
     </div>
   );
+}
+
+/**
+ * Bridges a closed history row to the shared image card. Lives in its own
+ * component so `usePositionSpark` runs for exactly the selected position (and
+ * only while open), keeping the table itself free of per-row queries.
+ */
+function HistoryShareModal({
+  prediction: h,
+  onClose,
+}: {
+  prediction: PastPrediction;
+  onClose: () => void;
+}) {
+  const spark = usePositionSpark(h.source);
+  const data: ShareCardData = {
+    underlying: h.underlying,
+    up: h.up,
+    strike: h.strike,
+    expiry: h.expiry,
+    result: h.result,
+    decided: true,
+    pnl: h.pnl,
+    pnlPct: h.roi,
+    cost: h.cost,
+    contracts: h.contracts,
+    entryPrice: h.entryPrice,
+    markPrice: h.result === 'won' ? 1 : 0, // settled mark: ITM = 1.0, OTM = 0.0
+    spark,
+  };
+  return <ShareCardModal open onClose={onClose} data={data} />;
 }
 
 function ResultChip({ won }: { won: boolean }) {

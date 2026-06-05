@@ -36,6 +36,7 @@ export interface PastPrediction {
   pnl: number; // DUSDC, signed (payout − cost)
   roi: number; // ratio (pnl / cost)
   entryPrice: number; // 0..1 implied
+  source: PositionSummary; // raw row — lets the share card fetch this position's spark
 }
 
 export interface WinStats {
@@ -76,6 +77,7 @@ function toPrediction(p: PositionSummary): PastPrediction {
     pnl,
     roi: cost > 0 ? pnl / cost : 0,
     entryPrice: toFloat(p.average_entry_price),
+    source: p,
   };
 }
 
