@@ -14,11 +14,14 @@ import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote } from '@/config/scale';
-import { quote as fmtQuote, signed } from '@/lib/format';
+import { quote as fmtQuote, signed, pct } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { PositionCard } from './position-card';
+import { PerformanceCard } from './performance-card';
+import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
+import { derivePortfolioHistory } from '@/lib/portfolio/history';
 import type { PositionSummary } from '@/lib/api/types';
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
@@ -84,6 +87,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const totalPnl = s ? fromQuote(s.realized_pnl + s.unrealized_pnl) : 0;
   const unrealized = s ? fromQuote(s.unrealized_pnl) : 0;
   const unrealizedPct = s && s.open_exposure > 0 ? s.unrealized_pnl / s.open_exposure : 0;
+
+  // Settled track record (closed positions) — drives the performance bento + table.
+  const { history, stats } = derivePortfolioHistory(positions);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-6">
@@ -155,6 +161,13 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         </div>
       )}
 
+      {/* Performance — settled track record, win/loss rate at a glance */}
+      {stats.total > 0 && (
+        <Section title="Performance" hint={`${stats.total} settled markets`}>
+          <PerformanceCard stats={stats} />
+        </Section>
+      )}
+
       {/* Redeemable (settled) — surfaced first, it's money waiting to be claimed */}
       {redeemable.length > 0 && (
         <Section title="Ready to redeem" hint="settled — claim your payout">
@@ -204,6 +217,28 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
               />
             ))}
           </Grid>
+        )}
+      </Section>
+
+      {/* Trade history — past predictions, decided markets, newest first */}
+      <Section
+        title="Trade history"
+        hint={
+          stats.total > 0
+            ? `${signed(stats.realizedPnl)} realized · ${pct(stats.winRate, 0)} win`
+            : undefined
+        }
+        hintTone={stats.realizedPnl >= 0 ? 'up' : 'down'}
+      >
+        {history.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-line-soft p-8 text-center">
+            <p className="text-[13px] text-text-2">No settled trades yet.</p>
+            <p className="mt-1 text-[12px] text-text-3">
+              Once a market you hold expires and you redeem it, it lands here.
+            </p>
+          </div>
+        ) : (
+          <HistoryTable history={history} />
         )}
       </Section>
 
