@@ -81,9 +81,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   const [strike, setStrike] = useState<bigint>(0n);
   const [isUp, setIsUp] = useState(true);
-  const [sizeMode, setSizeMode] = useState<'amount' | 'contracts'>('amount');
-  const [amount, setAmount] = useState(1); // DUSDC to spend (amount mode)
-  const [contractsInput, setContractsInput] = useState(1); // count (contracts mode)
+  const [contractsInput, setContractsInput] = useState(1); // how many contracts to mint
 
   // Sync the ticket to the active oracle / latest selection by adjusting state
   // during render (React's documented pattern for "reset state on prop change").
@@ -117,48 +115,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const expired = !!oracle && msLeft <= 0;
   const closingSoon = !!oracle && msLeft > 0 && msLeft < CLOSING_SOON_MS;
 
-  // Sizing in "amount" mode must divide the target spend by the price the user
-  // ACTUALLY pays (the chain ask), not the client SVI fair — the two diverge
-  // (esp. near expiry), and sizing off the model is what made a 5 DUSDC target
-  // only spend ~2. A 1-contract probe quote gives the authoritative per-unit ask
-  // independent of the size we're solving for, so there's no feedback loop.
-  const sideFair = clientUp == null ? null : isUp ? clientUp : 1 - clientUp; // bootstrap only
-  // Sizing probe — converts a DUSDC target into a contract count. Fetched ONCE
-  // per market/strike/side and held (no interval): if this re-priced every few
-  // seconds it would nudge `contracts`, churn the main quote's key, and make the
-  // reward card blink. Sizing stays stable; the live cost comes from `quoteQ`.
-  const unitQuoteQ = useQuery({
-    queryKey: ['quote-unit', oracle?.oracle_id, strike.toString(), isUp, owner],
-    queryFn: () =>
-      quoteMarket(client.core, {
-        sender: owner!,
-        oracleId: oracle!.oracle_id,
-        expiry: oracle!.expiry,
-        strike,
-        isUp,
-        quantity: toQuote(1),
-      }),
-    enabled: !!owner && !!oracle && strike > 0n && tradeable && !expired && sizeMode === 'amount',
-    placeholderData: keepPreviousData,
-    staleTime: 30_000,
-    retry: 0,
-  });
-  // Per-contract ask in DUSDC (cost of exactly 1 contract); fair as a bootstrap.
-  const unitAsk = unitQuoteQ.data ? fromQuote(unitQuoteQ.data.mintCost) : sideFair;
-
-  const deriveContracts = (dusdc: number) =>
-    unitAsk && unitAsk > 0 ? Math.max(1, Math.round((dusdc / unitAsk) * 100) / 100) : 1;
-  const contracts = sizeMode === 'amount' ? deriveContracts(amount) : Math.max(1, contractsInput);
+  // The user picks how many contracts; the live quote tells them what they pay.
+  const contracts = Math.max(1, contractsInput);
   const qtyBase = toQuote(contracts);
-
-  const switchToAmount = () => {
-    setAmount(Math.max(0.01, Math.round(contracts * (unitAsk ?? sideFair ?? 0) * 100) / 100) || 1);
-    setSizeMode('amount');
-  };
-  const switchToContracts = () => {
-    setContractsInput(Math.max(1, Math.round(contracts)));
-    setSizeMode('contracts');
-  };
 
   const quoteQ = useQuery({
     queryKey: ['quote', oracle?.oracle_id, strike.toString(), isUp, qtyBase.toString(), owner],
@@ -331,87 +290,36 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             </div>
           </Row>
 
-          {/* Bet size — by DUSDC amount (default) or by contract count */}
+          {/* Bet size — number of contracts; the live quote below shows the cost. */}
           <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-text-3">Bet size</span>
-              <div className="flex items-center gap-0.5 rounded-md border border-line bg-[var(--bg-2)] p-0.5">
-                <SizeTab active={sizeMode === 'amount'} onClick={switchToAmount}>
-                  {predictConfig.quote.symbol}
-                </SizeTab>
-                <SizeTab active={sizeMode === 'contracts'} onClick={switchToContracts}>
-                  Contracts
-                </SizeTab>
-              </div>
+            <Row label="Contracts">
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={contractsInput}
+                onChange={(e) => setContractsInput(Math.max(1, Number(e.target.value) || 1))}
+                className="w-20 rounded border border-line bg-bg-2 px-2 py-0.5 text-right text-text-1 outline-none focus:border-line-strong"
+              />
+            </Row>
+            <div className="flex gap-1.5">
+              {[1, 5, 10, 25].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setContractsInput(n)}
+                  className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
+                    contractsInput === n
+                      ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
+                      : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
             </div>
-
-            {sizeMode === 'amount' ? (
-              <>
-                <Row label="Amount to spend">
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={amount}
-                      onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
-                      className="w-24 rounded border border-line bg-bg-2 px-2 py-0.5 text-right text-text-1 outline-none focus:border-line-strong"
-                    />
-                    <span className="text-[10px] text-text-3">{predictConfig.quote.symbol}</span>
-                  </div>
-                </Row>
-                <div className="flex gap-1.5">
-                  {[1, 5, 10, 25].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setAmount(n)}
-                      className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
-                        amount === n
-                          ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
-                          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[10px] text-text-3">
-                  ≈ {fmtQuote(contracts)} contracts{unitAsk != null && ` @ ${pct(unitAsk, 1)} each`} ·
-                  max payout {fmtQuote(contracts)}
-                </span>
-              </>
-            ) : (
-              <>
-                <Row label="Contracts">
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={contractsInput}
-                    onChange={(e) => setContractsInput(Math.max(1, Number(e.target.value) || 1))}
-                    className="w-20 rounded border border-line bg-bg-2 px-2 py-0.5 text-right text-text-1 outline-none focus:border-line-strong"
-                  />
-                </Row>
-                <div className="flex gap-1.5">
-                  {[1, 5, 10, 25].map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => setContractsInput(n)}
-                      className={`flex-1 rounded-md border py-1 text-[11px] tabular-nums transition-colors ${
-                        contractsInput === n
-                          ? 'border-up/40 bg-[var(--accent-soft)] text-accent'
-                          : 'border-line text-text-3 hover:border-line-strong hover:text-text-2'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-                <span className="text-[10px] text-text-3">
-                  each contract pays 1.00 {predictConfig.quote.symbol} if it wins
-                </span>
-              </>
-            )}
+            <span className="text-[10px] text-text-3">
+              each contract pays 1.00 {predictConfig.quote.symbol} if it wins · you pay the quote below
+            </span>
           </div>
 
           {/* Risk → Reward: the answer to "what do I pay and what can I win?" */}
@@ -442,17 +350,28 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 const profit = maxPayout - cost;
                 const mult = cost > 0 ? maxPayout / cost : 0;
                 const chance = Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
+                const sym = predictConfig.quote.symbol;
+                // Funding split — mint pays from the manager's FREE BALANCE first;
+                // only the shortfall (cost+2% buffer − free balance) is pulled from
+                // the wallet now. This mirrors `handleMint`'s `depositAmount`, so the
+                // figure here matches the "coin outflow" the wallet popup shows.
+                const buffered = (q.mintCost * 102n) / 100n;
+                const walletNow = buffered > tradingBalanceBase ? buffered - tradingBalanceBase : 0n;
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex flex-col gap-1.5">
                         <span className="eyebrow">You pay</span>
-                        <span className="text-[22px] leading-none text-text-1">{fmtQuote(cost)}</span>
+                        <span className="flex items-baseline gap-1.5">
+                          <span className="text-[22px] leading-none text-text-1">{fmtQuote(cost)}</span>
+                          <span className="text-[11px] leading-none text-text-3">{sym}</span>
+                        </span>
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <span className="eyebrow">You win</span>
                         <span className="flex items-baseline gap-1.5">
                           <span className="text-[22px] leading-none text-up">{fmtQuote(maxPayout)}</span>
+                          <span className="text-[11px] leading-none text-text-3">{sym}</span>
                           <span className="rounded bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] leading-none text-up">
                             {mult.toFixed(2)}×
                           </span>
@@ -478,11 +397,33 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-2.5">
-                      <span className="text-[11px] text-text-3">Sell now</span>
-                      <span className="text-[11px] tabular-nums text-text-2">
-                        {fmtQuote(fromQuote(q.redeemPayout))}
-                      </span>
+                    <div className="mt-3 flex flex-col gap-2 border-t border-line-soft pt-2.5">
+                      {/* What actually leaves the wallet now — reconciles the total
+                          cost above with the smaller "coin outflow" the wallet shows,
+                          since the manager's free balance funds the rest. */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-text-3">Leaves your wallet now</span>
+                        <span className="text-[11px] tabular-nums text-text-1">
+                          {walletNow > 0n ? '≈ ' : ''}
+                          {fmtQuote(fromQuote(walletNow))} {sym}
+                        </span>
+                      </div>
+                      {walletNow > 0n && tradingBalanceBase > 0n ? (
+                        <span className="text-[10px] leading-relaxed text-text-3">
+                          The rest of the {fmtQuote(cost)} {sym} cost is covered by your{' '}
+                          {fmtQuote(fromQuote(tradingBalanceBase))} {sym} free balance in the manager.
+                        </span>
+                      ) : walletNow === 0n ? (
+                        <span className="text-[10px] leading-relaxed text-text-3">
+                          Fully covered by your free balance — nothing new is pulled from your wallet.
+                        </span>
+                      ) : null}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-text-3">Sell now</span>
+                        <span className="text-[11px] tabular-nums text-text-2">
+                          {fmtQuote(fromQuote(q.redeemPayout))} {sym}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );
@@ -617,28 +558,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="text-text-3">{label}</span>
       <span className="text-text-1">{children}</span>
     </div>
-  );
-}
-
-function SizeTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded-[5px] px-2 py-1 text-[10px] uppercase tracking-wider transition-colors ${
-        active ? 'bg-[var(--bg-3)] text-text-1' : 'text-text-3 hover:text-text-2'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

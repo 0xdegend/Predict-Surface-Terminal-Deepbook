@@ -153,6 +153,24 @@ body {
   color: var(--text-3);
 }
 
+/* Quiet table dividers — a sub-pixel hairline that FADES OUT at both ends
+   instead of running edge-to-edge, so rows separate without a hard ruled line
+   (and never collide with the surrounding card border). Drawn as a background
+   gradient on each row but the first, leaving row hover/selected background-
+   COLORS free to layer on top. */
+.row-divider > tr + tr {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.05) 12%,
+    rgba(255, 255, 255, 0.05) 88%,
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-position: top;
+  background-size: 100% 1px;
+}
+
 /* ------------------------------------------------------------------ *
  * Glassmorphism card system (reusable across the app). A translucent
  * surface with a faint top-light, a soft hairline, and a restrained

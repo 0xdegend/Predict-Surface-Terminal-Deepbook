@@ -83,19 +83,20 @@ export function OracleTable({
       </div>
 
       {visible.length === 0 ? (
-        <div className="card mt-3 flex flex-col items-center gap-1 px-4 py-10 text-center">
+        <div className="glass-card mt-3 flex flex-col items-center gap-1 px-4 py-10 text-center">
           <span className="text-[12px] text-text-2">No active markets right now</span>
           <span className="text-[11px] text-text-3">Waiting for the next expiry to open.</span>
         </div>
       ) : (
-      // Self-contained scroll box: the header sticks to the TOP OF THIS BOX
-      // (top-0), not the page. `overflow-auto` + a height cap makes this element
-      // the sticky scroll container, so the header can never detach mid-table or
-      // occlude a row the way a page-level `top-16` sticky did.
-      <div className="scroll-quiet mt-3 max-h-[70vh] overflow-auto">
+      // Frosted glass shell — the table lives inside a translucent card so it
+      // matches the portfolio's glassmorphism. `overflow-hidden` clips the rows
+      // to the card's rounded corners; the inner scroll box is the sticky
+      // container so the header sticks to the TOP OF THIS BOX, never the page.
+      <div className="glass-card mt-3 overflow-hidden">
+        <div className="scroll-quiet max-h-[70vh] overflow-auto">
         <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
           <thead>
-            <tr className="sticky top-0 z-10 bg-bg-0 text-left text-[10px] uppercase tracking-wider text-text-3">
+            <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
               <Th>Underlying</Th>
               <Th>Expiry (UTC)</Th>
               <Th>TTL</Th>
@@ -106,7 +107,7 @@ export function OracleTable({
               <Th className="text-right">Oracle</Th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="row-divider">
             {visible.map((o) => {
               const input = inputById.get(o.oracle_id);
               const selected = selection?.oracleId === o.oracle_id;
@@ -134,9 +135,9 @@ export function OracleTable({
                   }
                   aria-selected={selected}
                   className={[
-                    'group border-t border-line-soft transition-colors',
+                    'group transition-colors',
                     pickable
-                      ? 'cursor-pointer hover:bg-white/[0.03] focus-visible:bg-white/[0.04] focus-visible:outline-none'
+                      ? 'cursor-pointer hover:bg-white/[0.035] focus-visible:bg-white/5 focus-visible:outline-none'
                       : 'opacity-40',
                     selected ? 'bg-[var(--accent-soft)]' : '',
                   ].join(' ')}
@@ -178,6 +179,7 @@ export function OracleTable({
             })}
           </tbody>
         </table>
+        </div>
       </div>
       )}
     </div>
@@ -185,9 +187,9 @@ export function OracleTable({
 }
 
 function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3 pb-2.5 pt-1 font-normal ${className}`}>{children}</th>;
+  return <th className={`px-3.5 py-3 font-normal ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3 py-2.5 ${className}`}>{children}</td>;
+  return <td className={`px-3.5 py-3 ${className}`}>{children}</td>;
 }
