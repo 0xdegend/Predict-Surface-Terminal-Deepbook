@@ -14,7 +14,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getOracleState, getSviHistory, getPriceHistory } from '@/lib/api/client';
+import { getOracles, getOracleState, getSviHistory, getPriceHistory } from '@/lib/api/client';
 import { toFloat } from '@/config/scale';
 import { parseSvi } from '@/lib/svi/svi';
 import { stressSvi, type SmileInput } from '@/lib/svi/surface';
@@ -70,10 +70,24 @@ export interface SurfaceData {
   historyReady: boolean;
 }
 
-export function useSurfaceInputs(oracles: Oracle[], initialInputs: SmileInput[]): SurfaceData {
+export function useSurfaceInputs(initialOracles: Oracle[], initialInputs: SmileInput[]): SurfaceData {
   const mode = useSurfaceStore((s) => s.mode);
   const scrub = useSurfaceStore((s) => s.scrub);
   const stress = useSurfaceStore((s) => s.stress);
+
+  // Share the table's live active-oracle list (identical query key → one
+  // deduped fetch), so the surface, SVI panel, table and ticket never drift on
+  // which markets exist. Previously the surface froze on the SSR snapshot while
+  // the table refreshed, so counts diverged and a click could resolve a strike
+  // against a stale forward and read "too far from spot".
+  const oraclesQ = useQuery({
+    queryKey: ['live', 'active-oracles'],
+    queryFn: async () =>
+      (await getOracles()).filter((o) => o.status === 'active').sort((a, b) => a.expiry - b.expiry),
+    initialData: initialOracles,
+    refetchInterval: 20_000,
+  });
+  const oracles = oraclesQ.data;
 
   const oracleIds = oracles.map((o) => o.oracle_id).join(',');
 

@@ -1,0 +1,599 @@
+/**
+ * share-card-canvas.ts — paints a position as a shareable promotional card.
+ *
+ * Drawn directly with the Canvas 2D API (no html-to-image dependency, no
+ * foreignObject font/CORS traps) so the output is a crisp, deterministic PNG we
+ * can download, copy, or attach to a tweet. Every variant mirrors the terminal's
+ * "engineered minimalism" tokens (§10.3) — dark base, a single semantic glow,
+ * tabular figures — so a shared card reads as the same product.
+ *
+ * Three styles the user picks between:
+ *   • glow      — hero ROI + the position's live probability sparkline (default)
+ *   • spotlight — a big WIN / LIVE / LOSS word, meme-able, centered
+ *   • surface   — the vol-surface wireframe as the hero, data overlaid
+ *
+ * 16:9 at 2× → 2400×1350 PNG, the size X renders an in-stream image at.
+ */
+import { signed, price, dateUTC, quote, pct } from '@/lib/format';
+
+export interface ShareCardData {
+  underlying: string;
+  up: boolean;
+  strike: number; // float
+  expiry: number; // ms epoch
+  result: 'live' | 'won' | 'lost';
+  decided: boolean;
+  pnl: number; // DUSDC, signed
+  pnlPct: number; // ratio (e.g. 0.39 ⇒ +39%)
+  cost: number; // DUSDC
+  contracts: number;
+  entryPrice: number; // 0..1
+  markPrice: number | null; // 0..1
+  spark: number[]; // implied-probability path over the holding window
+}
+
+export type ShareVariant = 'glow' | 'spotlight' | 'surface';
+
+export const SHARE_VARIANTS: { id: ShareVariant; label: string }[] = [
+  { id: 'glow', label: 'Glow' },
+  { id: 'spotlight', label: 'Spotlight' },
+  { id: 'surface', label: 'Surface' },
+];
+
+const W = 1200;
+const H = 675;
+const P = 58; // outer padding
+
+type Theme = ReturnType<typeof tokens>;
+
+/** Read a CSS token off :root so the card never drifts from the live theme. */
+function tokens() {
+  const css = getComputedStyle(document.documentElement);
+  const t = (n: string, fallback: string) => css.getPropertyValue(n).trim() || fallback;
+  return {
+    bg: t('--bg-0', '#0a0b0d'),
+    text1: t('--text-1', '#e6e8eb'),
+    text2: t('--text-2', '#8b9099'),
+    text3: t('--text-3', '#5a5f66'),
+    up: t('--up', '#4dd6b0'),
+    down: t('--down', '#f0796b'),
+    warn: t('--warn', '#e6b450'),
+    line: 'rgba(255,255,255,0.08)',
+    lineSoft: 'rgba(255,255,255,0.05)',
+  };
+}
+
+/** Resolve the page's actual Geist family names so canvas text matches the UI. */
+function fontFamily(kind: 'sans' | 'mono'): string {
+  const probe = document.createElement('span');
+  probe.style.cssText = `position:absolute;visibility:hidden;font-family:var(--font-geist-${kind})`;
+  document.body.appendChild(probe);
+  const ff = getComputedStyle(probe).fontFamily;
+  probe.remove();
+  return ff || (kind === 'mono' ? 'monospace' : 'system-ui, sans-serif');
+}
+
+interface Ctx {
+  ctx: CanvasRenderingContext2D;
+  c: Theme;
+  sans: string;
+  mono: string;
+  accent: string;
+  d: ShareCardData;
+}
+
+/**
+ * Paint a card onto `canvas`. Sizes the backing store for `scale` (2 = retina,
+ * <1 = thumbnail) while all drawing math stays in logical 1200×675 space.
+ *
+ * Fonts must be ready before calling — `await document.fonts.ready` upstream.
+ */
+export function drawShareCard(
+  canvas: HTMLCanvasElement,
+  d: ShareCardData,
+  opts: { variant?: ShareVariant; scale?: number } = {},
+) {
+  const variant = opts.variant ?? 'glow';
+  const scale = opts.scale ?? 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  ctx.resetTransform?.();
+  ctx.scale(scale, scale);
+  ctx.textBaseline = 'alphabetic';
+
+  const c = tokens();
+  // The card's one semantic color: teal won / coral lost / direction-tint live.
+  const accent =
+    d.result === 'won' ? c.up : d.result === 'lost' ? c.down : d.pnl >= 0 ? c.up : c.down;
+  const s: Ctx = { ctx, c, sans: fontFamily('sans'), mono: fontFamily('mono'), accent, d };
+
+  drawBackground(s, variant);
+  if (variant === 'glow') drawGlow(s);
+  else if (variant === 'spotlight') drawSpotlight(s);
+  else drawSurface(s);
+  drawHeader(s);
+  drawFooter(s);
+}
+
+/* ===================== shared chrome ===================== */
+
+function drawBackground({ ctx, c, accent }: Ctx, variant: ShareVariant) {
+  ctx.fillStyle = c.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Accent glow — spotlight pushes it to center-behind the hero word.
+  const gx = variant === 'spotlight' ? W / 2 : W - 120;
+  const gy = variant === 'spotlight' ? H / 2 : 120;
+  const r = variant === 'spotlight' ? 520 : 620;
+  const glow = ctx.createRadialGradient(gx, gy, 30, gx, gy, r);
+  glow.addColorStop(0, withAlpha(accent, variant === 'spotlight' ? 0.2 : 0.16));
+  glow.addColorStop(1, withAlpha(accent, 0));
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  if (variant !== 'surface') {
+    const glow2 = ctx.createRadialGradient(60, H - 40, 20, 60, H - 40, 460);
+    glow2.addColorStop(0, withAlpha(accent, 0.07));
+    glow2.addColorStop(1, withAlpha(accent, 0));
+    ctx.fillStyle = glow2;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Faint dot-grid texture — terminal substrate, barely there.
+  ctx.fillStyle = 'rgba(255,255,255,0.022)';
+  for (let y = 40; y < H; y += 30) {
+    for (let x = 40; x < W; x += 30) {
+      ctx.beginPath();
+      ctx.arc(x, y, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Result hairline along the very top.
+  const rail = ctx.createLinearGradient(0, 0, W, 0);
+  rail.addColorStop(0, withAlpha(accent, 0));
+  rail.addColorStop(0.5, withAlpha(accent, 0.8));
+  rail.addColorStop(1, withAlpha(accent, 0));
+  ctx.fillStyle = rail;
+  ctx.fillRect(0, 0, W, 3);
+}
+
+function drawHeader({ ctx, c, accent, sans, d }: Ctx) {
+  const brandY = 78;
+  // live-dot mark
+  ctx.beginPath();
+  ctx.arc(P + 6, brandY - 6, 6, 0, Math.PI * 2);
+  ctx.fillStyle = c.up;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(P + 6, brandY - 6, 11, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha(c.up, 0.35);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.font = `600 30px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText('Predict', P + 26, brandY + 4);
+  const brandW = ctx.measureText('Predict').width;
+  drawTag(ctx, 'DEEPBOOK · SUI', P + 26 + brandW + 14, brandY - 19, c.text3, c.line, sans);
+
+  const resultText = d.result === 'won' ? 'WON' : d.result === 'lost' ? 'LOST' : 'LIVE';
+  drawResultPill(ctx, resultText, W - P, brandY - 18, accent, d.result === 'live', sans);
+}
+
+function drawFooter({ ctx, c, sans }: Ctx) {
+  ctx.textAlign = 'left';
+  ctx.font = `400 14px ${sans}`;
+  ctx.fillStyle = c.text2;
+  ctx.fillText('Trade the live volatility surface — DeepBook Predict on Sui', P, H - 30);
+
+  ctx.font = `600 11px ${sans}`;
+  const tnW = ctx.measureText(spaced('TESTNET')).width;
+  drawTag(ctx, 'TESTNET', W - P - tnW - 22, H - 46, c.warn, withAlpha(c.warn, 0.3), sans);
+}
+
+/* ===================== variant: glow ===================== */
+
+function drawGlow(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+  const heroRight = 700;
+  const cmp = d.up ? '≥' : '≤';
+
+  ctx.textAlign = 'left';
+  ctx.font = `600 38px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, P, 192);
+
+  ctx.font = `400 18px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    P,
+    222,
+  );
+
+  ctx.font = `500 13px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(spaced(`${d.decided ? 'REALIZED' : 'UNREALIZED'} ROI`), P, 296);
+
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, heroRight - P - 24, 138, 700, mono);
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  const roiBaseline = 300 + roiPx * 0.78;
+  ctx.fillText(roiText, P, roiBaseline);
+  const roiW = ctx.measureText(roiText).width;
+  ctx.fillStyle = withAlpha(accent, 0.5);
+  ctx.fillRect(P, roiBaseline + 16, Math.min(roiW, heroRight - P - 24), 3);
+
+  ctx.font = `500 26px ${mono}`;
+  ctx.fillStyle = accent;
+  const pnlStr = `${signed(d.pnl)} DUSDC`;
+  ctx.fillText(pnlStr, P, roiBaseline + 56);
+  ctx.font = `400 16px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(d.pnl >= 0 ? 'profit' : 'loss', P + ctx.measureText(pnlStr).width + 12, roiBaseline + 56);
+
+  drawSparkline(ctx, d.spark, heroRight + 12, 168, W - P - (heroRight + 12), 300, accent, c);
+  drawStatStrip(s);
+}
+
+/* ===================== variant: spotlight ===================== */
+
+function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
+  const cmp = d.up ? '≥' : '≤';
+  ctx.textAlign = 'center';
+
+  // the bet, quiet, above the hero word
+  ctx.font = `600 30px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, W / 2, 215);
+  ctx.font = `400 16px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    W / 2,
+    244,
+  );
+
+  // the hero word
+  const word = d.result === 'won' ? 'WIN' : d.result === 'lost' ? 'LOSS' : 'LIVE';
+  const wordPx = fitSize(ctx, word, W - 2 * P, 188, 800, sans);
+  ctx.font = `800 ${wordPx}px ${sans}`;
+  ctx.fillStyle = accent;
+  ctx.shadowColor = withAlpha(accent, 0.4);
+  ctx.shadowBlur = 40;
+  ctx.fillText(word, W / 2, 430);
+  ctx.shadowBlur = 0;
+
+  // ROI + PnL beneath
+  ctx.font = `700 40px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(`${signed(d.pnlPct * 100, 1)}%`, W / 2, 500);
+  ctx.font = `500 22px ${mono}`;
+  ctx.fillStyle = c.text2;
+  ctx.fillText(`${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`, W / 2, 538);
+
+  ctx.textAlign = 'left';
+}
+
+/* ===================== variant: surface ===================== */
+
+function drawSurface(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+
+  // The wireframe surface is the hero — fills the card behind a legibility wash.
+  drawMesh(ctx, accent);
+  const wash = ctx.createLinearGradient(0, 0, W * 0.7, H);
+  wash.addColorStop(0, withAlpha(c.bg, 0.92));
+  wash.addColorStop(0.55, withAlpha(c.bg, 0.55));
+  wash.addColorStop(1, withAlpha(c.bg, 0));
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, W, H);
+
+  const cmp = d.up ? '≥' : '≤';
+  ctx.textAlign = 'left';
+  ctx.font = `600 36px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, P, 250);
+  ctx.font = `400 17px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    P,
+    278,
+  );
+
+  ctx.font = `500 13px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(spaced(`${d.decided ? 'REALIZED' : 'UNREALIZED'} ROI`), P, 350);
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, 560, 116, 700, mono);
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(roiText, P, 350 + roiPx * 0.82);
+
+  ctx.font = `500 24px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(`${signed(d.pnl)} DUSDC`, P, 350 + roiPx * 0.82 + 42);
+
+  drawStatStrip(s);
+}
+
+/** A faux-3D SVI smile surface: a glowing wireframe across the whole card. */
+function drawMesh(ctx: CanvasRenderingContext2D, color: string) {
+  const cols = 18;
+  const rows = 10;
+  const cx = W * 0.62;
+  const topY = 150;
+  const depthY = 380;
+  const spanX = 760;
+  const lift = 150;
+
+  const project = (u: number, v: number) => {
+    const k = (u - 0.5) * 2;
+    const smile = k * k; // 0 at center .. 1 at edges
+    const z = smile * 0.7 + (1 - v) * 0.18; // taller at wings & near edge
+    const persp = 1 - v * 0.32; // narrower toward the back
+    const x = cx + (u - 0.5) * spanX * persp;
+    const y = topY + v * depthY - z * lift;
+    return { x, y, z };
+  };
+
+  ctx.lineWidth = 1;
+  ctx.shadowColor = withAlpha(color, 0.5);
+  ctx.shadowBlur = 8;
+
+  // lines along strike (constant expiry)
+  for (let r = 0; r < rows; r++) {
+    const v = r / (rows - 1);
+    ctx.beginPath();
+    for (let cc = 0; cc < cols; cc++) {
+      const u = cc / (cols - 1);
+      const p = project(u, v);
+      if (cc === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = withAlpha(color, 0.1 + (1 - v) * 0.28);
+    ctx.stroke();
+  }
+  // lines along expiry (constant strike)
+  for (let cc = 0; cc < cols; cc++) {
+    const u = cc / (cols - 1);
+    ctx.beginPath();
+    for (let r = 0; r < rows; r++) {
+      const v = r / (rows - 1);
+      const p = project(u, v);
+      if (r === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    const edge = Math.abs(u - 0.5) * 2;
+    ctx.strokeStyle = withAlpha(color, 0.08 + edge * 0.18);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+}
+
+/* ===================== shared pieces ===================== */
+
+function drawStatStrip({ ctx, c, sans, mono, d }: Ctx) {
+  ctx.textAlign = 'left';
+  const stripY = 520;
+  const hl = ctx.createLinearGradient(P, 0, W - P, 0);
+  hl.addColorStop(0, 'rgba(255,255,255,0)');
+  hl.addColorStop(0.5, c.line);
+  hl.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hl;
+  ctx.fillRect(P, stripY, W - 2 * P, 1);
+
+  const cells: [string, string][] = [
+    ['SIZE', `${quote(d.contracts)} ctr`],
+    ['COST', `${quote(d.cost)} DUSDC`],
+    ['AVG ENTRY', pct(d.entryPrice, 1)],
+    [d.decided ? 'SETTLED' : 'MARK', d.markPrice != null ? pct(d.markPrice, 1) : '—'],
+  ];
+  const colW = (W - 2 * P) / cells.length;
+  cells.forEach(([label, value], i) => {
+    const x = P + i * colW;
+    ctx.font = `500 12px ${sans}`;
+    ctx.fillStyle = c.text3;
+    ctx.fillText(spaced(label), x, stripY + 34);
+    ctx.font = `500 22px ${mono}`;
+    ctx.fillStyle = c.text1;
+    ctx.fillText(value, x, stripY + 64);
+  });
+}
+
+function drawSparkline(
+  ctx: CanvasRenderingContext2D,
+  data: number[],
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  color: string,
+  c: Theme,
+) {
+  ctx.strokeStyle = c.lineSoft;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const y = y0 + (i / 3) * h;
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x0 + w, y);
+    ctx.stroke();
+  }
+
+  if (data.length < 2) return; // too thin to plot — leave the framed grid
+
+  const pad = 6;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const span = max - min || 1;
+  const px = (i: number) => x0 + pad + (i / (data.length - 1)) * (w - 2 * pad);
+  const py = (v: number) => y0 + h - pad - ((v - min) / span) * (h - 2 * pad);
+
+  ctx.beginPath();
+  ctx.moveTo(px(0), py(data[0]));
+  for (let i = 1; i < data.length; i++) ctx.lineTo(px(i), py(data[i]));
+  ctx.lineTo(px(data.length - 1), y0 + h);
+  ctx.lineTo(px(0), y0 + h);
+  ctx.closePath();
+  const fill = ctx.createLinearGradient(0, y0, 0, y0 + h);
+  fill.addColorStop(0, withAlpha(color, 0.28));
+  fill.addColorStop(1, withAlpha(color, 0));
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(px(0), py(data[0]));
+  for (let i = 1; i < data.length; i++) ctx.lineTo(px(i), py(data[i]));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = withAlpha(color, 0.6);
+  ctx.shadowBlur = 14;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const ex = px(data.length - 1);
+  const ey = py(data[data.length - 1]);
+  ctx.beginPath();
+  ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(ex, ey, 8, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha(color, 0.4);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+/* ===================== primitives ===================== */
+
+function fitSize(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxW: number,
+  startPx: number,
+  weight: number,
+  family: string,
+  minPx = 40,
+): number {
+  let px = startPx;
+  ctx.font = `${weight} ${px}px ${family}`;
+  while (ctx.measureText(text).width > maxW && px > minPx) {
+    px -= 2;
+    ctx.font = `${weight} ${px}px ${family}`;
+  }
+  return px;
+}
+
+function drawTag(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  textColor: string,
+  borderColor: string,
+  sans: string,
+) {
+  ctx.textAlign = 'left';
+  const text = spaced(label);
+  ctx.font = `600 11px ${sans}`;
+  const tw = ctx.measureText(text).width;
+  const padX = 10;
+  roundRect(ctx, x, y, tw + padX * 2, 22, 5);
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = textColor;
+  ctx.fillText(text, x + padX, y + 15);
+}
+
+function drawResultPill(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  rightX: number,
+  y: number,
+  color: string,
+  live: boolean,
+  sans: string,
+) {
+  ctx.textAlign = 'left';
+  ctx.font = `700 14px ${sans}`;
+  const text = spaced(label);
+  const tw = ctx.measureText(text).width;
+  const dot = 8;
+  const padX = 16;
+  const gap = 9;
+  const wPill = padX * 2 + dot + gap + tw;
+  const h = 34;
+  const x = rightX - wPill;
+  roundRect(ctx, x, y, wPill, h, h / 2);
+  ctx.fillStyle = withAlpha(color, 0.12);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(color, 0.4);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x + padX + dot / 2, y + h / 2, dot / 2, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  if (live) {
+    ctx.beginPath();
+    ctx.arc(x + padX + dot / 2, y + h / 2, dot, 0, Math.PI * 2);
+    ctx.strokeStyle = withAlpha(color, 0.5);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+  ctx.fillStyle = color;
+  ctx.fillText(text, x + padX + dot + gap, y + h / 2 + 5);
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+  } else {
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+}
+
+/** Letter-space a label the way the .eyebrow micro-label does. */
+function spaced(s: string): string {
+  return s.split('').join(' ');
+}
+
+/** Apply an alpha to a hex (#rgb/#rrggbb) color; passes others through. */
+function withAlpha(color: string, alpha: number): string {
+  const hex = color.replace('#', '');
+  if (/^[0-9a-f]{6}$/i.test(hex)) {
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  if (/^[0-9a-f]{3}$/i.test(hex)) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  return color;
+}

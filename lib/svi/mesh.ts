@@ -111,10 +111,20 @@ export function buildSurfaceMesh(surface: Surface, opts: MeshOptions = {}): Surf
       positions[idx] = colMeta[c].x;
       positions[idx + 1] = tColor * height; // height by normalized IV
       positions[idx + 2] = rowMeta[r].z;
+      // Dead zone (fair UP outside the 1%–99% mintable band) recedes into a
+      // muted slate so the tradeable ridge is the only part that glows with IV
+      // color — these nodes are also non-clickable (see surface-canvas `pick`).
       const [cr, cg, cb] = ivColor(tColor);
-      colors[idx] = cr;
-      colors[idx + 1] = cg;
-      colors[idx + 2] = cb;
+      if (cell.tradeable) {
+        colors[idx] = cr;
+        colors[idx + 1] = cg;
+        colors[idx + 2] = cb;
+      } else {
+        const f = 0.78; // blend toward slate
+        colors[idx] = cr + (0.12 - cr) * f;
+        colors[idx + 1] = cg + (0.14 - cg) * f;
+        colors[idx + 2] = cb + (0.17 - cb) * f;
+      }
       if (cell.calendar) violations.push({ row: r, col: c, kind: 'calendar' });
       if (cell.butterfly) violations.push({ row: r, col: c, kind: 'butterfly' });
     }

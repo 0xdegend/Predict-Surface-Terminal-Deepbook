@@ -29,7 +29,7 @@ import { buildMintTx } from '@/lib/sui/predict-tx';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RedeemModal } from './positions/redeem-modal';
 import { positionMetrics } from './positions/position-metrics';
-import type { SmileInput } from '@/lib/svi/surface';
+import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 import type { PositionSummary } from '@/lib/api/types';
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
@@ -109,7 +109,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const strikeFloat = toFloat(Number(strike));
   const clientUp =
     oracle && strike > 0n ? upFair(strikeFloat, forward, active!.svi, active!.settlement ?? null) : null;
-  const tradeable = clientUp != null && clientUp > 0.01 && clientUp < 0.99;
+  const tradeable = clientUp != null && isTradeableFair(clientUp);
 
   // Live expiry status — a market at/near expiry will revert on-chain, so we
   // stop quoting and block the mint before the user pays a doomed gas fee.

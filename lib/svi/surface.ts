@@ -28,6 +28,19 @@ import type { Oracle } from '@/lib/api/types';
 /** Tiny tolerance so float noise doesn't trip the no-arb flags. */
 const ARB_EPS = 1e-7;
 
+/**
+ * A binary is only mintable while its fair UP price is strictly inside the
+ * protocol's quoting band — far-OTM/ITM strikes round to 0%/100% and the mint
+ * aborts. Single source of truth shared by the surface (to dim/disable dead
+ * nodes) and the trade ticket (to gate the quote). Mirrors the contract's
+ * 1%–99% ask bound.
+ */
+export const FAIR_TRADE_MIN = 0.01;
+export const FAIR_TRADE_MAX = 0.99;
+export function isTradeableFair(up: number): boolean {
+  return up > FAIR_TRADE_MIN && up < FAIR_TRADE_MAX;
+}
+
 export interface SmilePoint {
   strikeScaled: bigint; // 1e9-scaled grid strike (for keys / minting)
   strike: number; // float price
@@ -130,6 +143,7 @@ export interface SurfaceCell {
   iv: number;
   w: number; // total variance (for calendar check)
   up: number; // fair UP price at this (k, T) — for the butterfly check
+  tradeable: boolean; // fair UP inside the 1%–99% quoting band → mintable node
   butterfly: boolean; // butterfly violation vs the next-higher k in the same row
   calendar: boolean; // calendar violation vs the previous (shorter-T) expiry at this k
 }
@@ -182,7 +196,7 @@ export function buildSurface(
       const iv = w > 0 ? Math.sqrt(w / tYears) : 0;
       // UP at this k: strike = forward * e^k.
       const up = upFair(input.forward * Math.exp(k), input.forward, input.svi, settlement);
-      return { expiryIndex, kIndex, k, iv, w, up, butterfly: false, calendar: false };
+      return { expiryIndex, kIndex, k, iv, w, up, tradeable: isTradeableFair(up), butterfly: false, calendar: false };
     });
     // Butterfly: within a row, UP must be non-increasing in k (k ascending).
     for (let c = 0; c < cells.length - 1; c++) {

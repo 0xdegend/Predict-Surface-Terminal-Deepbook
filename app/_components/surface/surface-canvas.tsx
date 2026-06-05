@@ -37,6 +37,7 @@ interface HoverInfo {
   expiry: number;
   iv: number;
   up: number;
+  tradeable: boolean;
 }
 
 /**
@@ -75,6 +76,9 @@ export function SurfaceCanvas({
     const cell = r?.cells[col];
     const oracle = oracleById.get(r?.oracleId ?? '');
     if (!r || !cell || !oracle) return;
+    // Dead-zone nodes (fair UP outside the 1%–99% band) are dimmed and not
+    // mintable — ignore the click rather than load a doomed ticket.
+    if (!cell.tradeable) return;
     const strikeFloat = r.forward * Math.exp(cell.k);
     const strikeScaled = snapStrikeToTick(BigInt(Math.round(strikeFloat * 1e9)), oracle);
     select({
@@ -275,6 +279,9 @@ function MorphSurface({
     if (lastCell.current.row !== row || lastCell.current.col !== col) {
       lastCell.current = { row, col };
     }
+    if (typeof document !== 'undefined') {
+      document.body.style.cursor = cell.tradeable ? 'pointer' : 'not-allowed';
+    }
     onHover({
       row,
       col,
@@ -284,6 +291,7 @@ function MorphSurface({
       expiry: r.expiry,
       iv: cell.iv,
       up: cell.up,
+      tradeable: cell.tradeable,
     });
   }
 
@@ -292,7 +300,10 @@ function MorphSurface({
       <mesh
         geometry={geom}
         onPointerMove={handleMove}
-        onPointerOut={() => onHover(null)}
+        onPointerOut={() => {
+          if (typeof document !== 'undefined') document.body.style.cursor = '';
+          onHover(null);
+        }}
         onClick={(e) => {
           e.stopPropagation();
           const { row, col } = nearestCell(mesh, e.point);
@@ -442,6 +453,11 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
       <div className="mt-2 font-mono text-[10px] tabular-nums text-text-3">
         {dateUTC(hover.expiry)} · {ttl(hover.expiry)}
       </div>
+      {!hover.tradeable && (
+        <div className="mt-2 border-t border-line-soft pt-2 font-mono text-[10px] leading-snug text-text-3">
+          too far from spot to mint — pick a node nearer the colored ridge
+        </div>
+      )}
     </div>
   );
 }
