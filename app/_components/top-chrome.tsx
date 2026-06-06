@@ -1,7 +1,7 @@
-import Link from 'next/link';
-import { WalletBar } from './wallet-bar';
-import { MarketChip, type MarketDiagnostics } from './market-chip';
-import type { PriceEvent } from '@/lib/api/types';
+import Link from "next/link";
+import { WalletBar } from "./wallet-bar";
+import { MarketChip, type MarketDiagnostics } from "./market-chip";
+import type { PriceEvent } from "@/lib/api/types";
 
 /**
  * Persistent terminal chrome shared by the surface and risk screens (§10.5),
@@ -15,8 +15,12 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: 'surface' | 'risk' | 'portfolio' | 'leaderboard' | 'vault';
-  tape?: { oracleId: string; underlying: string; initial: PriceEvent | null } | null;
+  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault";
+  tape?: {
+    oracleId: string;
+    underlying: string;
+    initial: PriceEvent | null;
+  } | null;
   diagnostics?: MarketDiagnostics | null;
 }) {
   return (
@@ -25,14 +29,24 @@ export function TopChrome({
       <div className="flex items-center gap-3 sm:gap-5">
         <Link href="/" className="group flex items-center gap-2">
           <span className="live-dot" />
-          <span className="text-[14px] font-semibold tracking-tight text-text-1">Predict</span>
+          <span className="text-[14px] font-semibold tracking-tight text-text-1">
+            Predict
+          </span>
         </Link>
         <nav className="flex items-center gap-1">
-          <NavLink href="/" label="Surface" active={active === 'surface'} />
-          <NavLink href="/portfolio" label="Portfolio" active={active === 'portfolio'} />
-          <NavLink href="/vault" label="Vault" active={active === 'vault'} />
-          <NavLink href="/leaderboard" label="Leaderboard" active={active === 'leaderboard'} />
-          <NavLink href="/risk" label="Risk" active={active === 'risk'} />
+          <NavLink href="/" label="Surface" active={active === "surface"} />
+          <NavLink
+            href="/portfolio"
+            label="Portfolio"
+            active={active === "portfolio"}
+          />
+          <NavLink href="/vault" label="Hedge Vault" active={active === "vault"} />
+          <NavLink
+            href="/leaderboard"
+            label="Leaderboard"
+            active={active === "leaderboard"}
+          />
+          <NavLink href="/risk" label="Vault Risk" active={active === "risk"} />
         </nav>
       </div>
 
@@ -56,14 +70,22 @@ export function TopChrome({
   );
 }
 
-function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+function NavLink({
+  href,
+  label,
+  active,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+}) {
   return (
     <Link
       href={href}
       className={`rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
         active
-          ? 'bg-[var(--accent-soft)] text-text-1'
-          : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
+          ? "bg-[var(--accent-soft)] text-text-1"
+          : "text-text-2 hover:bg-white/[0.04] hover:text-text-1"
       }`}
     >
       {label}

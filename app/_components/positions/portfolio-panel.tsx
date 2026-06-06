@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
-import { LuWallet, LuWalletMinimal, LuTrendingUp, LuTrendingDown, LuLayers, LuCoins, LuDownload } from 'react-icons/lu';
+import { LuWallet, LuWalletMinimal, LuTrendingUp, LuTrendingDown, LuLayers, LuCoins, LuDownload, LuHistory, LuArrowRight } from 'react-icons/lu';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
@@ -34,6 +34,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const now = useNow(serverNow);
   const mounted = useMounted();
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
+  const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
   if (!mounted) {
     return (
@@ -99,10 +100,10 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-6">
-      {/* Account header — bento: a tall hero value beside a 2×2 of stats */}
+      {/* Account header — bento: a balanced grid of stat cards */}
       <div className="glass-card mb-6 grid grid-cols-2 gap-2.5 p-2.5 font-mono tabular-nums lg:grid-cols-3">
-        {/* Account value — hero */}
-        <div className="glass-inset relative col-span-2 flex flex-col justify-between gap-6 overflow-hidden p-5 lg:col-span-1 lg:row-span-2">
+        {/* Account value — hero (emphasized by its larger number + accent wash) */}
+        <div className="glass-inset relative col-span-2 flex flex-col gap-3 overflow-hidden p-4 lg:col-span-1">
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0"
@@ -160,8 +161,8 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           value={acct.dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(acct.dusdcBalance))}
         />
 
-        {/* Points — full-width footer row of the bento */}
-        <PointsTile breakdown={points} />
+        {/* Points — a compact stat card, balancing the grid's bottom-right */}
+        <PointsTile total={points.total} />
       </div>
 
       {acct.error && (
@@ -170,14 +171,8 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         </div>
       )}
 
-      {/* Performance — settled track record, win/loss rate at a glance */}
-      {stats.total > 0 && (
-        <Section title="Performance" hint={`${stats.total} settled markets`}>
-          <PerformanceCard stats={stats} />
-        </Section>
-      )}
-
-      {/* Redeemable (settled) — surfaced first, it's money waiting to be claimed */}
+      {/* Ready to redeem (settled) — ALWAYS visible; it's claimable money and
+          should never sit behind a tab. */}
       {redeemable.length > 0 && (
         <Section title="Ready to redeem" hint="settled — claim your payout">
           <Grid>
@@ -194,26 +189,48 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         </Section>
       )}
 
-      {/* Open positions */}
-      <Section
-        title="Open positions"
-        hint={
-          open.length > 0
-            ? `${signed(unrealized)} unrealized (${signed(unrealizedPct * 100, 1)}%)`
-            : undefined
-        }
-        hintTone={unrealized >= 0 ? 'up' : 'down'}
-      >
-        {open.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line-soft p-8 text-center">
-            <p className="text-[13px] text-text-2">No open positions.</p>
-            <Link
-              href="/"
-              className="mt-2 inline-block text-[12px] text-up underline hover:opacity-80"
-            >
-              Open the surface and mint your first contract →
-            </Link>
-          </div>
+      {/* Positions / History — the two long sections, tabbed to keep the page
+          short. Positions (live bets) is the default; History carries the
+          retrospective Performance summary + trade table. */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="segmented w-[240px]" role="tablist" aria-label="Portfolio sections">
+          <span
+            aria-hidden
+            className="segmented-thumb"
+            style={{ transform: tab === 'history' ? 'translateX(100%)' : 'translateX(0)' }}
+          />
+          <TabButton icon={LuLayers} label="Positions" active={tab === 'positions'} onClick={() => setTab('positions')} />
+          <TabButton icon={LuHistory} label="History" active={tab === 'history'} onClick={() => setTab('history')} />
+        </div>
+        {tab === 'positions' && open.length > 0 && (
+          <span className={`font-mono text-[11px] tabular-nums ${unrealized >= 0 ? 'text-up' : 'text-down'}`}>
+            {signed(unrealized)} unrealized ({signed(unrealizedPct * 100, 1)}%)
+          </span>
+        )}
+        {tab === 'history' && stats.total > 0 && (
+          <span className={`font-mono text-[11px] tabular-nums ${stats.realizedPnl >= 0 ? 'text-up' : 'text-down'}`}>
+            {signed(stats.realizedPnl)} realized · {pct(stats.winRate, 0)} win
+          </span>
+        )}
+      </div>
+
+      {tab === 'positions' ? (
+        open.length === 0 ? (
+          <EmptyState
+            icon={LuLayers}
+            color={HUE.teal}
+            title="No open positions yet"
+            description="Pick a market on the surface to mint your first UP / DOWN contract."
+            action={
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15"
+              >
+                Open the surface
+                <LuArrowRight size={14} />
+              </Link>
+            }
+          />
         ) : (
           <Grid>
             {open.map((p) => (
@@ -226,30 +243,24 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
               />
             ))}
           </Grid>
-        )}
-      </Section>
-
-      {/* Trade history — past predictions, decided markets, newest first */}
-      <Section
-        title="Trade history"
-        hint={
-          stats.total > 0
-            ? `${signed(stats.realizedPnl)} realized · ${pct(stats.winRate, 0)} win`
-            : undefined
-        }
-        hintTone={stats.realizedPnl >= 0 ? 'up' : 'down'}
-      >
-        {history.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-line-soft p-8 text-center">
-            <p className="text-[13px] text-text-2">No settled trades yet.</p>
-            <p className="mt-1 text-[12px] text-text-3">
-              Once a market you hold expires and you redeem it, it lands here.
-            </p>
-          </div>
-        ) : (
-          <HistoryTable history={history} />
-        )}
-      </Section>
+        )
+      ) : stats.total === 0 ? (
+        <EmptyState
+          icon={LuHistory}
+          color={HUE.blue}
+          title="No settled trades yet"
+          description="Once a market you hold expires and you redeem it, your performance and trade history land here."
+        />
+      ) : (
+        <>
+          <Section title="Performance" hint={`${stats.total} settled markets`}>
+            <PerformanceCard stats={stats} />
+          </Section>
+          <Section title="Trade history">
+            <HistoryTable history={history} />
+          </Section>
+        </>
+      )}
 
       {acct.lastDigest && (
         <a
@@ -340,6 +351,61 @@ function Section({
 
 function Grid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{children}</div>;
+}
+
+/** A segment in the Positions/History tab strip (matches the market picker). */
+function TabButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: IconType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={[
+        'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        active ? 'text-text-1' : 'text-text-3 hover:text-text-2',
+      ].join(' ')}
+    >
+      <Icon size={13} className={active ? 'text-accent' : ''} />
+      {label}
+    </button>
+  );
+}
+
+/** Frosted-glass empty state — a tinted icon chip, a guiding line, optional CTA. */
+function EmptyState({
+  icon,
+  color,
+  title,
+  description,
+  action,
+}: {
+  icon: IconType;
+  color: string;
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="glass-card flex flex-col items-center gap-4 px-6 py-12 text-center">
+      <IconChip icon={icon} color={color} size={44} />
+      <div className="flex max-w-sm flex-col gap-1.5">
+        <p className="text-[13px] font-medium text-text-1">{title}</p>
+        <p className="text-[12px] leading-relaxed text-text-3">{description}</p>
+      </div>
+      {action}
+    </div>
+  );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
