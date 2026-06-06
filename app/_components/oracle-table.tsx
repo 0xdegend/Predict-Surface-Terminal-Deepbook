@@ -6,7 +6,8 @@
  * and loads it into the trade ticket, pre-filled at the at-the-money strike.
  * Rows with a live SVI snapshot are pickable; the rest render dimmed.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import gsap from 'gsap';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
@@ -19,6 +20,9 @@ import type { Oracle } from '@/lib/api/types';
 
 /** Markets inside this window are about to settle — minting may revert. */
 const CLOSING_SOON_MS = 120_000;
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function OracleTable({
   oracles: initialOracles,
@@ -36,11 +40,48 @@ export function OracleTable({
   // (the clock drops expired-but-unsettled below); no reload needed.
   const { oracles, inputs } = useLiveOracleData(initialOracles, initialInputs);
 
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+
+  // Entrance choreography (§10.6): rows rise + fade in with a tight stagger when
+  // the table first paints (and again on each Cards↔Table switch, since this
+  // component remounts). One intentional moment — not idle hover wiggle.
+  useEffect(() => {
+    if (prefersReducedMotion() || !bodyRef.current) return;
+    const rows = bodyRef.current.querySelectorAll('tr');
+    if (rows.length === 0) return;
+    const ctx = gsap.context(() => {
+      gsap.from(rows, {
+        opacity: 0,
+        y: 8,
+        duration: 0.4,
+        ease: 'power2.out',
+        stagger: 0.035,
+        clearProps: 'opacity,transform',
+      });
+    }, bodyRef);
+    return () => ctx.revert();
+    // Mount-only: live data updates shouldn't re-trigger the entrance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const inputById = useMemo(() => {
     const m = new Map<string, SmileInput>();
     for (const i of inputs) m.set(i.oracle.oracle_id, i);
     return m;
   }, [inputs]);
+
+  // Precise, fast confirmation flash on the picked row (§10.6: selection = a
+  // crisp highlight, never a bounce). Cleared so the row's own state colour returns.
+  function flashRow(el: HTMLElement) {
+    if (prefersReducedMotion()) return;
+    // Concrete rgba (the teal accent) so GSAP interpolates the fade cleanly —
+    // it can't parse color-mix() as a tween start value.
+    gsap.fromTo(
+      el,
+      { backgroundColor: 'rgba(77, 214, 176, 0.22)' },
+      { backgroundColor: 'rgba(77, 214, 176, 0)', duration: 0.6, ease: 'power2.out', clearProps: 'backgroundColor' },
+    );
+  }
 
   function pickOracle(input: SmileInput) {
     const { oracle, forward } = input;
@@ -66,7 +107,7 @@ export function OracleTable({
   const hiddenCount = oracles.length - visible.length;
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-baseline justify-between">
         <h2 className="flex items-center gap-2">
           <span className="eyebrow">Active oracles</span>
@@ -83,17 +124,18 @@ export function OracleTable({
       </div>
 
       {visible.length === 0 ? (
-        <div className="glass-card mt-3 flex flex-col items-center gap-1 px-4 py-10 text-center">
+        <div className="glass-card mt-3 flex min-h-[12rem] flex-1 flex-col items-center justify-center gap-1 px-4 py-10 text-center">
           <span className="text-[12px] text-text-2">No active markets right now</span>
           <span className="text-[11px] text-text-3">Waiting for the next expiry to open.</span>
         </div>
       ) : (
       // Frosted glass shell — the table lives inside a translucent card so it
-      // matches the portfolio's glassmorphism. `overflow-hidden` clips the rows
-      // to the card's rounded corners; the inner scroll box is the sticky
-      // container so the header sticks to the TOP OF THIS BOX, never the page.
-      <div className="glass-card mt-3 overflow-hidden">
-        <div className="scroll-quiet max-h-[70vh] overflow-auto">
+      // matches the portfolio's glassmorphism. `flex-1` stretches the card to fill
+      // the column so a short list never leaves a void below it; `overflow-hidden`
+      // clips rows to the rounded corners and the inner scroll box (flex-1) is the
+      // sticky container, so the header sticks to the TOP OF THIS BOX, never the page.
+      <div className="glass-card mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="scroll-quiet min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
           <thead>
             <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
@@ -107,7 +149,7 @@ export function OracleTable({
               <Th className="text-right">Oracle</Th>
             </tr>
           </thead>
-          <tbody className="row-divider">
+          <tbody ref={bodyRef} className="row-divider">
             {visible.map((o) => {
               const input = inputById.get(o.oracle_id);
               const selected = selection?.oracleId === o.oracle_id;
@@ -121,13 +163,14 @@ export function OracleTable({
               return (
                 <tr
                   key={o.oracle_id}
-                  onClick={pickable ? () => pickOracle(input!) : undefined}
+                  onClick={pickable ? (e) => { flashRow(e.currentTarget); pickOracle(input!); } : undefined}
                   tabIndex={pickable ? 0 : undefined}
                   onKeyDown={
                     pickable
                       ? (e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
+                            flashRow(e.currentTarget);
                             pickOracle(input!);
                           }
                         }

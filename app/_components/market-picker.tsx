@@ -57,7 +57,7 @@ export function MarketPicker({
   }
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-3 flex justify-end">
         <div className="segmented" role="tablist" aria-label="Market view">
           {/* gliding glass thumb — sits under the labels, tracks the active tab */}
@@ -71,11 +71,14 @@ export function MarketPicker({
         </div>
       </div>
 
-      {view === 'cards' ? (
-        <MarketGroups oracles={oracles} inputs={inputs} serverNow={serverNow} />
-      ) : (
-        <OracleTable oracles={oracles} inputs={inputs} serverNow={serverNow} />
-      )}
+      {/* min-h-0 lets the table view's inner scroll size to the column */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {view === 'cards' ? (
+          <MarketGroups oracles={oracles} inputs={inputs} serverNow={serverNow} />
+        ) : (
+          <OracleTable oracles={oracles} inputs={inputs} serverNow={serverNow} />
+        )}
+      </div>
     </div>
   );
 }

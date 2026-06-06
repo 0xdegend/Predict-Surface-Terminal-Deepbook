@@ -119,9 +119,10 @@ export default async function Page() {
               </div>
 
               {/* Market picker — cards (beginner) or table (dense), both clickable:
-                  select on the surface + load the ticket. flex-1 so the panel fills
-                  the column (the right rail is taller) instead of leaving an empty band. */}
-              <div className="flex-1 bg-bg-0 p-4 sm:p-5">
+                  select on the surface + load the ticket. flex column so the picker
+                  can stretch to fill the column (the right rail is taller) instead of
+                  leaving an empty band below a short table. */}
+              <div className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
                 <MarketPicker
                   oracles={snapshot.oracles}
                   inputs={snapshot.surfaceInputs}
