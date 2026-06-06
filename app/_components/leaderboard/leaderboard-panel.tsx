@@ -8,7 +8,15 @@
  */
 import { useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
-import { LuTrophy, LuUsers, LuActivity, LuCoins, LuRefreshCw } from 'react-icons/lu';
+import {
+  LuTrophy,
+  LuUsers,
+  LuActivity,
+  LuCoins,
+  LuRefreshCw,
+  LuChevronLeft,
+  LuChevronRight,
+} from 'react-icons/lu';
 import { useLeaderboard, ENRICH_OWNERS } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
@@ -19,12 +27,20 @@ import { ErrorState } from '../ui/error-state';
 
 const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictConfig.network}/account/${addr}`;
 const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
+const PAGE_SIZE = 25;
 
 export function LeaderboardPanel() {
   const { rows, baseLoading, pnlLoading, error, refetch } = useLeaderboard();
   const account = useCurrentAccount();
   const mounted = useMounted();
   const [sort, setSort] = useState<SortKey>('volume');
+  const [page, setPage] = useState(0);
+
+  // Switching the ranking reorders everything → jump back to the top page.
+  function selectSort(key: SortKey) {
+    setSort(key);
+    setPage(0);
+  }
 
   if (error) {
     return (
@@ -39,6 +55,14 @@ export function LeaderboardPanel() {
   const sorted = sortRows(rows, sort);
   const totals = leaderboardTotals(rows);
   const me = mounted ? account?.address ?? null : null;
+
+  // Pagination — clamp the active page in render (no effect) so a shrinking
+  // dataset after a refetch can never strand us on an empty page.
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const start = safePage * PAGE_SIZE;
+  const pageRows = sorted.slice(start, start + PAGE_SIZE);
+  const paginated = sorted.length > PAGE_SIZE;
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-6">
@@ -72,10 +96,10 @@ export function LeaderboardPanel() {
 
       {/* Sort tabs */}
       <div className="mb-3 flex items-center gap-1">
-        <SortTab label="Volume" active={sort === 'volume'} onClick={() => setSort('volume')} />
-        <SortTab label="Trades" active={sort === 'trades'} onClick={() => setSort('trades')} />
-        <SortTab label="Win rate" active={sort === 'winrate'} onClick={() => setSort('winrate')} />
-        <SortTab label="PnL" active={sort === 'pnl'} onClick={() => setSort('pnl')} />
+        <SortTab label="Volume" active={sort === 'volume'} onClick={() => selectSort('volume')} />
+        <SortTab label="Trades" active={sort === 'trades'} onClick={() => selectSort('trades')} />
+        <SortTab label="Win rate" active={sort === 'winrate'} onClick={() => selectSort('winrate')} />
+        <SortTab label="PnL" active={sort === 'pnl'} onClick={() => selectSort('pnl')} />
         <span className="ml-auto text-[10px] text-text-3">
           Win rate &amp; PnL ranked among the {ENRICH_OWNERS} most active accounts
         </span>
@@ -83,7 +107,7 @@ export function LeaderboardPanel() {
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
-        <div className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-text-3">
+        <div className="head-divider grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-2.5 text-[10px] font-medium uppercase tracking-wider text-text-3">
           <span className="text-right">#</span>
           <span>Trader</span>
           <span className="text-right">Volume</span>
@@ -92,18 +116,21 @@ export function LeaderboardPanel() {
           <span className="text-right">PnL</span>
         </div>
 
+        <div className="rows-divided">
         {baseLoading ? (
           <SkeletonRows />
         ) : sorted.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px] text-text-2">No trading activity yet.</div>
         ) : (
-          sorted.map((r, i) => {
+          <>
+          {pageRows.map((r, idx) => {
+            const i = start + idx; // global rank index (continues across pages)
             const rankColor = sort === 'volume' && i < 3 ? RANK_HUE[i] : undefined;
             const isMe = me != null && r.owner.toLowerCase() === me.toLowerCase();
             return (
               <div
                 key={r.owner}
-                className={`grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 font-mono text-[12px] tabular-nums transition-colors last:border-0 hover:bg-white/[0.02] ${
+                className={`grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-2.5 font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.02] ${
                   isMe ? 'bg-[var(--accent-soft)]' : ''
                 }`}
               >
@@ -129,8 +156,19 @@ export function LeaderboardPanel() {
                 <PnlCell row={r} />
               </div>
             );
-          })
+          })}
+          {paginated && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <span className="font-mono text-[11px] tabular-nums text-text-3">
+                {start + 1}–{start + pageRows.length}{' '}
+                <span className="text-text-2">of {sorted.length}</span> traders
+              </span>
+              <Pager page={safePage} pageCount={pageCount} onPage={setPage} />
+            </div>
+          )}
+          </>
         )}
+        </div>
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
@@ -160,6 +198,79 @@ function PnlCell({ row }: { row: ReturnType<typeof sortRows>[number] }) {
   const up = row.totalPnl >= 0;
   return (
     <span className={`text-right ${up ? 'text-up' : 'text-down'}`}>{signed(row.totalPnl, 2)}</span>
+  );
+}
+
+/** Page-number window with ellipses: 1 2 … 4 [5] 6 … 11 12. */
+function pageItems(current: number, count: number): (number | 'gap')[] {
+  if (count <= 7) return Array.from({ length: count }, (_, i) => i);
+  const keep = new Set<number>([0, 1, count - 2, count - 1, current - 1, current, current + 1]);
+  const nums = [...keep].filter((n) => n >= 0 && n < count).sort((a, b) => a - b);
+  const out: (number | 'gap')[] = [];
+  let prev = -1;
+  for (const n of nums) {
+    if (n - prev > 1) out.push('gap');
+    out.push(n);
+    prev = n;
+  }
+  return out;
+}
+
+function Pager({
+  page,
+  pageCount,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  onPage: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <PagerArrow dir="prev" disabled={page === 0} onClick={() => onPage(page - 1)} />
+      {pageItems(page, pageCount).map((it, idx) =>
+        it === 'gap' ? (
+          <span key={`gap-${idx}`} className="px-1 text-[11px] text-text-3">
+            …
+          </span>
+        ) : (
+          <button
+            key={it}
+            onClick={() => onPage(it)}
+            aria-current={it === page ? 'page' : undefined}
+            className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md px-2 font-mono text-[11px] tabular-nums transition-colors ${
+              it === page
+                ? 'border border-[var(--accent-line)] bg-[var(--accent-soft)] text-up'
+                : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
+            }`}
+          >
+            {it + 1}
+          </button>
+        ),
+      )}
+      <PagerArrow dir="next" disabled={page === pageCount - 1} onClick={() => onPage(page + 1)} />
+    </div>
+  );
+}
+
+function PagerArrow({
+  dir,
+  disabled,
+  onClick,
+}: {
+  dir: 'prev' | 'next';
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'prev' ? 'Previous page' : 'Next page'}
+      className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      {dir === 'prev' ? <LuChevronLeft size={14} /> : <LuChevronRight size={14} />}
+    </button>
   );
 }
 
@@ -209,7 +320,7 @@ function SkeletonRows() {
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 border-b border-line-soft px-4 py-2.5 last:border-0"
+          className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-2.5"
         >
           <div className="ml-auto h-3 w-3 rounded bg-white/[0.04]" />
           <div className="h-3 w-32 rounded bg-white/[0.04]" />
