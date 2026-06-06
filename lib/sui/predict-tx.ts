@@ -138,6 +138,50 @@ export function buildRedeemTx(p: RedeemParams): Transaction {
   return tx;
 }
 
+/* --------------------------- hedge vault ----------------------------- */
+
+export interface OpenHedgedParams {
+  managerId: string;
+  oracleId: string;
+  expiry: number | bigint; // hedge oracle expiry (must match the oracle)
+  hedgeStrike: bigint; // 1e9-scaled, on grid
+  hedgeIsUp: boolean; // false = downside "crash" binary
+  hedgeQuantity: bigint; // DUSDC base units (hedge contracts)
+  hedgeBudget: bigint; // DUSDC base units funding the hedge mint
+  supplyAmount: bigint; // DUSDC base units routed into PLP
+}
+
+/**
+ * Atomic "PLP yield minus crash insurance" open via our predict_hedge router:
+ * deposit the hedge budget → mint the OTM hedge into the caller's manager →
+ * supply the rest into PLP (PLP returned to the caller). One signed transaction.
+ * Requires `hedgePackageId` to be set for the active network.
+ */
+export function buildOpenHedgedTx(p: OpenHedgedParams): Transaction {
+  const pkg = cfg().hedgePackageId;
+  if (!pkg) throw new Error('Hedge router not deployed for this network');
+  const tx = new Transaction();
+  const hedgeBudget = tx.add(coinWithBalance({ type: QUOTE(), balance: p.hedgeBudget }));
+  const supplyCoin = tx.add(coinWithBalance({ type: QUOTE(), balance: p.supplyAmount }));
+  tx.moveCall({
+    target: `${pkg}::hedged_position::open_hedged_and_keep`,
+    typeArguments: [QUOTE()],
+    arguments: [
+      tx.object(cfg().predictObjectId),
+      tx.object(p.managerId),
+      tx.object(p.oracleId),
+      tx.pure.u64(BigInt(p.expiry)),
+      tx.pure.u64(p.hedgeStrike),
+      tx.pure.bool(p.hedgeIsUp),
+      tx.pure.u64(p.hedgeQuantity),
+      hedgeBudget,
+      supplyCoin,
+      tx.object(cfg().clockId),
+    ],
+  });
+  return tx;
+}
+
 /* ------------------------------- range ------------------------------- */
 
 export interface RangeMintParams {

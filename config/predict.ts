@@ -35,6 +35,12 @@ export interface PredictConfig {
   };
   /** PLP (LP share) coin type returned by `supply`. */
   plpCoinType: string;
+  /**
+   * Our own `predict_hedge` router package (the atomic "PLP + hedge" composer).
+   * Empty string = not deployed for this network yet → the Hedge Vault UI shows a
+   * "not deployed" state instead of building a doomed tx. See contracts/predict_hedge.
+   */
+  hedgePackageId: string;
   /** Optional: testnet DUSDC faucet request form (not the standard USDC faucet). */
   faucetUrl?: string;
 }
@@ -54,6 +60,7 @@ const TESTNET: PredictConfig = {
     symbol: 'DUSDC',
   },
   plpCoinType: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::plp::PLP',
+  hedgePackageId: '0x188db05516fb336aae9efca852e23b2d593430332da5e56266deb84aecdfb787',
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
@@ -73,6 +80,7 @@ const MAINNET: PredictConfig = {
     symbol: 'USDC',
   },
   plpCoinType: '', // TODO
+  hedgePackageId: '', // TODO: publish predict_hedge on mainnet, then fill
 };
 
 const CONFIGS: Record<SuiNetwork, PredictConfig> = {
