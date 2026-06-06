@@ -1,24 +1,28 @@
 /**
  * lib/leaderboard/aggregate.ts — pure aggregation for the trader leaderboard.
  *
- * Two-stage by design so the page paints fast and stays honest:
- *   Stage 1 (this file, `aggregateLeaderboard`): fold the GLOBAL position event
- *     streams (`/positions/minted`, `/positions/redeemed`) + the full manager
- *     list into per-owner rows. Volume and activity are COMPLETE and accurate
- *     within the fetched window — no per-manager calls needed.
- *   Stage 2 (`attachPnl`): authoritative realized/unrealized PnL is only in
- *     `/managers/:id/summary`, so the hook fetches summaries for the top
- *     contenders and folds them in here.
+ * Single-stage by design: fold the GLOBAL position event streams
+ * (`/positions/minted`, `/positions/redeemed`) + the manager list into per-owner
+ * rows, then score each row with the shared Points formula (lib/points/score.ts).
+ * Everything is computed from the cheap global streams — NO per-manager fan-out —
+ * so the board is complete for every trader and never hits the server rate limit.
  *
- * SCALING: minted.cost, redeemed.payout, and the summary pnl/value fields are
- * all @6dec base units → de-scale with fromQuote, never elsewhere.
+ * The leaderboard ranks by Points (and Volume). Authoritative win rate and
+ * realized+unrealized PnL live on each trader's Portfolio; here, the Points
+ * "performance" input is a realized-net proxy (payout − cost) within the window.
+ *
+ * SCALING: minted.cost / redeemed.payout are @6dec base units → de-scale with
+ * fromQuote, never elsewhere.
  */
 import { fromQuote } from '@/config/scale';
+import { pointsFromInput, type PointsBreakdown } from '@/lib/points/score';
 import type {
   PositionMintedEvent,
   PositionRedeemedEvent,
   ManagerRow,
 } from '@/lib/api/types';
+
+const DAY_MS = 86_400_000;
 
 export interface LeaderboardRow {
   /** Trader address (the human; aggregates across all their managers). */
@@ -33,71 +37,91 @@ export interface LeaderboardRow {
   payout: number;
   /** Most recent activity (ms epoch) across mint + redeem. */
   lastActiveMs: number;
-  /** Every PredictManager this owner controls (for the enrichment pass). */
+  /** Every PredictManager this owner controls (kept for cross-linking). */
   managerIds: string[];
-  /** Stage-2 fields — undefined until manager summaries/positions are folded in. */
-  realizedPnl?: number;
-  unrealizedPnl?: number;
-  totalPnl?: number;
-  accountValue?: number;
-  openPositions?: number;
-  /** Decided (settled & done) positions, the win-rate denominator. */
-  wins?: number;
-  decided?: number;
-  /** wins / decided, 0..1 — undefined if no decided positions yet. */
-  winRate?: number;
-  /** True once this row's enrichment has been fetched + attached. */
-  pnlLoaded?: boolean;
+  /** The trader's Points score + transparent breakdown (the ranking metric). */
+  points: PointsBreakdown;
+}
+
+/** A minted lot awaiting redemption, for FIFO holding-time matching. */
+interface Lot {
+  qty: number; // units (de-scaled)
+  costPerUnit: number; // DUSDC per unit
+  ts: number; // mint timestamp (ms)
+}
+
+/** `oracle:expiry:strike:is_up` — the position identity a redeem closes against. */
+function keyOf(e: { oracle_id: string; expiry: number; strike: number; is_up: boolean }): string {
+  return `${e.oracle_id}:${e.expiry}:${e.strike}:${e.is_up}`;
 }
 
 /**
- * Per-manager enrichment, already de-scaled by the hook. PnL is from the
- * authoritative manager summary; wins/decided come from the canonical
- * `derivePortfolioHistory` over the manager's position list, so the leaderboard
- * and the portfolio agree on what a "win" is.
+ * Liquidity-weighted holding time (Σ cost·days) for one owner, by FIFO-matching
+ * their redeems against their earliest open mint lots per position key. Lots
+ * still open at the end are held to `nowMs`. Redeems with no matching mint in the
+ * window contribute nothing (the window-bounded caveat).
  */
-export interface ManagerEnrichment {
-  realizedPnl: number;
-  unrealizedPnl: number;
-  accountValue: number;
-  openPositions: number;
-  wins: number;
-  decided: number;
-}
+function holdingDusdcDays(
+  mints: PositionMintedEvent[],
+  redeems: PositionRedeemedEvent[],
+  nowMs: number,
+): number {
+  const lotsByKey = new Map<string, Lot[]>();
+  for (const m of mints) {
+    const qty = fromQuote(m.quantity);
+    if (qty <= 0) continue;
+    const k = keyOf(m);
+    const lot: Lot = { qty, costPerUnit: fromQuote(m.cost) / qty, ts: m.checkpoint_timestamp_ms };
+    const list = lotsByKey.get(k);
+    if (list) list.push(lot);
+    else lotsByKey.set(k, [lot]);
+  }
+  const redeemsByKey = new Map<string, PositionRedeemedEvent[]>();
+  for (const r of redeems) {
+    const k = keyOf(r);
+    const list = redeemsByKey.get(k);
+    if (list) list.push(r);
+    else redeemsByKey.set(k, [r]);
+  }
 
-function blankRow(owner: string): LeaderboardRow {
-  return {
-    owner,
-    volume: 0,
-    trades: 0,
-    redeems: 0,
-    payout: 0,
-    lastActiveMs: 0,
-    managerIds: [],
-  };
+  let total = 0;
+  for (const [k, lots] of lotsByKey) {
+    lots.sort((a, b) => a.ts - b.ts);
+    const rs = (redeemsByKey.get(k) ?? []).slice().sort((a, b) => a.checkpoint_timestamp_ms - b.checkpoint_timestamp_ms);
+    let li = 0;
+    for (const r of rs) {
+      let remaining = fromQuote(r.quantity);
+      while (remaining > 1e-9 && li < lots.length) {
+        const lot = lots[li];
+        const take = Math.min(remaining, lot.qty);
+        const days = Math.max(0, (r.checkpoint_timestamp_ms - lot.ts) / DAY_MS);
+        total += take * lot.costPerUnit * days;
+        lot.qty -= take;
+        remaining -= take;
+        if (lot.qty <= 1e-9) li++;
+      }
+    }
+    for (; li < lots.length; li++) {
+      const lot = lots[li];
+      if (lot.qty <= 1e-9) continue;
+      total += lot.qty * lot.costPerUnit * Math.max(0, (nowMs - lot.ts) / DAY_MS);
+    }
+  }
+  return total;
 }
 
 /**
- * Stage 1: fold global event streams into per-owner rows, sorted by volume desc.
- * Owners with no trading activity in the window are omitted (a leaderboard of
- * empty accounts is noise).
+ * Fold global event streams into scored per-owner rows, ranked by Points desc.
+ * Owners with no trading activity in the window are omitted. `nowMs` dates the
+ * holding time of still-open positions (pass Date.now() in the app).
  */
 export function aggregateLeaderboard(
   minted: PositionMintedEvent[],
   redeemed: PositionRedeemedEvent[],
   managers: ManagerRow[],
+  nowMs: number,
 ): LeaderboardRow[] {
-  const rows = new Map<string, LeaderboardRow>();
-  const ensure = (owner: string) => {
-    let r = rows.get(owner);
-    if (!r) {
-      r = blankRow(owner);
-      rows.set(owner, r);
-    }
-    return r;
-  };
-
-  // owner → their manager ids (used by the PnL enrichment pass).
+  // owner → their manager ids (for cross-linking to the Portfolio).
   const ownerManagers = new Map<string, string[]>();
   for (const m of managers) {
     const list = ownerManagers.get(m.owner);
@@ -105,82 +129,75 @@ export function aggregateLeaderboard(
     else ownerManagers.set(m.owner, [m.manager_id]);
   }
 
+  // Per-owner running totals + the raw events needed for FIFO holding time.
+  interface Acc {
+    volume: number;
+    trades: number;
+    redeems: number;
+    payout: number;
+    lastActiveMs: number;
+    mints: PositionMintedEvent[];
+    redeemEvents: PositionRedeemedEvent[];
+  }
+  const acc = new Map<string, Acc>();
+  const ensure = (owner: string) => {
+    let a = acc.get(owner);
+    if (!a) {
+      a = { volume: 0, trades: 0, redeems: 0, payout: 0, lastActiveMs: 0, mints: [], redeemEvents: [] };
+      acc.set(owner, a);
+    }
+    return a;
+  };
+
   for (const e of minted) {
-    const r = ensure(e.trader);
-    r.volume += fromQuote(e.cost);
-    r.trades += 1;
-    if (e.checkpoint_timestamp_ms > r.lastActiveMs) r.lastActiveMs = e.checkpoint_timestamp_ms;
+    const a = ensure(e.trader);
+    a.volume += fromQuote(e.cost);
+    a.trades += 1;
+    a.mints.push(e);
+    if (e.checkpoint_timestamp_ms > a.lastActiveMs) a.lastActiveMs = e.checkpoint_timestamp_ms;
   }
   for (const e of redeemed) {
-    const r = ensure(e.owner);
-    r.payout += fromQuote(e.payout);
-    r.redeems += 1;
-    if (e.checkpoint_timestamp_ms > r.lastActiveMs) r.lastActiveMs = e.checkpoint_timestamp_ms;
+    const a = ensure(e.owner);
+    a.payout += fromQuote(e.payout);
+    a.redeems += 1;
+    a.redeemEvents.push(e);
+    if (e.checkpoint_timestamp_ms > a.lastActiveMs) a.lastActiveMs = e.checkpoint_timestamp_ms;
   }
 
-  for (const [owner, r] of rows) {
-    r.managerIds = ownerManagers.get(owner) ?? [];
+  const rows: LeaderboardRow[] = [];
+  for (const [owner, a] of acc) {
+    const dusdcDaysHeld = holdingDusdcDays(a.mints, a.redeemEvents, nowMs);
+    // Performance input: realized-net proxy within the window (floored at 0 in
+    // the formula → losses never subtract, you always earn points).
+    const points = pointsFromInput({ volume: a.volume, netPnl: a.payout - a.volume, dusdcDaysHeld });
+    rows.push({
+      owner,
+      volume: a.volume,
+      trades: a.trades,
+      redeems: a.redeems,
+      payout: a.payout,
+      lastActiveMs: a.lastActiveMs,
+      managerIds: ownerManagers.get(owner) ?? [],
+      points,
+    });
   }
 
-  return [...rows.values()].sort((a, b) => b.volume - a.volume);
+  return rows.sort((x, y) => y.points.total - x.points.total);
 }
 
-/**
- * Stage 2: fold per-manager enrichment into the rows. An owner's PnL and
- * win/loss are summed across all their managers. Rows whose managers aren't in
- * the map are returned unchanged (still pnlLoaded=false).
- */
-export function attachEnrichment(
-  rows: LeaderboardRow[],
-  enrich: Map<string, ManagerEnrichment>,
-): LeaderboardRow[] {
-  return rows.map((r) => {
-    const parts = r.managerIds
-      .map((id) => enrich.get(id))
-      .filter((e): e is ManagerEnrichment => e != null);
-    if (parts.length === 0) return r;
-    const realizedPnl = parts.reduce((s, m) => s + m.realizedPnl, 0);
-    const unrealizedPnl = parts.reduce((s, m) => s + m.unrealizedPnl, 0);
-    const accountValue = parts.reduce((s, m) => s + m.accountValue, 0);
-    const openPositions = parts.reduce((s, m) => s + m.openPositions, 0);
-    const wins = parts.reduce((s, m) => s + m.wins, 0);
-    const decided = parts.reduce((s, m) => s + m.decided, 0);
-    return {
-      ...r,
-      realizedPnl,
-      unrealizedPnl,
-      totalPnl: realizedPnl + unrealizedPnl,
-      accountValue,
-      openPositions,
-      wins,
-      decided,
-      winRate: decided > 0 ? wins / decided : undefined,
-      pnlLoaded: true,
-    };
-  });
-}
+export type SortKey = 'points' | 'volume';
 
-export type SortKey = 'volume' | 'trades' | 'winrate' | 'pnl';
-
-/** Sort a copy of the rows by the chosen column (desc). Unloaded values sink. */
+/** Sort a copy of the rows by the chosen column (desc). */
 export function sortRows(rows: LeaderboardRow[], key: SortKey): LeaderboardRow[] {
   const copy = [...rows];
   copy.sort((a, b) => {
-    if (key === 'trades') return b.trades - a.trades;
-    if (key === 'pnl') {
-      const av = a.totalPnl ?? Number.NEGATIVE_INFINITY;
-      const bv = b.totalPnl ?? Number.NEGATIVE_INFINITY;
-      if (av === bv) return b.volume - a.volume;
-      return bv - av;
+    if (key === 'volume') {
+      if (b.volume === a.volume) return b.points.total - a.points.total;
+      return b.volume - a.volume;
     }
-    if (key === 'winrate') {
-      // Rank by win rate; break ties by sample size so 1/1 doesn't beat 9/10.
-      const av = a.winRate ?? Number.NEGATIVE_INFINITY;
-      const bv = b.winRate ?? Number.NEGATIVE_INFINITY;
-      if (av === bv) return (b.decided ?? 0) - (a.decided ?? 0);
-      return bv - av;
-    }
-    return b.volume - a.volume;
+    // points (default): rank by total, break ties by volume.
+    if (b.points.total === a.points.total) return b.volume - a.volume;
+    return b.points.total - a.points.total;
   });
   return copy;
 }

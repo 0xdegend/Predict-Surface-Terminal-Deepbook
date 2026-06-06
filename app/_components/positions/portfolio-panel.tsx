@@ -20,9 +20,11 @@ import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { PositionCard } from './position-card';
 import { PerformanceCard } from './performance-card';
+import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
 import { derivePortfolioHistory } from '@/lib/portfolio/history';
+import { computePoints } from '@/lib/points/score';
 import type { PositionSummary } from '@/lib/api/types';
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
@@ -92,6 +94,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Settled track record (closed positions) — drives the performance bento + table.
   const { history, stats } = derivePortfolioHistory(positions);
 
+  // Live Points score (phase 1 — derived from this account's positions).
+  const points = computePoints(positions, now);
+
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-6">
       {/* Account header — bento: a tall hero value beside a 2×2 of stats */}
@@ -154,6 +159,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           label="Wallet DUSDC"
           value={acct.dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(acct.dusdcBalance))}
         />
+
+        {/* Points — full-width footer row of the bento */}
+        <PointsTile breakdown={points} />
       </div>
 
       {acct.error && (

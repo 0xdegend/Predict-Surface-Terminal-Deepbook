@@ -52,14 +52,45 @@ export interface PointsBreakdown {
   avgHoldDays: number;
 }
 
+/**
+ * The three normalized inputs the score is a pure function of. Source-agnostic
+ * so the Portfolio (from position summaries) and the Leaderboard (from event
+ * streams) feed the SAME formula + rates and therefore agree.
+ */
+export interface PointsInput {
+  /** Total DUSDC paid to mint. */
+  volume: number;
+  /** Net PnL in DUSDC (signed). Floored at 0 inside the formula. */
+  netPnl: number;
+  /** Σ (position cost in DUSDC · days held) — liquidity-weighted time in market. */
+  dusdcDaysHeld: number;
+}
+
+/** The canonical scoring formula. Everything else adapts a data source to this. */
+export function pointsFromInput({ volume, netPnl, dusdcDaysHeld }: PointsInput): PointsBreakdown {
+  const liquidity = volume * POINTS_RATES.perDusdcVolume;
+  const performance = Math.max(0, netPnl) * POINTS_RATES.perDusdcProfit;
+  const holding = dusdcDaysHeld * POINTS_RATES.perDusdcDayHeld;
+  return {
+    liquidity,
+    performance,
+    holding,
+    total: liquidity + performance + holding,
+    volume,
+    netPnl,
+    avgHoldDays: volume > 0 ? dusdcDaysHeld / volume : 0,
+  };
+}
+
 /** A position still counts as "held" while it has open quantity. */
 function holdEndMs(p: PositionSummary, nowMs: number): number {
   return p.open_quantity > 0 ? nowMs : p.last_activity_at;
 }
 
 /**
- * Compute a trader's Points from their position summaries. Pure — pass `nowMs`
- * so it's deterministic and testable. Empty input → an all-zero breakdown.
+ * Compute a trader's Points from their position summaries (the Portfolio
+ * source — has authoritative realized + unrealized PnL). Pure: pass `nowMs` so
+ * it's deterministic and testable. Empty input → an all-zero breakdown.
  */
 export function computePoints(positions: PositionSummary[], nowMs: number): PointsBreakdown {
   let volume = 0;
@@ -75,17 +106,5 @@ export function computePoints(positions: PositionSummary[], nowMs: number): Poin
     dusdcDaysHeld += cost * days;
   }
 
-  const liquidity = volume * POINTS_RATES.perDusdcVolume;
-  const performance = Math.max(0, netPnl) * POINTS_RATES.perDusdcProfit;
-  const holding = dusdcDaysHeld * POINTS_RATES.perDusdcDayHeld;
-
-  return {
-    liquidity,
-    performance,
-    holding,
-    total: liquidity + performance + holding,
-    volume,
-    netPnl,
-    avgHoldDays: volume > 0 ? dusdcDaysHeld / volume : 0,
-  };
+  return pointsFromInput({ volume, netPnl, dusdcDaysHeld });
 }

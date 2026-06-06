@@ -1,10 +1,11 @@
 'use client';
 
 /**
- * Leaderboard — top traders on Predict, ranked by volume / activity / PnL.
- * Volume & trades are complete within the event window; PnL is authoritative for
- * the most active accounts (see useLeaderboard / aggregate.ts). Server-data only,
- * so it renders for any visitor; the connected wallet's row is highlighted.
+ * Leaderboard — top traders on Predict, ranked by Points (and Volume). Points
+ * and volume are computed from the global event streams (see aggregate.ts), so
+ * the board is complete for every trader. Authoritative win rate & PnL live on
+ * each trader's Portfolio. Server-data only — renders for any visitor; the
+ * connected wallet's row is highlighted.
  */
 import { useState } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
@@ -18,10 +19,10 @@ import {
   LuChevronRight,
   LuCrown,
 } from 'react-icons/lu';
-import { useLeaderboard, ENRICH_OWNERS } from '@/lib/hooks/use-leaderboard';
+import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
-import { num, signed, shortId, pct } from '@/lib/format';
+import { num, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { ErrorState } from '../ui/error-state';
@@ -32,11 +33,12 @@ const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictConfig.network}
 const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
 const PAGE_SIZE = 25;
 
+/** Table column template — # · Trader · Points · Volume. */
+const COLS = 'grid-cols-[2.5rem_1fr_7rem_7rem]';
+
 const SORT_LABEL: Record<SortKey, string> = {
+  points: 'Points',
   volume: 'Volume',
-  trades: 'Trades',
-  winrate: 'Win rate',
-  pnl: 'PnL',
 };
 
 // Identicon palette — harmonized with the app's icon hues so the wallet
@@ -117,10 +119,10 @@ function WalletAvatar({ addr, size, ring }: { addr: string; size: number; ring: 
 }
 
 export function LeaderboardPanel() {
-  const { rows, baseLoading, pnlLoading, error, refetch } = useLeaderboard();
+  const { rows, loading, refreshing, error, refetch } = useLeaderboard();
   const account = useCurrentAccount();
   const mounted = useMounted();
-  const [sort, setSort] = useState<SortKey>('volume');
+  const [sort, setSort] = useState<SortKey>('points');
   const [page, setPage] = useState(0);
 
   // Switching the ranking reorders everything → jump back to the top page.
@@ -157,7 +159,7 @@ export function LeaderboardPanel() {
 
   // The podium owns the top three on the first page; the table picks up from
   // rank 4 there so nobody is listed twice. Other pages table everything.
-  const showPodium = !baseLoading && safePage === 0 && sorted.length > 0;
+  const showPodium = !loading && safePage === 0 && sorted.length > 0;
   const podiumRows = showPodium ? sorted.slice(0, 3) : [];
   const tableStart = showPodium ? Math.min(3, sorted.length) : start;
   const pageRows = sorted.slice(tableStart, start + PAGE_SIZE);
@@ -173,15 +175,15 @@ export function LeaderboardPanel() {
             Leaderboard
           </h1>
           <p className="mt-1 text-[12px] text-text-3">
-            Top traders on Predict · {predictConfig.network} · live from the public event stream
+            Ranked by Points · {predictConfig.network} · live from the public event stream
           </p>
         </div>
         <button
           onClick={refetch}
-          disabled={baseLoading}
+          disabled={loading}
           className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:border-up/40 hover:bg-up/5 hover:text-text-1 disabled:opacity-50"
         >
-          <LuRefreshCw size={12} className={pnlLoading ? 'animate-spin' : ''} />
+          <LuRefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
           Refresh
         </button>
       </div>
@@ -195,12 +197,13 @@ export function LeaderboardPanel() {
 
       {/* Sort tabs */}
       <div className="mb-3 flex items-center gap-1">
+        <SortTab label="Points" active={sort === 'points'} onClick={() => selectSort('points')} />
         <SortTab label="Volume" active={sort === 'volume'} onClick={() => selectSort('volume')} />
-        <SortTab label="Trades" active={sort === 'trades'} onClick={() => selectSort('trades')} />
-        <SortTab label="Win rate" active={sort === 'winrate'} onClick={() => selectSort('winrate')} />
-        <SortTab label="PnL" active={sort === 'pnl'} onClick={() => selectSort('pnl')} />
         <span className="ml-auto text-[10px] text-text-3">
-          Win rate &amp; PnL ranked among the {ENRICH_OWNERS} most active accounts
+          Win rate &amp; PnL on your{' '}
+          <a href="/portfolio" className="underline hover:text-text-2">
+            Portfolio
+          </a>
         </span>
       </div>
 
@@ -209,25 +212,23 @@ export function LeaderboardPanel() {
 
       {/* Your standing — placed under the podium so the connected wallet finds
           itself instantly without paging */}
-      {!baseLoading && myRow ? (
+      {!loading && myRow ? (
         <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} />
-      ) : !baseLoading && me && sorted.length > 0 ? (
+      ) : !loading && me && sorted.length > 0 ? (
         <NotRankedHint />
       ) : null}
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
-        <div className="head-divider grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-3 text-[10px] font-medium uppercase tracking-wider text-text-3">
+        <div className={`head-divider grid ${COLS} items-center gap-2 px-4 py-3 text-[10px] font-medium uppercase tracking-wider text-text-3`}>
           <span className="text-right">#</span>
           <span>Trader</span>
+          <span className="text-right">Points</span>
           <span className="text-right">Volume</span>
-          <span className="text-right">Trades</span>
-          <span className="text-right">Win</span>
-          <span className="text-right">PnL</span>
         </div>
 
         <div className="rows-divided">
-        {baseLoading ? (
+        {loading ? (
           <SkeletonRows />
         ) : sorted.length === 0 ? (
           <div className="px-4 py-12 text-center text-[13px] text-text-2">No trading activity yet.</div>
@@ -239,7 +240,7 @@ export function LeaderboardPanel() {
             return (
               <div
                 key={r.owner}
-                className={`grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-3.5 font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.02] ${
+                className={`grid ${COLS} items-center gap-2 px-4 py-3.5 font-mono text-[12px] tabular-nums transition-colors hover:bg-white/[0.02] ${
                   isMe ? 'bg-[var(--accent-soft)]' : ''
                 }`}
               >
@@ -254,10 +255,8 @@ export function LeaderboardPanel() {
                   {shortId(r.owner)}
                   {isMe && <span className="ml-1.5 text-[10px] text-[var(--accent)]">you</span>}
                 </a>
+                <span className="text-right font-semibold text-[var(--accent)]">{num(r.points.total, 0)}</span>
                 <span className="text-right text-text-1">{num(r.volume, 2)}</span>
-                <span className="text-right text-text-2">{r.trades}</span>
-                <WinCell row={r} />
-                <PnlCell row={r} />
               </div>
             );
           })}
@@ -276,9 +275,11 @@ export function LeaderboardPanel() {
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-        Volume = total DUSDC paid to mint and trade count are complete within the latest event window.
-        PnL (realized + unrealized) is read authoritatively per&#8209;manager and summed across each
-        trader&apos;s accounts. Quote asset · {predictConfig.quote.symbol}.
+        Points = liquidity (DUSDC minted) + performance (net profit, floored at zero — a loss never
+        subtracts) + holding time, computed live from the event stream within the latest window, so
+        every trader is ranked. Win rate &amp; authoritative PnL are on your{' '}
+        <a href="/portfolio" className="underline hover:text-text-2">Portfolio</a>. Quote asset ·{' '}
+        {predictConfig.quote.symbol}.
       </p>
     </div>
   );
@@ -311,28 +312,15 @@ function MyRankCard({ rank, total, row }: { rank: number; total: number; row: Ro
         <span className="font-mono text-[10px] tabular-nums text-text-3">of {total} traders</span>
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-2 font-mono tabular-nums">
+        <RankStat label="Points">
+          <span className="text-[var(--accent)]">{num(row.points.total, 0)}</span>
+        </RankStat>
         <RankStat label="Volume">
           <span className="text-text-1">{num(row.volume, 2)}</span>
           <span className="ml-1 text-[10px] text-text-3">{predictConfig.quote.symbol}</span>
         </RankStat>
         <RankStat label="Trades">
           <span className="text-text-2">{row.trades}</span>
-        </RankStat>
-        <RankStat label="Win">
-          {!row.pnlLoaded ? (
-            <span className="text-text-3">…</span>
-          ) : row.winRate === undefined ? (
-            <span className="text-text-3">—</span>
-          ) : (
-            <span className="text-text-1">{pct(row.winRate, 0)}</span>
-          )}
-        </RankStat>
-        <RankStat label="PnL">
-          {!row.pnlLoaded || row.totalPnl === undefined ? (
-            <span className="text-text-3">…</span>
-          ) : (
-            <span className={row.totalPnl >= 0 ? 'text-up' : 'text-down'}>{signed(row.totalPnl, 2)}</span>
-          )}
         </RankStat>
       </div>
     </div>
@@ -383,47 +371,22 @@ function Podium({ rows, sort, me }: { rows: Row[]; sort: SortKey; me: string | n
 }
 
 /** Primary metric for a podium card, following the active sort. */
-function primaryMetric(row: Row, sort: SortKey): { value: string; unit?: string; tone: 'up' | 'down' | 'plain' } {
-  switch (sort) {
-    case 'trades':
-      return { value: num(row.trades, 0), unit: 'trades', tone: 'plain' };
-    case 'winrate':
-      if (!row.pnlLoaded) return { value: '…', tone: 'plain' };
-      if (row.winRate === undefined) return { value: '—', tone: 'plain' };
-      return { value: pct(row.winRate, 0), unit: `${row.decided} decided`, tone: 'plain' };
-    case 'pnl':
-      if (!row.pnlLoaded || row.totalPnl === undefined) return { value: '…', tone: 'plain' };
-      return {
-        value: signed(row.totalPnl, 2),
-        unit: predictConfig.quote.symbol,
-        tone: row.totalPnl >= 0 ? 'up' : 'down',
-      };
-    case 'volume':
-    default:
-      return { value: num(row.volume, 2), unit: predictConfig.quote.symbol, tone: 'plain' };
-  }
+function primaryMetric(row: Row, sort: SortKey): { value: string; unit?: string; accent: boolean } {
+  if (sort === 'volume') return { value: num(row.volume, 2), unit: predictConfig.quote.symbol, accent: false };
+  return { value: num(row.points.total, 0), unit: 'pts', accent: true };
 }
 
 function PodiumCard({ rank, row, sort, isMe }: { rank: number; row: Row; sort: SortKey; isMe: boolean }) {
   const hue = RANK_HUE[rank];
   const champion = rank === 0;
   const m = primaryMetric(row, sort);
-  const valueColor = m.tone === 'up' ? 'var(--up)' : m.tone === 'down' ? 'var(--down)' : 'var(--text-1)';
+  const valueColor = m.accent ? 'var(--accent)' : 'var(--text-1)';
 
-  // Secondary figures — the two metrics that aren't the headline.
+  // Secondary figures — the metrics that aren't the headline.
   const secondaries: { label: string; node: React.ReactNode }[] = [];
+  if (sort !== 'points') secondaries.push({ label: 'Points', node: <span className="text-[var(--accent)]">{num(row.points.total, 0)}</span> });
   if (sort !== 'volume') secondaries.push({ label: 'Vol', node: num(row.volume, 2) });
-  if (sort !== 'trades') secondaries.push({ label: 'Trades', node: row.trades });
-  if (sort !== 'pnl')
-    secondaries.push({
-      label: 'PnL',
-      node:
-        !row.pnlLoaded || row.totalPnl === undefined ? (
-          <span className="text-text-3">…</span>
-        ) : (
-          <span className={row.totalPnl >= 0 ? 'text-up' : 'text-down'}>{signed(row.totalPnl, 2)}</span>
-        ),
-    });
+  secondaries.push({ label: 'Trades', node: row.trades });
 
   return (
     <div
@@ -486,27 +449,6 @@ function PodiumCard({ rank, row, sort, isMe }: { rank: number; row: Row; sort: S
         ))}
       </div>
     </div>
-  );
-}
-
-function WinCell({ row }: { row: ReturnType<typeof sortRows>[number] }) {
-  if (!row.pnlLoaded) return <span className="text-right text-text-3">…</span>;
-  if (row.winRate === undefined) return <span className="text-right text-text-3">—</span>;
-  return (
-    <span className="text-right text-text-1">
-      {pct(row.winRate, 0)}
-      <span className="ml-1 text-[10px] text-text-3">·{row.decided}</span>
-    </span>
-  );
-}
-
-function PnlCell({ row }: { row: ReturnType<typeof sortRows>[number] }) {
-  if (!row.pnlLoaded || row.totalPnl === undefined) {
-    return <span className="text-right text-text-3">…</span>;
-  }
-  const up = row.totalPnl >= 0;
-  return (
-    <span className={`text-right ${up ? 'text-up' : 'text-down'}`}>{signed(row.totalPnl, 2)}</span>
   );
 }
 
@@ -627,15 +569,10 @@ function SkeletonRows() {
   return (
     <>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div
-          key={i}
-          className="grid grid-cols-[2.5rem_1fr_5.5rem_4rem_5rem_6.5rem] items-center gap-2 px-4 py-3.5"
-        >
+        <div key={i} className={`grid ${COLS} items-center gap-2 px-4 py-3.5`}>
           <div className="ml-auto h-3 w-3 rounded bg-white/[0.04]" />
           <div className="h-3 w-32 rounded bg-white/[0.04]" />
           <div className="ml-auto h-3 w-12 rounded bg-white/[0.04]" />
-          <div className="ml-auto h-3 w-8 rounded bg-white/[0.04]" />
-          <div className="ml-auto h-3 w-10 rounded bg-white/[0.04]" />
           <div className="ml-auto h-3 w-14 rounded bg-white/[0.04]" />
         </div>
       ))}

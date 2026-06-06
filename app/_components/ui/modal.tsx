@@ -86,7 +86,7 @@ export function Modal({
         aria-label={title}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className={`relative max-h-[92vh] w-full overflow-y-auto ${maxWidthClass} ${panelClass} outline-none motion-safe:animate-[popIn_140ms_ease-out]`}
+        className={`relative max-h-[92vh] w-full overflow-y-auto ${maxWidthClass} ${panelClass} outline-none focus-visible:outline-none motion-safe:animate-[popIn_140ms_ease-out]`}
       >
         {/* faint top-edge highlight — the only "creative" flourish, no hard border */}
         {glass && (
