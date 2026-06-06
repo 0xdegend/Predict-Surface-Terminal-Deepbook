@@ -7,6 +7,10 @@
  */
 import { fromQuote, toFloat } from '@/config/scale';
 import type { PositionSummary } from '@/lib/api/types';
+import { isRedeemableStatus } from '@/lib/portfolio/history';
+
+// Re-exported so position UI can import status helpers from one place.
+export { isRedeemableStatus, REDEEMABLE_STATUSES } from '@/lib/portfolio/history';
 
 export interface PositionMetrics {
   contracts: number; // human contract count (each pays 1.00 if it wins)
@@ -35,7 +39,7 @@ export function positionMetrics(p: PositionSummary): PositionMetrics {
     pnlPct: basis > 0 ? p.unrealized_pnl / basis : 0,
     entryPrice: toFloat(p.average_entry_price),
     markPrice: p.mark_price != null ? toFloat(p.mark_price) : null,
-    isSettled: p.status === 'settled' || p.status === 'awaiting_settlement',
+    isSettled: isRedeemableStatus(p.status),
   };
 }
 
@@ -47,8 +51,12 @@ export function statusLabel(status: PositionSummary['status']): string {
       return 'open';
     case 'awaiting_settlement':
       return 'awaiting settlement';
+    case 'redeemable':
+      return 'ready to redeem';
     case 'settled':
       return 'settled';
+    case 'lost':
+      return 'lost';
     case 'redeemed':
       return 'redeemed';
     default:

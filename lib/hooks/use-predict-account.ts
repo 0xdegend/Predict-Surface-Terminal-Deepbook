@@ -23,6 +23,7 @@ import {
 } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
 import { humanizeError } from '@/lib/sui/abort';
+import { isRedeemableStatus } from '@/lib/portfolio/history';
 import { toast } from '@/lib/store/toast-store';
 import {
   buildCreateManagerTx,
@@ -147,7 +148,9 @@ export function usePredictAccount() {
 
   async function redeem(pos: PositionSummary) {
     if (!managerId) return null;
-    const settled = pos.status === 'settled' || pos.status === 'awaiting_settlement';
+    // A 'redeemable' (settled, in-the-money, unclaimed) position must use the
+    // permissionless settled path — see REDEEMABLE_STATUSES.
+    const settled = isRedeemableStatus(pos.status);
     return runTx(
       `redeem-${pos.oracle_id}-${pos.strike}-${pos.is_up}`,
       buildRedeemTx({

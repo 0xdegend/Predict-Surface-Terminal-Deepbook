@@ -14,6 +14,7 @@ import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote } from '@/config/scale';
+import { isRedeemableStatus } from './position-metrics';
 import { quote as fmtQuote, signed, pct } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
@@ -79,10 +80,10 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
 
   const s = acct.summary;
   const positions = acct.positions;
-  const open = positions.filter((p) => p.open_quantity > 0 && p.status !== 'settled' && p.status !== 'awaiting_settlement');
-  const redeemable = positions.filter(
-    (p) => p.open_quantity > 0 && (p.status === 'settled' || p.status === 'awaiting_settlement'),
-  );
+  // Settled in-the-money + unclaimed (status 'redeemable') → the redeem section;
+  // everything else still holding quantity (status 'active') → open positions.
+  const redeemable = positions.filter((p) => p.open_quantity > 0 && isRedeemableStatus(p.status));
+  const open = positions.filter((p) => p.open_quantity > 0 && !isRedeemableStatus(p.status));
 
   const totalPnl = s ? fromQuote(s.realized_pnl + s.unrealized_pnl) : 0;
   const unrealized = s ? fromQuote(s.unrealized_pnl) : 0;

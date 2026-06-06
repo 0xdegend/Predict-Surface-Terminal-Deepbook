@@ -171,10 +171,51 @@ body {
   background-size: 100% 1px;
 }
 
+/* Non-table sibling dividers (CSS-grid rows, flex lists) — the same quiet,
+   edge-fading hairline as `.row-divider`, applied to each child after the first.
+   Drawn as a background gradient so row hover/selected background-COLORS still
+   layer on top. Use on the container that holds the rows. */
+.rows-divided > * + * {
+  background-image: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.05) 12%,
+    rgba(255, 255, 255, 0.05) 88%,
+    transparent
+  );
+  background-repeat: no-repeat;
+  background-position: top;
+  background-size: 100% 1px;
+}
+
 /* Standalone faded hairline (between metric rows etc.) — same quiet,
    edge-fading 1px line as the table dividers, as a flex/block element. */
 .hairline-fade {
   height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.06) 10%,
+    rgba(255, 255, 255, 0.06) 90%,
+    transparent
+  );
+}
+
+/* Sticky table-header divider — replaces a hard edge-to-edge `border-b` with the
+   same quiet edge-fading hairline. Drawn as an ::after on the header row so it
+   spans the full table width (a per-<th> border would segment at every cell) and
+   rides along when the header is sticky. */
+.head-divider {
+  position: relative;
+}
+.head-divider::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
   background: linear-gradient(
     to right,
     transparent,

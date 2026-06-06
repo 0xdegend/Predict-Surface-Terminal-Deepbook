@@ -56,6 +56,20 @@ export interface WinStats {
 
 const CLOSED = new Set(['redeemed', 'lost']);
 
+/**
+ * Statuses meaning "settled, in-the-money, not yet claimed" — redeeming is final
+ * and must use the permissionless settled path. Verified live (2026-06-06) the
+ * server emits `redeemable`; `settled` / `awaiting_settlement` are accepted
+ * defensively in case the schema gains them.
+ */
+export const REDEEMABLE_STATUSES: ReadonlySet<string> = new Set([
+  'redeemable',
+  'settled',
+  'awaiting_settlement',
+]);
+
+export const isRedeemableStatus = (status: string): boolean => REDEEMABLE_STATUSES.has(status);
+
 /** One closed position → a display row. PnL = payout − cost (see file header). */
 function toPrediction(p: PositionSummary): PastPrediction {
   const cost = fromQuote(p.total_cost);

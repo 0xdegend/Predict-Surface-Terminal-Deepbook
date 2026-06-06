@@ -65,7 +65,7 @@ export function RedeemModal({
             <Row label={proceedsLabel}>
               <span className="text-text-1">{m.value != null ? fmtQuote(m.value) : '—'}</span>
             </Row>
-            <div className="my-1 border-t border-line-soft" />
+            <div className="hairline-fade my-1.5" />
             <Row label="PnL">
               <span className={m.pnl >= 0 ? 'text-up' : 'text-down'}>
                 {signed(m.pnl)}

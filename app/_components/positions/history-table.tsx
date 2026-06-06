@@ -28,7 +28,7 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
       <div className="scroll-quiet max-h-[70vh] overflow-auto">
         <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
           <thead>
-            <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
+            <tr className="head-divider sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
               <Th>Market</Th>
               <Th>Result</Th>
               <Th className="text-right">Size</Th>
