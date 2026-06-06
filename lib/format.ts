@@ -1,17 +1,17 @@
 /**
  * lib/format.ts — the ONE number/text formatting util (§10.7).
- * Fixed precision per field, thin-space thousands, signed+colored PnL, truncated
+ * Fixed precision per field, comma thousands, signed+colored PnL, truncated
  * addresses. Everything that renders a number should route through here so columns
  * never jitter and precision stays consistent.
  */
 
-const THIN_SPACE = ' ';
+const THOUSANDS_SEP = ',';
 
 function groupThousands(intStr: string): string {
-  return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, THIN_SPACE);
+  return intStr.replace(/\B(?=(\d{3})+(?!\d))/g, THOUSANDS_SEP);
 }
 
-/** Generic fixed-decimal with thin-space grouping. */
+/** Generic fixed-decimal with comma grouping. */
 export function num(value: number, decimals = 2): string {
   if (!Number.isFinite(value)) return '—';
   const sign = value < 0 ? '-' : '';

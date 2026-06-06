@@ -20,6 +20,7 @@ import {
   getManagerPositions,
   getPositionsMinted,
   getPositionsRedeemed,
+  PredictApiError,
   qk,
 } from '@/lib/api/client';
 import {
@@ -37,13 +38,45 @@ const EVENT_LIMIT = 2000;
 export const ENRICH_OWNERS = 50;
 /** Hard cap on enriched managers — bounds the per-manager fetch fan-out. */
 const MAX_ENRICH_MANAGERS = 120;
-/** Parallel manager fetches (politeness to the public server). */
-const CONCURRENCY = 8;
+/**
+ * Parallel manager fetches. Deliberately gentle: the public server starts
+ * dropping/returning non-JSON under a sustained burst, and a swallowed failure
+ * silently leaves a top row un-enriched (the "…" PnL/win bug). Kept low so the
+ * retry below rarely has to fire. See RETRY_TRIES.
+ */
+const CONCURRENCY = 4;
+/** Per-manager retry budget for transient (rate-limit / parse) failures. */
+const RETRY_TRIES = 4;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Transient = worth retrying: rate limits, 5xx, and parse/network errors
+ *  (no status). A genuine 4xx (e.g. 404) is permanent — don't hammer it. */
+function isTransient(err: unknown): boolean {
+  if (err instanceof PredictApiError) return err.status === 429 || err.status >= 500;
+  return true; // SyntaxError from a truncated body, network blips, aborts
+}
+
+/** Run `fn` with exponential backoff + jitter on transient failures. */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < RETRY_TRIES; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      last = err;
+      if (i === RETRY_TRIES - 1 || !isTransient(err)) break;
+      await sleep(150 * 2 ** i + Math.random() * 120);
+    }
+  }
+  throw last;
+}
 
 /**
  * Fetch per-manager enrichment (summary → PnL, positions → win/loss) with a
- * bounded worker pool. Win/loss reuses the canonical portfolio derivation so the
- * leaderboard and portfolio never disagree. Failures are skipped.
+ * bounded worker pool and per-manager retries. Win/loss reuses the canonical
+ * portfolio derivation so the leaderboard and portfolio never disagree. A
+ * manager that still fails after all retries is skipped.
  */
 async function fetchEnrichment(ids: string[]): Promise<Map<string, ManagerEnrichment>> {
   const out = new Map<string, ManagerEnrichment>();
@@ -52,10 +85,9 @@ async function fetchEnrichment(ids: string[]): Promise<Map<string, ManagerEnrich
     while (cursor < ids.length) {
       const id = ids[cursor++];
       try {
-        const [summary, positions] = await Promise.all([
-          getManagerSummary(id),
-          getManagerPositions(id),
-        ]);
+        const [summary, positions] = await withRetry(() =>
+          Promise.all([getManagerSummary(id), getManagerPositions(id)]),
+        );
         const { stats } = derivePortfolioHistory(positions);
         out.set(id, {
           realizedPnl: fromQuote(summary.realized_pnl),
