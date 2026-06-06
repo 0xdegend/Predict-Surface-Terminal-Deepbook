@@ -1,0 +1,13 @@
+[package]
+name = "predict_hedge"
+edition = "2024.beta"
+version = "0.1.0"
+
+[dependencies]
+deepbook_predict = { git = "https://github.com/MystenLabs/deepbookv3.git", subdir = "packages/predict", rev = "predict-testnet-4-16" }
+
+[addresses]
+predict_hedge = "0x0"
+
+[environments]
+testnet = "4c78adac"
