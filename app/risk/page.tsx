@@ -5,10 +5,13 @@ import {
   getOracleState,
   getPositionsMinted,
   getPositionsRedeemed,
+  getLpSupplies,
+  getLpWithdrawals,
 } from '@/lib/api/client';
 import { toFloat } from '@/config/scale';
 import { parseSvi } from '@/lib/svi/svi';
 import { reconstructOpenInterest, type OpenInterest } from '@/lib/risk/whatif';
+import { mergeVaultFlows, type VaultFlow } from '@/lib/risk/flows';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { VaultSummary, VaultPerformancePoint } from '@/lib/api/types';
 import { TopChrome } from '../_components/top-chrome';
@@ -22,6 +25,7 @@ interface RiskData {
   performance: VaultPerformancePoint[];
   inputs: SmileInput[];
   oi: OpenInterest[];
+  flows: VaultFlow[];
 }
 
 export default async function RiskRoute() {
@@ -29,12 +33,14 @@ export default async function RiskRoute() {
   let error: string | null = null;
 
   try {
-    const [summary, perf, oracles, minted, redeemed] = await Promise.all([
+    const [summary, perf, oracles, minted, redeemed, supplies, withdrawals] = await Promise.all([
       getVaultSummary(),
       getVaultPerformance('ALL'),
       getOracles(),
       getPositionsMinted(500),
       getPositionsRedeemed(500),
+      getLpSupplies(250),
+      getLpWithdrawals(250),
     ]);
 
     const active = oracles
@@ -59,6 +65,7 @@ export default async function RiskRoute() {
       performance: perf.points,
       inputs,
       oi: reconstructOpenInterest(minted, redeemed, activeIds),
+      flows: mergeVaultFlows(supplies, withdrawals, 200),
     };
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -80,6 +87,7 @@ export default async function RiskRoute() {
             performance={data.performance}
             inputs={data.inputs}
             oi={data.oi}
+            flows={data.flows}
           />
         </main>
       ) : null}

@@ -16,6 +16,7 @@ import { useSurfaceInputs } from './surface/use-surface-inputs';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { SmileStrip } from './smile-strip';
+import { InfoTip } from './ui/info-tip';
 import { price, num, dateUTC, countdown } from '@/lib/format';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -45,7 +46,7 @@ export function LiveSviPanel({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h2 className="eyebrow">SVI · {shown?.source === 'selected' ? 'selected' : 'soonest expiry'}</h2>
+        <h2 className="eyebrow">Market odds · {shown?.source === 'selected' ? 'selected' : 'soonest expiry'}</h2>
         <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-3">
           <span className={isLive ? 'live-dot' : 'h-1.5 w-1.5 rounded-full bg-text-3'} />
           {isLive ? 'live' : 'scrub'}
@@ -54,7 +55,7 @@ export function LiveSviPanel({
 
       {!shown ? (
         <div className="card mt-3 flex flex-col items-center gap-1 px-4 py-8 text-center">
-          <span className="text-[12px] text-text-2">No contract selected</span>
+          <span className="text-[12px] text-text-2">No market selected</span>
           <span className="text-[11px] text-text-3">Tap a point on the surface to load it here.</span>
         </div>
       ) : (
@@ -96,21 +97,33 @@ function Body({ input, now }: { input: SmileInput; now: number }) {
 
       {expired && (
         <p className="mt-2 text-[10px] leading-relaxed text-text-3">
-          This market is at expiry — with no time left, the smile collapses to a step at the
-          forward. Pick a later expiry on the surface for a full curve.
+          This market is at expiry — with no time left, the odds collapse to a hard yes/no at the
+          current price. Pick a later expiry on the surface for a full curve.
         </p>
       )}
 
       {/* Forward — the one number that matters at a glance */}
       <div className="mt-3 flex items-baseline justify-between border-t border-line-soft pt-3">
-        <span className="eyebrow">Forward</span>
+        <span className="inline-flex items-center gap-1">
+          <span className="eyebrow">Forward price</span>
+          <InfoTip label="forward price">
+            The market&apos;s expected price for {oracle.underlying_asset} at expiry (today&apos;s price
+            carried forward). The UP/DOWN odds are roughly 50/50 here.
+          </InfoTip>
+        </span>
         <span className="font-mono text-[15px] tabular-nums text-text-1">{price(forward)}</span>
       </div>
 
       {/* Raw SVI params — for quants, behind a disclosure */}
       <details className="group mt-1">
         <summary className="flex cursor-pointer list-none items-center justify-between py-2 text-text-3 transition-colors hover:text-text-2 [&::-webkit-details-marker]:hidden">
-          <span className="eyebrow">Model · SVI params</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="eyebrow">Advanced · pricing model</span>
+            <InfoTip label="pricing model (SVI)">
+              SVI is the volatility model the protocol prices with. These five numbers define the
+              whole odds curve — for traders who want the raw parameters.
+            </InfoTip>
+          </span>
           <svg
             className="transition-transform duration-150 group-open:rotate-180"
             width="10"

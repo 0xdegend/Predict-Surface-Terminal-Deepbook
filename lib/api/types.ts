@@ -244,6 +244,24 @@ export interface PositionRedeemedEvent extends EventEnvelope {
   is_settled: boolean;
 }
 
+/** /lp/supplies row (Supplied event) — DUSDC flowing INTO the vault. */
+export interface LpSupplyEvent extends Omit<EventEnvelope, 'oracle_id' | 'onchain_timestamp'> {
+  predict_id: string;
+  supplier: string;
+  quote_asset: string;
+  amount: number; // @6dec DUSDC supplied
+  shares_minted: number; // @6dec PLP
+}
+
+/** /lp/withdrawals row (Withdrawn event) — DUSDC flowing OUT of the vault. */
+export interface LpWithdrawalEvent extends Omit<EventEnvelope, 'oracle_id' | 'onchain_timestamp'> {
+  predict_id: string;
+  withdrawer: string;
+  quote_asset: string;
+  amount: number; // @6dec DUSDC withdrawn
+  shares_burned: number; // @6dec PLP
+}
+
 export interface VaultSummary {
   predict_id: string;
   quote_assets: string[];

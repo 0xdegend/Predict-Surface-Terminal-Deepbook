@@ -21,6 +21,8 @@ import type {
   VaultPerformance,
   PositionMintedEvent,
   PositionRedeemedEvent,
+  LpSupplyEvent,
+  LpWithdrawalEvent,
 } from './types';
 
 export class PredictApiError extends Error {
@@ -117,6 +119,13 @@ export const getVaultSummary = (o?: GetOptions) =>
 
 export const getVaultPerformance = (range = 'ALL', o?: GetOptions) =>
   get<VaultPerformance>(`/predicts/${PID()}/vault/performance?range=${range}`, o);
+
+/** LP capital flows — DUSDC supplied into / withdrawn from the vault. */
+export const getLpSupplies = (limit = 100, o?: GetOptions) =>
+  get<LpSupplyEvent[]>(`/lp/supplies?limit=${limit}`, o);
+
+export const getLpWithdrawals = (limit = 100, o?: GetOptions) =>
+  get<LpWithdrawalEvent[]>(`/lp/withdrawals?limit=${limit}`, o);
 
 /* ---------------------- global position events ------------------------ */
 
