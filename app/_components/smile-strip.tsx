@@ -56,26 +56,25 @@ export function SmileStrip({ input }: { input: SmileInput }) {
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
         <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-text-3">
-          Chance of finishing UP
-          <InfoTip label="chance of finishing UP">
-            For each price level, the market&apos;s fair odds that {asset} settles above it by expiry.
-            It falls as the price level rises and crosses ~50% near the current price.
+          Chance {asset} ends higher
+          <InfoTip label="chance of ending higher">
+            {`For each price level, the market's fair odds that ${asset} finishes above it by expiry. The odds drop as the price gets higher, and sit near 50% around today's price.`}
           </InfoTip>
         </span>
         {smile.hasButterfly ? (
           <span className="inline-flex items-center gap-1 font-mono text-[10px] text-down">
-            Pricing anomaly ⚠
-            <InfoTip label="pricing anomaly">
-              The odds should fall smoothly as the price level rises. Here they rise somewhere —
-              internally inconsistent (an arbitrage). Normally this never happens on live data.
+            Prices look off ⚠
+            <InfoTip label="prices look off">
+              The odds should drop smoothly as the price rises. Here they tick back up somewhere,
+              which doesn&apos;t add up (a free-money gap). On live data this almost never happens.
             </InfoTip>
           </span>
         ) : (
           <span className="inline-flex items-center gap-1 font-mono text-[10px] text-up">
-            Healthy pricing ✓
-            <InfoTip label="healthy pricing">
-              Odds fall smoothly as the price level rises — internally consistent, with no risk-free
-              arbitrage.
+            Prices look healthy ✓
+            <InfoTip label="prices look healthy">
+              The odds drop smoothly as the price rises — everything lines up, with no free-money
+              gaps in the pricing.
             </InfoTip>
           </span>
         )}
@@ -130,12 +129,17 @@ export function SmileStrip({ input }: { input: SmileInput }) {
       </div>
 
       <div className="flex justify-between font-mono text-[10px] tabular-nums text-text-3">
-        <span>forward {price(smile.forward)}</span>
         <span className="inline-flex items-center gap-1">
-          even-odds {pct(atm, 1)} UP
-          <InfoTip label="even-odds (at-the-money)">
-            At the price level nearest the forward, UP and DOWN are roughly 50/50 — the
-            &ldquo;at-the-money&rdquo; point.
+          expected {price(smile.forward)}
+          <InfoTip label="expected price">
+            {`Where the market expects ${asset} to be at expiry (today's price carried forward). Right here, ending higher or lower is close to a coin flip.`}
+          </InfoTip>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          ≈ 50/50 at {pct(atm, 1)} up
+          <InfoTip label="the 50/50 point">
+            Around the expected price, ending higher or lower is roughly even — about as close to a
+            coin flip as this market gets.
           </InfoTip>
         </span>
       </div>

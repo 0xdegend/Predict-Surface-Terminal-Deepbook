@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Grid } from '@react-three/drei';
+import { OrbitControls, Grid, Html, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
@@ -114,6 +114,7 @@ export function SurfaceCanvas({
           />
           <SelectedMarker mesh={mesh} surface={surface} />
           <FillRipple mesh={mesh} surface={surface} />
+          <SurfaceAxes mesh={mesh} />
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
             cellSize={0.5}
@@ -149,6 +150,9 @@ export function SurfaceCanvas({
         showNoArb={showNoArb}
       />
       <SurfaceControls isLive={isLive} currentTime={currentTime} historyReady={historyReady} />
+
+      <SurfaceCaption />
+      <DemoNudge isLive={isLive} />
 
       {/* Empty-state hint — fades out once a node is selected. */}
       <div
@@ -531,6 +535,130 @@ function SurfaceMeta({
           )}
         </span>
       )}
+    </div>
+  );
+}
+
+/** ms-epoch → compact "Jun 08" (UTC) for the expiry axis. */
+function shortDate(ms: number): string {
+  const d = new Date(ms);
+  const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+  return `${mon} ${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * In-canvas axis guide (legibility pass): strike ticks along the front edge,
+ * expiry dates down the right edge, a faint "forward" meridian at k=0, and two
+ * axis titles. All labels are billboarded drei <Html> (constant pixel size,
+ * always face the camera) and the meridian is one static <Line> — no per-frame
+ * cost, so the 60fps morph budget is untouched. k=0 maps to x=0 for every
+ * expiry, so the forward is a single straight line down the centre.
+ */
+function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
+  const halfW = mesh.width / 2;
+  const halfD = mesh.depth / 2;
+  const y = -0.12; // sit labels just under the surface base, on the floor
+  const frontZ = halfD; // +z edge faces the camera
+  const rightX = halfW; // +x edge faces the camera
+
+  // The front row (nearest the camera) anchors the strike price scale.
+  const frontRow = mesh.rowMeta[mesh.rowMeta.length - 1];
+  const n = mesh.colMeta.length;
+  const tickIdx = [0, Math.round((n - 1) * 0.25), Math.round((n - 1) * 0.5), Math.round((n - 1) * 0.75), n - 1];
+
+  const tick = 'pointer-events-none select-none whitespace-nowrap font-mono text-[9px] tabular-nums text-text-3';
+  const title = 'pointer-events-none select-none font-mono text-[8px] uppercase tracking-[0.22em] text-text-3';
+
+  return (
+    <group>
+      {/* Forward meridian — the "you are here / 50-50" reference. */}
+      <Line points={[[0, 0, -halfD], [0, 0, halfD]]} color="#9fb0bf" transparent opacity={0.22} lineWidth={1.2} />
+
+      {/* Strike ticks along the front edge; the centre tick is the forward. */}
+      {tickIdx.map((c, i) => {
+        const strike = frontRow.forward * Math.exp(mesh.colMeta[c].k);
+        const isFwd = i === 2;
+        return (
+          <Html key={`s${c}`} position={[mesh.colMeta[c].x, y, frontZ + 0.4]} center>
+            <span className={`${tick} ${isFwd ? 'text-accent' : ''}`}>
+              {price(strike, 0)}
+              {isFwd ? ' · fwd' : ''}
+            </span>
+          </Html>
+        );
+      })}
+
+      {/* Expiry labels down the right edge. */}
+      {mesh.rowMeta.map((rm, r) => (
+        <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center>
+          <span className={`${tick} flex flex-col items-start leading-tight`}>
+            <span className="text-text-2">{shortDate(rm.expiry)}</span>
+            <span>{ttl(rm.expiry)}</span>
+          </span>
+        </Html>
+      ))}
+
+      {/* Axis titles. */}
+      <Html position={[0, y, frontZ + 1.1]} center>
+        <span className={title}>strike</span>
+      </Html>
+      <Html position={[rightX + 1.6, y, 0]} center>
+        <span className={title}>expiry</span>
+      </Html>
+    </group>
+  );
+}
+
+/**
+ * Dismissible plain-English explainer (legibility pass) — orients a non-quant
+ * judge in one read. Persists dismissal in localStorage so it never re-nags.
+ */
+function SurfaceCaption() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    setShow(localStorage.getItem('predict.surfaceCaption') !== 'dismissed');
+  }, []);
+  if (!show) return null;
+  return (
+    <div className="glass pointer-events-auto absolute left-1/2 top-6 z-10 flex max-w-sm -translate-x-1/2 items-start gap-2.5 rounded-xl px-3.5 py-2.5">
+      <p className="text-[11px] leading-relaxed text-text-2">
+        <span className="font-medium text-text-1">Reading the surface — </span>
+        height is how big a move the market is pricing in. The dip is today&apos;s price; the wings
+        lifting on either side mean it&apos;s bracing for a swing. Warmer colors = more uncertainty.
+      </p>
+      <button
+        onClick={() => {
+          localStorage.setItem('predict.surfaceCaption', 'dismissed');
+          setShow(false);
+        }}
+        aria-label="Dismiss explainer"
+        className="-mr-1 -mt-0.5 shrink-0 rounded p-1 text-text-3 transition-colors hover:text-text-2"
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <path d="M2 2 8 8M8 2 2 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Demo nudge (legibility pass) — points judges at the two signature
+ * interactions, then fades the moment they engage (scrub off LIVE or Stress on).
+ */
+function DemoNudge({ isLive }: { isLive: boolean }) {
+  const stress = useSurfaceStore((s) => s.stress);
+  const engaged = !isLive || stress > 0;
+  return (
+    <div
+      className={`pointer-events-none absolute bottom-30 left-1/2 -translate-x-1/2 transition-all duration-300 ${
+        engaged ? 'translate-y-1 opacity-0' : 'opacity-100'
+      }`}
+    >
+      <span className="chip h-7 px-3 text-[11px] text-text-2">
+        Drag the slider to rewind · tap <span className="text-down">Stress</span> to fire the no-arb
+        check
+      </span>
     </div>
   );
 }

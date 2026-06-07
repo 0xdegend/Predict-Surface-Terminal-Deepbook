@@ -46,7 +46,7 @@ export function LiveSviPanel({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h2 className="eyebrow">Market odds · {shown?.source === 'selected' ? 'selected' : 'soonest expiry'}</h2>
+        <h2 className="eyebrow">Market odds · {shown?.source === 'selected' ? 'selected' : 'next to expire'}</h2>
         <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-3">
           <span className={isLive ? 'live-dot' : 'h-1.5 w-1.5 rounded-full bg-text-3'} />
           {isLive ? 'live' : 'scrub'}
@@ -67,14 +67,40 @@ export function LiveSviPanel({
 
 function Body({ input, now }: { input: SmileInput; now: number }) {
   const { oracle, svi, forward } = input;
+  const asset = oracle.underlying_asset;
   const msLeft = oracle.expiry - now;
   const expired = msLeft <= 0;
-  const rows: [string, string][] = [
-    ['a', num(svi.a, 6)],
-    ['b', num(svi.b, 6)],
-    ['ρ (rho)', num(svi.rho, 6)],
-    ['m', num(svi.m, 6)],
-    ['σ (sigma)', num(svi.sigma, 6)],
+  const rows: { name: string; symbol: string; value: string; desc: string }[] = [
+    {
+      name: 'Base uncertainty',
+      symbol: 'a',
+      value: num(svi.a, 6),
+      desc: 'Overall height of the curve — how much uncertainty is priced in before any tilt.',
+    },
+    {
+      name: 'Wing steepness',
+      symbol: 'b',
+      value: num(svi.b, 6),
+      desc: 'How fast the odds bend on big moves. Higher = large moves seen as more likely.',
+    },
+    {
+      name: 'Tilt',
+      symbol: 'ρ',
+      value: num(svi.rho, 6),
+      desc: `Which way the curve leans. Negative = more worry about ${asset} falling than rising.`,
+    },
+    {
+      name: 'Center shift',
+      symbol: 'm',
+      value: num(svi.m, 6),
+      desc: 'Where the calmest point sits vs. the expected price. Near zero = right at it.',
+    },
+    {
+      name: 'Curve sharpness',
+      symbol: 'σ',
+      value: num(svi.sigma, 6),
+      desc: 'How sharp the bottom is — how fast odds bend away from the expected price.',
+    },
   ];
 
   return (
@@ -102,13 +128,12 @@ function Body({ input, now }: { input: SmileInput; now: number }) {
         </p>
       )}
 
-      {/* Forward — the one number that matters at a glance */}
+      {/* Expected price — the one number that matters at a glance */}
       <div className="mt-3 flex items-baseline justify-between border-t border-line-soft pt-3">
         <span className="inline-flex items-center gap-1">
-          <span className="eyebrow">Forward price</span>
-          <InfoTip label="forward price">
-            The market&apos;s expected price for {oracle.underlying_asset} at expiry (today&apos;s price
-            carried forward). The UP/DOWN odds are roughly 50/50 here.
+          <span className="eyebrow">Expected price at expiry</span>
+          <InfoTip label="expected price at expiry">
+            {`Where the market expects ${asset} to land at expiry (today's price carried forward). Right here, ending higher or lower is close to a coin flip.`}
           </InfoTip>
         </span>
         <span className="font-mono text-[15px] tabular-nums text-text-1">{price(forward)}</span>
@@ -135,10 +160,16 @@ function Body({ input, now }: { input: SmileInput; now: number }) {
           </svg>
         </summary>
         <div className="mt-1 grid grid-cols-1 gap-px overflow-hidden rounded-md bg-[var(--line-soft)]">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between bg-[var(--bg-2)] px-2.5 py-1.5">
-              <span className="font-mono text-[11px] text-text-2">{k}</span>
-              <span className="font-mono text-[11px] tabular-nums text-text-1">{v}</span>
+          {rows.map((r) => (
+            <div key={r.symbol} className="bg-[var(--bg-2)] px-2.5 py-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="inline-flex items-baseline gap-1.5">
+                  <span className="text-[11px] text-text-2">{r.name}</span>
+                  <span className="font-mono text-[10px] text-text-3">{r.symbol}</span>
+                </span>
+                <span className="font-mono text-[11px] tabular-nums text-text-1">{r.value}</span>
+              </div>
+              <p className="mt-0.5 text-[10px] leading-snug text-text-3">{r.desc}</p>
             </div>
           ))}
         </div>
