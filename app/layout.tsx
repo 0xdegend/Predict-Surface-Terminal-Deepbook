@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Predict Surface Terminal",
-  description: "Live 3-D SVI volatility-surface trading terminal for DeepBook Predict on Sui.",
+  title: "Skew · Trade the shape of volatility",
+  description:
+    "Skew — trade the shape of volatility. A live 3-D SVI volatility-surface terminal for DeepBook Predict on Sui.",
 };
 
 export default function RootLayout({

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
 import type { PriceEvent } from "@/lib/api/types";
@@ -27,11 +28,16 @@ export function TopChrome({
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5">
       {/* Zone 1 — brand + screen nav */}
       <div className="flex items-center gap-3 sm:gap-5">
-        <Link href="/" className="group flex items-center gap-2">
-          <span className="live-dot" />
-          <span className="text-[14px] font-semibold tracking-tight text-text-1">
-            Predict
-          </span>
+        <Link href="/" className="group flex items-center gap-2" aria-label="Skew — home">
+          <Image
+            src="/skew-mark.png"
+            alt=""
+            width={22}
+            height={22}
+            priority
+            className="h-5.5 w-5.5 transition-transform group-hover:scale-105"
+          />
+          <span className="text-[15px] font-semibold tracking-tight text-text-1">Skew</span>
         </Link>
         <nav className="flex items-center gap-1">
           <NavLink href="/" label="Trade" active={active === "surface"} />

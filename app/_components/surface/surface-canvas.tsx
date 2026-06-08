@@ -118,11 +118,11 @@ export function SurfaceCanvas({
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
             cellSize={0.5}
-            cellThickness={0.5}
-            cellColor="#1a1d21"
+            cellThickness={0.7}
+            cellColor="#22262c"
             sectionSize={2}
-            sectionThickness={0.8}
-            sectionColor="#23272c"
+            sectionThickness={1.2}
+            sectionColor="#2d333a"
             fadeDistance={28}
             fadeStrength={1.5}
             position={[0, -0.02, 0]}
@@ -325,7 +325,7 @@ function MorphSurface({
         />
       </mesh>
       <mesh geometry={geom} raycast={() => null}>
-        <meshBasicMaterial wireframe transparent opacity={0.06} color="#ffffff" />
+        <meshBasicMaterial wireframe transparent opacity={0.1} color="#ffffff" />
       </mesh>
     </group>
   );
@@ -566,13 +566,17 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
   const n = mesh.colMeta.length;
   const tickIdx = [0, Math.round((n - 1) * 0.25), Math.round((n - 1) * 0.5), Math.round((n - 1) * 0.75), n - 1];
 
-  const tick = 'pointer-events-none select-none whitespace-nowrap font-mono text-[9px] tabular-nums text-text-3';
-  const title = 'pointer-events-none select-none font-mono text-[8px] uppercase tracking-[0.22em] text-text-3';
+  // A dark backing chip keeps every label legible over BOTH the empty dark
+  // background AND the bright surface it overlaps (over dark it's near-invisible,
+  // over the glowing mesh it provides contrast — adaptive, like axis labels in
+  // pro charting tools). Fonts stay small on purpose: the expiry labels multiply
+  // as oracles grow, so they must not crowd the depth axis.
+  const chip = 'pointer-events-none select-none whitespace-nowrap rounded-[4px] bg-black/60 px-1.5 py-0.5 ring-1 ring-white/[0.06]';
 
   return (
     <group>
       {/* Forward meridian — the "you are here / 50-50" reference. */}
-      <Line points={[[0, 0, -halfD], [0, 0, halfD]]} color="#9fb0bf" transparent opacity={0.22} lineWidth={1.2} />
+      <Line points={[[0, 0, -halfD], [0, 0, halfD]]} color="#aebccb" transparent opacity={0.34} lineWidth={2} />
 
       {/* Strike ticks along the front edge; the centre tick is the forward. */}
       {tickIdx.map((c, i) => {
@@ -580,7 +584,7 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
         const isFwd = i === 2;
         return (
           <Html key={`s${c}`} position={[mesh.colMeta[c].x, y, frontZ + 0.4]} center>
-            <span className={`${tick} ${isFwd ? 'text-accent' : ''}`}>
+            <span className={`${chip} font-mono text-[10px] tabular-nums ${isFwd ? 'text-accent' : 'text-text-2'}`}>
               {price(strike, 0)}
               {isFwd ? ' · fwd' : ''}
             </span>
@@ -588,22 +592,22 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
         );
       })}
 
-      {/* Expiry labels down the right edge. */}
+      {/* Expiry labels down the right edge (kept compact for many oracles). */}
       {mesh.rowMeta.map((rm, r) => (
         <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center>
-          <span className={`${tick} flex flex-col items-start leading-tight`}>
-            <span className="text-text-2">{shortDate(rm.expiry)}</span>
-            <span>{ttl(rm.expiry)}</span>
+          <span className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}>
+            <span className="text-text-1">{shortDate(rm.expiry)}</span>
+            <span className="text-text-3">{ttl(rm.expiry)}</span>
           </span>
         </Html>
       ))}
 
       {/* Axis titles. */}
       <Html position={[0, y, frontZ + 1.1]} center>
-        <span className={title}>strike</span>
+        <span className={`${chip} font-mono text-[9px] uppercase tracking-[0.22em] text-text-2`}>strike</span>
       </Html>
       <Html position={[rightX + 1.6, y, 0]} center>
-        <span className={title}>expiry</span>
+        <span className={`${chip} font-mono text-[9px] uppercase tracking-[0.22em] text-text-2`}>expiry</span>
       </Html>
     </group>
   );
