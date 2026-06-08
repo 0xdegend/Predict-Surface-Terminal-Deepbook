@@ -1,27 +1,33 @@
-'use client';
+"use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
-import { OrbitControls, Grid, Html, Line } from '@react-three/drei';
-import * as THREE from 'three';
-import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
-import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
-import { snapStrikeToTick } from '@/lib/keys';
-import { toFloat } from '@/config/scale';
-import { pct, price, dateUTC, ttl } from '@/lib/format';
-import { useSurfaceStore } from '@/lib/store/surface-store';
-import { useSurfaceInputs } from './use-surface-inputs';
-import { SurfaceControls } from './surface-controls';
-import type { Oracle } from '@/lib/api/types';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
+import { OrbitControls, Grid, Html, Line } from "@react-three/drei";
+import * as THREE from "three";
+import { buildSurface, type SmileInput, type Surface } from "@/lib/svi/surface";
+import { buildSurfaceMesh, ivColor, type SurfaceMesh } from "@/lib/svi/mesh";
+import { snapStrikeToTick } from "@/lib/keys";
+import { toFloat } from "@/config/scale";
+import { pct, price, dateUTC, ttl } from "@/lib/format";
+import { useSurfaceStore } from "@/lib/store/surface-store";
+import { useSurfaceInputs } from "./use-surface-inputs";
+import { SurfaceControls } from "./surface-controls";
+import type { Oracle } from "@/lib/api/types";
 
 /** Respect the OS reduced-motion setting (§10.6). */
-const REDUCE_QUERY = '(prefers-reduced-motion: reduce)';
+const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
 function usePrefersReducedMotion(): boolean {
   return useSyncExternalStore(
     (cb) => {
       const mq = window.matchMedia(REDUCE_QUERY);
-      mq.addEventListener('change', cb);
-      return () => mq.removeEventListener('change', cb);
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
     },
     () => window.matchMedia(REDUCE_QUERY).matches,
     () => false, // SSR: assume motion allowed
@@ -52,7 +58,10 @@ export function SurfaceCanvas({
   oracles: Oracle[];
   initialInputs: SmileInput[];
 }) {
-  const { inputs, isLive, currentTime, historyReady } = useSurfaceInputs(oracles, initialInputs);
+  const { inputs, isLive, currentTime, historyReady } = useSurfaceInputs(
+    oracles,
+    initialInputs,
+  );
   const showNoArb = useSurfaceStore((s) => s.showNoArb);
   const select = useSurfaceStore((s) => s.select);
   const selection = useSurfaceStore((s) => s.selection);
@@ -74,13 +83,16 @@ export function SurfaceCanvas({
   function pick(row: number, col: number) {
     const r = surface.rows[row];
     const cell = r?.cells[col];
-    const oracle = oracleById.get(r?.oracleId ?? '');
+    const oracle = oracleById.get(r?.oracleId ?? "");
     if (!r || !cell || !oracle) return;
     // Dead-zone nodes (fair UP outside the 1%–99% band) are dimmed and not
     // mintable — ignore the click rather than load a doomed ticket.
     if (!cell.tradeable) return;
     const strikeFloat = r.forward * Math.exp(cell.k);
-    const strikeScaled = snapStrikeToTick(BigInt(Math.round(strikeFloat * 1e9)), oracle);
+    const strikeScaled = snapStrikeToTick(
+      BigInt(Math.round(strikeFloat * 1e9)),
+      oracle,
+    );
     select({
       oracleId: r.oracleId,
       expiry: r.expiry,
@@ -90,18 +102,28 @@ export function SurfaceCanvas({
     });
     // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
     // into view. Desktop keeps it in the right rail, so don't scroll there.
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      document
+        .getElementById("trade-ticket")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 
   return (
     <div className="relative h-full w-full">
-      <Canvas camera={{ position: [9, 7, 11], fov: 38 }} dpr={[1, 2]} gl={{ antialias: true, alpha: true }}>
-        <color attach="background" args={['#0A0B0D']} />
+      <Canvas
+        camera={{ position: [8, 7.5, 12.5], fov: 38 }}
+        dpr={[1, 2]}
+        gl={{ antialias: true, alpha: true }}
+      >
+        <color attach="background" args={["#0A0B0D"]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[6, 12, 8]} intensity={1.1} />
-        <directionalLight position={[-8, 5, -6]} intensity={0.35} color="#6fb7ff" />
+        <directionalLight
+          position={[-8, 5, -6]}
+          intensity={0.35}
+          color="#6fb7ff"
+        />
 
         <group position={[0, -1.4, 0]}>
           <MorphSurface
@@ -135,8 +157,8 @@ export function SurfaceCanvas({
           maxDistance={22}
           maxPolarAngle={Math.PI / 2.05}
           autoRotate={isLive && !hover && !reduced}
-          autoRotateSpeed={0.35}
-          target={[0, -0.2, 0]}
+          autoRotateSpeed={0.1}
+          target={[0, -0.5, 0]}
         />
       </Canvas>
 
@@ -149,15 +171,18 @@ export function SurfaceCanvas({
         hasButterfly={surface.hasButterfly}
         showNoArb={showNoArb}
       />
-      <SurfaceControls isLive={isLive} currentTime={currentTime} historyReady={historyReady} />
+      <SurfaceControls
+        isLive={isLive}
+        currentTime={currentTime}
+        historyReady={historyReady}
+      />
 
       <SurfaceCaption />
-      <DemoNudge isLive={isLive} />
 
       {/* Empty-state hint — fades out once a node is selected. */}
       <div
         className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 -translate-x-1/2 transition-all duration-300 ${
-          selection ? 'translate-y-1 opacity-0' : 'opacity-100'
+          selection ? "translate-y-1 opacity-0" : "opacity-100"
         }`}
       >
         <span className="chip h-7 px-3 text-[11px] text-text-2">
@@ -170,7 +195,10 @@ export function SurfaceCanvas({
 }
 
 /** Map a world-space intersection to the nearest (row, col) grid node. */
-function nearestCell(mesh: SurfaceMesh, point: THREE.Vector3): { row: number; col: number } {
+function nearestCell(
+  mesh: SurfaceMesh,
+  point: THREE.Vector3,
+): { row: number; col: number } {
   let col = 0;
   let best = Infinity;
   for (let c = 0; c < mesh.colMeta.length; c++) {
@@ -233,8 +261,8 @@ function MorphSurface({
     if (!reduced) {
       for (let i = 1; i < init.length; i += 3) init[i] = 0;
     }
-    g.setAttribute('position', new THREE.BufferAttribute(init, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(targetColors.slice(), 3));
+    g.setAttribute("position", new THREE.BufferAttribute(init, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(targetColors.slice(), 3));
     g.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     g.computeVertexNormals();
     return g;
@@ -249,8 +277,8 @@ function MorphSurface({
   }, [mesh, targetColors]);
 
   useFrame((state, delta) => {
-    const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
-    const colAttr = geom.getAttribute('color') as THREE.BufferAttribute;
+    const posAttr = geom.getAttribute("position") as THREE.BufferAttribute;
+    const colAttr = geom.getAttribute("color") as THREE.BufferAttribute;
     const pos = posAttr.array as Float32Array;
     const col = colAttr.array as Float32Array;
     const tp = target.current.positions;
@@ -270,7 +298,8 @@ function MorphSurface({
     colAttr.needsUpdate = true;
     if (moved) geom.computeVertexNormals();
     if (matRef.current && !reduced) {
-      matRef.current.emissiveIntensity = 0.12 + 0.04 * Math.sin(state.clock.elapsedTime * 0.8);
+      matRef.current.emissiveIntensity =
+        0.12 + 0.04 * Math.sin(state.clock.elapsedTime * 0.8);
     }
   });
 
@@ -283,8 +312,8 @@ function MorphSurface({
     if (lastCell.current.row !== row || lastCell.current.col !== col) {
       lastCell.current = { row, col };
     }
-    if (typeof document !== 'undefined') {
-      document.body.style.cursor = cell.tradeable ? 'pointer' : 'not-allowed';
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = cell.tradeable ? "pointer" : "not-allowed";
     }
     onHover({
       row,
@@ -305,7 +334,7 @@ function MorphSurface({
         geometry={geom}
         onPointerMove={handleMove}
         onPointerOut={() => {
-          if (typeof document !== 'undefined') document.body.style.cursor = '';
+          if (typeof document !== "undefined") document.body.style.cursor = "";
           onHover(null);
         }}
         onClick={(e) => {
@@ -320,12 +349,17 @@ function MorphSurface({
           side={THREE.DoubleSide}
           roughness={0.45}
           metalness={0.1}
-          emissive={new THREE.Color('#0d2b33')}
+          emissive={new THREE.Color("#0d2b33")}
           emissiveIntensity={0.12}
         />
       </mesh>
       <mesh geometry={geom} raycast={() => null}>
-        <meshBasicMaterial wireframe transparent opacity={0.1} color="#ffffff" />
+        <meshBasicMaterial
+          wireframe
+          transparent
+          opacity={0.1}
+          color="#ffffff"
+        />
       </mesh>
     </group>
   );
@@ -352,18 +386,31 @@ function locate(
     }
   }
   const idx = (row * mesh.cols + col) * 3;
-  return { x: mesh.positions[idx], y: mesh.positions[idx + 1], z: mesh.positions[idx + 2] };
+  return {
+    x: mesh.positions[idx],
+    y: mesh.positions[idx + 1],
+    z: mesh.positions[idx + 2],
+  };
 }
 
-function SelectedMarker({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) {
+function SelectedMarker({
+  mesh,
+  surface,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+}) {
   const selection = useSurfaceStore((s) => s.selection);
   const ref = useRef<THREE.Mesh>(null);
   const ringRef = useRef<THREE.Mesh>(null);
   const lineRef = useRef<THREE.Mesh>(null);
   const isUp = selection?.isUp ?? true;
-  const accent = isUp ? '#4dd6b0' : '#f0796b';
+  const accent = isUp ? "#4dd6b0" : "#f0796b";
   const pos = useMemo(
-    () => (selection ? locate(mesh, surface, selection.oracleId, selection.strike) : null),
+    () =>
+      selection
+        ? locate(mesh, surface, selection.oracleId, selection.strike)
+        : null,
     [mesh, surface, selection],
   );
   useFrame((state) => {
@@ -372,15 +419,22 @@ function SelectedMarker({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface
     if (ringRef.current) {
       const s = 1 + 0.22 * Math.sin(t * 2.6);
       ringRef.current.scale.set(s, s, s);
-      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.3 * Math.sin(t * 2.6);
+      (ringRef.current.material as THREE.MeshBasicMaterial).opacity =
+        0.5 + 0.3 * Math.sin(t * 2.6);
     }
   });
   if (!pos) return null;
   return (
     <group>
       {/* Drop-line to the floor — anchors the selection in 3-D space. */}
-      <mesh ref={lineRef} position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
-        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+      <mesh
+        ref={lineRef}
+        position={[pos.x, (pos.y + 0.12) / 2, pos.z]}
+        raycast={() => null}
+      >
+        <cylinderGeometry
+          args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]}
+        />
         <meshBasicMaterial color={accent} transparent opacity={0.35} />
       </mesh>
       {/* Pulsing accent ring under the node. */}
@@ -394,7 +448,11 @@ function SelectedMarker({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface
         <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} />
       </mesh>
       {/* The node itself. */}
-      <mesh ref={ref} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+      <mesh
+        ref={ref}
+        position={[pos.x, pos.y + 0.12, pos.z]}
+        raycast={() => null}
+      >
         <sphereGeometry args={[0.1, 20, 20]} />
         <meshBasicMaterial color="#f4f6f8" />
       </mesh>
@@ -402,7 +460,13 @@ function SelectedMarker({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface
   );
 }
 
-function FillRipple({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) {
+function FillRipple({
+  mesh,
+  surface,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+}) {
   const fill = useSurfaceStore((s) => s.fill);
   const ref = useRef<THREE.Mesh>(null);
   const start = useRef(0);
@@ -431,7 +495,11 @@ function FillRipple({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) 
       raycast={() => null}
     >
       <ringGeometry args={[0.25, 0.34, 32]} />
-      <meshBasicMaterial color={fill.isUp ? '#4dd6b0' : '#f0796b'} transparent side={THREE.DoubleSide} />
+      <meshBasicMaterial
+        color={fill.isUp ? "#4dd6b0" : "#f0796b"}
+        transparent
+        side={THREE.DoubleSide}
+      />
     </mesh>
   );
 }
@@ -443,8 +511,12 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
       style={{ left: hover.x, top: hover.y }}
     >
       <div className="flex items-baseline justify-between gap-4">
-        <span className="font-mono text-[14px] tabular-nums text-text-1">{price(hover.strike)}</span>
-        <span className="font-mono text-[10px] tabular-nums text-text-3">IV {pct(hover.iv, 1)}</span>
+        <span className="font-mono text-[14px] tabular-nums text-text-1">
+          {price(hover.strike)}
+        </span>
+        <span className="font-mono text-[10px] tabular-nums text-text-3">
+          IV {pct(hover.iv, 1)}
+        </span>
       </div>
       <div className="mt-2 flex items-center gap-1.5">
         <span className="flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-up">
@@ -478,12 +550,16 @@ function SurfaceLegend({ ivMin, ivMax }: { ivMin: number; ivMax: number }) {
   );
   return (
     <div className="pointer-events-none absolute left-5 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2">
-      <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMax, 0)}</span>
+      <span className="font-mono text-[10px] tabular-nums text-text-2">
+        {pct(ivMax, 0)}
+      </span>
       <div
         className="h-40 w-1.5 rounded-full ring-1 ring-inset ring-white/5"
-        style={{ background: `linear-gradient(180deg, ${stops.join(',')})` }}
+        style={{ background: `linear-gradient(180deg, ${stops.join(",")})` }}
       />
-      <span className="font-mono text-[10px] tabular-nums text-text-2">{pct(ivMin, 0)}</span>
+      <span className="font-mono text-[10px] tabular-nums text-text-2">
+        {pct(ivMin, 0)}
+      </span>
       <span className="mt-1 [writing-mode:vertical-rl] rotate-180 text-[9px] uppercase tracking-[0.18em] text-text-3">
         Implied vol
       </span>
@@ -515,17 +591,24 @@ function SurfaceMeta({
           SVI surface
         </span>
       </div>
-      <span className="font-mono text-[10px] tabular-nums text-text-3">{expiries} expiries</span>
+      <span className="font-mono text-[10px] tabular-nums text-text-3">
+        {expiries} expiries
+      </span>
       {showNoArb && (
         <span
           className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
-            arb ? 'bg-[var(--down-soft)] text-down' : 'bg-[var(--accent-soft)] text-accent'
+            arb
+              ? "bg-[var(--down-soft)] text-down"
+              : "bg-[var(--accent-soft)] text-accent"
           }`}
         >
           {arb ? (
             <>
               <span className="h-1.5 w-1.5 rounded-full bg-down" />
-              {[hasButterfly && 'butterfly', hasCalendar && 'calendar'].filter(Boolean).join(' · ')} arb
+              {[hasButterfly && "butterfly", hasCalendar && "calendar"]
+                .filter(Boolean)
+                .join(" · ")}{" "}
+              arb
             </>
           ) : (
             <>
@@ -542,8 +625,8 @@ function SurfaceMeta({
 /** ms-epoch → compact "Jun 08" (UTC) for the expiry axis. */
 function shortDate(ms: number): string {
   const d = new Date(ms);
-  const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
-  return `${mon} ${String(d.getUTCDate()).padStart(2, '0')}`;
+  const mon = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  return `${mon} ${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 /**
@@ -564,51 +647,70 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
   // The front row (nearest the camera) anchors the strike price scale.
   const frontRow = mesh.rowMeta[mesh.rowMeta.length - 1];
   const n = mesh.colMeta.length;
-  const tickIdx = [0, Math.round((n - 1) * 0.25), Math.round((n - 1) * 0.5), Math.round((n - 1) * 0.75), n - 1];
+  const tickIdx = [
+    0,
+    Math.round((n - 1) * 0.25),
+    Math.round((n - 1) * 0.5),
+    Math.round((n - 1) * 0.75),
+    n - 1,
+  ];
 
   // A dark backing chip keeps every label legible over BOTH the empty dark
   // background AND the bright surface it overlaps (over dark it's near-invisible,
   // over the glowing mesh it provides contrast — adaptive, like axis labels in
   // pro charting tools). Fonts stay small on purpose: the expiry labels multiply
   // as oracles grow, so they must not crowd the depth axis.
-  const chip = 'pointer-events-none select-none whitespace-nowrap rounded-[4px] bg-black/60 px-1.5 py-0.5 ring-1 ring-white/[0.06]';
+  const chip =
+    "pointer-events-none select-none whitespace-nowrap rounded-[4px] bg-black/60 px-1.5 py-0.5 ring-1 ring-white/[0.06]";
 
   return (
     <group>
       {/* Forward meridian — the "you are here / 50-50" reference. */}
-      <Line points={[[0, 0, -halfD], [0, 0, halfD]]} color="#aebccb" transparent opacity={0.34} lineWidth={2} />
+      <Line
+        points={[
+          [0, 0, -halfD],
+          [0, 0, halfD],
+        ]}
+        color="#aebccb"
+        transparent
+        opacity={0.34}
+        lineWidth={2}
+      />
 
       {/* Strike ticks along the front edge; the centre tick is the forward. */}
       {tickIdx.map((c, i) => {
         const strike = frontRow.forward * Math.exp(mesh.colMeta[c].k);
         const isFwd = i === 2;
         return (
-          <Html key={`s${c}`} position={[mesh.colMeta[c].x, y, frontZ + 0.4]} center>
-            <span className={`${chip} font-mono text-[10px] tabular-nums ${isFwd ? 'text-accent' : 'text-text-2'}`}>
+          <Html
+            key={`s${c}`}
+            position={[mesh.colMeta[c].x, y, frontZ + 0.4]}
+            center
+            occlude
+          >
+            <span
+              className={`${chip} font-mono text-[10px] tabular-nums ${isFwd ? "text-accent" : "text-text-2"}`}
+            >
               {price(strike, 0)}
-              {isFwd ? ' · fwd' : ''}
+              {isFwd ? " · fwd" : ""}
             </span>
           </Html>
         );
       })}
 
-      {/* Expiry labels down the right edge (kept compact for many oracles). */}
+      {/* Expiry labels down the right edge (kept compact for many oracles). The
+          tick values themselves identify each axis, so no separate axis titles
+          are drawn — they used to collide with the control bar / hints. */}
       {mesh.rowMeta.map((rm, r) => (
-        <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center>
-          <span className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}>
+        <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude>
+          <span
+            className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}
+          >
             <span className="text-text-1">{shortDate(rm.expiry)}</span>
             <span className="text-text-3">{ttl(rm.expiry)}</span>
           </span>
         </Html>
       ))}
-
-      {/* Axis titles. */}
-      <Html position={[0, y, frontZ + 1.1]} center>
-        <span className={`${chip} font-mono text-[9px] uppercase tracking-[0.22em] text-text-2`}>strike</span>
-      </Html>
-      <Html position={[rightX + 1.6, y, 0]} center>
-        <span className={`${chip} font-mono text-[9px] uppercase tracking-[0.22em] text-text-2`}>expiry</span>
-      </Html>
     </group>
   );
 }
@@ -618,51 +720,48 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
  * judge in one read. Persists dismissal in localStorage so it never re-nags.
  */
 function SurfaceCaption() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    setShow(localStorage.getItem('predict.surfaceCaption') !== 'dismissed');
-  }, []);
+  // Read the dismissal lazily — this canvas is dynamically imported with
+  // ssr:false, so `window`/`localStorage` exist at init and we avoid a
+  // setState-in-effect (which triggers cascading renders).
+  const [show, setShow] = useState(
+    () =>
+      typeof window === "undefined" ||
+      localStorage.getItem("predict.surfaceCaption") !== "dismissed",
+  );
   if (!show) return null;
   return (
     <div className="glass pointer-events-auto absolute left-1/2 top-6 z-10 flex max-w-sm -translate-x-1/2 items-start gap-2.5 rounded-xl px-3.5 py-2.5">
-      <p className="text-[11px] leading-relaxed text-text-2">
-        <span className="font-medium text-text-1">Reading the surface — </span>
-        height is how big a move the market is pricing in. The dip is today&apos;s price; the wings
-        lifting on either side mean it&apos;s bracing for a swing. Warmer colors = more uncertainty.
-      </p>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[11px] leading-relaxed text-text-2">
+          <span className="font-medium text-text-1">
+            Reading the surface —{" "}
+          </span>
+          height is how big a move the market is pricing in. The dip is
+          today&apos;s price; the wings lifting on either side mean it&apos;s
+          bracing for a swing. Warmer colors = more uncertainty.
+        </p>
+        <p className="text-[10px] leading-relaxed text-text-3">
+          Drag the slider to rewind · tap{" "}
+          <span className="text-down">Stress</span> to fire the no-arb check.
+        </p>
+      </div>
       <button
         onClick={() => {
-          localStorage.setItem('predict.surfaceCaption', 'dismissed');
+          localStorage.setItem("predict.surfaceCaption", "dismissed");
           setShow(false);
         }}
         aria-label="Dismiss explainer"
         className="-mr-1 -mt-0.5 shrink-0 rounded p-1 text-text-3 transition-colors hover:text-text-2"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M2 2 8 8M8 2 2 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          <path
+            d="M2 2 8 8M8 2 2 8"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
-    </div>
-  );
-}
-
-/**
- * Demo nudge (legibility pass) — points judges at the two signature
- * interactions, then fades the moment they engage (scrub off LIVE or Stress on).
- */
-function DemoNudge({ isLive }: { isLive: boolean }) {
-  const stress = useSurfaceStore((s) => s.stress);
-  const engaged = !isLive || stress > 0;
-  return (
-    <div
-      className={`pointer-events-none absolute bottom-30 left-1/2 -translate-x-1/2 transition-all duration-300 ${
-        engaged ? 'translate-y-1 opacity-0' : 'opacity-100'
-      }`}
-    >
-      <span className="chip h-7 px-3 text-[11px] text-text-2">
-        Drag the slider to rewind · tap <span className="text-down">Stress</span> to fire the no-arb
-        check
-      </span>
     </div>
   );
 }

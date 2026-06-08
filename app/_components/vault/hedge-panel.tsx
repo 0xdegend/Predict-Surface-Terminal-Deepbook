@@ -114,7 +114,13 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
         hedgeBudget: hedgeBudgetBase,
         supplyAmount: supplyBase,
       }),
-      [...acct.managerKeys, qk.dusdcBalance(acct.owner ?? '')],
+      [
+        ...acct.managerKeys,
+        qk.dusdcBalance(acct.owner ?? ''),
+        qk.plpBalance(acct.owner ?? ''),
+        qk.lpFlows(acct.owner ?? ''),
+        qk.vaultSummary,
+      ],
     );
   }
 

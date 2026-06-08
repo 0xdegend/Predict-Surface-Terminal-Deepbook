@@ -4,6 +4,7 @@ import { parseSvi } from '@/lib/svi/svi';
 import type { SmileInput } from '@/lib/svi/surface';
 import { TopChrome } from '../_components/top-chrome';
 import { HedgePanel } from '../_components/vault/hedge-panel';
+import { VaultPositionPanel } from '../_components/vault/vault-position-panel';
 import { ErrorState } from '../_components/ui/error-state';
 
 export const dynamic = 'force-dynamic';
@@ -45,6 +46,7 @@ export default async function VaultRoute() {
       ) : (
         <main className="flex-1">
           <HedgePanel inputs={inputs} serverNow={serverNow} />
+          <VaultPositionPanel />
         </main>
       )}
     </div>

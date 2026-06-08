@@ -29,6 +29,7 @@ import {
   buildCreateManagerTx,
   buildRedeemTx,
   buildWithdrawFromManagerTx,
+  buildWithdrawPlpTx,
 } from '@/lib/sui/predict-tx';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -37,6 +38,7 @@ function txLabel(label: string): string {
   if (label === 'create') return 'Create account';
   if (label === 'mint') return 'Mint';
   if (label === 'withdraw') return 'Withdraw';
+  if (label === 'withdraw-plp') return 'Vault withdrawal';
   if (label.startsWith('redeem')) return 'Close position';
   return 'Transaction';
 }
@@ -45,6 +47,7 @@ function txSuccessTitle(label: string): string {
   if (label === 'create') return 'Trading account created';
   if (label === 'mint') return 'Position minted';
   if (label === 'withdraw') return 'Withdrawn to wallet';
+  if (label === 'withdraw-plp') return 'Redeemed from vault';
   if (label.startsWith('redeem')) return 'Position closed';
   return 'Transaction confirmed';
 }
@@ -89,6 +92,15 @@ export function usePredictAccount() {
     queryKey: qk.dusdcBalance(owner ?? ''),
     queryFn: async () => {
       const r = await client.core.getBalance({ owner: owner!, coinType: predictConfig.quote.coinType });
+      return BigInt(r.balance.balance);
+    },
+    enabled: !!owner,
+    refetchInterval: 10_000,
+  });
+  const plpQ = useQuery({
+    queryKey: qk.plpBalance(owner ?? ''),
+    queryFn: async () => {
+      const r = await client.core.getBalance({ owner: owner!, coinType: predictConfig.plpCoinType });
       return BigInt(r.balance.balance);
     },
     enabled: !!owner,
@@ -177,6 +189,19 @@ export function usePredictAccount() {
     );
   }
 
+  /** Redeem PLP back to wallet DUSDC (LP vault withdrawal). `plpAmount` is PLP
+   *  base units (@6dec). The chain may reject amounts above the withdrawal
+   *  limiter — callers should cap to the vault's available headroom. */
+  async function withdrawPlp(plpAmount: bigint) {
+    if (!owner || plpAmount <= 0n) return null;
+    return runTx('withdraw-plp', buildWithdrawPlpTx(plpAmount, owner), [
+      qk.plpBalance(owner),
+      qk.dusdcBalance(owner),
+      qk.lpFlows(owner),
+      qk.vaultSummary,
+    ]);
+  }
+
   return {
     owner,
     managerId,
@@ -186,6 +211,7 @@ export function usePredictAccount() {
     positionsLoading: positionsQ.isLoading,
     pnl: pnlQ.data,
     dusdcBalance: dusdcQ.data, // base-unit bigint | undefined
+    plpBalance: plpQ.data, // base-unit bigint | undefined
     tradingBalanceBase,
     busy,
     error,
@@ -196,5 +222,6 @@ export function usePredictAccount() {
     createManager,
     redeem,
     withdrawAll,
+    withdrawPlp,
   };
 }

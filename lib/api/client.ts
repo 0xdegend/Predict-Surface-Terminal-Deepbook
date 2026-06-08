@@ -151,6 +151,8 @@ export const qk = {
   managerPositions: (id: string) => ['manager', id, 'positions'] as const,
   managerPnl: (id: string) => ['manager', id, 'pnl'] as const,
   dusdcBalance: (owner: string) => ['balance', owner, 'dusdc'] as const,
+  plpBalance: (owner: string) => ['balance', owner, 'plp'] as const,
+  lpFlows: (owner: string) => ['lp', 'flows', owner] as const,
   vaultPerformance: (range: string) => ['vault', 'performance', range] as const,
   openInterest: ['open-interest'] as const,
   predictConfig: ['predict', 'config'] as const,

@@ -63,6 +63,27 @@ export function buildWithdrawFromManagerTx(
   return tx;
 }
 
+/* --------------------------- PLP (LP vault) -------------------------- */
+
+/**
+ * Redeem PLP back to DUSDC. Verified against the deployed package ABI:
+ *   predict::withdraw<Quote>(&mut Predict, Coin<PLP>, &Clock, &mut TxContext): Coin<Quote>
+ * The returned DUSDC coin is transferred to the owner's wallet. `coinWithBalance`
+ * auto-selects / splits the caller's PLP coins to the exact redeem amount.
+ * Subject on-chain to the withdrawal limiter (see `available_withdrawal`).
+ */
+export function buildWithdrawPlpTx(plpAmount: bigint, owner: string): Transaction {
+  const tx = new Transaction();
+  const plp = tx.add(coinWithBalance({ type: cfg().plpCoinType, balance: plpAmount }));
+  const out = tx.moveCall({
+    target: `${cfg().packageId}::predict::withdraw`,
+    typeArguments: [QUOTE()],
+    arguments: [tx.object(cfg().predictObjectId), plp, tx.object(cfg().clockId)],
+  });
+  tx.transferObjects([out], tx.pure.address(owner));
+  return tx;
+}
+
 /* ------------------------------- binary ------------------------------ */
 
 export interface MintParams {
