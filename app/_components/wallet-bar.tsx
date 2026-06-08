@@ -125,7 +125,7 @@ export function WalletBar() {
 
       {/* dropdown */}
       {open && (
-        <div className="glass popover-in absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-2xl p-1.5">
+        <div className="glass-menu popover-in absolute right-0 top-[calc(100%+8px)] z-50 w-72 overflow-hidden rounded-2xl p-1.5">
           {connected ? (
             <ConnectedMenu
               wallet={conn.wallet}

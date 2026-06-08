@@ -408,6 +408,21 @@ body {
   }
 }
 
+/* Popover / menu surface. Unlike the decorative translucent .glass, a menu
+ * floats over busy content (the smile chart, panels) and MUST stay legible — so
+ * it is a fully solid, dark surface. No backdrop blur (it does nothing useful
+ * behind an opaque fill and only costs compositing). A subtle top highlight +
+ * hairline + drop shadow read it as a raised, separated floating layer. */
+.glass-menu {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 40%),
+    var(--bg-1);
+  border: 1px solid var(--line-strong);
+  box-shadow:
+    0 22px 50px -14px rgba(0, 0, 0, 0.85),
+    0 2px 10px -2px rgba(0, 0, 0, 0.6);
+}
+
 /* ------------------------------------------------------------------ *
  * Glass segmented control (Cards/Table view toggle, mode switches). A
  * frosted track with a sliding translucent THUMB — no hard borders. The

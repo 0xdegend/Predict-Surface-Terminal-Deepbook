@@ -34,7 +34,7 @@ export function TopChrome({
           </span>
         </Link>
         <nav className="flex items-center gap-1">
-          <NavLink href="/" label="Surface" active={active === "surface"} />
+          <NavLink href="/" label="Trade" active={active === "surface"} />
           <NavLink
             href="/portfolio"
             label="Portfolio"
