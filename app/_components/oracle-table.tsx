@@ -140,7 +140,7 @@ export function OracleTable({
           <thead>
             <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
               <Th>Underlying</Th>
-              <Th>Expiry (UTC)</Th>
+              <Th>Expiry</Th>
               <Th>TTL</Th>
               <Th className="text-right">Forward</Th>
               <Th className="text-right">ATM IV</Th>

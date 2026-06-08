@@ -35,7 +35,7 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
               <Th className="text-right">Cost</Th>
               <Th className="text-right">PnL</Th>
               <Th className="text-right">ROI</Th>
-              <Th className="text-right">Settled (UTC)</Th>
+              <Th className="text-right">Settled</Th>
               <Th className="text-right">Oracle</Th>
               <Th className="text-right">Share</Th>
             </tr>

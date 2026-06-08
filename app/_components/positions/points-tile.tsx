@@ -10,7 +10,7 @@ import { LuSparkles } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { HUE, IconChip } from '../ui/metric';
 
-export function PointsTile({ total }: { total: number }) {
+export function PointsTile({ total }: { total: number | undefined }) {
   return (
     <div className="glass-inset relative col-span-2 flex flex-col gap-2 overflow-hidden p-4 lg:col-span-1">
       {/* faint accent wash marks it as the feature stat without going full-width */}
@@ -24,7 +24,7 @@ export function PointsTile({ total }: { total: number }) {
         <span className="eyebrow">Points</span>
       </div>
       <span className="relative text-[20px] leading-none tracking-tight text-[var(--accent)]">
-        {num(total, 0)}
+        {total === undefined ? '…' : num(total, 0)}
       </span>
       <span className="relative text-[10px] leading-relaxed text-text-3">
         Accrues from volume, performance &amp; holding time

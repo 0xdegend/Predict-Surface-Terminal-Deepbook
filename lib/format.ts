@@ -51,23 +51,23 @@ export function shortId(id: string, head = 6, tail = 4): string {
   return `${clean.slice(0, head)}…${clean.slice(-tail)}`;
 }
 
-/** ms-epoch → compact UTC time, e.g. "14:32:05Z". */
+/** ms-epoch → compact UTC time, e.g. "14:32:05 UTC". */
 export function timeUTC(ms: number): string {
   const d = new Date(ms);
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
   const ss = String(d.getUTCSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}Z`;
+  return `${hh}:${mm}:${ss} UTC`;
 }
 
-/** ms-epoch → "Jun 03 14:32Z" for expiries. */
+/** ms-epoch → "Jun 03 14:32 UTC" for expiries. */
 export function dateUTC(ms: number): string {
   const d = new Date(ms);
   const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
   const day = String(d.getUTCDate()).padStart(2, '0');
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${mon} ${day} ${hh}:${mm}Z`;
+  return `${mon} ${day} ${hh}:${mm} UTC`;
 }
 
 /** Time-to-expiry as compact "2h 14m" / "—" if past. */

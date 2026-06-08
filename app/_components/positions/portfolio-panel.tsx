@@ -24,7 +24,7 @@ import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
 import { derivePortfolioHistory } from '@/lib/portfolio/history';
-import { computePoints } from '@/lib/points/score';
+import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
@@ -33,6 +33,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccount();
   const now = useNow(serverNow);
   const mounted = useMounted();
+  // Points come from the SAME event-derived aggregation the leaderboard ranks
+  // by — so the Portfolio tile and your leaderboard rank can never disagree.
+  const leaderboard = useLeaderboard();
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
@@ -95,8 +98,12 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Settled track record (closed positions) — drives the performance bento + table.
   const { history, stats } = derivePortfolioHistory(positions);
 
-  // Live Points score (phase 1 — derived from this account's positions).
-  const points = computePoints(positions, now);
+  // Points = this trader's row in the leaderboard aggregation (same formula,
+  // same inputs as the board). Undefined while the board loads → tile shows '…'.
+  const myRow = leaderboard.rows.find(
+    (r) => r.owner.toLowerCase() === acct.owner!.toLowerCase(),
+  );
+  const pointsTotal = leaderboard.loading ? undefined : myRow?.points.total ?? 0;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-5 py-6">
@@ -162,7 +169,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         />
 
         {/* Points — a compact stat card, balancing the grid's bottom-right */}
-        <PointsTile total={points.total} />
+        <PointsTile total={pointsTotal} />
       </div>
 
       {acct.error && (

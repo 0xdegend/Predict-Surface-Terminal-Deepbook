@@ -71,7 +71,7 @@ export function SurfaceControls({
           className="surface-scrub h-1 w-52 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Time-travel scrub"
         />
-        <span className="w-14 text-center font-mono text-[10px] tabular-nums text-text-2">
+        <span className="w-20 text-center font-mono text-[10px] tabular-nums text-text-2 whitespace-nowrap">
           {isLive ? 'now' : timeUTC(currentTime)}
         </span>
       </div>
