@@ -10,7 +10,11 @@
  */
 import { useState } from 'react';
 import { buildSmile, type SmileInput } from '@/lib/svi/surface';
+import { rangeFair } from '@/lib/svi/svi';
+import { snapStrikeToTick } from '@/lib/keys';
+import { toFloat } from '@/config/scale';
 import { price, pct } from '@/lib/format';
+import { useSurfaceStore } from '@/lib/store/surface-store';
 import { InfoTip } from './ui/info-tip';
 
 const W = 320;
@@ -19,9 +23,21 @@ const PAD = { l: 8, r: 8, t: 10, b: 16 };
 
 export function SmileStrip({ input }: { input: SmileInput }) {
   const [hover, setHover] = useState<number | null>(null);
+  const ticketMode = useSurfaceStore((s) => s.ticketMode);
+  const pickRangeStrike = useSurfaceStore((s) => s.pickRangeStrike);
+  const anchor = useSurfaceStore((s) => s.rangeAnchor);
+  const band = useSurfaceStore((s) => s.rangeSelection);
   const smile = buildSmile(input, { half: 28 });
   const pts = smile.points;
   if (pts.length < 2) return null;
+
+  const oracle = input.oracle;
+  const rangeMode = ticketMode === 'range';
+  const bandForThis = band && band.oracleId === oracle.oracle_id ? band : null;
+  const anchorForThis = anchor && anchor.oracleId === oracle.oracle_id ? anchor : null;
+  const bandFair = bandForThis
+    ? rangeFair(bandForThis.lower, bandForThis.higher, input.forward, input.svi, input.settlement ?? null)
+    : null;
 
   const xs = pts.map((p) => p.strike);
   const xMin = Math.min(...xs);
@@ -32,6 +48,7 @@ export function SmileStrip({ input }: { input: SmileInput }) {
   const plotW = W - PAD.l - PAD.r;
   const plotH = H - PAD.t - PAD.b;
   const sx = (x: number) => PAD.l + ((x - xMin) / xSpan) * plotW;
+  const cx = (x: number) => sx(Math.max(xMin, Math.min(xMax, x))); // clamped to plot
   const sy = (up: number) => PAD.t + (1 - up) * plotH;
 
   const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.strike).toFixed(1)},${sy(p.up).toFixed(1)}`).join(' ');
@@ -48,6 +65,24 @@ export function SmileStrip({ input }: { input: SmileInput }) {
       if (Math.abs(sx(pts[i].strike) - vx) < Math.abs(sx(pts[best].strike) - vx)) best = i;
     }
     setHover(best);
+  }
+
+  /** In range mode, a click sets a band bound at the nearest grid strike. */
+  function onPick(e: React.PointerEvent<SVGSVGElement>) {
+    if (!rangeMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const vx = ((e.clientX - rect.left) / rect.width) * W;
+    let best = 0;
+    for (let i = 1; i < pts.length; i++) {
+      if (Math.abs(sx(pts[i].strike) - vx) < Math.abs(sx(pts[best].strike) - vx)) best = i;
+    }
+    const scaled = snapStrikeToTick(BigInt(Math.round(pts[best].strike * 1e9)), oracle);
+    pickRangeStrike({
+      oracleId: oracle.oracle_id,
+      expiry: oracle.expiry,
+      strikeScaled: scaled.toString(),
+      strike: toFloat(Number(scaled)),
+    });
   }
 
   const hp = hover != null ? pts[hover] : null;
@@ -87,11 +122,45 @@ export function SmileStrip({ input }: { input: SmileInput }) {
           className="card block cursor-crosshair touch-none"
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
+          onClick={onPick}
         >
           {/* 50% reference line */}
           <line x1={PAD.l} y1={sy(0.5)} x2={W - PAD.r} y2={sy(0.5)} stroke="rgba(255,255,255,0.06)" strokeDasharray="2 3" />
           {/* forward marker */}
           <line x1={fwdX} y1={PAD.t} x2={fwdX} y2={H - PAD.b} stroke="rgba(255,255,255,0.12)" />
+
+          {/* range band — finalized shade + bounds */}
+          {rangeMode && bandForThis && (
+            <>
+              <rect
+                x={cx(bandForThis.lower)}
+                y={PAD.t}
+                width={Math.max(0, cx(bandForThis.higher) - cx(bandForThis.lower))}
+                height={plotH}
+                fill="var(--up)"
+                opacity={0.14}
+              />
+              {[bandForThis.lower, bandForThis.higher].map((s) => (
+                <line key={s} x1={cx(s)} y1={PAD.t} x2={cx(s)} y2={H - PAD.b} stroke="var(--up)" strokeWidth={1} opacity={0.7} />
+              ))}
+            </>
+          )}
+          {/* range anchor — first bound set, preview to the hovered price */}
+          {rangeMode && !bandForThis && anchorForThis && (
+            <>
+              {hp && (
+                <rect
+                  x={Math.min(cx(anchorForThis.strike), sx(hp.strike))}
+                  y={PAD.t}
+                  width={Math.abs(sx(hp.strike) - cx(anchorForThis.strike))}
+                  height={plotH}
+                  fill="var(--up)"
+                  opacity={0.08}
+                />
+              )}
+              <line x1={cx(anchorForThis.strike)} y1={PAD.t} x2={cx(anchorForThis.strike)} y2={H - PAD.b} stroke="var(--up)" strokeWidth={1} opacity={0.7} strokeDasharray="3 2" />
+            </>
+          )}
           <path d={path} fill="none" stroke="var(--up)" strokeWidth={1.5} />
           {butterflies.map((p) => (
             <circle key={p.strike} cx={sx(p.strike)} cy={sy(p.up)} r={2.5} fill="var(--down)" />
@@ -112,6 +181,22 @@ export function SmileStrip({ input }: { input: SmileInput }) {
             {price(xMax, 0)}
           </text>
         </svg>
+
+        {/* range mode — band summary or pick instruction */}
+        {rangeMode && (
+          <div className="glass pointer-events-none absolute left-1.5 top-1.5 z-10 whitespace-nowrap rounded-md px-2 py-1 font-mono text-[10px] leading-none tabular-nums">
+            {bandForThis ? (
+              <span className="text-up">
+                {price(bandForThis.lower, 0)}–{price(bandForThis.higher, 0)}
+                {bandFair != null && <span className="text-text-3"> · {pct(bandFair, 0)} chance</span>}
+              </span>
+            ) : anchorForThis ? (
+              <span className="text-text-2">tap the upper price →</span>
+            ) : (
+              <span className="text-text-2">tap two prices to set a range</span>
+            )}
+          </div>
+        )}
 
         {/* hover readout — odds at the pointed price level */}
         {hp && (

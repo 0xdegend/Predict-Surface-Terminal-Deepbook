@@ -27,6 +27,7 @@ import { humanizeError } from '@/lib/sui/abort';
 import { upFair } from '@/lib/svi/svi';
 import { buildMintTx } from '@/lib/sui/predict-tx';
 import { useSurfaceStore } from '@/lib/store/surface-store';
+import { RangeTicket } from './range-ticket';
 import { RedeemModal } from './positions/redeem-modal';
 import { positionMetrics } from './positions/position-metrics';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
@@ -64,16 +65,26 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   } = acct;
 
   const selection = useSurfaceStore((s) => s.selection);
+  const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
+  const ticketMode = useSurfaceStore((s) => s.ticketMode);
+  const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
-  // Active oracle = the clicked one (else soonest expiry).
+  // Active oracle = the selection for the current ticket mode, falling back to
+  // the other mode's selection, then the soonest expiry.
   const active = useMemo(() => {
-    if (selection) {
-      const found = inputs.find((i) => i.oracle.oracle_id === selection.oracleId);
-      if (found) return found;
+    const ids =
+      ticketMode === 'range'
+        ? [rangeSelection?.oracleId, selection?.oracleId]
+        : [selection?.oracleId, rangeSelection?.oracleId];
+    for (const id of ids) {
+      if (id) {
+        const found = inputs.find((i) => i.oracle.oracle_id === id);
+        if (found) return found;
+      }
     }
     return inputs[0];
-  }, [selection, inputs]);
+  }, [selection, rangeSelection, ticketMode, inputs]);
 
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
 
@@ -257,6 +268,28 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             )}
           </div>
 
+          {/* Binary (up/down) vs vertical-range mode. */}
+          <div className="flex gap-1.5">
+            {(['binary', 'range'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setTicketMode(m)}
+                aria-pressed={ticketMode === m}
+                className={`flex-1 rounded-md py-1.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+                  ticketMode === m
+                    ? 'border border-up/40 bg-[var(--accent-soft)] text-accent'
+                    : 'ctrl-soft text-text-3'
+                }`}
+              >
+                {m === 'binary' ? 'Up / Down' : 'Range'}
+              </button>
+            ))}
+          </div>
+
+          {ticketMode === 'range' ? (
+            <RangeTicket active={active!} now={now} />
+          ) : (
+            <>
           <div className="flex gap-2">
             <Toggle active={isUp} onClick={() => setIsUp(true)} tone="up">
               UP
@@ -474,6 +507,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             The chain confirms the final price when you sign — a transaction can still be rejected
             in your wallet or revert if the market moves or expires first.
           </p>
+            </>
+          )}
         </div>
       )}
 

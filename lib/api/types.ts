@@ -244,6 +244,43 @@ export interface PositionRedeemedEvent extends EventEnvelope {
   is_settled: boolean;
 }
 
+/** /ranges/minted row (RangeMinted event). A vertical-range bet keyed by
+ *  (oracle, expiry, lower, higher); pays $1·qty if settlement ∈ (lower, higher]. */
+export interface RangeMintedEvent extends Omit<EventEnvelope, 'onchain_timestamp'> {
+  predict_id: string;
+  manager_id: string;
+  trader: string;
+  quote_asset: string;
+  expiry: number; // ms
+  lower_strike: number; // @1e9
+  higher_strike: number; // @1e9
+  quantity: number; // @6dec
+  cost: number; // @6dec
+  ask_price: number; // @1e9 per-unit fair+spread
+}
+
+/** /ranges/redeemed row (RangeRedeemed event). */
+export interface RangeRedeemedEvent extends Omit<EventEnvelope, 'onchain_timestamp'> {
+  predict_id: string;
+  manager_id: string;
+  trader: string;
+  quote_asset: string;
+  expiry: number; // ms
+  lower_strike: number; // @1e9
+  higher_strike: number; // @1e9
+  quantity: number; // @6dec
+  payout: number; // @6dec
+  bid_price: number; // @1e9
+  is_settled: boolean;
+}
+
+/** /managers/:id/ranges — a manager's range event streams (no server-side
+ *  open-position aggregation, so we fold these client-side). */
+export interface ManagerRanges {
+  minted: RangeMintedEvent[];
+  redeemed: RangeRedeemedEvent[];
+}
+
 /** /lp/supplies row (Supplied event) — DUSDC flowing INTO the vault. */
 export interface LpSupplyEvent extends Omit<EventEnvelope, 'oracle_id' | 'onchain_timestamp'> {
   predict_id: string;

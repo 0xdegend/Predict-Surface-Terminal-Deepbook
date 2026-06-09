@@ -17,6 +17,7 @@ import type {
   ManagerRow,
   ManagerSummary,
   PositionSummary,
+  ManagerRanges,
   ManagerPnl,
   VaultPerformance,
   PositionMintedEvent,
@@ -109,6 +110,11 @@ export const getManagerSummary = (managerId: string, o?: GetOptions) =>
 export const getManagerPositions = (managerId: string, o?: GetOptions) =>
   get<PositionSummary[]>(`/managers/${managerId}/positions/summary`, o);
 
+/** A manager's range event streams. There's no server-side open-range summary,
+ *  so callers fold minted−redeemed by RangeKey (see lib/ranges/aggregate.ts). */
+export const getManagerRanges = (managerId: string, o?: GetOptions) =>
+  get<ManagerRanges>(`/managers/${managerId}/ranges`, o);
+
 export const getManagerPnl = (managerId: string, range = 'ALL', o?: GetOptions) =>
   get<ManagerPnl>(`/managers/${managerId}/pnl?range=${range}`, o);
 
@@ -149,6 +155,7 @@ export const qk = {
   managers: (owner: string) => ['managers', owner] as const,
   managerSummary: (id: string) => ['manager', id, 'summary'] as const,
   managerPositions: (id: string) => ['manager', id, 'positions'] as const,
+  managerRanges: (id: string) => ['manager', id, 'ranges'] as const,
   managerPnl: (id: string) => ['manager', id, 'pnl'] as const,
   dusdcBalance: (owner: string) => ['balance', owner, 'dusdc'] as const,
   plpBalance: (owner: string) => ['balance', owner, 'plp'] as const,

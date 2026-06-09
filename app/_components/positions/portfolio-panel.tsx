@@ -19,6 +19,8 @@ import { quote as fmtQuote, signed, pct } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { PositionCard } from './position-card';
+import { RangePositionCard } from './range-position-card';
+import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 import { PerformanceCard } from './performance-card';
 import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
@@ -36,6 +38,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Points come from the SAME event-derived aggregation the leaderboard ranks
   // by — so the Portfolio tile and your leaderboard rank can never disagree.
   const leaderboard = useLeaderboard();
+  const ranges = useRangePositions(acct.managerId);
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
@@ -90,6 +93,17 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   // everything else still holding quantity (status 'active') → open positions.
   const redeemable = positions.filter((p) => p.open_quantity > 0 && isRedeemableStatus(p.status));
   const open = positions.filter((p) => p.open_quantity > 0 && !isRedeemableStatus(p.status));
+  const openRanges = ranges.positions.filter((p) => p.openQty > 0);
+
+  async function handleRedeemRange(p: ValuedRangePosition) {
+    await acct.redeemRange({
+      oracleId: p.oracleId,
+      expiry: p.expiry,
+      lowerStrike: BigInt(Math.round(p.lowerStrike)),
+      higherStrike: BigInt(Math.round(p.higherStrike)),
+      quantity: BigInt(Math.round(p.openQty)),
+    });
+  }
 
   const totalPnl = s ? fromQuote(s.realized_pnl + s.unrealized_pnl) : 0;
   const unrealized = s ? fromQuote(s.unrealized_pnl) : 0;
@@ -222,12 +236,12 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       </div>
 
       {tab === 'positions' ? (
-        open.length === 0 ? (
+        open.length === 0 && openRanges.length === 0 ? (
           <EmptyState
             icon={LuLayers}
             color={HUE.teal}
             title="No open positions yet"
-            description="Pick a market on the surface to mint your first UP / DOWN contract."
+            description="Pick a market on the surface to mint an UP / DOWN contract, or set a range on the odds curve."
             action={
               <Link
                 href="/"
@@ -239,17 +253,36 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
             }
           />
         ) : (
-          <Grid>
-            {open.map((p) => (
-              <PositionCard
-                key={`${p.oracle_id}-${p.strike}-${p.is_up}`}
-                position={p}
-                now={now}
-                busy={!!acct.busy}
-                onRedeem={setRedeeming}
-              />
-            ))}
-          </Grid>
+          <div className="flex flex-col gap-5">
+            {open.length > 0 && (
+              <Grid>
+                {open.map((p) => (
+                  <PositionCard
+                    key={`${p.oracle_id}-${p.strike}-${p.is_up}`}
+                    position={p}
+                    now={now}
+                    busy={!!acct.busy}
+                    onRedeem={setRedeeming}
+                  />
+                ))}
+              </Grid>
+            )}
+            {openRanges.length > 0 && (
+              <Section title="Vertical ranges" hint={`${openRanges.length} open`}>
+                <Grid>
+                  {openRanges.map((p) => (
+                    <RangePositionCard
+                      key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
+                      position={p}
+                      now={now}
+                      busy={!!acct.busy}
+                      onRedeem={handleRedeemRange}
+                    />
+                  ))}
+                </Grid>
+              </Section>
+            )}
+          </div>
         )
       ) : stats.total === 0 ? (
         <EmptyState

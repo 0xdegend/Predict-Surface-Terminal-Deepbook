@@ -30,6 +30,8 @@ import {
   buildRedeemTx,
   buildWithdrawFromManagerTx,
   buildWithdrawPlpTx,
+  buildMintRangeTx,
+  buildRedeemRangeTx,
 } from '@/lib/sui/predict-tx';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -39,6 +41,8 @@ function txLabel(label: string): string {
   if (label === 'mint') return 'Mint';
   if (label === 'withdraw') return 'Withdraw';
   if (label === 'withdraw-plp') return 'Vault withdrawal';
+  if (label === 'mint-range') return 'Mint range';
+  if (label === 'redeem-range') return 'Close range';
   if (label.startsWith('redeem')) return 'Close position';
   return 'Transaction';
 }
@@ -48,6 +52,8 @@ function txSuccessTitle(label: string): string {
   if (label === 'mint') return 'Position minted';
   if (label === 'withdraw') return 'Withdrawn to wallet';
   if (label === 'withdraw-plp') return 'Redeemed from vault';
+  if (label === 'mint-range') return 'Range minted';
+  if (label === 'redeem-range') return 'Range closed';
   if (label.startsWith('redeem')) return 'Position closed';
   return 'Transaction confirmed';
 }
@@ -189,6 +195,39 @@ export function usePredictAccount() {
     );
   }
 
+  /** Mint a vertical-range position. Strikes are 1e9-scaled, quantity @6dec. */
+  async function mintRange(p: {
+    oracleId: string;
+    expiry: number | bigint;
+    lowerStrike: bigint;
+    higherStrike: bigint;
+    quantity: bigint;
+    depositAmount?: bigint;
+  }) {
+    if (!managerId || !owner) return null;
+    return runTx('mint-range', buildMintRangeTx({ managerId, ...p }), [
+      ...managerKeys,
+      qk.managerRanges(managerId),
+      qk.dusdcBalance(owner),
+    ]);
+  }
+
+  /** Redeem (close, or claim if settled) a vertical-range position. */
+  async function redeemRange(p: {
+    oracleId: string;
+    expiry: number | bigint;
+    lowerStrike: bigint;
+    higherStrike: bigint;
+    quantity: bigint;
+  }) {
+    if (!managerId) return null;
+    return runTx('redeem-range', buildRedeemRangeTx({ managerId, ...p }), [
+      ...managerKeys,
+      qk.managerRanges(managerId),
+      qk.dusdcBalance(owner ?? ''),
+    ]);
+  }
+
   /** Redeem PLP back to wallet DUSDC (LP vault withdrawal). `plpAmount` is PLP
    *  base units (@6dec). The chain may reject amounts above the withdrawal
    *  limiter — callers should cap to the vault's available headroom. */
@@ -223,5 +262,7 @@ export function usePredictAccount() {
     redeem,
     withdrawAll,
     withdrawPlp,
+    mintRange,
+    redeemRange,
   };
 }
