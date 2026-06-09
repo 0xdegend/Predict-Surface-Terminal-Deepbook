@@ -18,6 +18,7 @@ import {
   LuChevronLeft,
   LuChevronRight,
   LuCrown,
+  LuLayers,
 } from 'react-icons/lu';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
@@ -26,6 +27,8 @@ import { num, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { ErrorState } from '../ui/error-state';
+import { WalletAvatar } from './wallet-avatar';
+import Link from 'next/link';
 
 type Row = ReturnType<typeof sortRows>[number];
 
@@ -40,83 +43,6 @@ const SORT_LABEL: Record<SortKey, string> = {
   points: 'Points',
   volume: 'Volume',
 };
-
-// Identicon palette — harmonized with the app's icon hues so the wallet
-// jazzicons feel native to the terminal rather than a stock widget.
-const JAZZ_PALETTE = ['#4dd6b0', '#6aa6e6', '#9d92e8', '#d9a94e', '#f0796b', '#5fc9c0', '#b08be0', '#e0a36a'];
-
-/** Tiny deterministic PRNG (mulberry32) so an avatar is stable per address. */
-function mulberry32(seed: number) {
-  return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * WalletAvatar — a Jazzicon-style identicon rendered from the address: a base
- * fill with a few rotated, offset color shards clipped to a circle. Fully
- * deterministic (same address → same art) and allocation-free after mount.
- */
-function WalletAvatar({ addr, size, ring }: { addr: string; size: number; ring: string }) {
-  let seed = 0;
-  for (let i = 2; i < addr.length; i++) seed = (seed * 31 + addr.charCodeAt(i)) >>> 0;
-  const rng = mulberry32(seed);
-  const offset = Math.floor(rng() * JAZZ_PALETTE.length);
-  const palette = JAZZ_PALETTE.slice(offset).concat(JAZZ_PALETTE.slice(0, offset));
-
-  const center = size / 2;
-  const clipId = `jz-clip-${seed.toString(36)}`;
-  const sheenId = `jz-sheen-${seed.toString(36)}`;
-  const shapeCount = 4;
-  const shards = Array.from({ length: shapeCount }, (_, i) => {
-    const firstRot = rng();
-    const angle = Math.PI * 2 * firstRot;
-    const velocity = (size / shapeCount) * rng() + (i * size) / shapeCount;
-    const tx = Math.cos(angle) * velocity;
-    const ty = Math.sin(angle) * velocity;
-    const rot = firstRot * 360 + rng() * 180;
-    return (
-      <rect
-        key={i}
-        width={size}
-        height={size}
-        fill={palette[(i + 1) % palette.length]}
-        transform={`translate(${tx.toFixed(2)} ${ty.toFixed(2)}) rotate(${rot.toFixed(1)} ${center} ${center})`}
-      />
-    );
-  });
-
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
-      aria-hidden
-      style={{ borderRadius: '50%', boxShadow: `0 0 0 1px ${ring}`, display: 'block' }}
-    >
-      <clipPath id={clipId}>
-        <circle cx={center} cy={center} r={center} />
-      </clipPath>
-      <g clipPath={`url(#${clipId})`}>
-        <rect width={size} height={size} fill={palette[0]} />
-        {shards}
-        {/* soft top-light so the disc reads as a lit sphere, not a flat puck */}
-        <rect width={size} height={size} fill={`url(#${sheenId})`} />
-      </g>
-      <defs>
-        <radialGradient id={sheenId} cx="32%" cy="26%" r="75%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.32)" />
-          <stop offset="42%" stopColor="rgba(255,255,255,0.04)" />
-          <stop offset="100%" stopColor="rgba(0,0,0,0.28)" />
-        </radialGradient>
-      </defs>
-    </svg>
-  );
-}
 
 export function LeaderboardPanel() {
   const { rows, loading, refreshing, error, refetch } = useLeaderboard();
@@ -181,9 +107,12 @@ export function LeaderboardPanel() {
         <button
           onClick={refetch}
           disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:border-up/40 hover:bg-up/5 hover:text-text-1 disabled:opacity-50"
+          className="group glass-inset inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1 disabled:opacity-50"
         >
-          <LuRefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          <LuRefreshCw
+            size={12}
+            className={`transition-colors duration-200 group-hover:text-accent ${refreshing ? 'animate-spin' : ''}`}
+          />
           Refresh
         </button>
       </div>
@@ -245,16 +174,19 @@ export function LeaderboardPanel() {
                 }`}
               >
                 <span className="text-right font-semibold text-text-3">{i + 1}</span>
-                <a
-                  href={EXPLORER(r.owner)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate text-text-1 hover:text-[var(--accent)] hover:underline"
-                  title={r.owner}
-                >
-                  {shortId(r.owner)}
-                  {isMe && <span className="ml-1.5 text-[10px] text-[var(--accent)]">you</span>}
-                </a>
+                <span className="flex min-w-0 items-center gap-2">
+                  <a
+                    href={EXPLORER(r.owner)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="truncate text-text-1 hover:text-[var(--accent)] hover:underline"
+                    title={r.owner}
+                  >
+                    {shortId(r.owner)}
+                    {isMe && <span className="ml-1.5 text-[10px] text-[var(--accent)]">you</span>}
+                  </a>
+                  <ViewPositionsButton owner={r.owner} variant="icon" />
+                </span>
                 <span className="text-right font-semibold text-[var(--accent)]">{num(r.points.total, 0)}</span>
                 <span className="text-right text-text-1">{num(r.volume, 2)}</span>
               </div>
@@ -282,6 +214,64 @@ export function LeaderboardPanel() {
         {predictConfig.quote.symbol}.
       </p>
     </div>
+  );
+}
+
+/**
+ * Links to a trader's profile (open positions + standing). Two variants:
+ *   icon  — tight icon-only chip for dense table rows
+ *   label — frosted-glass pill (auto-width) for the your-rank / podium cards
+ *
+ * The labelled variant sits on the existing `.glass-inset` surface (no hard
+ * white border) and carries the app's single accent in a small layers chip; on
+ * hover an accent wash + faint top sheen fade in and the border lifts to accent.
+ * Flat (no shadow) so it never competes with the surface's glow budget (§10.3).
+ */
+function ViewPositionsButton({
+  owner,
+  variant = 'label',
+}: {
+  owner: string;
+  variant?: 'icon' | 'label';
+}) {
+  if (variant === 'icon') {
+    return (
+      <Link
+        href={`/trader/${owner}`}
+        aria-label="View trader profile"
+        title="View trader profile"
+        className="group glass-inset inline-flex h-7 w-7 flex-none items-center justify-center text-text-3 transition-all duration-200 hover:border-(--accent-line) hover:text-accent"
+      >
+        <LuLayers size={12} className="transition-transform duration-200 group-hover:scale-110" />
+      </Link>
+    );
+  }
+
+  return (
+    <Link
+      href={`/trader/${owner}`}
+      className="group glass-inset relative inline-flex items-center gap-2 overflow-hidden px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+    >
+      {/* accent wash — fades in on hover (flat, no shadow) */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-(--accent-soft) opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+      />
+      {/* faint accent sheen along the top edge */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-3 top-0 h-px opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        style={{
+          background:
+            'linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, transparent), transparent)',
+        }}
+      />
+      {/* accent layers chip — the bit of colour that makes it read as designed */}
+      <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-md bg-accent/10 text-accent transition-colors duration-200 group-hover:bg-accent/20">
+        <LuLayers size={12} />
+      </span>
+      <span className="relative">View positions</span>
+    </Link>
   );
 }
 
@@ -322,6 +312,7 @@ function MyRankCard({ rank, total, row }: { rank: number; total: number; row: Ro
         <RankStat label="Trades">
           <span className="text-text-2">{row.trades}</span>
         </RankStat>
+        <ViewPositionsButton owner={row.owner} />
       </div>
     </div>
   );
@@ -376,7 +367,17 @@ function primaryMetric(row: Row, sort: SortKey): { value: string; unit?: string;
   return { value: num(row.points.total, 0), unit: 'pts', accent: true };
 }
 
-function PodiumCard({ rank, row, sort, isMe }: { rank: number; row: Row; sort: SortKey; isMe: boolean }) {
+function PodiumCard({
+  rank,
+  row,
+  sort,
+  isMe,
+}: {
+  rank: number;
+  row: Row;
+  sort: SortKey;
+  isMe: boolean;
+}) {
   const hue = RANK_HUE[rank];
   const champion = rank === 0;
   const m = primaryMetric(row, sort);
@@ -390,18 +391,10 @@ function PodiumCard({ rank, row, sort, isMe }: { rank: number; row: Row; sort: S
 
   return (
     <div
-      className={`relative flex flex-col items-center rounded-2xl border p-4 text-center transition-transform ${
-        champion ? 'sm:-translate-y-2 sm:pt-6 sm:pb-5' : ''
+      className={`podium-card relative flex flex-col items-center p-4 text-center transition-transform ${
+        champion ? 'champion sm:-translate-y-2 sm:pt-6 sm:pb-5' : ''
       }`}
-      style={{
-        borderColor: `color-mix(in srgb, ${hue} 32%, var(--line))`,
-        background: `radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, ${hue} ${
-          champion ? 14 : 9
-        }%, transparent), transparent 64%), color-mix(in srgb, var(--bg-1) 92%, transparent)`,
-        boxShadow: champion
-          ? `inset 0 1px 0 0 color-mix(in srgb, ${hue} 30%, transparent), 0 18px 44px -22px color-mix(in srgb, ${hue} 70%, transparent)`
-          : 'inset 0 1px 0 0 rgba(255,255,255,0.04)',
-      }}
+      style={{ ['--rank-hue' as string]: hue }}
     >
       {/* Rank medal */}
       <div
@@ -447,6 +440,10 @@ function PodiumCard({ rank, row, sort, isMe }: { rank: number; row: Row; sort: S
             <span className="text-text-2">{s.node}</span>
           </span>
         ))}
+      </div>
+
+      <div className="mt-3 flex w-full justify-center">
+        <ViewPositionsButton owner={row.owner} />
       </div>
     </div>
   );

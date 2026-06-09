@@ -4,41 +4,35 @@ import { useState } from 'react';
 import { Modal } from '@/app/_components/ui/modal';
 import { quote as fmtQuote, price, signed } from '@/lib/format';
 import { fromQuote, toFloat } from '@/config/scale';
-import { positionMetrics } from './position-metrics';
 import { CloseAmountPicker } from './close-amount-picker';
-import type { PositionSummary } from '@/lib/api/types';
+import type { ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 
 /**
- * Redeem confirmation. Frosted-glass dialog leading with the resulting PnL (the
- * decision that matters), then the cost/payout breakdown. The trader picks how
- * much of the lot to close — 25 / 50 / 75 / Max, or an exact contract count —
- * and every figure (proceeds, PnL, what's left) scales to that amount. On
- * confirm we pass the chosen on-chain base quantity; the chain confirms the
- * exact amount on sign. Closing < 100% leaves the remainder open to close later.
+ * Close confirmation for a vertical-range position — the range sibling of
+ * RedeemModal. Leads with PnL, lets the trader close part or all of the lot
+ * (presets + exact contracts), and scales every figure to the chosen amount.
+ * On confirm we pass the chosen on-chain base quantity; closing < 100% leaves
+ * the remainder open to close later.
  */
-export function RedeemModal({
+export function RangeRedeemModal({
   position,
   busy,
   onConfirm,
   onClose,
 }: {
-  position: PositionSummary | null;
+  position: ValuedRangePosition | null;
   busy: boolean;
-  // quantityBase is on-chain base units (@6dec); omitted/equal-to-open ⇒ full close.
-  onConfirm: (p: PositionSummary, quantityBase: bigint) => void;
+  // quantityBase is on-chain base units (@6dec); equal-to-open ⇒ full close.
+  onConfirm: (p: ValuedRangePosition, quantityBase: bigint) => void;
   onClose: () => void;
 }) {
   const p = position;
-  const m = p ? positionMetrics(p) : null;
 
-  // Full open lot in base units (@6dec) — the redeemable ceiling.
-  const openBase = p ? BigInt(Math.round(p.open_quantity)) : 0n;
-  // Identity of the lot in view; resets the selector when a new card is opened.
-  const lotId = p ? `${p.oracle_id}-${p.strike}-${p.is_up}-${p.open_quantity}` : null;
+  const openBase = p ? BigInt(Math.round(p.openQty)) : 0n;
+  const lotId = p ? `${p.oracleId}-${p.lowerStrike}-${p.higherStrike}-${p.openQty}` : null;
 
-  // Chosen close amount, in base units. Defaults to the full lot, and resets
-  // to full whenever a different lot is opened — the React-documented
-  // "adjust state during render" pattern (no effect, no cascading render).
+  // Chosen close amount, in base units — resets to full when a new lot opens
+  // (React "adjust state during render" pattern; no effect).
   const [closeBase, setCloseBase] = useState<bigint>(openBase);
   const [seenLotId, setSeenLotId] = useState<string | null>(lotId);
   if (lotId !== seenLotId) {
@@ -46,65 +40,71 @@ export function RedeemModal({
     setCloseBase(openBase);
   }
 
-  // Fraction of the lot being closed (0..1) — scales the linear breakdown.
+  const decided = !!p?.settled;
   const fraction = openBase > 0n ? Number(closeBase) / Number(openBase) : 0;
-
-  const proceedsLabel = m?.isSettled ? 'Settlement payout' : 'Proceeds (sell now)';
   const partial = closeBase > 0n && closeBase < openBase;
-  const up = (m?.pnl ?? 0) >= 0;
-  const toneVar = up ? 'var(--up)' : 'var(--down)';
   const canConfirm = !!p && closeBase > 0n;
 
-  // Linear scaling of the lot's marks to the chosen amount.
+  // Lot marks, then linear scaling to the chosen amount.
+  const contracts = p ? fromQuote(p.openQty) : 0;
+  const cost = p ? fromQuote(p.openCostBasis) : 0;
+  const value = p ? fromQuote(p.currentValue) : 0;
+  const pnl = p ? fromQuote(p.unrealizedPnl) : 0;
+  const pnlPct = p && p.openCostBasis > 0 ? p.unrealizedPnl / p.openCostBasis : 0;
+
   const closeContracts = fromQuote(closeBase);
-  const remainContracts = m ? m.contracts - closeContracts : 0;
-  const closeCost = m ? m.cost * fraction : 0;
-  const closeValue = m?.value != null ? m.value * fraction : null;
-  const closePnl = m ? m.pnl * fraction : 0;
+  const remainContracts = contracts - closeContracts;
+  const closeCost = cost * fraction;
+  const closeValue = value * fraction;
+  const closePnl = pnl * fraction;
+
+  const up = pnl >= 0;
+  const toneVar = up ? 'var(--up)' : 'var(--down)';
+  const proceedsLabel = decided ? 'Settlement payout' : 'Proceeds (sell now)';
 
   return (
     <Modal
       open={!!p}
       onClose={onClose}
       variant="glass"
-      title={m?.isSettled ? 'Redeem settled position' : 'Close position'}
+      title={decided ? 'Redeem settled range' : 'Close range'}
       subtitle={
-        p ? `${p.is_up ? 'UP' : 'DOWN'} · ${p.underlying_asset} ${price(toFloat(p.strike))}` : undefined
+        p ? `${p.underlying || 'BTC'} ${price(toFloat(p.lowerStrike))} — ${price(toFloat(p.higherStrike))}` : undefined
       }
       footer={
         <>
           <button
             onClick={onClose}
-            className="rounded-lg px-3.5 py-2 text-[12px] text-text-2 transition-colors hover:bg-white/[0.05] hover:text-text-1"
+            className="rounded-lg px-3.5 py-2 text-[12px] text-text-2 transition-colors hover:bg-white/5 hover:text-text-1"
           >
             Cancel
           </button>
           <button
             onClick={() => p && canConfirm && onConfirm(p, closeBase)}
             disabled={busy || !canConfirm}
-            className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
+            className="rounded-lg border border-(--accent-line) bg-(--accent-soft) px-4 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
             {busy
-              ? m?.isSettled
+              ? decided
                 ? 'redeeming…'
                 : 'closing…'
-              : m?.isSettled
+              : decided
                 ? partial
                   ? 'Redeem portion'
                   : 'Confirm redeem'
                 : partial
                   ? 'Close portion'
-                  : 'Close full position'}
+                  : 'Close full range'}
           </button>
         </>
       }
     >
-      {p && m && (
+      {p && (
         <div className="flex flex-col gap-4">
           <p className="text-[12px] leading-relaxed text-text-3">
-            {m.isSettled
-              ? 'This market has settled — redeeming pays out the final result. You can claim part now and the rest later.'
-              : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
+            {decided
+              ? 'This range has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+              : 'Closing returns the range’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 
           <CloseAmountPicker openBase={openBase} closeBase={closeBase} onChange={setCloseBase} />
@@ -128,7 +128,7 @@ export function RedeemModal({
                     {signed(closePnl)}
                   </span>
                   <span className="text-[13px] leading-none" style={{ color: toneVar }}>
-                    {signed(m.pnlPct * 100, 1)}%
+                    {signed(pnlPct * 100, 1)}%
                   </span>
                 </div>
               </div>
@@ -136,7 +136,7 @@ export function RedeemModal({
                 className="rounded-full px-2 py-1 text-[9px] font-medium uppercase tracking-wider"
                 style={{ color: toneVar, background: `color-mix(in srgb, ${toneVar} 14%, transparent)` }}
               >
-                {m.isSettled ? 'Settled' : 'Live mark'}
+                {decided ? 'Settled' : 'Live mark'}
               </span>
             </div>
 
@@ -147,7 +147,7 @@ export function RedeemModal({
               <Row label="Contracts closing">{fmtQuote(closeContracts)}</Row>
               <Row label="Entry cost">{fmtQuote(closeCost)}</Row>
               <Row label={proceedsLabel}>
-                <span className="text-text-1">{closeValue != null ? fmtQuote(closeValue) : '—'}</span>
+                <span className="text-text-1">{fmtQuote(closeValue)}</span>
               </Row>
               {partial && (
                 <Row label="Remaining open">

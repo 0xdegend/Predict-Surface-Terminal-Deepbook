@@ -25,6 +25,7 @@ import { PerformanceCard } from './performance-card';
 import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
+import { RangeRedeemModal } from './range-redeem-modal';
 import { derivePortfolioHistory, deriveRangeHistory } from '@/lib/portfolio/history';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
@@ -40,6 +41,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const leaderboard = useLeaderboard();
   const ranges = useRangePositions(acct.managerId);
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
+  const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
   if (!mounted) {
@@ -95,13 +97,13 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const open = positions.filter((p) => p.open_quantity > 0 && !isRedeemableStatus(p.status));
   const openRanges = ranges.positions.filter((p) => p.openQty > 0);
 
-  async function handleRedeemRange(p: ValuedRangePosition) {
+  async function handleRedeemRange(p: ValuedRangePosition, quantityBase: bigint) {
     await acct.redeemRange({
       oracleId: p.oracleId,
       expiry: p.expiry,
       lowerStrike: BigInt(Math.round(p.lowerStrike)),
       higherStrike: BigInt(Math.round(p.higherStrike)),
-      quantity: BigInt(Math.round(p.openQty)),
+      quantity: quantityBase,
     });
   }
 
@@ -277,7 +279,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
                       position={p}
                       now={now}
                       busy={!!acct.busy}
-                      onRedeem={handleRedeemRange}
+                      onRedeem={setRedeemingRange}
                     />
                   ))}
                 </Grid>
@@ -322,6 +324,16 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           setRedeeming(null);
         }}
         onClose={() => setRedeeming(null)}
+      />
+
+      <RangeRedeemModal
+        position={redeemingRange}
+        busy={!!acct.busy}
+        onConfirm={async (p, quantityBase) => {
+          await handleRedeemRange(p, quantityBase);
+          setRedeemingRange(null);
+        }}
+        onClose={() => setRedeemingRange(null)}
       />
 
       <p className="mt-6 text-[10px] text-text-3">Quote asset · {predictConfig.quote.symbol} · {predictConfig.network}</p>
