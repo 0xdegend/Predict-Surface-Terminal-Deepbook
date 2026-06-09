@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { Toaster } from './_components/toaster';
+import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // One QueryClient per app lifetime. useState avoids re-creating on re-render
@@ -25,6 +26,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <DAppKitProvider dAppKit={dAppKit}>
+        {/* Registers "Sign in with Google" (Enoki zkLogin) into the wallet list. */}
+        <RegisterEnokiWallets />
         {children}
         <Toaster />
       </DAppKitProvider>
