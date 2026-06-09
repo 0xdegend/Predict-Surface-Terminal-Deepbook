@@ -8,7 +8,7 @@
  * oracle out to the explorer. Newest first.
  */
 import { useState } from 'react';
-import { LuArrowUp, LuArrowDown, LuExternalLink, LuShare2 } from 'react-icons/lu';
+import { LuArrowUp, LuArrowDown, LuCalendarRange, LuExternalLink, LuShare2 } from 'react-icons/lu';
 import { price, dateUTC, quote as fmtQuote, signed, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { usePositionSpark } from '@/lib/hooks/use-position-spark';
@@ -53,16 +53,30 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
                           won ? 'bg-up' : 'bg-down'
                         }`}
                       />
-                      <span
-                        className={`inline-flex h-4 w-4 flex-none items-center justify-center rounded ${
-                          h.up ? 'text-up' : 'text-down'
-                        }`}
-                      >
-                        {h.up ? <LuArrowUp size={13} /> : <LuArrowDown size={13} />}
-                      </span>
-                      <span className="font-medium">{h.underlying}</span>
-                      <span className="text-text-3">{h.up ? '≥' : '≤'}</span>
-                      <span className="text-text-2">${price(h.strike)}</span>
+                      {h.band ? (
+                        <>
+                          <span className="inline-flex h-4 w-4 flex-none items-center justify-center text-text-2">
+                            <LuCalendarRange size={13} />
+                          </span>
+                          <span className="font-medium">{h.underlying}</span>
+                          <span className="text-text-2">
+                            ${price(h.band.lower)}–${price(h.band.higher)}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span
+                            className={`inline-flex h-4 w-4 flex-none items-center justify-center rounded ${
+                              h.up ? 'text-up' : 'text-down'
+                            }`}
+                          >
+                            {h.up ? <LuArrowUp size={13} /> : <LuArrowDown size={13} />}
+                          </span>
+                          <span className="font-medium">{h.underlying}</span>
+                          <span className="text-text-3">{h.up ? '≥' : '≤'}</span>
+                          <span className="text-text-2">${price(h.strike)}</span>
+                        </>
+                      )}
                     </span>
                   </Td>
                   <Td>
@@ -104,9 +118,41 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
       </div>
 
       {/* Mounted only while a row is selected — keeps the spark query scoped to one. */}
-      {sharing && <HistoryShareModal prediction={sharing} onClose={() => setSharing(null)} />}
+      {sharing &&
+        (sharing.band ? (
+          <RangeHistoryShareModal prediction={sharing} onClose={() => setSharing(null)} />
+        ) : (
+          <HistoryShareModal prediction={sharing} onClose={() => setSharing(null)} />
+        ))}
     </div>
   );
+}
+
+/** Range rows have no single-strike spark; share the band card directly. */
+function RangeHistoryShareModal({
+  prediction: h,
+  onClose,
+}: {
+  prediction: PastPrediction;
+  onClose: () => void;
+}) {
+  const data: ShareCardData = {
+    underlying: h.underlying,
+    up: true,
+    strike: 0,
+    expiry: h.expiry,
+    result: h.result,
+    decided: true,
+    pnl: h.pnl,
+    pnlPct: h.roi,
+    cost: h.cost,
+    contracts: h.contracts,
+    entryPrice: h.entryPrice,
+    markPrice: h.result === 'won' ? 1 : 0,
+    spark: [],
+    band: h.band,
+  };
+  return <ShareCardModal open onClose={onClose} data={data} />;
 }
 
 /**
@@ -121,7 +167,7 @@ function HistoryShareModal({
   prediction: PastPrediction;
   onClose: () => void;
 }) {
-  const spark = usePositionSpark(h.source);
+  const spark = usePositionSpark(h.source!); // binary rows always carry a source
   const data: ShareCardData = {
     underlying: h.underlying,
     up: h.up,

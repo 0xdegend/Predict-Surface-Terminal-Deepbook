@@ -30,6 +30,19 @@ export interface ShareCardData {
   entryPrice: number; // 0..1
   markPrice: number | null; // 0..1
   spark: number[]; // implied-probability path over the holding window
+  /** Present for a vertical-range card — renders the band instead of a strike. */
+  band?: { lower: number; higher: number };
+}
+
+/** The bet line — a price band for ranges, else strike + direction. */
+function betText(d: ShareCardData): string {
+  if (d.band) return `${d.underlying} in $${price(d.band.lower)}–$${price(d.band.higher)}`;
+  return `${d.underlying} ${d.up ? '≥' : '≤'} $${price(d.strike)}`;
+}
+
+/** The settlement-direction suffix on the subtitle. */
+function outcomeText(d: ShareCardData): string {
+  return d.band ? 'in band' : d.up ? 'UP' : 'DOWN';
 }
 
 export type ShareVariant = 'glow' | 'spotlight' | 'surface';
@@ -221,17 +234,16 @@ function drawFooter({ ctx, c, sans }: Ctx) {
 function drawGlow(s: Ctx) {
   const { ctx, c, accent, sans, mono, d } = s;
   const heroRight = 700;
-  const cmp = d.up ? '≥' : '≤';
 
   ctx.textAlign = 'left';
   ctx.font = `600 38px ${sans}`;
   ctx.fillStyle = c.text1;
-  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, P, 192);
+  ctx.fillText(betText(d), P, 192);
 
   ctx.font = `400 18px ${sans}`;
   ctx.fillStyle = c.text3;
   ctx.fillText(
-    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
     P,
     222,
   );
@@ -265,17 +277,16 @@ function drawGlow(s: Ctx) {
 /* ===================== variant: spotlight ===================== */
 
 function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
-  const cmp = d.up ? '≥' : '≤';
   ctx.textAlign = 'center';
 
   // the bet, quiet, above the hero word
   ctx.font = `600 30px ${sans}`;
   ctx.fillStyle = c.text1;
-  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, W / 2, 215);
+  ctx.fillText(betText(d), W / 2, 215);
   ctx.font = `400 16px ${sans}`;
   ctx.fillStyle = c.text3;
   ctx.fillText(
-    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
     W / 2,
     244,
   );
@@ -315,15 +326,14 @@ function drawSurface(s: Ctx) {
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, W, H);
 
-  const cmp = d.up ? '≥' : '≤';
   ctx.textAlign = 'left';
   ctx.font = `600 36px ${sans}`;
   ctx.fillStyle = c.text1;
-  ctx.fillText(`${d.underlying} ${cmp} $${price(d.strike)}`, P, 250);
+  ctx.fillText(betText(d), P, 250);
   ctx.font = `400 17px ${sans}`;
   ctx.fillStyle = c.text3;
   ctx.fillText(
-    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${d.up ? 'UP' : 'DOWN'}`,
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
     P,
     278,
   );

@@ -5,10 +5,13 @@
  * compact sibling of PositionCard. Value/PnL are marked off the live range-fair
  * (or 1/0 once settled); the band is the hero. Redeem closes or claims it.
  */
-import { LuCalendarRange, LuCircleX, LuDownload } from 'react-icons/lu';
+import { useState } from 'react';
+import { LuCalendarRange, LuCircleX, LuDownload, LuShare2 } from 'react-icons/lu';
 import { fromQuote, toFloat } from '@/config/scale';
 import { quote as fmtQuote, price, pct, signed, dateUTC, countdown } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
+import { ShareCardModal } from './share-card-modal';
+import type { ShareCardData } from './share-card-canvas';
 import type { ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 
 export function RangePositionCard({
@@ -23,6 +26,7 @@ export function RangePositionCard({
   busy: boolean;
 }) {
   const p = position;
+  const [shareOpen, setShareOpen] = useState(false);
   const lower = toFloat(p.lowerStrike);
   const higher = toFloat(p.higherStrike);
   const contracts = fromQuote(p.openQty);
@@ -35,7 +39,24 @@ export function RangePositionCard({
   const won = p.fairUp >= 0.5;
   const positive = pnl >= 0;
   const sym = predictConfig.quote.symbol;
-  const asset = p.underlying || '—';
+  const asset = p.underlying || 'BTC';
+
+  const shareData: ShareCardData = {
+    underlying: asset,
+    up: true, // unused when `band` is present
+    strike: 0,
+    expiry: p.expiry,
+    result: decided ? (won ? 'won' : 'lost') : 'live',
+    decided,
+    pnl,
+    pnlPct,
+    cost,
+    contracts,
+    entryPrice: p.avgEntryPrice / 1e9, // per-unit ask in [0,1]
+    markPrice: p.fairUp,
+    spark: [],
+    band: { lower, higher },
+  };
 
   return (
     <div className="glass-card up interactive relative overflow-hidden font-mono text-[12px] tabular-nums">
@@ -53,17 +74,26 @@ export function RangePositionCard({
             <span className="h-1.5 w-1.5 rounded-full bg-up" />
             <span className="eyebrow">{asset} Range</span>
           </span>
-          {decided ? (
-            <span
-              className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
-                won ? 'bg-(--accent-soft) text-up' : 'bg-(--down-soft) text-down'
-              }`}
+          <div className="flex items-center gap-2.5">
+            {decided ? (
+              <span
+                className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                  won ? 'bg-(--accent-soft) text-up' : 'bg-(--down-soft) text-down'
+                }`}
+              >
+                {won ? 'In band' : 'Out'}
+              </span>
+            ) : (
+              <span className="text-[11px] tabular-nums text-text-2">{countdown(p.expiry, now)} left</span>
+            )}
+            <button
+              onClick={() => setShareOpen(true)}
+              aria-label="Share position as image"
+              className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
             >
-              {won ? 'In band' : 'Out'}
-            </span>
-          ) : (
-            <span className="text-[11px] tabular-nums text-text-2">{countdown(p.expiry, now)} left</span>
-          )}
+              <LuShare2 size={13} />
+            </button>
+          </div>
         </div>
 
         {/* The band — hero */}
@@ -120,6 +150,8 @@ export function RangePositionCard({
           </button>
         </div>
       </div>
+
+      <ShareCardModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
     </div>
   );
 }

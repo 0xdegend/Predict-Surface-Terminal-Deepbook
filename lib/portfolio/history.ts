@@ -20,6 +20,7 @@
  */
 import { fromQuote, toFloat } from '@/config/scale';
 import type { PositionSummary } from '@/lib/api/types';
+import type { RangePosition } from '@/lib/ranges/aggregate';
 
 export interface PastPrediction {
   key: string;
@@ -27,6 +28,8 @@ export interface PastPrediction {
   underlying: string;
   up: boolean;
   strike: number; // float
+  /** Present for a vertical-range row — renders the band instead of strike±. */
+  band?: { lower: number; higher: number };
   expiry: number; // ms
   settledAt: number; // ms — when it closed (last activity)
   result: 'won' | 'lost';
@@ -36,7 +39,8 @@ export interface PastPrediction {
   pnl: number; // DUSDC, signed (payout − cost)
   roi: number; // ratio (pnl / cost)
   entryPrice: number; // 0..1 implied
-  source: PositionSummary; // raw row — lets the share card fetch this position's spark
+  /** Raw binary row — lets the share card fetch its spark. Absent for ranges. */
+  source?: PositionSummary;
 }
 
 export interface WinStats {
@@ -95,18 +99,50 @@ function toPrediction(p: PositionSummary): PastPrediction {
   };
 }
 
+/** A fully-closed vertical range → a history row. PnL = payout − cost. */
+function rangeToPrediction(p: RangePosition & { underlying: string }): PastPrediction {
+  const cost = fromQuote(p.totalCost);
+  const payout = fromQuote(p.totalPayout);
+  const pnl = payout - cost;
+  return {
+    key: `range-${p.oracleId}-${p.lowerStrike}-${p.higherStrike}-${p.lastActivityAt}`,
+    oracleId: p.oracleId,
+    underlying: p.underlying || 'BTC',
+    up: true, // unused when `band` is present
+    strike: 0,
+    band: { lower: toFloat(p.lowerStrike), higher: toFloat(p.higherStrike) },
+    expiry: p.expiry,
+    settledAt: p.lastActivityAt,
+    result: pnl > 0 ? 'won' : 'lost',
+    contracts: fromQuote(p.redeemedQty),
+    cost,
+    payout,
+    pnl,
+    roi: cost > 0 ? pnl / cost : 0,
+    entryPrice: p.avgEntryPrice / 1e9,
+  };
+}
+
+/** Closed (fully redeemed) ranges → history rows. */
+export function deriveRangeHistory(positions: (RangePosition & { underlying: string })[]): PastPrediction[] {
+  return positions.filter((p) => p.redeemedQty > 0 && p.openQty <= 0).map(rangeToPrediction);
+}
+
 /**
  * Split a manager's positions into the closed-history rows (newest first) and the
- * aggregate win/loss stats over them.
+ * aggregate win/loss stats over them. `extraRows` (e.g. closed ranges) are merged
+ * into the same history + stats.
  */
-export function derivePortfolioHistory(positions: PositionSummary[]): {
+export function derivePortfolioHistory(
+  positions: PositionSummary[],
+  extraRows: PastPrediction[] = [],
+): {
   history: PastPrediction[];
   stats: WinStats;
 } {
-  const history = positions
-    .filter((p) => CLOSED.has(p.status))
-    .map(toPrediction)
-    .sort((a, b) => b.settledAt - a.settledAt);
+  const history = [...positions.filter((p) => CLOSED.has(p.status)).map(toPrediction), ...extraRows].sort(
+    (a, b) => b.settledAt - a.settledAt,
+  );
 
   const unclaimed = positions.filter((p) => p.status === 'redeemable').length;
 

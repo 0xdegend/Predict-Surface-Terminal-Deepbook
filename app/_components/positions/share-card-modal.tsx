@@ -111,7 +111,9 @@ export function ShareCardModal({
   const shareOnX = async () => {
     const ok = await copyImage();
     if (data) {
-      const cmp = data.up ? '≥' : '≤';
+      const bet = data.band
+        ? `${data.underlying} in $${price(data.band.lower)}–$${price(data.band.higher)}`
+        : `${data.underlying} ${data.up ? '≥' : '≤'} $${price(data.strike)}`;
       const verb =
         data.result === 'won'
           ? `WON ${signed(data.pnlPct * 100, 1)}%`
@@ -119,7 +121,7 @@ export function ShareCardModal({
             ? `closed ${signed(data.pnlPct * 100, 1)}%`
             : `riding ${signed(data.pnlPct * 100, 1)}%`;
       const text =
-        `${data.underlying} ${cmp} $${price(data.strike)} — ${verb} on DeepBook Predict 📈\n\n` +
+        `${bet} — ${verb} on DeepBook Predict 📈\n\n` +
         `Trading the live volatility surface on @SuiNetwork 👇`;
       const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=Sui,DeepBook`;
       window.open(intent, '_blank', 'noopener,noreferrer');

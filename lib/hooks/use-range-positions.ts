@@ -32,10 +32,10 @@ export function useRangePositions(managerId: string | null) {
     [rangesQ.data],
   );
 
-  // Value open positions against their oracle's live SVI — fetch each distinct
-  // oracle once.
+  // Fetch each distinct oracle once — for live valuation (open) and to resolve
+  // the underlying for closed positions (which flow into trade history).
   const oracleIds = useMemo(
-    () => [...new Set(positions.filter((p) => p.openQty > 0).map((p) => p.oracleId))],
+    () => [...new Set(positions.map((p) => p.oracleId))],
     [positions],
   );
   const stateQs = useQueries({

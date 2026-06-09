@@ -25,7 +25,7 @@ import { PerformanceCard } from './performance-card';
 import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
-import { derivePortfolioHistory } from '@/lib/portfolio/history';
+import { derivePortfolioHistory, deriveRangeHistory } from '@/lib/portfolio/history';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -109,8 +109,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const unrealized = s ? fromQuote(s.unrealized_pnl) : 0;
   const unrealizedPct = s && s.open_exposure > 0 ? s.unrealized_pnl / s.open_exposure : 0;
 
-  // Settled track record (closed positions) — drives the performance bento + table.
-  const { history, stats } = derivePortfolioHistory(positions);
+  // Settled track record (closed positions + closed ranges) — drives the
+  // performance bento + table.
+  const { history, stats } = derivePortfolioHistory(positions, deriveRangeHistory(ranges.positions));
 
   // Points = this trader's row in the leaderboard aggregation (same formula,
   // same inputs as the board). Undefined while the board loads → tile shows '…'.
