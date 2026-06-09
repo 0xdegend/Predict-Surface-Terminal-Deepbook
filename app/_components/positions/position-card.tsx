@@ -17,7 +17,7 @@ import {
   LuExternalLink,
   LuCircleX,
   LuDownload,
-  LuShare2,
+  LuShare,
 } from "react-icons/lu";
 import {
   quote as fmtQuote,
@@ -289,7 +289,7 @@ function ShareButton({ onClick, icon }: { onClick: () => void; icon?: boolean })
         aria-label="Share position as image"
         className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
       >
-        <LuShare2 size={13} />
+        <LuShare size={13} />
       </button>
     );
   }
@@ -299,7 +299,7 @@ function ShareButton({ onClick, icon }: { onClick: () => void; icon?: boolean })
       className="ctrl-soft inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-2"
     >
       Share position
-      <LuShare2 size={14} />
+      <LuShare size={14} />
     </button>
   );
 }

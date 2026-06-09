@@ -8,7 +8,7 @@
  * oracle out to the explorer. Newest first.
  */
 import { useState } from 'react';
-import { LuArrowUp, LuArrowDown, LuCalendarRange, LuExternalLink, LuShare2 } from 'react-icons/lu';
+import { LuArrowUp, LuArrowDown, LuCalendarRange, LuExternalLink, LuShare } from 'react-icons/lu';
 import { price, dateUTC, quote as fmtQuote, signed, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { usePositionSpark } from '@/lib/hooks/use-position-spark';
@@ -107,7 +107,7 @@ export function HistoryTable({ history }: { history: PastPrediction[] }) {
                       aria-label="Share this trade as an image"
                       className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
                     >
-                      <LuShare2 size={13} />
+                      <LuShare size={13} />
                     </button>
                   </Td>
                 </tr>

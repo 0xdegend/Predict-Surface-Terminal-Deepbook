@@ -170,9 +170,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
               <button
                 onClick={() => acct.withdrawAll()}
                 disabled={acct.busy === 'withdraw'}
-                className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-1 transition-colors hover:border-up/40 hover:bg-up/5 hover:text-up disabled:opacity-50"
+                className="group glass-inset mt-1 inline-flex w-fit items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-1 transition-all duration-200 hover:border-(--accent-line) hover:text-accent disabled:opacity-50"
               >
-                <LuDownload size={12} />
+                <LuDownload size={12} className="transition-colors duration-200 group-hover:text-accent" />
                 {acct.busy === 'withdraw' ? 'withdrawing…' : 'Withdraw'}
               </button>
             ) : undefined

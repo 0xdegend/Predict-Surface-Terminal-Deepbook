@@ -6,7 +6,7 @@
  * (or 1/0 once settled); the band is the hero. Redeem closes or claims it.
  */
 import { useState } from 'react';
-import { LuCalendarRange, LuCircleX, LuDownload, LuShare2 } from 'react-icons/lu';
+import { LuCalendarRange, LuCircleX, LuDownload, LuShare } from 'react-icons/lu';
 import { fromQuote, toFloat } from '@/config/scale';
 import { quote as fmtQuote, price, pct, signed, dateUTC, countdown } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
@@ -91,7 +91,7 @@ export function RangePositionCard({
               aria-label="Share position as image"
               className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2"
             >
-              <LuShare2 size={13} />
+              <LuShare size={13} />
             </button>
           </div>
         </div>
