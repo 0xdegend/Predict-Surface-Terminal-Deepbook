@@ -164,11 +164,25 @@ export function usePredictAccount() {
     return runTx('create', buildCreateManagerTx(), [qk.managers(owner ?? '')]);
   }
 
-  async function redeem(pos: PositionSummary) {
+  /**
+   * Close (or claim, if settled) a binary position. `quantityBase` is an
+   * optional partial amount in on-chain base units (@6dec); omit it to close
+   * the full open lot. The contract keys positions by MarketKey + quantity, so
+   * a partial close is just a redeem with quantity < open_quantity — the
+   * remainder stays open and can be closed later.
+   */
+  async function redeem(pos: PositionSummary, quantityBase?: bigint) {
     if (!managerId) return null;
     // A 'redeemable' (settled, in-the-money, unclaimed) position must use the
     // permissionless settled path — see REDEEMABLE_STATUSES.
     const settled = isRedeemableStatus(pos.status);
+    // open_quantity is already the on-chain base quantity (@6dec) — pass it
+    // straight through; do NOT re-scale with toQuote. Clamp any partial amount
+    // to (0, open] so we never over-redeem or send a zero-quantity tx.
+    const open = BigInt(Math.round(pos.open_quantity));
+    const quantity =
+      quantityBase == null ? open : quantityBase <= 0n ? 0n : quantityBase > open ? open : quantityBase;
+    if (quantity <= 0n) return null;
     return runTx(
       `redeem-${pos.oracle_id}-${pos.strike}-${pos.is_up}`,
       buildRedeemTx({
@@ -177,9 +191,7 @@ export function usePredictAccount() {
         expiry: pos.expiry,
         strike: BigInt(pos.strike),
         isUp: pos.is_up,
-        // open_quantity is already the on-chain base quantity (@6dec) — pass it
-        // straight through; do NOT re-scale with toQuote.
-        quantity: BigInt(Math.round(pos.open_quantity)),
+        quantity,
         settled,
       }),
       managerKeys,

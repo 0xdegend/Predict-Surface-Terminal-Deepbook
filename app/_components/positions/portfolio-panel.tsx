@@ -317,8 +317,8 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       <RedeemModal
         position={redeeming}
         busy={!!acct.busy}
-        onConfirm={async (p) => {
-          await acct.redeem(p);
+        onConfirm={async (p, quantityBase) => {
+          await acct.redeem(p, quantityBase);
           setRedeeming(null);
         }}
         onClose={() => setRedeeming(null)}
