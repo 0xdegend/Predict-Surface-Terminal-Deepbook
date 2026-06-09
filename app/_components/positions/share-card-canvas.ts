@@ -73,6 +73,27 @@ function fontFamily(kind: 'sans' | 'mono'): string {
   return ff || (kind === 'mono' ? 'monospace' : 'system-ui, sans-serif');
 }
 
+/* Skew brand mark, loaded once and cached, for the card header. Same-origin
+ * (/skew-mark.png) so it never taints the canvas → toBlob / clipboard still work.
+ * The modal awaits this before drawing so the mark is present on first paint. */
+let logoImg: HTMLImageElement | null = null;
+let logoPromise: Promise<HTMLImageElement | null> | null = null;
+export function loadShareLogo(): Promise<HTMLImageElement | null> {
+  if (logoImg) return Promise.resolve(logoImg);
+  if (!logoPromise) {
+    logoPromise = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        logoImg = img;
+        resolve(img);
+      };
+      img.onerror = () => resolve(null);
+      img.src = '/skew-mark.png';
+    });
+  }
+  return logoPromise;
+}
+
 interface Ctx {
   ctx: CanvasRenderingContext2D;
   c: Theme;
@@ -162,22 +183,23 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: ShareVariant) {
 
 function drawHeader({ ctx, c, accent, sans, d }: Ctx) {
   const brandY = 78;
-  // live-dot mark
-  ctx.beginPath();
-  ctx.arc(P + 6, brandY - 6, 6, 0, Math.PI * 2);
-  ctx.fillStyle = c.up;
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(P + 6, brandY - 6, 11, 0, Math.PI * 2);
-  ctx.strokeStyle = withAlpha(c.up, 0.35);
-  ctx.lineWidth = 2;
-  ctx.stroke();
+  const markSize = 30;
+  if (logoImg) {
+    ctx.drawImage(logoImg, P, brandY - 24, markSize, markSize);
+  } else {
+    // Fallback mark while the image loads — a teal brand dot.
+    ctx.beginPath();
+    ctx.arc(P + 8, brandY - 6, 6, 0, Math.PI * 2);
+    ctx.fillStyle = c.up;
+    ctx.fill();
+  }
 
+  const textX = P + markSize + 12;
   ctx.font = `600 30px ${sans}`;
   ctx.fillStyle = c.text1;
-  ctx.fillText('Predict', P + 26, brandY + 4);
-  const brandW = ctx.measureText('Predict').width;
-  drawTag(ctx, 'DEEPBOOK · SUI', P + 26 + brandW + 14, brandY - 19, c.text3, c.line, sans);
+  ctx.fillText('Skew', textX, brandY + 4);
+  const brandW = ctx.measureText('Skew').width;
+  drawTag(ctx, 'DEEPBOOK · SUI', textX + brandW + 14, brandY - 19, c.text3, c.line, sans);
 
   const resultText = d.result === 'won' ? 'WON' : d.result === 'lost' ? 'LOST' : 'LIVE';
   drawResultPill(ctx, resultText, W - P, brandY - 18, accent, d.result === 'live', sans);
@@ -389,7 +411,6 @@ function drawStatStrip({ ctx, c, sans, mono, d }: Ctx) {
   ctx.fillRect(P, stripY, W - 2 * P, 1);
 
   const cells: [string, string][] = [
-    ['SIZE', `${quote(d.contracts)} ctr`],
     ['COST', `${quote(d.cost)} DUSDC`],
     ['AVG ENTRY', pct(d.entryPrice, 1)],
     [d.decided ? 'SETTLED' : 'MARK', d.markPrice != null ? pct(d.markPrice, 1) : '—'],

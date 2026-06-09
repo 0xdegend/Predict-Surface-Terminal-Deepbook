@@ -60,14 +60,16 @@ export function timeUTC(ms: number): string {
   return `${hh}:${mm}:${ss} UTC`;
 }
 
-/** ms-epoch → "Jun 03 14:32 UTC" for expiries. */
-export function dateUTC(ms: number): string {
+/** ms-epoch → "Jun 03 14:32 UTC" for expiries. Pass `zone=false` to drop the
+ *  " UTC" suffix where the surrounding context already implies it (e.g. the
+ *  dense position card). */
+export function dateUTC(ms: number, zone = true): string {
   const d = new Date(ms);
   const mon = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
   const day = String(d.getUTCDate()).padStart(2, '0');
   const hh = String(d.getUTCHours()).padStart(2, '0');
   const mm = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${mon} ${day} ${hh}:${mm} UTC`;
+  return `${mon} ${day} ${hh}:${mm}${zone ? ' UTC' : ''}`;
 }
 
 /** Time-to-expiry as compact "2h 14m" / "—" if past. */

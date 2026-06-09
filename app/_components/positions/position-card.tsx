@@ -143,7 +143,7 @@ export function PositionCard({
             <div className="flex flex-col gap-1">
               <h3 className="text-[15px] leading-none text-text-1">
                 {p.underlying_asset} <span className="text-text-3">·</span>{" "}
-                {dateUTC(p.expiry)}
+                {dateUTC(p.expiry, false)}
               </h3>
               <p className="font-sans text-[11px] text-text-2">
                 {p.underlying_asset} {up ? "≥" : "≤"} {price(toFloat(p.strike))}{" "}
@@ -219,11 +219,11 @@ export function PositionCard({
 
           <div className="hairline-fade" />
 
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @md:grid-cols-3 @xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 @md:grid-cols-3 @xl:grid-cols-5">
             <MiniMetric
               icon={LuClock}
               label="Entered"
-              value={dateUTC(p.first_minted_at)}
+              value={dateUTC(p.first_minted_at, false)}
             />
             <MiniMetric
               icon={LuDollarSign}
@@ -238,7 +238,7 @@ export function PositionCard({
             <MiniMetric
               icon={LuActivity}
               label="Net move"
-              value={deltaPp != null ? `${signed(deltaPp, 1)} pp` : "—"}
+              value={deltaPp != null ? `${signed(deltaPp, 1)}%` : "—"}
               tone={
                 deltaPp != null ? (deltaPp >= 0 ? "up" : "down") : undefined
               }

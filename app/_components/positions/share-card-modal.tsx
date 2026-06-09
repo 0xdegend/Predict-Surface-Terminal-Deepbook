@@ -7,6 +7,7 @@ import { Modal } from '@/app/_components/ui/modal';
 import { signed, price } from '@/lib/format';
 import {
   drawShareCard,
+  loadShareLogo,
   SHARE_VARIANTS,
   type ShareCardData,
   type ShareVariant,
@@ -39,7 +40,7 @@ export function ShareCardModal({
     if (!open || !data) return;
     let cancelled = false;
     (async () => {
-      await document.fonts.ready;
+      await Promise.all([document.fonts.ready, loadShareLogo()]);
       if (cancelled || !canvasRef.current) return;
       setStatus(null);
       drawShareCard(canvasRef.current, data, { variant });
@@ -54,7 +55,7 @@ export function ShareCardModal({
     if (!open || !data) return;
     let cancelled = false;
     (async () => {
-      await document.fonts.ready;
+      await Promise.all([document.fonts.ready, loadShareLogo()]);
       if (cancelled) return;
       for (const v of SHARE_VARIANTS) {
         const el = thumbRefs.current[v.id];
@@ -77,8 +78,8 @@ export function ShareCardModal({
     );
 
   const fileName = data
-    ? `predict-${data.underlying.toLowerCase()}-${data.result}-${variant}.png`
-    : 'predict-position.png';
+    ? `skew-${data.underlying.toLowerCase()}-${data.result}-${variant}.png`
+    : 'skew-position.png';
 
   const save = async () => {
     const blob = await toBlob();

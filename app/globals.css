@@ -65,6 +65,25 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/*
+ * Tailwind v4's preflight resets interactive elements to `cursor: default`
+ * (matching native browsers). Restore the pointer on every enabled control in
+ * one place — so we never have to remember `cursor-pointer` per button — and
+ * show `not-allowed` on disabled ones. Anchors already get a pointer.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+}
+
 /* Tabular figures everywhere numbers live (defensive; components also set it). */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
