@@ -16,6 +16,7 @@ import { snapStrikeToTick } from "@/lib/keys";
 import { toFloat } from "@/config/scale";
 import { pct, price, dateUTC, ttl } from "@/lib/format";
 import { useSurfaceStore } from "@/lib/store/surface-store";
+import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import { useSurfaceInputs } from "./use-surface-inputs";
 import { SurfaceControls } from "./surface-controls";
 import type { Oracle } from "@/lib/api/types";
@@ -839,6 +840,15 @@ function shortDate(ms: number): string {
  * expiry, so the forward is a single straight line down the centre.
  */
 function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
+  // The depth axis compresses on a small canvas, so all-expiries-at-once stack
+  // on top of each other (esp. on a phone). Thin the labels to an evenly-spaced
+  // subset — fewer on mobile — always keeping the first and last so both ends of
+  // the expiry range stay anchored. The mesh + strike ticks are untouched.
+  const isMobile = useMediaQuery("(max-width: 639px)");
+  const maxExpiryLabels = isMobile ? 5 : 10;
+  const labelStep = Math.max(1, Math.ceil(mesh.rowMeta.length / maxExpiryLabels));
+  const lastRow = mesh.rowMeta.length - 1;
+
   const halfW = mesh.width / 2;
   const halfD = mesh.depth / 2;
   const y = -0.12; // sit labels just under the surface base, on the floor
@@ -902,16 +912,23 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
       {/* Expiry labels down the right edge (kept compact for many oracles). The
           tick values themselves identify each axis, so no separate axis titles
           are drawn — they used to collide with the control bar / hints. */}
-      {mesh.rowMeta.map((rm, r) => (
-        <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude>
-          <span
-            className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}
-          >
-            <span className="text-text-1">{shortDate(rm.expiry)}</span>
-            <span className="text-text-3">{ttl(rm.expiry)}</span>
-          </span>
-        </Html>
-      ))}
+      {mesh.rowMeta.map((rm, r) => {
+        // Keep evenly-spaced labels plus the two endpoints; drop the rest so the
+        // axis never crowds. (Skip a near-last tick that would touch the pinned
+        // last one.)
+        const keep = r % labelStep === 0 || r === lastRow;
+        if (!keep || (r !== lastRow && lastRow - r < labelStep / 2)) return null;
+        return (
+          <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude>
+            <span
+              className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}
+            >
+              <span className="text-text-1">{shortDate(rm.expiry)}</span>
+              <span className="text-text-3">{ttl(rm.expiry)}</span>
+            </span>
+          </Html>
+        );
+      })}
     </group>
   );
 }
@@ -931,9 +948,9 @@ function SurfaceCaption() {
   );
   if (!show) return null;
   return (
-    <div className="glass pointer-events-auto absolute left-1/2 top-6 z-10 flex max-w-sm -translate-x-1/2 items-start gap-2.5 rounded-xl px-3.5 py-2.5">
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[11px] leading-relaxed text-text-2">
+    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-60 -translate-x-1/2 items-start gap-2 rounded-xl px-3 py-2 sm:top-6 sm:max-w-sm sm:gap-2.5 sm:px-3.5 sm:py-2.5">
+      <div className="flex flex-col gap-1 sm:gap-1.5">
+        <p className="text-[10.5px] leading-snug text-text-2 sm:text-[11px] sm:leading-relaxed">
           <span className="font-medium text-text-1">
             Reading the surface —{" "}
           </span>
@@ -941,7 +958,7 @@ function SurfaceCaption() {
           today&apos;s price; the wings lifting on either side mean it&apos;s
           bracing for a swing. Warmer colors = more uncertainty.
         </p>
-        <p className="text-[10px] leading-relaxed text-text-3">
+        <p className="text-[10px] leading-snug text-text-3 sm:leading-relaxed">
           Drag the slider to rewind · tap{" "}
           <span className="text-down">Stress</span> to fire the no-arb check.
         </p>

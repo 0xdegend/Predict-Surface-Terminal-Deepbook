@@ -5,7 +5,7 @@ import { parseSvi } from '@/lib/svi/svi';
 import type { SmileInput } from '@/lib/svi/surface';
 import { TopChrome } from './_components/top-chrome';
 import { FlowPanel } from './_components/flow-panel';
-import { SurfaceMount } from './_components/surface/surface-mount';
+import { MarketView } from './_components/surface/market-view';
 import { LiveSviPanel } from './_components/live-svi-panel';
 import { MarketPicker } from './_components/market-picker';
 import { ErrorState } from './_components/ui/error-state';
@@ -115,7 +115,7 @@ export default async function Page() {
             <section className="flex flex-col gap-px bg-white/[0.06]">
               {/* 3-D SVI surface — the hero */}
               <div className="h-[48vh] min-h-[360px] bg-bg-0 lg:h-[64vh] lg:min-h-[520px]">
-                <SurfaceMount oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
+                <MarketView oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
               </div>
 
               {/* Market picker — cards (beginner) or table (dense), both clickable:

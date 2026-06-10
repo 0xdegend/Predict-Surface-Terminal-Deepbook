@@ -19,6 +19,7 @@ import { toFloat, fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, price, pct, signed, dateUTC, countdown } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { snapStrikeToTick, gridBounds } from '@/lib/keys';
@@ -28,6 +29,7 @@ import { upFair } from '@/lib/svi/svi';
 import { buildMintTx } from '@/lib/sui/predict-tx';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
+import { MintConfirmModal } from './mint-confirm-modal';
 import { RedeemModal } from './positions/redeem-modal';
 import { RangeRedeemModal } from './positions/range-redeem-modal';
 import { positionMetrics } from './positions/position-metrics';
@@ -93,6 +95,12 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
   const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
   const rangesData = useRangePositions(managerId);
+
+  // Google/zkLogin (Enoki) mints are gasless and sponsored — no wallet pop-up to
+  // review the trade — so gate them behind an explicit in-app confirm. Normal
+  // wallets skip it; their signing prompt is already the review moment.
+  const isEnoki = useIsEnokiWallet();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active?.oracle;
   const forward = active?.forward ?? 0;
@@ -176,6 +184,14 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   const tradingBalance = summary?.trading_balance ?? 0; // @6dec base units
 
+  // Entry point for the Mint button. Enoki users see a confirm modal first
+  // (no wallet pop-up otherwise); everyone else mints straight through.
+  function requestMint() {
+    if (!q || !tradeable || expired || busy === 'mint') return;
+    if (isEnoki) setConfirmOpen(true);
+    else handleMint();
+  }
+
   async function handleMint() {
     if (!managerId || !q || !oracle || expired) return;
     const costBuf = (q.mintCost * 102n) / 100n;
@@ -193,6 +209,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       }),
       [...managerKeys, qk.dusdcBalance(owner ?? '')],
     );
+    setConfirmOpen(false);
     if (digest) pulseFill({ oracleId: oracle.oracle_id, strike: toFloat(Number(strike)), isUp });
   }
 
@@ -505,7 +522,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           )}
 
           <button
-            onClick={handleMint}
+            onClick={requestMint}
             disabled={!q || !tradeable || expired || busy === 'mint'}
             className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
               isUp
@@ -529,6 +546,29 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             The chain confirms the final price when you sign — a transaction can still be rejected
             in your wallet or revert if the market moves or expires first.
           </p>
+
+          {q && (
+            <MintConfirmModal
+              open={confirmOpen}
+              onClose={() => setConfirmOpen(false)}
+              onConfirm={handleMint}
+              busy={busy === 'mint'}
+              headline={`${oracle.underlying_asset} · ${isUp ? 'UP' : 'DOWN'}`}
+              tone={isUp ? 'up' : 'down'}
+              rows={[
+                {
+                  label: 'Outcome',
+                  value: isUp ? 'Pays if price ends ABOVE' : 'Pays if price ends BELOW',
+                },
+                { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
+                { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
+                { label: 'Contracts', value: String(contracts) },
+              ]}
+              cost={fmtQuote(fromQuote(q.mintCost))}
+              maxWin={fmtQuote(contracts)}
+              confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
+            />
+          )}
             </>
           )}
         </div>

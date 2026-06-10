@@ -15,11 +15,14 @@ import { predictConfig } from '@/config/predict';
 import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, price, pct, signed } from '@/lib/format';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
+import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { quoteRange } from '@/lib/sui/quote';
 import { humanizeError } from '@/lib/sui/abort';
 import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
+import { MintConfirmModal } from './mint-confirm-modal';
+import { dateUTC, countdown } from '@/lib/format';
 
 export function RangeTicket({ active, now }: { active: SmileInput; now: number }) {
   const client = useCurrentClient();
@@ -29,6 +32,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const clearRange = useSurfaceStore((s) => s.clearRange);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
   const [contractsInput, setContractsInput] = useState(1);
+
+  // Gasless Google/zkLogin mints have no wallet pop-up → confirm in-app first.
+  const isEnoki = useIsEnokiWallet();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active.oracle;
   const sym = predictConfig.quote.symbol;
@@ -68,6 +75,12 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   });
   const q = tradeable ? quoteQ.data : undefined;
 
+  function requestMint() {
+    if (!q || !tradeable || expired || acct.busy === 'mint-range') return;
+    if (isEnoki) setConfirmOpen(true);
+    else handleMint();
+  }
+
   async function handleMint() {
     if (!q || !band || expired) return;
     const buffered = (q.mintCost * 102n) / 100n;
@@ -81,6 +94,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
       quantity: qtyBase,
       depositAmount,
     });
+    setConfirmOpen(false);
     if (digest) {
       pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
     }
@@ -234,7 +248,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
       </div>
 
       <button
-        onClick={handleMint}
+        onClick={requestMint}
         disabled={!q || !tradeable || expired || acct.busy === 'mint-range'}
         className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
       >
@@ -249,6 +263,26 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
               : 'Mint range'}
       </button>
+
+      {q && band && (
+        <MintConfirmModal
+          open={confirmOpen}
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={handleMint}
+          busy={acct.busy === 'mint-range'}
+          headline={`${oracle.underlying_asset} · Range`}
+          tone="up"
+          rows={[
+            { label: 'Outcome', value: 'Pays if price ends in band' },
+            { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
+            { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
+            { label: 'Contracts', value: String(contracts) },
+          ]}
+          cost={fmtQuote(cost)}
+          maxWin={fmtQuote(maxPayout)}
+          confirmLabel="Mint range"
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
 import { BottomNav } from "./bottom-nav";
+import { NavMore } from "./nav-more";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
 import type { PriceEvent } from "@/lib/api/types";
 
@@ -26,9 +27,10 @@ export function TopChrome({
   diagnostics?: MarketDiagnostics | null;
 }) {
   return (
-    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5">
-      {/* Zone 1 — brand + screen nav */}
-      <div className="flex items-center gap-3 sm:gap-5">
+    <>
+    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
+      {/* Zone 1 — brand + screen nav. shrink-0 so the chip can never squeeze it. */}
+      <div className="flex shrink-0 items-center gap-3 sm:gap-5">
         <Link href="/" className="group flex items-center gap-2" aria-label="Skew — home">
           <Image
             src="/skew-mark.png"
@@ -47,18 +49,20 @@ export function TopChrome({
             label="Portfolio"
             active={active === "portfolio"}
           />
-          <NavLink href="/vault" label="Hedge Vault" active={active === "vault"} />
           <NavLink
             href="/leaderboard"
             label="Leaderboard"
             active={active === "leaderboard"}
           />
-          <NavLink href="/risk" label="Vault Risk" active={active === "risk"} />
+          {/* Hedge Vault + Vault Risk grouped under one dropdown to free header
+              space for the wallet (route-aware, self-highlighting). */}
+          <NavMore />
         </nav>
       </div>
 
-      {/* Zone 2 — the Live Market Chip (centerpiece) */}
-      <div className="flex justify-center">
+      {/* Zone 2 — the Live Market Chip (centerpiece). min-w-0 lets it shrink
+          instead of pushing the wallet off-screen on narrow phones. */}
+      <div className="flex min-w-0 justify-center">
         {tape?.initial && diagnostics ? (
           <MarketChip
             oracleId={tape.oracleId}
@@ -69,14 +73,20 @@ export function TopChrome({
         ) : null}
       </div>
 
-      {/* Zone 3 — wallet */}
-      <div className="flex items-center justify-end">
+      {/* Zone 3 — wallet. shrink-0 so the Connect/account control is always
+          fully visible, even when the chip is wide. */}
+      <div className="flex shrink-0 items-center justify-end">
         <WalletBar />
       </div>
-
-      {/* Mobile dock — the inline nav above collapses here below lg. */}
-      <BottomNav />
     </header>
+
+    {/* Mobile dock — sibling of (not inside) the .glass header on purpose:
+        backdrop-filter makes an element the containing block for its
+        position:fixed descendants, which would re-anchor this bar to the header
+        instead of the viewport. Kept outside so `fixed bottom-0` pins to the
+        screen bottom. The inline header nav above collapses into this below lg. */}
+    <BottomNav />
+    </>
   );
 }
 

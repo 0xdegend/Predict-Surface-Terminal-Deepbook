@@ -6,10 +6,12 @@
  * and loads it into the trade ticket, pre-filled at the at-the-money strike.
  * Rows with a live SVI snapshot are pickable; the rest render dimmed.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
+import { LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { snapStrikeToTick } from '@/lib/keys';
 import { toFloat } from '@/config/scale';
@@ -39,6 +41,12 @@ export function OracleTable({
   // Live set — picks up newly opened expiries and drops settled ones server-side
   // (the clock drops expired-but-unsettled below); no reload needed.
   const { oracles, inputs } = useLiveOracleData(initialOracles, initialInputs);
+
+  // Paginate so the dense grid never becomes an endless wall — fewer rows on a
+  // phone where vertical space is precious, a fuller page on desktop.
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const pageSize = isDesktop ? 14 : 6;
+  const [page, setPage] = useState(0);
 
   const bodyRef = useRef<HTMLTableSectionElement>(null);
 
@@ -106,6 +114,14 @@ export function OracleTable({
   const visible = oracles.filter((o) => o.expiry > now);
   const hiddenCount = oracles.length - visible.length;
 
+  // Clamp the page in render (no effect) so a shrinking list — expiries dropping
+  // each second, or the page size halving on a viewport change — can never
+  // strand us on an empty page.
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageStart = safePage * pageSize;
+  const pageRows = visible.slice(pageStart, pageStart + pageSize);
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-baseline justify-between">
@@ -150,7 +166,7 @@ export function OracleTable({
             </tr>
           </thead>
           <tbody ref={bodyRef} className="row-divider">
-            {visible.map((o) => {
+            {pageRows.map((o) => {
               const input = inputById.get(o.oracle_id);
               const selected = selection?.oracleId === o.oracle_id;
               const msLeft = o.expiry - now;
@@ -223,9 +239,55 @@ export function OracleTable({
           </tbody>
         </table>
         </div>
+
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between gap-3 border-t border-line px-3 py-2.5">
+            <span className="font-mono text-[10px] tabular-nums text-text-3">
+              {pageStart + 1}–{pageStart + pageRows.length} of {visible.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <PagerArrow
+                dir="prev"
+                disabled={safePage === 0}
+                onClick={() => setPage(safePage - 1)}
+              />
+              <span className="px-1.5 font-mono text-[11px] tabular-nums text-text-2">
+                {safePage + 1}
+                <span className="text-text-3"> / {pageCount}</span>
+              </span>
+              <PagerArrow
+                dir="next"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage(safePage + 1)}
+              />
+            </div>
+          </div>
+        )}
       </div>
       )}
     </div>
+  );
+}
+
+function PagerArrow({
+  dir,
+  disabled,
+  onClick,
+}: {
+  dir: 'prev' | 'next';
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'prev' ? 'Previous page' : 'Next page'}
+      className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      {dir === 'prev' ? <LuChevronLeft size={14} /> : <LuChevronRight size={14} />}
+    </button>
   );
 }
 

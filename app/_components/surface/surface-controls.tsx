@@ -44,11 +44,11 @@ export function SurfaceControls({
   }
 
   return (
-    <div className="pointer-events-auto absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass">
+    <div className="pointer-events-auto absolute bottom-4 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass sm:bottom-5 sm:flex-nowrap">
       {/* LIVE snap-pill */}
       <button
         onClick={snapToLive}
-        className={`flex h-8 items-center gap-2 rounded-lg px-3 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+        className={`flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-[11px] font-medium uppercase tracking-wider transition-colors ${
           isLive
             ? 'bg-[var(--accent-soft)] text-accent'
             : 'text-text-3 hover:bg-white/[0.04] hover:text-text-2'
@@ -59,7 +59,7 @@ export function SurfaceControls({
       </button>
 
       {/* Scrub group */}
-      <div className="flex items-center gap-2.5 px-2">
+      <div className="flex items-center gap-2 px-1 sm:gap-2.5 sm:px-2">
         <input
           type="range"
           min={0}
@@ -68,16 +68,16 @@ export function SurfaceControls({
           value={scrub}
           disabled={!historyReady}
           onChange={(e) => setScrub(Number(e.target.value))}
-          className="surface-scrub h-1 w-52 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30"
+          className="surface-scrub h-1 w-32 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 sm:w-52"
           aria-label="Time-travel scrub"
         />
-        <span className="w-20 text-center font-mono text-[10px] tabular-nums text-text-2 whitespace-nowrap">
+        <span className="w-16 text-center font-mono text-[10px] tabular-nums text-text-2 whitespace-nowrap sm:w-20">
           {isLive ? 'now' : timeUTC(currentTime)}
         </span>
       </div>
 
       {/* Segmented overlay toggles */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
+      <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
         <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
           No-arb
         </SegToggle>
@@ -108,7 +108,7 @@ function SegToggle({
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`h-7 rounded-md px-2.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+      className={`h-7 whitespace-nowrap rounded-md px-2.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
         active ? activeCls : 'text-text-3 hover:text-text-2'
       }`}
     >
