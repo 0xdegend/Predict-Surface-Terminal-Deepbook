@@ -135,6 +135,7 @@ export function SurfaceCanvas({
             onPick={pick}
           />
           <SelectedMarker mesh={mesh} surface={surface} />
+          <BinaryWinZone mesh={mesh} surface={surface} />
           <RangeBandMarker mesh={mesh} surface={surface} />
           <FillRipple mesh={mesh} surface={surface} />
           <SurfaceAxes mesh={mesh} />
@@ -575,6 +576,86 @@ function SelectedMarker({
       >
         <sphereGeometry args={[0.1, 20, 20]} />
         <meshBasicMaterial color="#f4f6f8" />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * BinaryWinZone — visualizes an UP/DOWN binary on the surface: the side of the
+ * strike you win on lights up. A glowing ribbon sweeps along the winning half of
+ * the smile (fading toward the edge), a subtle floor wash marks the price region,
+ * and an arrow points the direction. UP → teal sweeping to higher prices (right);
+ * DOWN → coral to lower prices (left). Toggling UP/DOWN swings it to the other
+ * side — the whole point. Hidden in range mode (the arc owns that).
+ */
+function BinaryWinZone({
+  mesh,
+  surface,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+}) {
+  const selection = useSurfaceStore((s) => s.selection);
+  const ticketMode = useSurfaceStore((s) => s.ticketMode);
+  const up = selection?.isUp ?? true;
+  const accentHex = up ? "#4dd6b0" : "#f0796b";
+
+  const geom = useMemo(() => {
+    if (!selection) return null;
+    const cell = locateCell(mesh, surface, selection.oracleId, selection.strike);
+    if (!cell) return null;
+    // Win on the higher-price (right, larger col) side for UP, lower for DOWN.
+    const edgeCol = up ? mesh.cols - 1 : 0;
+    const from = Math.min(cell.col, edgeCol);
+    const to = Math.max(cell.col, edgeCol);
+    const span = Math.max(to - from, 1);
+    const accent = new THREE.Color(accentHex);
+    const points: [number, number, number][] = [];
+    const colors: [number, number, number][] = [];
+    for (let c = from; c <= to; c++) {
+      const idx = (cell.row * mesh.cols + c) * 3;
+      points.push([mesh.positions[idx], mesh.positions[idx + 1] + 0.05, mesh.positions[idx + 2]]);
+      // Bright at the strike, fading to dark at the winning edge.
+      const dist = Math.abs(c - cell.col) / span;
+      const col = accent.clone().multiplyScalar(1 - 0.9 * dist);
+      colors.push([col.r, col.g, col.b]);
+    }
+    const edgeX = mesh.positions[(cell.row * mesh.cols + edgeCol) * 3];
+    return { cell, points, colors, edgeX };
+  }, [mesh, surface, selection, up, accentHex]);
+
+  if (ticketMode === "range") return null;
+  if (!geom || geom.points.length < 2) return null;
+
+  const { cell, points, colors, edgeX } = geom;
+  const dir = up ? 1 : -1;
+
+  return (
+    <group>
+      {/* subtle floor wash over the winning price region */}
+      <mesh
+        position={[(cell.x + edgeX) / 2, 0.012, cell.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
+        <planeGeometry args={[Math.max(Math.abs(edgeX - cell.x), 0.01), 0.6]} />
+        <meshBasicMaterial color={accentHex} transparent opacity={0.08} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* glow underlay + crisp ribbon sweeping the winning side of the smile,
+          fading toward the edge (raycast off so it never steals node clicks) */}
+      <Line points={points} vertexColors={colors} lineWidth={6} transparent opacity={0.3} raycast={() => null} />
+      <Line points={points} vertexColors={colors} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+
+      {/* direction arrow at the strike, pointing the way you win */}
+      <mesh
+        position={[cell.x + dir * 0.34, cell.y + 0.13, cell.z]}
+        rotation={[0, 0, dir > 0 ? -Math.PI / 2 : Math.PI / 2]}
+        raycast={() => null}
+      >
+        <coneGeometry args={[0.06, 0.16, 14]} />
+        <meshBasicMaterial color={accentHex} />
       </mesh>
     </group>
   );

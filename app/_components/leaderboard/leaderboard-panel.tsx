@@ -330,7 +330,12 @@ function RankStat({ label, children }: { label: string; children: React.ReactNod
 /** Connected but not yet on the board — guide them to their first trade. */
 function NotRankedHint() {
   return (
-    <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-line-strong bg-white/[0.02] px-4 py-3 text-[12px] text-text-2">
+    <div className="glass-inset relative mb-4 flex items-center gap-2.5 overflow-hidden rounded-2xl px-4 py-3 text-[12px] text-text-2">
+      {/* faint top sheen — the glass edge catching light */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-6 top-0 h-px bg-linear-to-r from-transparent via-white/15 to-transparent"
+      />
       <LuTrophy size={14} className="flex-none text-text-3" />
       You&apos;re connected but haven&apos;t traded yet — mint a position to claim your spot on the leaderboard.
     </div>
