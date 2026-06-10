@@ -98,7 +98,7 @@ export function VaultPositionPanel() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 pb-12">
+    <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-5">
       <div className="mb-4 flex items-center gap-2">
         <LuLandmark size={16} className="text-[var(--accent)]" />
         <h2 className="text-[15px] font-semibold tracking-tight text-text-1">Your vault position</h2>

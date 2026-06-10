@@ -125,7 +125,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-5 py-6">
+    <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-5">
       <div className="mb-5">
         <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">
           <LuShieldCheck size={18} className="text-[var(--accent)]" />

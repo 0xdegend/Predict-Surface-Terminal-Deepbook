@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
+import { BottomNav } from "./bottom-nav";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
 import type { PriceEvent } from "@/lib/api/types";
 
@@ -39,7 +40,7 @@ export function TopChrome({
           />
           <span className="text-[15px] font-semibold tracking-tight text-text-1">Skew</span>
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="hidden items-center gap-1 lg:flex">
           <NavLink href="/" label="Trade" active={active === "surface"} />
           <NavLink
             href="/portfolio"
@@ -72,6 +73,9 @@ export function TopChrome({
       <div className="flex items-center justify-end">
         <WalletBar />
       </div>
+
+      {/* Mobile dock — the inline nav above collapses here below lg. */}
+      <BottomNav />
     </header>
   );
 }

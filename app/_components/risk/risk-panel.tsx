@@ -102,7 +102,7 @@ export function RiskPanel({
   const resilient = whatif.worstPnlPct > -0.01;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-5 py-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-5">
       {/* Header */}
       <div className="mb-5">
         <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">

@@ -60,7 +60,7 @@ export function TraderProfile({ address }: { address: string }) {
   const stat = (v: number, d = 2) => (lbLoading ? '…' : row ? num(v, d) : '—');
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-6">
+    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-5">
       <Link
         href="/leaderboard"
         className="mb-4 inline-flex items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"

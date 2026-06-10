@@ -71,6 +71,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
   const ticketMode = useSurfaceStore((s) => s.ticketMode);
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
+  const select = useSurfaceStore((s) => s.select);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   // Active oracle = the selection for the current ticket mode, falling back to
@@ -115,6 +116,21 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       setIsUp(selection!.isUp);
     } else if (!selKey && strike === 0n) {
       setStrike(snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle));
+    }
+  }
+
+  // Flip UP/DOWN. Mirror the choice into the surface store (not just local state)
+  // so the directional win-zone on the 3-D surface swings with the toggle.
+  function setDirection(nextUp: boolean) {
+    setIsUp(nextUp);
+    if (oracle && strike > 0n) {
+      select({
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: strike.toString(),
+        strike: toFloat(Number(strike)),
+        isUp: nextUp,
+      });
     }
   }
 
@@ -297,10 +313,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           ) : (
             <>
           <div className="flex gap-2">
-            <Toggle active={isUp} onClick={() => setIsUp(true)} tone="up">
+            <Toggle active={isUp} onClick={() => setDirection(true)} tone="up">
               UP
             </Toggle>
-            <Toggle active={!isUp} onClick={() => setIsUp(false)} tone="down">
+            <Toggle active={!isUp} onClick={() => setDirection(false)} tone="down">
               DOWN
             </Toggle>
           </div>

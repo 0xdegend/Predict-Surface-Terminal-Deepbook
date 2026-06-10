@@ -66,6 +66,17 @@ body {
 }
 
 /*
+ * Mobile dock clearance — the fixed BottomNav (lg:hidden) sits over content,
+ * so reserve its height (+ iOS safe area) at the bottom of the page below lg.
+ * Removed at lg+ where the inline header nav takes over and the dock is gone.
+ */
+@media (max-width: 1023px) {
+  body {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/*
  * Tailwind v4's preflight resets interactive elements to `cursor: default`
  * (matching native browsers). Restore the pointer on every enabled control in
  * one place — so we never have to remember `cursor-pointer` per button — and
@@ -711,6 +722,17 @@ body {
 @keyframes popIn {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* Success check — a quick overshoot pop. */
+@keyframes checkPop {
+  0% { opacity: 0; transform: scale(0.4); }
+  60% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* One-shot accent ring expanding out from the success check. */
+@keyframes successRing {
+  0% { opacity: 0.55; transform: scale(0.6); }
+  100% { opacity: 0; transform: scale(2.1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

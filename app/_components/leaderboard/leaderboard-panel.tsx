@@ -36,8 +36,9 @@ const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictConfig.network}
 const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
 const PAGE_SIZE = 25;
 
-/** Table column template — # · Trader · Points · Volume. */
-const COLS = 'grid-cols-[2.5rem_1fr_7rem_7rem]';
+/** Table column template — # · Trader · Points · Volume. Tighter value columns
+ *  on mobile so the trader name keeps room; full width from sm up. */
+const COLS = 'grid-cols-[2rem_1fr_4.5rem_4.5rem] sm:grid-cols-[2.5rem_1fr_7rem_7rem]';
 
 const SORT_LABEL: Record<SortKey, string> = {
   points: 'Points',
@@ -92,7 +93,7 @@ export function LeaderboardPanel() {
   const pageEnd = start + (showPodium ? podiumRows.length : 0) + pageRows.length;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-5 py-6">
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5">
       {/* Header */}
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>

@@ -180,7 +180,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const pointsTotal = leaderboard.loading ? undefined : myRow?.points.total ?? 0;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-5 py-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-5">
       {/* Account header — bento: a balanced grid of stat cards */}
       <div className="glass-card mb-6 grid grid-cols-2 gap-2.5 p-2.5 font-mono tabular-nums lg:grid-cols-3">
         {/* Account value — hero (emphasized by its larger number + accent wash) */}
