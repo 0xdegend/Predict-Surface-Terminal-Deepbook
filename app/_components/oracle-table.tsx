@@ -152,7 +152,7 @@ export function OracleTable({
       // sticky container, so the header sticks to the TOP OF THIS BOX, never the page.
       <div className="glass-card mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="scroll-quiet min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
+        <table className="w-full border-collapse font-mono text-[11px] tabular-nums sm:text-[12px]">
           <thead>
             <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
               <Th>Underlying</Th>
@@ -176,6 +176,12 @@ export function OracleTable({
               const atmIv = input
                 ? impliedVol(input.forward, input.forward, input.svi, Math.max(timeToExpiryYears(o.expiry, now), 0))
                 : null;
+              // Split "Jun 10 23:30" into date + time so the cell renders two
+              // clean, non-wrapping lines instead of a 4-line space-wrap on mobile.
+              const exp = dateUTC(o.expiry, false);
+              const expSplit = exp.lastIndexOf(' ');
+              const expDate = exp.slice(0, expSplit);
+              const expTime = exp.slice(expSplit + 1);
               return (
                 <tr
                   key={o.oracle_id}
@@ -212,18 +218,26 @@ export function OracleTable({
                       <span className="font-medium">{o.underlying_asset}</span>
                     </span>
                   </Td>
-                  <Td className="text-text-2">{dateUTC(o.expiry)}</Td>
+                  <Td className="text-text-2">
+                    <span className="flex flex-col whitespace-nowrap leading-tight">
+                      <span>{expDate}</span>
+                      <span className="text-text-3">
+                        {expTime}
+                        <span className="ml-0.5 text-[9px] tracking-wide">UTC</span>
+                      </span>
+                    </span>
+                  </Td>
                   <Td>
                     {closingSoon ? (
-                      <span className="rounded bg-[var(--down-soft)] px-1.5 py-0.5 text-down">
+                      <span className="inline-block whitespace-nowrap rounded bg-[var(--down-soft)] px-1.5 py-0.5 text-down">
                         {countdown(o.expiry, now)}
                       </span>
                     ) : urgent ? (
-                      <span className="rounded bg-[var(--warn-soft)] px-1.5 py-0.5 text-warn">
+                      <span className="inline-block whitespace-nowrap rounded bg-[var(--warn-soft)] px-1.5 py-0.5 text-warn">
                         {countdown(o.expiry, now)}
                       </span>
                     ) : (
-                      <span className="text-text-2">{countdown(o.expiry, now)}</span>
+                      <span className="whitespace-nowrap text-text-2">{countdown(o.expiry, now)}</span>
                     )}
                   </Td>
                   <Td className="text-right text-text-2">{input ? price(input.forward, 0) : '—'}</Td>
@@ -292,9 +306,9 @@ function PagerArrow({
 }
 
 function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <th className={`px-3.5 py-3 font-normal ${className}`}>{children}</th>;
+  return <th className={`px-2.5 py-2.5 font-normal sm:px-3.5 sm:py-3 ${className}`}>{children}</th>;
 }
 
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <td className={`px-3.5 py-3 ${className}`}>{children}</td>;
+  return <td className={`px-2.5 py-2.5 sm:px-3.5 sm:py-3 ${className}`}>{children}</td>;
 }

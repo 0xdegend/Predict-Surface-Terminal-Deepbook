@@ -291,7 +291,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       </div>
 
       {managerId && (
-        <div className="flex flex-col gap-2 border-t border-line-soft pt-3">
+        <div className="glass-divider-top flex flex-col gap-2 pt-3">
           <div className="flex items-center justify-between">
             <span className="font-mono text-[11px] tabular-nums text-text-2">
               {oracle.underlying_asset} · {dateUTC(oracle.expiry)} ·{' '}
@@ -575,7 +575,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       )}
 
       {managerId && (
-        <div className="flex flex-col gap-2 border-t border-line-soft pt-3">
+        <div className="glass-divider-top flex flex-col gap-2 pt-3">
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wider text-text-3">Open positions</span>
             <Link href="/portfolio" className="text-[10px] text-text-2 underline hover:text-text-1">

@@ -23,7 +23,7 @@ import {
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
-import { num, shortId } from '@/lib/format';
+import { num, compact, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { ErrorState } from '../ui/error-state';
@@ -121,7 +121,19 @@ export function LeaderboardPanel() {
       {/* Totals strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
         <Stat icon={LuUsers} color={HUE.blue} label="Traders" value={String(totals.traders)} />
-        <Stat icon={LuCoins} color={HUE.amber} label="Volume" value={num(totals.volume, 2)} unit={predictConfig.quote.symbol} />
+        <Stat
+          icon={LuCoins}
+          color={HUE.amber}
+          label="Volume"
+          value={
+            <>
+              {/* Compact on mobile (fits the 3-up grid), full figure from sm up. */}
+              <span className="sm:hidden">{compact(totals.volume)}</span>
+              <span className="hidden sm:inline">{num(totals.volume, 2)}</span>
+            </>
+          }
+          unit={predictConfig.quote.symbol}
+        />
         <Stat icon={LuActivity} color={HUE.teal} label="Trades" value={num(totals.trades, 0)} />
       </div>
 
@@ -283,37 +295,49 @@ function ViewPositionsButton({
  * ------------------------------------------------------------------ */
 function MyRankCard({ rank, total, row }: { rank: number; total: number; row: Row }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-3.5">
-      <div className="flex flex-col items-center leading-none">
-        <span className="eyebrow mb-1">Your rank</span>
-        <span className="font-mono text-[22px] leading-none text-[var(--accent)]">#{rank}</span>
+    <div className="mb-4 flex flex-col gap-3.5 rounded-2xl border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-3.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
+      {/* Identity — rank · avatar · address. Kept as one unit so it never splits. */}
+      <div className="flex items-center gap-3 sm:gap-5">
+        <div className="flex flex-col items-center leading-none">
+          <span className="eyebrow mb-1">Your rank</span>
+          <span className="font-mono text-[22px] leading-none text-[var(--accent)]">#{rank}</span>
+        </div>
+        <WalletAvatar addr={row.owner} size={40} ring="color-mix(in srgb, var(--accent) 55%, transparent)" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <a
+            href={EXPLORER(row.owner)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[13px] text-text-1 hover:text-[var(--accent)] hover:underline"
+            title={row.owner}
+          >
+            {shortId(row.owner)}
+            <span className="text-[10px] text-[var(--accent)]">you</span>
+          </a>
+          <span className="font-mono text-[10px] tabular-nums text-text-3">of {total} traders</span>
+        </div>
       </div>
-      <WalletAvatar addr={row.owner} size={40} ring="color-mix(in srgb, var(--accent) 55%, transparent)" />
-      <div className="flex flex-col gap-0.5">
-        <a
-          href={EXPLORER(row.owner)}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 font-mono text-[13px] text-text-1 hover:text-[var(--accent)] hover:underline"
-          title={row.owner}
-        >
-          {shortId(row.owner)}
-          <span className="text-[10px] text-[var(--accent)]">you</span>
-        </a>
-        <span className="font-mono text-[10px] tabular-nums text-text-3">of {total} traders</span>
-      </div>
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-5 gap-y-2 font-mono tabular-nums">
-        <RankStat label="Points">
-          <span className="text-[var(--accent)]">{num(row.points.total, 0)}</span>
-        </RankStat>
-        <RankStat label="Volume">
-          <span className="text-text-1">{num(row.volume, 2)}</span>
-          <span className="ml-1 text-[10px] text-text-3">{predictConfig.quote.symbol}</span>
-        </RankStat>
-        <RankStat label="Trades">
-          <span className="text-text-2">{row.trades}</span>
-        </RankStat>
-        <ViewPositionsButton owner={row.owner} />
+
+      {/* Stats + action — a 3-up row spread across the card on mobile, with the
+          button below; collapses inline (pushed right) from sm up. */}
+      <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center sm:gap-5">
+        <div className="flex items-center justify-between gap-x-5 gap-y-2 font-mono tabular-nums sm:justify-end">
+          <RankStat label="Points">
+            <span className="text-[var(--accent)]">{num(row.points.total, 0)}</span>
+          </RankStat>
+          <RankStat label="Volume">
+            <span className="text-text-1">{num(row.volume, 2)}</span>
+            <span className="ml-1 text-[10px] text-text-3">{predictConfig.quote.symbol}</span>
+          </RankStat>
+          <RankStat label="Trades">
+            <span className="text-text-2">{row.trades}</span>
+          </RankStat>
+        </div>
+        {/* `sm:contents` drops this wrapper on desktop so the button sits inline
+            after the stats; on mobile it centers the button on its own row. */}
+        <div className="flex justify-center sm:contents">
+          <ViewPositionsButton owner={row.owner} />
+        </div>
       </div>
     </div>
   );
@@ -551,18 +575,20 @@ function Stat({
   icon: typeof LuUsers;
   color: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
   unit?: string;
 }) {
   return (
-    <div className="glass-inset flex flex-col gap-2 p-4">
+    <div className="glass-inset flex min-w-0 flex-col gap-2 p-3 sm:p-4">
       <div className="flex items-center gap-2">
         <IconChip icon={Icon} color={color} size={22} />
         <span className="eyebrow">{label}</span>
       </div>
-      <span className="text-[20px] leading-none tracking-tight text-text-1">
+      <span className="whitespace-nowrap text-[16px] leading-none tracking-tight text-text-1 sm:text-[20px]">
         {value}
-        {unit && <span className="ml-1 text-[11px] text-text-3">{unit}</span>}
+        {/* Unit is dropped on mobile (the column label carries it) so wide values
+            never collide across the 3-up grid; restored from sm up. */}
+        {unit && <span className="ml-1 hidden text-[11px] text-text-3 sm:inline">{unit}</span>}
       </span>
     </div>
   );

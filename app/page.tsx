@@ -140,7 +140,7 @@ export default async function Page() {
               />
 
               {snapshot.surfaceInputs.length > 0 && (
-                <div id="trade-ticket" className="scroll-mt-20 border-t border-white/[0.08] pt-5">
+                <div id="trade-ticket" className="glass-divider-top scroll-mt-20 pt-5">
                   <SectionTitle>Trade ticket · click surface → mint</SectionTitle>
                   <div className="mt-3">
                     <FlowPanel inputs={snapshot.surfaceInputs} serverNow={serverNow} />

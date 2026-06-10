@@ -20,6 +20,25 @@ export function num(value: number, decimals = 2): string {
   return frac ? `${sign}${grouped}.${frac}` : `${sign}${grouped}`;
 }
 
+/**
+ * Compact magnitude for tight spaces (e.g. stat strips on mobile) — 19_978.7 →
+ * "19.98K", 1_250_000 → "1.25M". Values below 1,000 render in full so small
+ * counts never round to a surprising figure. Trailing zeros are trimmed.
+ */
+export function compact(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs < 1000) return num(value, Number.isInteger(value) ? 0 : 2);
+  for (const [base, suffix] of [
+    [1e9, 'B'],
+    [1e6, 'M'],
+    [1e3, 'K'],
+  ] as const) {
+    if (abs >= base) return `${parseFloat((value / base).toFixed(2))}${suffix}`;
+  }
+  return num(value, 2);
+}
+
 /** USD-style price (underlying spot/forward/strike). */
 export function price(value: number, decimals = 2): string {
   return num(value, decimals);

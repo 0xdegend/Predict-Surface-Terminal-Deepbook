@@ -19,7 +19,7 @@ import { getManagersByOwner, qk } from '@/lib/api/client';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows } from '@/lib/leaderboard/aggregate';
-import { num, shortId } from '@/lib/format';
+import { num, compact, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
@@ -107,7 +107,21 @@ export function TraderProfile({ address }: { address: string }) {
       {/* Standing stats */}
       <div className="glass-card mb-6 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
         <Stat icon={LuTrophy} color={HUE.teal} label="Points" value={stat(row?.points.total ?? 0, 0)} accent />
-        <Stat icon={LuCoins} color={HUE.amber} label="Volume" value={stat(row?.volume ?? 0, 2)} unit={predictConfig.quote.symbol} />
+        <Stat
+          icon={LuCoins}
+          color={HUE.amber}
+          label="Volume"
+          value={
+            lbLoading ? '…' : !row ? '—' : (
+              <>
+                {/* Compact on mobile (fits the 3-up grid), full figure from sm up. */}
+                <span className="sm:hidden">{compact(row.volume)}</span>
+                <span className="hidden sm:inline">{num(row.volume, 2)}</span>
+              </>
+            )
+          }
+          unit={predictConfig.quote.symbol}
+        />
         <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={lbLoading ? '…' : row ? String(row.trades) : '—'} />
       </div>
 
@@ -137,21 +151,23 @@ function Stat({
   icon: IconType;
   color: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
   unit?: string;
   accent?: boolean;
 }) {
   return (
-    <div className="glass-inset flex flex-col gap-2 p-4">
+    <div className="glass-inset flex min-w-0 flex-col gap-2 p-3 sm:p-4">
       <div className="flex items-center gap-2">
         <IconChip icon={icon} color={color} size={22} />
         <span className="eyebrow">{label}</span>
       </div>
       <span
-        className={`text-[20px] leading-none tracking-tight ${accent ? 'text-[var(--accent)]' : 'text-text-1'}`}
+        className={`whitespace-nowrap text-[16px] leading-none tracking-tight sm:text-[20px] ${accent ? 'text-[var(--accent)]' : 'text-text-1'}`}
       >
         {value}
-        {unit && <span className="ml-1 text-[11px] text-text-3">{unit}</span>}
+        {/* Unit dropped on mobile (the label carries it) so wide values never
+            collide across the 3-up grid; restored from sm up. */}
+        {unit && <span className="ml-1 hidden text-[11px] text-text-3 sm:inline">{unit}</span>}
       </span>
     </div>
   );

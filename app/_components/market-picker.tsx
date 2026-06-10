@@ -6,9 +6,9 @@
  * read the same live data and drive the same surface selection / trade ticket,
  * so switching is purely presentational. The choice is remembered locally.
  *
- * Cards is the default: it leads with the decision (UP/DOWN by an expiry) and
- * reads for non-crypto-native users; the table stays one click away for traders
- * who want IV / strike grid / oracle ids at a glance.
+ * Table is the default: traders land on the dense oracle grid (IV / strike grid /
+ * oracle ids at a glance); Cards stays one click away for the simpler, decision-
+ * led (UP/DOWN by an expiry) view that reads for non-crypto-native users.
  */
 import { useState } from 'react';
 import { LuLayoutGrid, LuTable2 } from 'react-icons/lu';
@@ -42,10 +42,11 @@ export function MarketPicker({
 }) {
   // Server + first client paint render the default; the saved preference only
   // applies once mounted, so SSR and hydration agree. An explicit user choice
-  // overrides both.
+  // overrides both. Default is the dense Table view — traders land on the full
+  // strike/IV/oracle grid and can switch to Cards for the simpler decision view.
   const mounted = useMounted();
   const [override, setOverride] = useState<View | null>(null);
-  const view: View = override ?? (mounted ? readSaved() : null) ?? 'cards';
+  const view: View = override ?? (mounted ? readSaved() : null) ?? 'table';
 
   function choose(next: View) {
     setOverride(next);

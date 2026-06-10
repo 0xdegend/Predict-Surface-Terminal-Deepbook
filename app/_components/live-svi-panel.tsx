@@ -129,7 +129,7 @@ function Body({ input, now }: { input: SmileInput; now: number }) {
       )}
 
       {/* Expected price — the one number that matters at a glance */}
-      <div className="mt-3 flex items-baseline justify-between border-t border-line-soft pt-3">
+      <div className="glass-divider-top mt-3 flex items-baseline justify-between pt-3">
         <span className="inline-flex items-center gap-1">
           <span className="eyebrow">Expected price at expiry</span>
           <InfoTip label="expected price at expiry">

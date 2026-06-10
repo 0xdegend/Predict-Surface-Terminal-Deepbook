@@ -255,6 +255,47 @@ body {
   );
 }
 
+/* Beveled "glass edge" divider — replaces a flat `border-t` between sections.
+   A lit, edge-fading hairline (::before) with a faint highlight directly beneath
+   (::after) reads as the lit edge of a glass panel — an emboss, not a hard ruled
+   line. Pair with the element's own top padding (e.g. `pt-3`). On-brand: a 1px
+   hairline + bevel, never a glow. */
+.glass-divider-top {
+  position: relative;
+}
+.glass-divider-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.1) 14%,
+    rgba(255, 255, 255, 0.1) 86%,
+    transparent
+  );
+}
+.glass-divider-top::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.03) 20%,
+    rgba(255, 255, 255, 0.03) 80%,
+    transparent
+  );
+}
+
 /* ------------------------------------------------------------------ *
  * Glassmorphism card system (reusable across the app). A translucent
  * surface with a faint top-light, a soft hairline, and a restrained
