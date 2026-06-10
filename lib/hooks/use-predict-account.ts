@@ -11,9 +11,10 @@
  * single `tradingBalanceBase` bigint for tx math — so callers never re-scale.
  */
 import { useState } from 'react';
-import { useCurrentAccount, useCurrentClient, useDAppKit } from '@mysten/dapp-kit-react';
+import { useCurrentAccount, useCurrentClient, useCurrentWallet, useDAppKit } from '@mysten/dapp-kit-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Transaction } from '@mysten/sui/transactions';
+import { isEnokiWallet } from '@mysten/enoki';
 import {
   getManagersByOwner,
   getManagerSummary,
@@ -25,6 +26,8 @@ import { predictConfig } from '@/config/predict';
 import { humanizeError } from '@/lib/sui/abort';
 import { isRedeemableStatus } from '@/lib/portfolio/history';
 import { toast } from '@/lib/store/toast-store';
+import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor';
+import { enokiEnabled } from '@/config/enoki';
 import {
   buildCreateManagerTx,
   buildRedeemTx,
@@ -32,6 +35,7 @@ import {
   buildWithdrawPlpTx,
   buildMintRangeTx,
   buildRedeemRangeTx,
+  buildCashOutTx,
 } from '@/lib/sui/predict-tx';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -43,6 +47,7 @@ function txLabel(label: string): string {
   if (label === 'withdraw-plp') return 'Vault withdrawal';
   if (label === 'mint-range') return 'Mint range';
   if (label === 'redeem-range') return 'Close range';
+  if (label === 'cash-out') return 'Cash out';
   if (label.startsWith('redeem')) return 'Close position';
   return 'Transaction';
 }
@@ -54,6 +59,7 @@ function txSuccessTitle(label: string): string {
   if (label === 'withdraw-plp') return 'Redeemed from vault';
   if (label === 'mint-range') return 'Range minted';
   if (label === 'redeem-range') return 'Range closed';
+  if (label === 'cash-out') return 'DUSDC sent';
   if (label.startsWith('redeem')) return 'Position closed';
   return 'Transaction confirmed';
 }
@@ -61,9 +67,14 @@ function txSuccessTitle(label: string): string {
 export function usePredictAccount() {
   const account = useCurrentAccount();
   const client = useCurrentClient();
+  const wallet = useCurrentWallet();
   const dAppKit = useDAppKit();
   const queryClient = useQueryClient();
   const owner = account?.address ?? null;
+
+  // A zkLogin (Enoki) wallet can't pay its own gas — route its txs through the
+  // Enoki sponsor (gasless). Any other wallet signs+executes + pays normally.
+  const gasless = enokiEnabled && sponsorshipAvailable && !!wallet && isEnokiWallet(wallet);
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,16 +131,23 @@ export function usePredictAccount() {
     label: string,
     tx: Transaction,
     invalidate: readonly (readonly unknown[])[] = [],
+    opts?: { allowedAddresses?: string[] },
   ) {
     if (!owner) return;
     setBusy(label);
     setError(null);
     try {
-      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
-      if (result.$kind === 'FailedTransaction') {
-        throw new Error(result.FailedTransaction.status?.error?.message ?? 'Transaction failed on-chain');
+      let digest: string;
+      if (gasless) {
+        // Enoki sponsors the gas (server route, private key); the wallet signs.
+        digest = await executeSponsored(tx, owner, opts?.allowedAddresses);
+      } else {
+        const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+        if (result.$kind === 'FailedTransaction') {
+          throw new Error(result.FailedTransaction.status?.error?.message ?? 'Transaction failed on-chain');
+        }
+        digest = result.Transaction.digest;
       }
-      const digest = result.Transaction.digest;
       setLastDigest(digest);
       await client.core.waitForTransaction({ digest });
       await new Promise((r) => setTimeout(r, 1200));
@@ -207,6 +225,30 @@ export function usePredictAccount() {
     );
   }
 
+  /**
+   * Cash out DUSDC to an external wallet (for zkLogin / Google users who can't
+   * export a key). Drains the manager free balance first, then wallet DUSDC, up
+   * to `amountBase` (base units, @6dec), and transfers it to `destination` in one
+   * gasless transaction. Returns null on bad input.
+   */
+  async function cashOut(destination: string, amountBase: bigint) {
+    if (!managerId || !owner) return null;
+    const walletBase = dusdcQ.data ?? 0n;
+    const available = tradingBalanceBase + walletBase;
+    const amount = amountBase > available ? available : amountBase;
+    if (amount <= 0n) return null;
+    // Prefer the manager's free balance (the allowlisted withdraw keeps the tx
+    // sponsorable); spill over to wallet coins only if needed.
+    const fromManager = amount > tradingBalanceBase ? tradingBalanceBase : amount;
+    const fromWallet = amount - fromManager;
+    return runTx(
+      'cash-out',
+      buildCashOutTx({ managerId, fromManager, fromWallet, destination }),
+      [...managerKeys, qk.dusdcBalance(owner)],
+      { allowedAddresses: [destination, owner] },
+    );
+  }
+
   /** Mint a vertical-range position. Strikes are 1e9-scaled, quantity @6dec. */
   async function mintRange(p: {
     oracleId: string;
@@ -276,5 +318,8 @@ export function usePredictAccount() {
     withdrawPlp,
     mintRange,
     redeemRange,
+    cashOut,
+    /** True when the connected wallet is a zkLogin (Enoki) account. */
+    isZkLogin: gasless,
   };
 }

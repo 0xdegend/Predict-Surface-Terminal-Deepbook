@@ -19,10 +19,13 @@ import {
   LuLogOut,
   LuExternalLink,
   LuChevronDown,
+  LuSend,
 } from 'react-icons/lu';
+import { isEnokiWallet } from '@mysten/enoki';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { shortId } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { CashOutModal } from './cash-out-modal';
 
 const ACCOUNT_EXPLORER = (network: string, addr: string) =>
   `https://suiscan.xyz/${network}/account/${addr}`;
@@ -36,6 +39,7 @@ export function WalletBar() {
   const [open, setOpen] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [cashOutOpen, setCashOutOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close the menu on outside click / Escape.
@@ -134,12 +138,23 @@ export function WalletBar() {
               copied={copied}
               onCopy={() => copyAddress(conn.account.address)}
               onDisconnect={disconnect}
+              // Google/zkLogin users can't export a key — give them a cash-out.
+              onCashOut={
+                isEnokiWallet(conn.wallet)
+                  ? () => {
+                      setOpen(false);
+                      setCashOutOpen(true);
+                    }
+                  : undefined
+              }
             />
           ) : (
             <ConnectMenu wallets={wallets} connecting={connecting} onConnect={connect} />
           )}
         </div>
       )}
+
+      <CashOutModal open={cashOutOpen} onClose={() => setCashOutOpen(false)} />
     </div>
   );
 }
@@ -153,6 +168,7 @@ function ConnectedMenu({
   copied,
   onCopy,
   onDisconnect,
+  onCashOut,
 }: {
   wallet: UiWallet;
   address: string;
@@ -160,6 +176,8 @@ function ConnectedMenu({
   copied: boolean;
   onCopy: () => void;
   onDisconnect: () => void;
+  /** Present only for zkLogin (Google) accounts — opens the cash-out modal. */
+  onCashOut?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1.5 p-1">
@@ -200,6 +218,16 @@ function ConnectedMenu({
         View on explorer
         <LuExternalLink size={13} />
       </a>
+
+      {onCashOut && (
+        <button
+          onClick={onCashOut}
+          className="ctrl-soft flex items-center justify-between rounded-xl px-3 py-2.5 text-[12px] text-text-2 transition-colors hover:text-up"
+        >
+          Cash out DUSDC
+          <LuSend size={13} />
+        </button>
+      )}
 
       <button
         onClick={onDisconnect}

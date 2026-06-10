@@ -6,7 +6,7 @@
  * All position/manager amounts are de-scaled in `positionMetrics` / here (server
  * gives @6dec base units). Redeeming routes through a confirmation modal.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
 import { LuWallet, LuWalletMinimal, LuTrendingUp, LuTrendingDown, LuLayers, LuCoins, LuDownload, LuHistory, LuArrowRight } from 'react-icons/lu';
@@ -68,24 +68,81 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   }
 
   if (!acct.managerId) {
+    const steps = ['Create account', 'Fund DUSDC', 'Trade'];
     return (
-      <Centered>
-        <p className="text-[13px] text-text-2">You don’t have a trading account yet.</p>
-        <p className="mt-1 max-w-sm text-[12px] text-text-3">
-          Create a manager — a personal vault that holds your DUSDC and positions — then mint your
-          first contract from the surface.
-        </p>
-        <button
-          onClick={() => acct.createManager()}
-          disabled={acct.busy === 'create'}
-          className="mt-4 rounded border border-line-strong bg-up/10 px-4 py-2 text-[12px] font-medium text-up hover:bg-up/20 disabled:opacity-50"
-        >
-          {acct.busy === 'create' ? 'creating…' : 'Create trading account'}
-        </button>
-        <Link href="/" className="mt-3 text-[11px] text-text-3 underline hover:text-text-2">
-          ← back to the surface
-        </Link>
-      </Centered>
+      <div className="flex flex-1 items-center justify-center px-5 py-16">
+        <div className="glass-card relative w-full max-w-md overflow-hidden p-8 text-center">
+          {/* accent wash from the top + a faint top sheen — the one glow off-canvas */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'radial-gradient(120% 80% at 50% 0%, var(--accent-soft), transparent 62%)' }}
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-white/15 to-transparent"
+          />
+
+          <div className="relative flex flex-col items-center gap-5">
+            <IconChip icon={LuWalletMinimal} color={HUE.teal} size={56} />
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-[18px] font-semibold tracking-tight text-text-1">
+                Create your trading account
+              </h2>
+              <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
+                A personal vault that holds your DUSDC and positions. One transaction — then mint
+                your first contract from the surface.
+              </p>
+            </div>
+
+            {/* onboarding path */}
+            <div className="glass-inset flex w-full items-center justify-between gap-2 px-3.5 py-2.5">
+              {steps.map((label, i) => (
+                <Fragment key={label}>
+                  {i > 0 && <span className="h-px flex-1 bg-white/10" />}
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-semibold ${
+                        i === 0 ? 'bg-accent/20 text-accent' : 'bg-white/5 text-text-3'
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider ${i === 0 ? 'text-text-2' : 'text-text-3'}`}
+                    >
+                      {label}
+                    </span>
+                  </span>
+                </Fragment>
+              ))}
+            </div>
+
+            {/* primary CTA */}
+            <button
+              onClick={() => acct.createManager()}
+              disabled={acct.busy === 'create'}
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
+            >
+              {acct.busy === 'create' ? 'Creating…' : 'Create trading account'}
+              {acct.busy !== 'create' && (
+                <LuArrowRight
+                  size={15}
+                  className="transition-transform duration-200 group-hover:translate-x-0.5"
+                />
+              )}
+            </button>
+
+            <Link
+              href="/"
+              className="text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
+            >
+              ← back to the surface
+            </Link>
+          </div>
+        </div>
+      </div>
     );
   }
 

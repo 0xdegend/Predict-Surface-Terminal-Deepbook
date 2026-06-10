@@ -63,6 +63,45 @@ export function buildWithdrawFromManagerTx(
   return tx;
 }
 
+export interface CashOutParams {
+  managerId: string;
+  /** DUSDC base units to pull from the manager's free balance. */
+  fromManager: bigint;
+  /** DUSDC base units to pull from the connected wallet. */
+  fromWallet: bigint;
+  /** External Sui address to receive the DUSDC. */
+  destination: string;
+}
+
+/**
+ * Cash out DUSDC to an external wallet in ONE transaction: withdraw from the
+ * manager's free balance and/or take wallet coins, merge, and transfer the lot
+ * to `destination`. Used by zkLogin (Google) users to move winnings to a wallet
+ * they fully control — executed gaslessly via the Enoki sponsor. The only Move
+ * call is the allowlisted `predict_manager::withdraw`, so it sponsors cleanly.
+ */
+export function buildCashOutTx(p: CashOutParams): Transaction {
+  const tx = new Transaction();
+  const coins = [];
+  if (p.fromManager > 0n) {
+    coins.push(
+      tx.moveCall({
+        target: `${cfg().packageId}::predict_manager::withdraw`,
+        typeArguments: [QUOTE()],
+        arguments: [tx.object(p.managerId), tx.pure.u64(p.fromManager)],
+      }),
+    );
+  }
+  if (p.fromWallet > 0n) {
+    coins.push(tx.add(coinWithBalance({ type: QUOTE(), balance: p.fromWallet })));
+  }
+  if (coins.length === 0) throw new Error('Nothing to cash out');
+  const primary = coins[0];
+  if (coins.length > 1) tx.mergeCoins(primary, coins.slice(1));
+  tx.transferObjects([primary], tx.pure.address(p.destination));
+  return tx;
+}
+
 /* --------------------------- PLP (LP vault) -------------------------- */
 
 /**
