@@ -27,6 +27,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Browser extensions / remote-viewing tools inject attributes onto <html>
+      // (e.g. __gcrremoteframetoken) before React hydrates, which React flags as
+      // a mismatch. Suppress one level deep on the root only — this never masks
+      // mismatches inside our own components.
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-bg-0 text-text-1">
