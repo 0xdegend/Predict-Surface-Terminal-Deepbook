@@ -135,6 +135,7 @@ export function SurfaceCanvas({
             onPick={pick}
           />
           <SelectedMarker mesh={mesh} surface={surface} />
+          <RangeBandMarker mesh={mesh} surface={surface} />
           <FillRipple mesh={mesh} surface={surface} />
           <SurfaceAxes mesh={mesh} />
           <Grid
@@ -366,12 +367,14 @@ function MorphSurface({
 }
 
 /** Find the (row, col) and world position for a given oracle + strike. */
-function locate(
+/** Map an (oracle, strike) to its nearest grid cell — world xyz + row/col so
+ *  callers can sample neighbouring columns (the range ribbon needs the span). */
+function locateCell(
   mesh: SurfaceMesh,
   surface: Surface,
   oracleId: string,
   strike: number,
-): { x: number; y: number; z: number } | null {
+): { x: number; y: number; z: number; row: number; col: number } | null {
   const row = surface.rows.findIndex((r) => r.oracleId === oracleId);
   if (row < 0) return null;
   const r = surface.rows[row];
@@ -390,7 +393,124 @@ function locate(
     x: mesh.positions[idx],
     y: mesh.positions[idx + 1],
     z: mesh.positions[idx + 2],
+    row,
+    col,
   };
+}
+
+function locate(
+  mesh: SurfaceMesh,
+  surface: Surface,
+  oracleId: string,
+  strike: number,
+): { x: number; y: number; z: number } | null {
+  const cell = locateCell(mesh, surface, oracleId, strike);
+  return cell ? { x: cell.x, y: cell.y, z: cell.z } : null;
+}
+
+const RANGE_ACCENT = "#4dd6b0";
+
+/** A single band edge: a faint drop-line to the floor + an accent orb. */
+function EdgeOrb({
+  pos,
+  orbRef,
+}: {
+  pos: { x: number; y: number; z: number };
+  orbRef?: React.Ref<THREE.Mesh>;
+}) {
+  return (
+    <group>
+      <mesh position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+        <meshBasicMaterial color={RANGE_ACCENT} transparent opacity={0.35} />
+      </mesh>
+      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.075, 18, 18]} />
+        <meshBasicMaterial color={RANGE_ACCENT} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * RangeBandMarker — draws the vertical-range band on the surface: an accent orb
+ * at each strike, a glowing ribbon hugging the smile between them (the exact
+ * slice the range pays on), and a shaded "payout zone" on the floor. A range is
+ * one oracle = one expiry = one row, so the ribbon traces that single smile.
+ * Reads `rangeSelection` (finalized) + `rangeAnchor` (first edge, mid-pick).
+ */
+function RangeBandMarker({
+  mesh,
+  surface,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+}) {
+  const band = useSurfaceStore((s) => s.rangeSelection);
+  const anchor = useSurfaceStore((s) => s.rangeAnchor);
+  const reduced = usePrefersReducedMotion();
+  const orbA = useRef<THREE.Mesh>(null);
+  const orbB = useRef<THREE.Mesh>(null);
+
+  const geom = useMemo(() => {
+    if (!band) return null;
+    const lo = locateCell(mesh, surface, band.oracleId, band.lower);
+    const hi = locateCell(mesh, surface, band.oracleId, band.higher);
+    if (!lo || !hi) return null;
+    // An overhead arc bridging the two strike orbs — a quadratic bezier with a
+    // lifted midpoint, so the band reads as a connected span even where the
+    // smile is flat. Wider bands arch a little higher.
+    const a = new THREE.Vector3(lo.x, lo.y + 0.12, lo.z);
+    const b = new THREE.Vector3(hi.x, hi.y + 0.12, hi.z);
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    mid.y += Math.min(Math.max(a.distanceTo(b) * 0.5, 0.4), 1.2);
+    const arc = new THREE.QuadraticBezierCurve3(a, mid, b)
+      .getPoints(48)
+      .map((p) => [p.x, p.y, p.z] as [number, number, number]);
+    return { lo, hi, arc };
+  }, [mesh, surface, band]);
+
+  // Mid-pick: only the first edge chosen so far.
+  const anchorPos = useMemo(
+    () => (anchor && !band ? locate(mesh, surface, anchor.oracleId, anchor.strike) : null),
+    [mesh, surface, anchor, band],
+  );
+
+  useFrame((state) => {
+    if (reduced) return;
+    const s = 1 + 0.16 * Math.sin(state.clock.elapsedTime * 3.4);
+    orbA.current?.scale.setScalar(s);
+    orbB.current?.scale.setScalar(s);
+  });
+
+  if (anchorPos) return <EdgeOrb pos={anchorPos} orbRef={orbA} />;
+  if (!geom) return null;
+
+  const { lo, hi, arc } = geom;
+  const floorMidX = (lo.x + hi.x) / 2;
+  const floorW = Math.max(Math.abs(hi.x - lo.x), 0.01);
+
+  return (
+    <group>
+      {/* shaded payout zone on the floor — settlement lands here → the range wins */}
+      <mesh
+        position={[floorMidX, 0.012, lo.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
+        <planeGeometry args={[floorW, 0.5]} />
+        <meshBasicMaterial color={RANGE_ACCENT} transparent opacity={0.12} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* soft glow underlay + crisp overhead arc bridging the two strike orbs.
+          raycast disabled so it never steals clicks from nodes under the band. */}
+      <Line points={arc} color={RANGE_ACCENT} lineWidth={7} transparent opacity={0.22} raycast={() => null} />
+      <Line points={arc} color={RANGE_ACCENT} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+
+      <EdgeOrb pos={lo} orbRef={orbA} />
+      <EdgeOrb pos={hi} orbRef={orbB} />
+    </group>
+  );
 }
 
 function SelectedMarker({

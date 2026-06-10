@@ -29,7 +29,9 @@ import { buildMintTx } from '@/lib/sui/predict-tx';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
 import { RedeemModal } from './positions/redeem-modal';
+import { RangeRedeemModal } from './positions/range-redeem-modal';
 import { positionMetrics } from './positions/position-metrics';
+import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -61,6 +63,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     runTx,
     createManager,
     redeem,
+    redeemRange,
     managerKeys,
   } = acct;
 
@@ -87,6 +90,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   }, [selection, rangeSelection, ticketMode, inputs]);
 
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
+  const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
+  const rangesData = useRangePositions(managerId);
 
   const oracle = active?.oracle;
   const forward = active?.forward ?? 0;
@@ -195,6 +200,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const stepStrike = (dir: 1 | -1) =>
     setStrike((s) => snapStrikeToTick(s + BigInt(dir) * grid.tickSize, oracle));
   const openPositions = positions.filter((p) => p.open_quantity > 0);
+  const openRanges = rangesData.positions.filter((p) => p.openQty > 0);
   const fromSurface = !!selection && selection.oracleId === oracle.oracle_id;
   const sym = predictConfig.quote.symbol;
 
@@ -520,9 +526,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               Portfolio →
             </Link>
           </div>
-          {positionsLoading ? (
+          {positionsLoading || rangesData.loading ? (
             <span className="text-text-3">loading…</span>
-          ) : openPositions.length === 0 ? (
+          ) : openPositions.length === 0 && openRanges.length === 0 ? (
             <span className="text-text-3">No open positions — click the surface and mint.</span>
           ) : (
             <>
@@ -563,12 +569,43 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                   </div>
                 );
               })}
-              {openPositions.length > 3 && (
+              {openRanges.slice(0, 3).map((p) => {
+                const rPnl = fromQuote(p.unrealizedPnl);
+                return (
+                  <div
+                    key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
+                    className="glass-card interactive up flex items-center justify-between py-2 pl-3.5 pr-2"
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-up">
+                          RANGE
+                        </span>
+                        <span className="truncate text-text-1">
+                          {price(toFloat(p.lowerStrike))}–{price(toFloat(p.higherStrike))}
+                        </span>
+                      </span>
+                      <span className="text-[10px] text-text-3">
+                        {fmtQuote(fromQuote(p.openQty))} contracts ·{' '}
+                        <span className={rPnl >= 0 ? 'text-up' : 'text-down'}>{signed(rPnl)}</span>
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setRedeemingRange(p)}
+                      disabled={!!busy}
+                      className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
+                    >
+                      {p.settled ? 'Redeem' : 'Close'}
+                    </button>
+                  </div>
+                );
+              })}
+              {(openPositions.length > 3 || openRanges.length > 3) && (
                 <Link
                   href="/portfolio"
                   className="text-[10px] text-text-3 underline hover:text-text-2"
                 >
-                  view all {openPositions.length} positions →
+                  view all {openPositions.length + openRanges.length} positions →
                 </Link>
               )}
             </>
@@ -591,11 +628,27 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       <RedeemModal
         position={redeeming}
         busy={!!busy}
-        onConfirm={async (p) => {
-          await redeem(p);
+        onConfirm={async (p, quantityBase) => {
+          await redeem(p, quantityBase);
           setRedeeming(null);
         }}
         onClose={() => setRedeeming(null)}
+      />
+
+      <RangeRedeemModal
+        position={redeemingRange}
+        busy={!!busy}
+        onConfirm={async (p, quantityBase) => {
+          await redeemRange({
+            oracleId: p.oracleId,
+            expiry: p.expiry,
+            lowerStrike: BigInt(Math.round(p.lowerStrike)),
+            higherStrike: BigInt(Math.round(p.higherStrike)),
+            quantity: quantityBase,
+          });
+          setRedeemingRange(null);
+        }}
+        onClose={() => setRedeemingRange(null)}
       />
     </div>
   );
