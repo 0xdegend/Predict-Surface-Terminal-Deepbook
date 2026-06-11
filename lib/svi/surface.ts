@@ -29,14 +29,20 @@ import type { Oracle } from '@/lib/api/types';
 const ARB_EPS = 1e-7;
 
 /**
- * A binary is only mintable while its fair UP price is strictly inside the
- * protocol's quoting band — far-OTM/ITM strikes round to 0%/100% and the mint
- * aborts. Single source of truth shared by the surface (to dim/disable dead
- * nodes) and the trade ticket (to gate the quote). Mirrors the contract's
- * 1%–99% ask bound.
+ * A binary is only worth surfacing while its fair UP price is strictly inside
+ * this band — deep-OTM/ITM strikes round to 0%/100% and can't be priced. Single
+ * source of truth shared by the surface (to dim/disable dead nodes) and the
+ * trade ticket (to gate the quote).
+ *
+ * This is a *fair-price* pre-filter, deliberately wider than the contract's
+ * ~1% ask floor: the real cost is `ask = fair + spread`, so strikes with a sub-1%
+ * fair often still have an ask the contract will price once the spread is added.
+ * Widening the band to 0.2%–99.8% lets those cheap far-OTM bets through to the
+ * chain-authoritative devInspect quote, which is the true gate (read-only, no
+ * funds at risk). Strikes the chain still won't price fall back to "can't quote".
  */
-export const FAIR_TRADE_MIN = 0.01;
-export const FAIR_TRADE_MAX = 0.99;
+export const FAIR_TRADE_MIN = 0.002;
+export const FAIR_TRADE_MAX = 0.998;
 export function isTradeableFair(up: number): boolean {
   return up > FAIR_TRADE_MIN && up < FAIR_TRADE_MAX;
 }

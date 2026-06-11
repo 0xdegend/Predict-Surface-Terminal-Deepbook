@@ -24,6 +24,7 @@ import {
   getManagerPositions,
   getManagerRanges,
   getOracleState,
+  humanizeApiError,
   qk,
 } from '@/lib/api/client';
 import { aggregateRangePositions, valueRange } from '@/lib/ranges/aggregate';
@@ -36,7 +37,10 @@ export interface UseTraderPositions {
   binary: PositionSummary[];
   ranges: ValuedRangePosition[];
   loading: boolean;
+  /** Set only when *nothing* could be loaded (blocking). */
   error: string | null;
+  /** Some managers loaded but others failed — show what we have + a note. */
+  partial: boolean;
 }
 
 export function useTraderPositions(managerIds: string[], enabled = true): UseTraderPositions {
@@ -125,14 +129,20 @@ export function useTraderPositions(managerIds: string[], enabled = true): UseTra
     [rangePositions, byOracle],
   );
 
+  const allQs = [...posQs, ...rangeQs];
   const loading =
     enabled && ids.length > 0 && (posQs.some((q) => q.isLoading) || rangeQs.some((q) => q.isLoading));
-  const firstErr = [...posQs, ...rangeQs].find((q) => q.error)?.error;
+  const firstErr = allQs.find((q) => q.error)?.error;
+  // `binary`/`ranges` already skip a failed manager (flatMap of `data ?? []`), so
+  // one manager's 500 just drops its lots. Only block the whole view when nothing
+  // loaded at all; otherwise show what we have and flag it as partial.
+  const anyLoaded = allQs.some((q) => q.data !== undefined);
 
   return {
     binary,
     ranges,
     loading,
-    error: firstErr instanceof Error ? firstErr.message : null,
+    error: !loading && !anyLoaded && firstErr ? humanizeApiError(firstErr, "this trader's positions") : null,
+    partial: anyLoaded && allQs.some((q) => q.error),
   };
 }

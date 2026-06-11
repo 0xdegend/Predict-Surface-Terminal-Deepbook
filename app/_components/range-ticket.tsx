@@ -5,7 +5,8 @@
  * FlowPanel. The user picks a band (two prices) on the odds curve; this quotes
  * it chain-authoritatively via `quoteRange` (get_range_trade_amounts) and mints
  * with `acct.mintRange` → buildMintRangeTx. Pays $1·qty if settlement ∈ (lower,
- * higher]. Tradeability is gated on the client range-fair (1%–99%) so we never
+ * higher]. Tradeability is gated on the client range-fair (a wide 0.2%–99.8%
+ * pre-filter; the chain quote is the true gate) so we never
  * fire a doomed simulate for a degenerate band.
  */
 import { useState } from 'react';
@@ -188,7 +189,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
         ) : !tradeable ? (
           <span className="text-text-3">
             This band is too far from spot (or too wide) to quote — narrow it toward{' '}
-            {price(active.forward)} (the market quotes ~1%–99% only).
+            {price(active.forward)} (only odds away from the 0%/100% extremes can be priced).
           </span>
         ) : !q ? (
           quoteQ.isError ? (

@@ -71,8 +71,10 @@ body {
  * Removed at lg+ where the inline header nav takes over and the dock is gone.
  */
 @media (max-width: 1023px) {
+  /* Clearance for the floating glass dock (its height + the bottom gap it floats
+     above + the iOS safe area). */
   body {
-    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
   }
 }
 
@@ -523,6 +525,52 @@ body {
   .glass {
     background: var(--bg-1);
   }
+}
+
+/* Floating mobile dock — a deeper, more translucent frosted glass than the
+   header `.glass`: stronger blur + saturation so the surface behind reads
+   through it, a top-light gradient, a crisp hairline, and a soft drop shadow so
+   it reads as a pill hovering above the page. The top sheen (::before) is the
+   glass edge catching light. */
+.glass-dock {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015) 55%),
+    color-mix(in srgb, var(--bg-1) 60%, transparent);
+  border: 1px solid var(--line-strong);
+  -webkit-backdrop-filter: blur(26px) saturate(165%);
+  backdrop-filter: blur(26px) saturate(165%);
+  box-shadow:
+    0 18px 44px -18px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+}
+.glass-dock::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 1rem;
+  right: 1rem;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.22), transparent);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-dock {
+    background: var(--bg-2);
+  }
+}
+
+/* The gliding active-tab pill — a translucent accent "lens" that slides under
+   the selected tab. The one bit of accent glow allowed off-canvas. */
+.dock-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    color-mix(in srgb, var(--accent) 9%, transparent)
+  );
+  border: 1px solid var(--accent-line);
+  box-shadow:
+    0 0 18px -6px var(--accent-glow),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
 }
 
 /* Popover / menu surface. Unlike the decorative translucent .glass, a menu

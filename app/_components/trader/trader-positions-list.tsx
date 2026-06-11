@@ -19,7 +19,7 @@ import { positionMetrics } from '@/app/_components/positions/position-metrics';
 import { useTraderPositions } from '@/lib/hooks/use-trader-positions';
 import { useCopyTrade } from '@/lib/hooks/use-copy-trade';
 import { getOracles, qk } from '@/lib/api/client';
-import { LuArrowUp, LuArrowDown, LuCalendarRange, LuCopy } from 'react-icons/lu';
+import { LuArrowUp, LuArrowDown, LuCalendarRange, LuCopy, LuTriangleAlert } from 'react-icons/lu';
 import type { PositionSummary } from '@/lib/api/types';
 import type { ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 
@@ -30,7 +30,7 @@ export function TraderPositionsList({
   managerIds: string[];
   enabled?: boolean;
 }) {
-  const { binary, ranges, loading, error } = useTraderPositions(managerIds, enabled);
+  const { binary, ranges, loading, error, partial } = useTraderPositions(managerIds, enabled);
   const { copyBinary, copyRange } = useCopyTrade();
 
   // Which oracles are still tradeable — the copy gate. `undefined` while loading
@@ -50,8 +50,12 @@ export function TraderPositionsList({
 
   if (error) {
     return (
-      <div className="rounded-lg border border-down/40 bg-down/10 p-3 font-mono text-[12px] text-down">
-        {error}
+      <div className="glass-inset flex items-start gap-2.5 rounded-lg border border-down/30 p-3.5 text-[12px] leading-relaxed">
+        <LuTriangleAlert size={15} className="mt-0.5 flex-none text-down" />
+        <div>
+          <p className="font-medium text-text-1">Positions unavailable</p>
+          <p className="mt-0.5 text-text-3">{error}</p>
+        </div>
       </div>
     );
   }
@@ -69,6 +73,12 @@ export function TraderPositionsList({
 
   return (
     <div className="flex flex-col gap-5">
+      {partial && (
+        <div className="flex items-center gap-2 rounded-md border border-[var(--warn-soft)] bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-warn">
+          <LuTriangleAlert size={13} className="flex-none" />
+          Some positions couldn&apos;t be loaded right now — showing what&apos;s available, retrying…
+        </div>
+      )}
       {binary.length > 0 && (
         <Section title="Binaries" count={binary.length}>
           {binary.map((p) => (

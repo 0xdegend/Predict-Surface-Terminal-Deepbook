@@ -570,9 +570,12 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
 
   return (
     <div className="glass-inset mt-4 overflow-hidden">
-      <table className="w-full border-collapse font-mono text-[12px] tabular-nums">
+      {/* Scroll horizontally on narrow screens instead of clipping the right-
+          hand columns; the min-width keeps the columns from squeezing. */}
+      <div className="scroll-quiet overflow-x-auto">
+      <table className="w-full min-w-[30rem] border-collapse font-mono text-[12px] tabular-nums">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:px-3.5 [&>th]:py-2.5 [&>th]:font-normal">
+          <tr className="text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:px-3 [&>th]:py-2.5 [&>th]:font-normal">
             <th>Time</th>
             <th>Flow</th>
             <th>LP account</th>
@@ -587,7 +590,7 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
             return (
               <tr
                 key={`${f.digest}-${f.account}-${f.ts}`}
-                className="transition-colors hover:bg-white/[0.02] [&>td]:px-3.5 [&>td]:py-2.5"
+                className="transition-colors hover:bg-white/[0.02] [&>td]:px-3 [&>td]:py-2.5"
               >
                 <td className="whitespace-nowrap text-text-3">
                   {dateUTC(f.ts)}
@@ -631,6 +634,7 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
           })}
         </tbody>
       </table>
+      </div>
 
       {paginated && (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-3.5 py-2.5">

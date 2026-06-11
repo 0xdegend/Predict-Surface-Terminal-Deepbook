@@ -142,10 +142,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     }
   }
 
-  // The protocol only quotes a spread when the fair price is strictly inside
-  // (0,1), and minting requires the ask in [1%,99%]. Far-OTM strikes round to
-  // 0%/100% and abort (pricing_config #1). Gate on the client fair price so we
-  // never fire a doomed simulate and can explain why.
+  // The protocol prices the ask as fair + spread, with a ~1% ask floor; deep
+  // OTM/ITM strikes round to 0%/100% and can't be priced. We gate on the client
+  // fair price with a deliberately wide band (0.2%–99.8%, see FAIR_TRADE_*): a
+  // sub-1% fair can still clear the ask floor once the spread lifts it, so we let
+  // it through to the chain-authoritative quote rather than pre-blocking it.
   const strikeFloat = toFloat(Number(strike));
   const clientUp =
     oracle && strike > 0n ? upFair(strikeFloat, forward, active!.svi, active!.settlement ?? null) : null;
@@ -414,8 +415,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               </span>
             ) : !tradeable ? (
               <span className="text-text-3">
-                Strike too far from spot to trade — pick one nearer {price(forward)} (the market
-                quotes ~1%–99% only).
+                Strike too far from spot to trade — pick one nearer {price(forward)} (only odds away
+                from the 0%/100% extremes can be priced).
               </span>
             ) : !q ? (
               // Only surface an error / loading state when we have NO quote to
