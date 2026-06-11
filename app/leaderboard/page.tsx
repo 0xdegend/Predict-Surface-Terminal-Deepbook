@@ -1,5 +1,12 @@
+import type { Metadata } from 'next';
 import { TopChrome } from '../_components/top-chrome';
 import { LeaderboardPanel } from '../_components/leaderboard/leaderboard-panel';
+
+export const metadata: Metadata = {
+  title: 'Leaderboard',
+  description:
+    'The Skew leaderboard — DeepBook Predict traders ranked live by points and volume from the public event stream.',
+};
 
 // The leaderboard is computed client-side from the public event stream (no
 // wallet required), so this route just renders the shared chrome + client panel.

@@ -14,9 +14,16 @@ import { reconstructOpenInterest, type OpenInterest } from '@/lib/risk/whatif';
 import { mergeVaultFlows, type VaultFlow } from '@/lib/risk/flows';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { VaultSummary, VaultPerformancePoint } from '@/lib/api/types';
+import type { Metadata } from 'next';
 import { TopChrome } from '../_components/top-chrome';
 import { RiskPanel } from '../_components/risk/risk-panel';
 import { ErrorState } from '../_components/ui/error-state';
+
+export const metadata: Metadata = {
+  title: 'Vault Risk',
+  description:
+    'Is PLP safe? Skew’s risk panel for the DeepBook Predict vault — utilization, withdrawal headroom, per-oracle exposure, and a ±Nσ what-if simulator.',
+};
 
 export const dynamic = 'force-dynamic';
 

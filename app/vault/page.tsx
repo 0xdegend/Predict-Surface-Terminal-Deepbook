@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { getOracles, getOracleState } from '@/lib/api/client';
 import { toFloat } from '@/config/scale';
 import { parseSvi } from '@/lib/svi/svi';
@@ -6,6 +7,12 @@ import { TopChrome } from '../_components/top-chrome';
 import { HedgePanel } from '../_components/vault/hedge-panel';
 import { VaultPositionPanel } from '../_components/vault/vault-position-panel';
 import { ErrorState } from '../_components/ui/error-state';
+
+export const metadata: Metadata = {
+  title: 'Hedge Vault',
+  description:
+    'Provide liquidity to the DeepBook Predict PLP vault on Skew — supply DUSDC, earn PLP, and track vault performance.',
+};
 
 export const dynamic = 'force-dynamic';
 
