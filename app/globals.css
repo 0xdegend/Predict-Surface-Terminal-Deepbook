@@ -776,6 +776,26 @@ body {
   100% { opacity: 0; transform: scale(2.1); }
 }
 
+/* Preloader (skew-loader) — CSS-driven so the bar + shimmer move even before
+   hydration; GSAP layers the logo float/glow on top once mounted. Reduced-motion
+   is handled by the global block below. */
+@keyframes skl-bar {
+  0% { transform: translateX(-110%); opacity: 0.35; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateX(330%); opacity: 0.35; }
+}
+@keyframes skl-shimmer {
+  0% { transform: translateX(-160%) skewX(-16deg); }
+  100% { transform: translateX(360%) skewX(-16deg); }
+}
+.skl-bar {
+  animation: skl-bar 1.15s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.skl-shimmer {
+  animation: skl-shimmer 2.6s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -936,6 +936,10 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
 /**
  * Dismissible plain-English explainer (legibility pass) — orients a non-quant
  * judge in one read. Persists dismissal in localStorage so it never re-nags.
+ *
+ * On mobile it collapses to a compact pill the user expands on tap, so the full
+ * note never blankets the hero — and the large backdrop-blur box isn't painted
+ * up front (easier on first paint / LCP). Desktop shows the full note inline.
  */
 function SurfaceCaption() {
   // Read the dismissal lazily — this canvas is dynamically imported with
@@ -946,40 +950,80 @@ function SurfaceCaption() {
       typeof window === "undefined" ||
       localStorage.getItem("predict.surfaceCaption") !== "dismissed",
   );
+  const [open, setOpen] = useState(false);
+  const isDesktop = useMediaQuery("(min-width: 640px)");
   if (!show) return null;
+
+  // Desktop always shows the body; mobile only when the user expands it.
+  const expanded = isDesktop || open;
+
+  function dismiss() {
+    localStorage.setItem("predict.surfaceCaption", "dismissed");
+    setShow(false);
+  }
+
   return (
-    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-60 -translate-x-1/2 items-start gap-2 rounded-xl px-3 py-2 sm:top-6 sm:max-w-sm sm:gap-2.5 sm:px-3.5 sm:py-2.5">
-      <div className="flex flex-col gap-1 sm:gap-1.5">
-        <p className="text-[10.5px] leading-snug text-text-2 sm:text-[11px] sm:leading-relaxed">
-          <span className="font-medium text-text-1">
-            Reading the surface —{" "}
-          </span>
-          height is how big a move the market is pricing in. The dip is
-          today&apos;s price; the wings lifting on either side mean it&apos;s
-          bracing for a swing. Warmer colors = more uncertainty.
-        </p>
-        <p className="text-[10px] leading-snug text-text-3 sm:leading-relaxed">
-          Drag the slider to rewind · tap{" "}
-          <span className="text-down">Stress</span> to fire the no-arb check.
-        </p>
-      </div>
-      <button
-        onClick={() => {
-          localStorage.setItem("predict.surfaceCaption", "dismissed");
-          setShow(false);
-        }}
-        aria-label="Dismiss explainer"
-        className="-mr-1 -mt-0.5 shrink-0 rounded p-1 text-text-3 transition-colors hover:text-text-2"
+    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl sm:top-6 sm:max-w-sm">
+      {/* Header — title + (mobile) expand toggle + dismiss. Tapping the title
+          row toggles on mobile, so the whole pill is the affordance. */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5"
+        onClick={!isDesktop ? () => setOpen((o) => !o) : undefined}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path
-            d="M2 2 8 8M8 2 2 8"
-            stroke="currentColor"
-            strokeWidth="1.25"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
+        <span aria-hidden className="h-3 w-px shrink-0 bg-accent/70" />
+        <span className="text-[11px] font-medium text-text-1">Reading the surface</span>
+        <div className="ml-auto flex items-center gap-0.5">
+          {!isDesktop && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen((o) => !o);
+              }}
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse explainer" : "Expand explainer"}
+              className="rounded p-1 text-text-3 transition-colors hover:text-text-2"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 10 10"
+                fill="none"
+                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+              >
+                <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              dismiss();
+            }}
+            aria-label="Dismiss explainer"
+            className="rounded p-1 text-text-3 transition-colors hover:text-text-2"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M2 2 8 8M8 2 2 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="flex flex-col gap-1 px-3 pb-2.5 sm:gap-1.5 sm:px-3.5 sm:pb-3">
+          <p className="text-[10.5px] leading-snug text-text-2 sm:text-[11px] sm:leading-relaxed">
+            Height is how big a move the market is pricing in. The dip is
+            today&apos;s price; the wings lifting on either side mean it&apos;s
+            bracing for a swing. Warmer colors = more uncertainty.
+          </p>
+          <p className="text-[10px] leading-snug text-text-3 sm:leading-relaxed">
+            Drag the slider to rewind · tap{" "}
+            <span className="text-down">Stress</span> to fire the no-arb check.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
