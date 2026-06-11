@@ -3,9 +3,11 @@
 /**
  * MarketView — the hero viewport, switchable between the 3-D SVI vol surface
  * (the analyst view) and a live price chart (the degen view). The toggle floats
- * top-left over both; the chart bundle is lazily imported so it never loads
- * until a user opens it. Choice persists locally. Both views read the same live
- * selection, so clicking a market keeps the strike in sync across them.
+ * top-left over both; each view's bundle is lazily imported so it only loads
+ * when shown. Choice persists locally; with no saved choice the default is the
+ * surface on desktop and the (much lighter) chart on mobile — so phones never
+ * pull in the Three.js bundle unless the user opts into the surface. Both views
+ * read the same live selection, so clicking a market keeps the strike in sync.
  */
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
@@ -23,6 +25,8 @@ const PriceChart = dynamic(() => import('../chart/price-chart').then((m) => m.Pr
 
 type View = 'surface' | 'chart';
 const STORAGE_KEY = 'predict.heroView';
+/** Below Tailwind's `lg` we default to the chart, not the 3-D surface. */
+const SMALL_SCREEN_MQ = '(max-width: 1023px)';
 
 function readSaved(): View | null {
   try {
@@ -33,6 +37,18 @@ function readSaved(): View | null {
   }
 }
 
+/**
+ * Default view when the user hasn't picked one: chart on small screens — a
+ * fraction of the Three.js bundle and far friendlier on touch — surface on
+ * desktop. Window-guarded so it's SSR-safe (resolves to surface on the server).
+ */
+function defaultView(): View {
+  if (typeof window !== 'undefined' && window.matchMedia(SMALL_SCREEN_MQ).matches) {
+    return 'chart';
+  }
+  return 'surface';
+}
+
 export function MarketView({
   oracles,
   initialInputs,
@@ -40,11 +56,14 @@ export function MarketView({
   oracles: Oracle[];
   initialInputs: SmileInput[];
 }) {
-  // SSR + first paint render the default (surface); the saved choice applies
-  // only after mount so hydration agrees.
+  // SSR + first client render resolve to 'surface' so hydration agrees with the
+  // server. Once mounted we apply the real choice: an explicit override, else a
+  // saved preference, else the viewport default (chart on mobile, surface on
+  // desktop). Gating the heavy view on `mounted` (below) means a phone that
+  // defaults to chart never even fetches the Three.js chunk.
   const mounted = useMounted();
   const [override, setOverride] = useState<View | null>(null);
-  const view: View = override ?? (mounted ? readSaved() : null) ?? 'surface';
+  const view: View = override ?? (mounted ? readSaved() ?? defaultView() : null) ?? 'surface';
 
   function choose(next: View) {
     setOverride(next);
@@ -70,13 +89,24 @@ export function MarketView({
         </div>
       </div>
 
-      {view === 'surface' ? (
+      {/* Hold a neutral skeleton until mounted, then render the resolved view.
+          This is what keeps the surface from mounting for a frame (and pulling
+          in Three.js) on screens that default to the chart. */}
+      {!mounted ? (
+        <HeroBootSkeleton />
+      ) : view === 'surface' ? (
         <SurfaceMount oracles={oracles} initialInputs={initialInputs} />
       ) : (
         <PriceChart oracles={oracles} initialInputs={initialInputs} />
       )}
     </div>
   );
+}
+
+/** Neutral pre-mount placeholder — shown for the single frame before the view
+ *  resolves, so neither heavy bundle is committed until we know which to load. */
+function HeroBootSkeleton() {
+  return <div className="h-full w-full animate-pulse bg-bg-0" />;
 }
 
 function ViewTab({

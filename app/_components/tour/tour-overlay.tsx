@@ -22,7 +22,12 @@ import { TOUR_STEPS, type TourStep } from '@/lib/tour/steps';
 export const TOUR_SEEN_KEY = 'skew.tour.v1';
 /** Breathing room between the target edge and the spotlight cutout. */
 const PAD = 8;
+/** Anchored popover width on tablet/desktop (clamped to the viewport on small ones). */
 const POP_W = 340;
+/** Below this viewport width the popover docks as a bottom sheet instead of anchoring. */
+const SHEET_BELOW = 640;
+/** Gutter the popover keeps from the viewport edges. */
+const GUTTER = 12;
 
 interface Box {
   top: number;
@@ -31,7 +36,10 @@ interface Box {
   height: number;
 }
 interface PopPos {
+  /** anchored = floats next to the target; sheet = pinned to the bottom on phones. */
+  mode: 'anchored' | 'sheet';
   left: number;
+  width: number;
   top?: number;
   bottom?: number;
 }
@@ -111,15 +119,26 @@ export function TourOverlay() {
     };
     setBox(b);
 
-    // Prefer below the target; flip above when there isn't room and the target
-    // sits in the lower half. Clamp horizontally so it never leaves the viewport.
+    // Phones: dock as a full-width bottom sheet — a fixed 340px card anchored to a
+    // tall section just overflows or collides with the cutout on small screens.
+    // The sheet stays put across steps (only its contents change), which reads
+    // calmer on mobile than a popover hopping around the page.
+    if (vw < SHEET_BELOW) {
+      setPop({ mode: 'sheet', left: GUTTER, width: vw - GUTTER * 2 });
+      return;
+    }
+
+    // Tablet/desktop: anchor next to the target. Prefer below; flip above when
+    // there isn't room and the target sits in the lower half. Clamp both the
+    // width and the x-position so the card never leaves the viewport.
+    const w = Math.min(POP_W, vw - GUTTER * 2);
     const place: 'top' | 'bottom' =
       b.top + b.height + 190 > vh && b.top > vh * 0.4 ? 'top' : 'bottom';
-    const left = Math.min(Math.max(12, b.left), Math.max(12, vw - POP_W - 12));
+    const left = Math.min(Math.max(GUTTER, b.left), Math.max(GUTTER, vw - w - GUTTER));
     setPop(
       place === 'bottom'
-        ? { left, top: b.top + b.height + 14 }
-        : { left, bottom: vh - b.top + 14 },
+        ? { mode: 'anchored', left, width: w, top: b.top + b.height + 14 }
+        : { mode: 'anchored', left, width: w, bottom: vh - b.top + 14 },
     );
   }, [steps, step]);
 
@@ -205,8 +224,13 @@ export function TourOverlay() {
           style={{
             left: pop.left,
             top: pop.top,
-            bottom: pop.bottom,
-            width: POP_W,
+            // Sheet sits above the mobile dock + iOS safe area; anchored uses its
+            // measured offset from the target.
+            bottom:
+              pop.mode === 'sheet'
+                ? 'calc(env(safe-area-inset-bottom) + 5.25rem)'
+                : pop.bottom,
+            width: pop.width,
             transition: reduce ? undefined : 'top 0.4s ease, bottom 0.4s ease, left 0.4s ease',
           }}
         >
@@ -231,18 +255,32 @@ export function TourOverlay() {
 
           <p className="text-[13px] leading-relaxed text-text-2">{current.body}</p>
 
-          <div className="mt-4 flex items-center justify-between gap-3">
-            {/* Progress dots. */}
-            <div className="flex items-center gap-1.5" aria-hidden>
-              {steps.map((s, i) => (
-                <span
-                  key={s.id}
-                  className={`h-1.5 rounded-full transition-all duration-200 ${
-                    i === step ? 'w-4 bg-accent' : 'w-1.5 bg-[var(--line-strong)]'
-                  }`}
-                />
-              ))}
-            </div>
+          {/* Progress dots — their own centered row above the actions. */}
+          <div className="mt-4 flex items-center justify-center gap-1.5" aria-hidden>
+            {steps.map((s, i) => (
+              <span
+                key={s.id}
+                className={`h-1.5 rounded-full transition-all duration-200 ${
+                  i === step ? 'w-4 bg-accent' : 'w-1.5 bg-[var(--line-strong)]'
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            {/* Skip the whole tour. Hidden on the last step, where Finish ends it
+                anyway; the spacer keeps the action buttons right-aligned. */}
+            {!isLast ? (
+              <button
+                type="button"
+                onClick={end}
+                className="rounded-md px-1.5 py-1.5 text-[12px] font-medium text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                Skip tour
+              </button>
+            ) : (
+              <span />
+            )}
 
             <div className="flex items-center gap-2">
               {step > 0 && (
