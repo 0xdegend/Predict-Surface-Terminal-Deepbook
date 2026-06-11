@@ -4,6 +4,7 @@ import { WalletBar } from "./wallet-bar";
 import { BottomNav } from "./bottom-nav";
 import { NavMore } from "./nav-more";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
+import { TourButton } from "./tour/tour-button";
 import type { PriceEvent } from "@/lib/api/types";
 
 /**
@@ -62,7 +63,7 @@ export function TopChrome({
 
       {/* Zone 2 — the Live Market Chip (centerpiece). min-w-0 lets it shrink
           instead of pushing the wallet off-screen on narrow phones. */}
-      <div className="flex min-w-0 justify-center">
+      <div data-tour="chip" className="flex min-w-0 justify-center">
         {tape?.initial && diagnostics ? (
           <MarketChip
             oracleId={tape.oracleId}
@@ -75,7 +76,8 @@ export function TopChrome({
 
       {/* Zone 3 — wallet. shrink-0 so the Connect/account control is always
           fully visible, even when the chip is wide. */}
-      <div className="flex shrink-0 items-center justify-end">
+      <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+        <TourButton />
         <WalletBar />
       </div>
     </header>

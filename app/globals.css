@@ -589,6 +589,23 @@ body {
 }
 
 /* ------------------------------------------------------------------ *
+ * Guided tour spotlight (TourOverlay). A single fixed box paints both
+ * the page dim and the cutout: the huge box-shadow spread is the dim,
+ * the box's own area is the transparent "hole". The accent hairline +
+ * soft glow are the one bit of off-canvas accent the tour is allowed —
+ * it reads as the surface's light spilling onto the focused section.
+ * GSAP animates top/left/width/height; keep transitions off here so the
+ * two don't fight. position/size are set inline by the component.
+ * ------------------------------------------------------------------ */
+.tour-spot {
+  border-radius: 12px;
+  box-shadow:
+    0 0 0 9999px rgba(8, 9, 11, 0.66),
+    0 0 0 1px var(--accent-line),
+    0 0 26px -2px var(--accent-glow);
+}
+
+/* ------------------------------------------------------------------ *
  * Glass segmented control (Cards/Table view toggle, mode switches). A
  * frosted track with a sliding translucent THUMB — no hard borders. The
  * thumb's own top-light + soft drop reads as a raised piece of glass that

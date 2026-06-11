@@ -114,7 +114,10 @@ export default async function Page() {
           <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
             <section className="flex min-w-0 flex-col gap-px bg-white/[0.06]">
               {/* 3-D SVI surface — the hero */}
-              <div className="h-[48vh] min-h-[360px] bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-[520px]">
+              <div
+                data-tour="surface"
+                className="h-[48vh] min-h-[360px] bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-[520px]"
+              >
                 <MarketView oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
               </div>
 
@@ -122,7 +125,7 @@ export default async function Page() {
                   select on the surface + load the ticket. flex column so the picker
                   can stretch to fill the column (the right rail is taller) instead of
                   leaving an empty band below a short table. */}
-              <div className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
+              <div data-tour="picker" className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
                 <MarketPicker
                   oracles={snapshot.oracles}
                   inputs={snapshot.surfaceInputs}
@@ -133,14 +136,20 @@ export default async function Page() {
 
             {/* Right rail: live SVI + the trade flow. Stacks below on mobile. */}
             <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-              <LiveSviPanel
-                oracles={snapshot.oracles}
-                initialInputs={snapshot.surfaceInputs}
-                serverNow={serverNow}
-              />
+              <div data-tour="svi">
+                <LiveSviPanel
+                  oracles={snapshot.oracles}
+                  initialInputs={snapshot.surfaceInputs}
+                  serverNow={serverNow}
+                />
+              </div>
 
               {snapshot.surfaceInputs.length > 0 && (
-                <div id="trade-ticket" className="glass-divider-top scroll-mt-20 pt-5">
+                <div
+                  id="trade-ticket"
+                  data-tour="ticket"
+                  className="glass-divider-top scroll-mt-20 pt-5"
+                >
                   <SectionTitle>Trade ticket · click surface → mint</SectionTitle>
                   <div className="mt-3">
                     <FlowPanel inputs={snapshot.surfaceInputs} serverNow={serverNow} />
