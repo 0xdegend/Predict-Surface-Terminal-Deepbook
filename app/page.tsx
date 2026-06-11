@@ -111,10 +111,10 @@ export default async function Page() {
         />
       ) : snapshot ? (
         <>
-          <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[1fr_380px]">
-            <section className="flex flex-col gap-px bg-white/[0.06]">
+          <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+            <section className="flex min-w-0 flex-col gap-px bg-white/[0.06]">
               {/* 3-D SVI surface — the hero */}
-              <div className="h-[48vh] min-h-[360px] bg-bg-0 lg:h-[64vh] lg:min-h-[520px]">
+              <div className="h-[48vh] min-h-[360px] bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-[520px]">
                 <MarketView oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
               </div>
 
@@ -132,7 +132,7 @@ export default async function Page() {
             </section>
 
             {/* Right rail: live SVI + the trade flow. Stacks below on mobile. */}
-            <aside className="flex flex-col gap-6 bg-bg-0 p-4 sm:p-5">
+            <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
               <LiveSviPanel
                 oracles={snapshot.oracles}
                 initialInputs={snapshot.surfaceInputs}
