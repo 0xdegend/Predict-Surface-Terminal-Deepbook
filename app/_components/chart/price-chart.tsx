@@ -246,7 +246,12 @@ export function PriceChart({
         const base = baseImpl();
         const band = bandRangeRef.current;
         if (!band) return base;
-        const pad = Math.max((band.high - band.low) * 0.18, band.high * 0.015);
+        // Pad proportional to the band's own height so the scale frames the range
+        // tightly. The old floor of `band.high * 0.015` was 1.5% of the absolute
+        // price — ~±950 on a $63k asset, dwarfing a ~130-wide band and zooming
+        // the chart so far out the line flattened. The floor of 1 here only
+        // guards a degenerate zero-width band (a real range is never that).
+        const pad = Math.max((band.high - band.low) * 0.25, 1);
         const lo = band.low - pad;
         const hi = band.high + pad;
         if (!base?.priceRange) {
