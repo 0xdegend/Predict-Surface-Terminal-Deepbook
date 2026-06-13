@@ -17,8 +17,10 @@ import { toFloat } from "@/config/scale";
 import { pct, price, dateUTC, ttl } from "@/lib/format";
 import { useSurfaceStore } from "@/lib/store/surface-store";
 import { useMediaQuery } from "@/lib/hooks/use-media-query";
+import { useNow } from "@/lib/hooks/use-now";
 import { useSurfaceInputs } from "./use-surface-inputs";
 import { SurfaceControls } from "./surface-controls";
+import { SurfaceTradePopover, type PopoverScreen } from "./surface-trade-popover";
 import type { Oracle } from "@/lib/api/types";
 
 /** Respect the OS reduced-motion setting (§10.6). */
@@ -66,7 +68,18 @@ export function SurfaceCanvas({
   const showNoArb = useSurfaceStore((s) => s.showNoArb);
   const select = useSurfaceStore((s) => s.select);
   const selection = useSurfaceStore((s) => s.selection);
+  const ticketMode = useSurfaceStore((s) => s.ticketMode);
+  const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
+  const rangeAnchor = useSurfaceStore((s) => s.rangeAnchor);
+  const pickRangeStrike = useSurfaceStore((s) => s.pickRangeStrike);
   const reduced = usePrefersReducedMotion();
+  const now = useNow(0);
+
+  // Click-to-mint popover anchored at the clicked node (desktop only — on mobile
+  // a tap scrolls to the right-rail ticket instead). `clickId` remounts the
+  // popover on each new pick so its internal step/size reset cleanly.
+  const [popover, setPopover] = useState<PopoverScreen | null>(null);
+  const [clickId, setClickId] = useState(0);
 
   const { surface, mesh } = useMemo(() => {
     const s = buildSurface(inputs, { kMin: -0.12, kMax: 0.12, kSteps: 49 });
@@ -81,7 +94,23 @@ export function SurfaceCanvas({
 
   const [hover, setHover] = useState<HoverInfo | null>(null);
 
-  function pick(row: number, col: number) {
+  // The live SmileInput the popover quotes against — the oracle of the current
+  // binary selection, or (in range mode) the band / anchor's oracle.
+  const popoverActive = useMemo(() => {
+    const ids =
+      ticketMode === "range"
+        ? [rangeSelection?.oracleId, rangeAnchor?.oracleId, selection?.oracleId]
+        : [selection?.oracleId];
+    for (const id of ids) {
+      if (id) {
+        const found = inputs.find((i) => i.oracle.oracle_id === id);
+        if (found) return found;
+      }
+    }
+    return null;
+  }, [ticketMode, rangeSelection, rangeAnchor, selection, inputs]);
+
+  function pick(row: number, col: number, e?: ThreeEvent<MouseEvent>) {
     const r = surface.rows[row];
     const cell = r?.cells[col];
     const oracle = oracleById.get(r?.oracleId ?? "");
@@ -94,19 +123,42 @@ export function SurfaceCanvas({
       BigInt(Math.round(strikeFloat * 1e9)),
       oracle,
     );
-    select({
-      oracleId: r.oracleId,
-      expiry: r.expiry,
-      strikeScaled: strikeScaled.toString(),
-      strike: toFloat(Number(strikeScaled)),
-      isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
-    });
+    const strike = toFloat(Number(strikeScaled));
+    if (ticketMode === "range") {
+      // In range mode a click is one edge of the band; two clicks form it.
+      pickRangeStrike({
+        oracleId: r.oracleId,
+        expiry: r.expiry,
+        strikeScaled: strikeScaled.toString(),
+        strike,
+      });
+    } else {
+      select({
+        oracleId: r.oracleId,
+        expiry: r.expiry,
+        strikeScaled: strikeScaled.toString(),
+        strike,
+        isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
+      });
+    }
     // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
-    // into view. Desktop keeps it in the right rail, so don't scroll there.
+    // into view. Desktop opens the quick-mint popover anchored at the click.
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       document
         .getElementById("trade-ticket")
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (e) {
+      const canvas = e.nativeEvent.target as HTMLCanvasElement | null;
+      const rect = canvas?.getBoundingClientRect();
+      setPopover({
+        x: e.nativeEvent.offsetX,
+        y: e.nativeEvent.offsetY,
+        w: rect?.width ?? window.innerWidth,
+        h: rect?.height ?? window.innerHeight,
+      });
+      setClickId((n) => n + 1);
     }
   }
 
@@ -159,13 +211,23 @@ export function SurfaceCanvas({
           minDistance={8}
           maxDistance={22}
           maxPolarAngle={Math.PI / 2.05}
-          autoRotate={isLive && !hover && !reduced}
+          autoRotate={isLive && !hover && !reduced && !popover}
           autoRotateSpeed={0.1}
           target={[0, -0.5, 0]}
         />
       </Canvas>
 
-      {hover && <SurfaceTooltip hover={hover} />}
+      {hover && !popover && <SurfaceTooltip hover={hover} />}
+
+      {popover && (
+        <SurfaceTradePopover
+          key={clickId}
+          active={popoverActive}
+          now={now}
+          screen={popover}
+          onClose={() => setPopover(null)}
+        />
+      )}
       <SurfaceLegend ivMin={mesh.ivMin} ivMax={mesh.ivMax} />
       <SurfaceMeta
         expiries={surface.rows.length}
@@ -237,7 +299,7 @@ function MorphSurface({
   showNoArb: boolean;
   reduced: boolean;
   onHover: (h: HoverInfo | null) => void;
-  onPick: (row: number, col: number) => void;
+  onPick: (row: number, col: number, e?: ThreeEvent<MouseEvent>) => void;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const lastCell = useRef<{ row: number; col: number }>({ row: -1, col: -1 });
@@ -343,7 +405,7 @@ function MorphSurface({
         onClick={(e) => {
           e.stopPropagation();
           const { row, col } = nearestCell(mesh, e.point);
-          onPick(row, col);
+          onPick(row, col, e);
         }}
       >
         <meshStandardMaterial
@@ -898,6 +960,7 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
             position={[mesh.colMeta[c].x, y, frontZ + 0.4]}
             center
             occlude
+            zIndexRange={[10, 0]}
           >
             <span
               className={`${chip} font-mono text-[10px] tabular-nums ${isFwd ? "text-accent" : "text-text-2"}`}
@@ -919,7 +982,7 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
         const keep = r % labelStep === 0 || r === lastRow;
         if (!keep || (r !== lastRow && lastRow - r < labelStep / 2)) return null;
         return (
-          <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude>
+          <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude zIndexRange={[10, 0]}>
             <span
               className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}
             >

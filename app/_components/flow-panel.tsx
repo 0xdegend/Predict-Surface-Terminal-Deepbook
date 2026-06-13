@@ -24,6 +24,7 @@ import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { snapStrikeToTick, gridBounds } from '@/lib/keys';
 import { quoteMarket, type TradeQuote } from '@/lib/sui/quote';
+import { fundingSplit } from '@/lib/sui/funding';
 import { humanizeError } from '@/lib/sui/abort';
 import { upFair } from '@/lib/svi/svi';
 import { buildMintTx } from '@/lib/sui/predict-tx';
@@ -195,8 +196,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   async function handleMint() {
     if (!managerId || !q || !oracle || expired) return;
-    const costBuf = (q.mintCost * 102n) / 100n;
-    const depositAmount = costBuf > tradingBalanceBase ? costBuf - tradingBalanceBase : 0n;
+    const { depositAmount } = fundingSplit(q.mintCost, tradingBalanceBase);
     const digest = await runTx(
       'mint',
       buildMintTx({
@@ -438,8 +438,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 // only the shortfall (cost+2% buffer − free balance) is pulled from
                 // the wallet now. This mirrors `handleMint`'s `depositAmount`, so the
                 // figure here matches the "coin outflow" the wallet popup shows.
-                const buffered = (q.mintCost * 102n) / 100n;
-                const walletNow = buffered > tradingBalanceBase ? buffered - tradingBalanceBase : 0n;
+                const { depositAmount: walletNow } = fundingSplit(q.mintCost, tradingBalanceBase);
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">

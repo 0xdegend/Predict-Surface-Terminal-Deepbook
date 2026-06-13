@@ -19,6 +19,7 @@ import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { quoteRange } from '@/lib/sui/quote';
+import { fundingSplit } from '@/lib/sui/funding';
 import { humanizeError } from '@/lib/sui/abort';
 import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
@@ -84,9 +85,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
   async function handleMint() {
     if (!q || !band || expired) return;
-    const buffered = (q.mintCost * 102n) / 100n;
-    const depositAmount =
-      buffered > acct.tradingBalanceBase ? buffered - acct.tradingBalanceBase : 0n;
+    const { depositAmount } = fundingSplit(q.mintCost, acct.tradingBalanceBase);
     const digest = await acct.mintRange({
       oracleId: oracle.oracle_id,
       expiry: oracle.expiry,
@@ -120,9 +119,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const profit = maxPayout - cost;
   const mult = cost > 0 ? maxPayout / cost : 0;
   const chance = q ? Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9 : fair;
-  const buffered = q ? (q.mintCost * 102n) / 100n : 0n;
-  const walletNow =
-    buffered > acct.tradingBalanceBase ? buffered - acct.tradingBalanceBase : 0n;
+  const walletNow = q ? fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount : 0n;
 
   return (
     <div className="flex flex-col gap-2">
