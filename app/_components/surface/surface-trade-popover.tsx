@@ -24,9 +24,10 @@ import { quote as fmtQuote, price, pct, signed, countdown } from '@/lib/format';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { quoteMarket, quoteRange, type TradeQuote } from '@/lib/sui/quote';
-import { fundingSplit } from '@/lib/sui/funding';
+import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
+import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
-import { buildMintTx } from '@/lib/sui/predict-tx';
+import { buildMintTx, buildMintWithFeeTx } from '@/lib/sui/predict-tx';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 import { useSurfaceStore } from '@/lib/store/surface-store';
@@ -126,6 +127,7 @@ function BinaryBody({
   const client = useCurrentClient();
   const acct = usePredictAccount();
   const isEnoki = useIsEnokiWallet();
+  const { feeBps } = useSkewFee();
 
   const selection = useSurfaceStore((s) => s.selection);
   const select = useSurfaceStore((s) => s.select);
@@ -207,20 +209,27 @@ function BinaryBody({
 
   async function handleMint() {
     if (!acct.managerId || !acct.owner || !q || !oracle || expired) return;
-    const { depositAmount } = fundingSplit(q.mintCost, acct.tradingBalanceBase);
-    const digest = await acct.runTx(
-      'mint',
-      buildMintTx({
-        managerId: acct.managerId,
-        oracleId: oracle.oracle_id,
-        expiry: oracle.expiry,
-        strike,
-        isUp,
-        quantity: qtyBase,
-        depositAmount,
-      }),
-      [...acct.managerKeys, qk.dusdcBalance(acct.owner)],
-    );
+    const tx =
+      feeBps > 0
+        ? buildMintWithFeeTx({
+            managerId: acct.managerId,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            strike,
+            isUp,
+            quantity: qtyBase,
+            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+          })
+        : buildMintTx({
+            managerId: acct.managerId,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            strike,
+            isUp,
+            quantity: qtyBase,
+            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
+          });
+    const digest = await acct.runTx('mint', tx, [...acct.managerKeys, qk.dusdcBalance(acct.owner)]);
     setConfirmOpen(false);
     if (digest) {
       pulseFill({ oracleId: oracle.oracle_id, strike: strikeFloat, isUp });
@@ -313,6 +322,7 @@ function BinaryBody({
             isError={quoteQ.isError}
             error={quoteQ.error}
             tradingBalanceBase={acct.tradingBalanceBase}
+            feeBps={feeBps}
           />
 
           {closingSoon && !expired && (
@@ -351,6 +361,9 @@ function BinaryBody({
             { label: 'Outcome', value: isUp ? 'Pays if price ends ABOVE' : 'Pays if price ends BELOW' },
             { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
             { label: 'Contracts', value: String(qty) },
+            ...(feeBps > 0
+              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
+              : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
           maxWin={fmtQuote(qty)}
@@ -375,6 +388,7 @@ function RangeBody({
   const client = useCurrentClient();
   const acct = usePredictAccount();
   const isEnoki = useIsEnokiWallet();
+  const { feeBps } = useSkewFee();
 
   const band = useSurfaceStore((s) => s.rangeSelection);
   const anchor = useSurfaceStore((s) => s.rangeAnchor);
@@ -423,15 +437,24 @@ function RangeBody({
 
   async function handleMint() {
     if (!q || !band || !oracle || expired) return;
-    const { depositAmount } = fundingSplit(q.mintCost, acct.tradingBalanceBase);
-    const digest = await acct.mintRange({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      lowerStrike: BigInt(band.lowerScaled),
-      higherStrike: BigInt(band.higherScaled),
-      quantity: qtyBase,
-      depositAmount,
-    });
+    const digest =
+      feeBps > 0
+        ? await acct.mintRangeWithFee({
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band.lowerScaled),
+            higherStrike: BigInt(band.higherScaled),
+            quantity: qtyBase,
+            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+          })
+        : await acct.mintRange({
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band.lowerScaled),
+            higherStrike: BigInt(band.higherScaled),
+            quantity: qtyBase,
+            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
+          });
     setConfirmOpen(false);
     if (digest) {
       pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
@@ -493,6 +516,7 @@ function RangeBody({
             error={quoteQ.error}
             tradingBalanceBase={acct.tradingBalanceBase}
             fairFallback={fair}
+            feeBps={feeBps}
           />
 
           <MintButton
@@ -521,6 +545,9 @@ function RangeBody({
             { label: 'Outcome', value: 'Pays if price ends in band' },
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
             { label: 'Contracts', value: String(qty) },
+            ...(feeBps > 0
+              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
+              : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
           maxWin={fmtQuote(qty)}
@@ -590,6 +617,7 @@ function QuoteCard({
   error,
   tradingBalanceBase,
   fairFallback,
+  feeBps,
 }: {
   q: TradeQuote | undefined;
   qty: number;
@@ -601,6 +629,7 @@ function QuoteCard({
   error: unknown;
   tradingBalanceBase: bigint;
   fairFallback?: number;
+  feeBps: number;
 }) {
   const sym = predictConfig.quote.symbol;
   const glow = q && tradeable && !expired ? (isUp ? 'up glow-accent' : 'down glow-down') : '';
@@ -619,11 +648,15 @@ function QuoteCard({
   } else {
     const cost = fromQuote(q.mintCost);
     const maxPayout = qty;
-    const profit = maxPayout - cost;
-    const mult = cost > 0 ? maxPayout / cost : 0;
+    const feeF = fromQuote(skewFee(q.mintCost, feeBps));
+    const profit = maxPayout - cost - feeF; // net of the Skew fee too
+    const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
     const chance =
       fairFallback != null && q == null ? fairFallback : Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
-    const { depositAmount } = fundingSplit(q.mintCost, tradingBalanceBase);
+    const walletNow =
+      feeBps > 0
+        ? feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps).paymentAmount
+        : fundingSplit(q.mintCost, tradingBalanceBase).depositAmount;
     body = (
       <div className="flex flex-col">
         <div className="grid grid-cols-2 gap-3">
@@ -648,13 +681,24 @@ function QuoteCard({
           net if right <span className="text-up">{signed(profit)}</span> · implied {pct(chance, 1)}
         </span>
         <div className="hairline-fade mt-2.5" />
+        {feeBps > 0 && (
+          <div className="mt-2.5 flex items-center justify-between">
+            <span className="text-[10px] text-text-3">Skew fee · {(feeBps / 100).toFixed(2)}%</span>
+            <span className="font-mono text-[10px] tabular-nums text-text-1">+{fmtQuote(feeF)} {sym}</span>
+          </div>
+        )}
         <div className="mt-2.5 flex items-center justify-between">
           <span className="text-[10px] text-text-3">Leaves your wallet now</span>
           <span className="font-mono text-[10px] tabular-nums text-text-1">
-            {depositAmount > 0n ? '≈ ' : ''}
-            {fmtQuote(fromQuote(depositAmount))} {sym}
+            {walletNow > 0n ? '≈ ' : ''}
+            {fmtQuote(fromQuote(walletNow))} {sym}
           </span>
         </div>
+        {feeBps > 0 && (
+          <span className="mt-1.5 text-[9.5px] leading-snug text-text-3">
+            Bet cost → DeepBook Predict vault · Skew fee → Skew
+          </span>
+        )}
       </div>
     );
   }

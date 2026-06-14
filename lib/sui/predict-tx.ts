@@ -262,6 +262,91 @@ export function buildOpenHedgedTx(p: OpenHedgedParams): Transaction {
   return tx;
 }
 
+/* --------------------------- skew builder fee ------------------------ */
+
+export interface MintWithFeeParams {
+  managerId: string;
+  oracleId: string;
+  expiry: number | bigint;
+  strike: bigint; // 1e9-scaled, on grid
+  isUp: boolean;
+  quantity: bigint; // DUSDC base units (max payout)
+  /**
+   * Single DUSDC coin handed to the router = the Skew fee + the deposit needed to
+   * fund the mint. The router splits the fee to the treasury, deposits the rest
+   * into the manager, then mints. Size it with `feeRouterPayment` (lib/sui/funding).
+   */
+  paymentAmount: bigint;
+}
+
+/**
+ * Mint a binary through our `skew_fee` router so the builder fee is taken on-chain
+ * in the same tx. The router computes the fee from the chain-authoritative cost
+ * (it calls `get_trade_amounts` internally) and builds the MarketKey itself — so
+ * we only pass primitives + the payment coin. Requires `skewFeePackageId` +
+ * `feeConfigId` for the active network (callers gate on `feeRouterEnabled`).
+ */
+export function buildMintWithFeeTx(p: MintWithFeeParams): Transaction {
+  const pkg = cfg().skewFeePackageId;
+  const feeConfig = cfg().feeConfigId;
+  if (!pkg || !feeConfig) throw new Error('Skew fee router not deployed for this network');
+  const tx = new Transaction();
+  const payment = tx.add(coinWithBalance({ type: QUOTE(), balance: p.paymentAmount }));
+  tx.moveCall({
+    target: `${pkg}::fee_router::mint_with_fee`,
+    typeArguments: [QUOTE()],
+    arguments: [
+      tx.object(feeConfig),
+      tx.object(cfg().predictObjectId),
+      tx.object(p.managerId),
+      tx.object(p.oracleId),
+      tx.pure.u64(BigInt(p.expiry)),
+      tx.pure.u64(p.strike),
+      tx.pure.bool(p.isUp),
+      tx.pure.u64(p.quantity),
+      payment,
+      tx.object(cfg().clockId),
+    ],
+  });
+  return tx;
+}
+
+export interface MintRangeWithFeeParams {
+  managerId: string;
+  oracleId: string;
+  expiry: number | bigint;
+  lowerStrike: bigint;
+  higherStrike: bigint;
+  quantity: bigint;
+  paymentAmount: bigint;
+}
+
+/** Range counterpart of `buildMintWithFeeTx` (composes `mint_range`). */
+export function buildMintRangeWithFeeTx(p: MintRangeWithFeeParams): Transaction {
+  const pkg = cfg().skewFeePackageId;
+  const feeConfig = cfg().feeConfigId;
+  if (!pkg || !feeConfig) throw new Error('Skew fee router not deployed for this network');
+  const tx = new Transaction();
+  const payment = tx.add(coinWithBalance({ type: QUOTE(), balance: p.paymentAmount }));
+  tx.moveCall({
+    target: `${pkg}::fee_router::mint_range_with_fee`,
+    typeArguments: [QUOTE()],
+    arguments: [
+      tx.object(feeConfig),
+      tx.object(cfg().predictObjectId),
+      tx.object(p.managerId),
+      tx.object(p.oracleId),
+      tx.pure.u64(BigInt(p.expiry)),
+      tx.pure.u64(p.lowerStrike),
+      tx.pure.u64(p.higherStrike),
+      tx.pure.u64(p.quantity),
+      payment,
+      tx.object(cfg().clockId),
+    ],
+  });
+  return tx;
+}
+
 /* ------------------------------- range ------------------------------- */
 
 export interface RangeMintParams {

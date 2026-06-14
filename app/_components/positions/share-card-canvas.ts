@@ -45,13 +45,26 @@ function outcomeText(d: ShareCardData): string {
   return d.band ? 'in band' : d.up ? 'UP' : 'DOWN';
 }
 
-export type ShareVariant = 'glow' | 'spotlight' | 'surface';
+export type ShareVariant = 'glow' | 'spotlight' | 'surface' | 'celebrate';
 
 export const SHARE_VARIANTS: { id: ShareVariant; label: string }[] = [
   { id: 'glow', label: 'Glow' },
   { id: 'spotlight', label: 'Spotlight' },
   { id: 'surface', label: 'Surface' },
 ];
+
+/**
+ * Variants offered for a given result. The festive "Celebrate" card is win-only
+ * — it leads the list for winners so the share dialog opens on the fun one — and
+ * is simply absent for live/lost positions.
+ */
+export function shareVariants(
+  result: ShareCardData['result'],
+): { id: ShareVariant; label: string }[] {
+  return result === 'won'
+    ? [{ id: 'celebrate', label: 'Celebrate' }, ...SHARE_VARIANTS]
+    : SHARE_VARIANTS;
+}
 
 const W = 1200;
 const H = 675;
@@ -146,6 +159,7 @@ export function drawShareCard(
   drawBackground(s, variant);
   if (variant === 'glow') drawGlow(s);
   else if (variant === 'spotlight') drawSpotlight(s);
+  else if (variant === 'celebrate') drawCelebrate(s);
   else drawSurface(s);
   drawHeader(s);
   drawFooter(s);
@@ -310,6 +324,169 @@ function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
   ctx.fillText(`${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`, W / 2, 538);
 
   ctx.textAlign = 'left';
+}
+
+/* ===================== variant: celebrate ===================== */
+
+/**
+ * The win-only celebration card: seeded confetti, a gold burst, the Skew mark
+ * "popped" in a glowing medallion, BIG WIN + the hero ROI. All canvas-drawn and
+ * deterministic (confetti is seeded off the position) so the thumbnail, preview,
+ * and exported PNG are pixel-identical. No photos, no likenesses.
+ */
+function drawCelebrate(s: Ctx) {
+  const { ctx, c, sans, mono, d } = s;
+  const win = c.up;
+  const gold = c.warn;
+
+  // Gold-into-teal burst behind the center.
+  const burst = ctx.createRadialGradient(W / 2, 300, 40, W / 2, 300, 470);
+  burst.addColorStop(0, withAlpha(gold, 0.16));
+  burst.addColorStop(0.6, withAlpha(win, 0.06));
+  burst.addColorStop(1, withAlpha(gold, 0));
+  ctx.fillStyle = burst;
+  ctx.fillRect(0, 0, W, H);
+
+  drawConfetti(s, celebrateSeed(d));
+
+  ctx.textAlign = 'center';
+
+  // Celebrant medallion — the Skew mark, popped, with a teal glow ring.
+  const mx = W / 2;
+  const my = 150;
+  const mr = 48;
+  ctx.save();
+  ctx.shadowColor = withAlpha(win, 0.6);
+  ctx.shadowBlur = 30;
+  ctx.beginPath();
+  ctx.arc(mx, my, mr, 0, Math.PI * 2);
+  ctx.fillStyle = withAlpha(win, 0.12);
+  ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(mx, my, mr, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha(win, 0.5);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (logoImg) {
+    const ls = 54;
+    ctx.drawImage(logoImg, mx - ls / 2, my - ls / 2, ls, ls);
+  } else {
+    ctx.fillStyle = win;
+    ctx.font = `700 34px ${sans}`;
+    ctx.fillText('★', mx, my + 12);
+  }
+  drawSparkle(ctx, mx + 72, my - 26, 10, gold);
+  drawSparkle(ctx, mx - 76, my - 8, 8, win);
+  drawSparkle(ctx, mx + 86, my + 30, 7, c.text1);
+  drawSparkle(ctx, mx - 70, my + 34, 6, gold);
+
+  // Bet + settlement line.
+  ctx.font = `600 28px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(betText(d), W / 2, 250);
+  ctx.font = `400 16px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
+    W / 2,
+    278,
+  );
+
+  // BIG WIN eyebrow.
+  ctx.font = `700 15px ${sans}`;
+  ctx.fillStyle = gold;
+  ctx.fillText(spaced('BIG WIN'), W / 2, 324);
+
+  // Hero ROI, glowing.
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, W - 2 * P - 40, 112, 700, mono);
+  const roiBaseline = 324 + roiPx * 0.82;
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = win;
+  ctx.shadowColor = withAlpha(win, 0.45);
+  ctx.shadowBlur = 36;
+  ctx.fillText(roiText, W / 2, roiBaseline);
+  ctx.shadowBlur = 0;
+
+  // PnL beneath.
+  ctx.font = `500 24px ${mono}`;
+  ctx.fillStyle = win;
+  ctx.fillText(
+    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    W / 2,
+    roiBaseline + 44,
+  );
+
+  drawStatStrip(s);
+  ctx.textAlign = 'left';
+}
+
+/** Stable per-position seed so confetti is identical across renders. */
+function celebrateSeed(d: ShareCardData): number {
+  const base =
+    Math.round(Math.abs(d.pnlPct) * 1000) +
+    d.contracts * 7 +
+    Math.round(d.cost * 100) +
+    (d.expiry % 100000);
+  return (base >>> 0) || 1;
+}
+
+/** Tiny deterministic PRNG (mulberry32) — keeps the card reproducible. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Festive paper ribbons scattered across the card (seeded). */
+function drawConfetti({ ctx, c }: Ctx, seed: number) {
+  const rng = mulberry32(seed);
+  const colors = [c.up, c.warn, c.text1, '#9d92e8', '#6aa6e6'];
+  for (let i = 0; i < 76; i++) {
+    const x = rng() * W;
+    const y = rng() * H;
+    const len = 7 + rng() * 12;
+    const wdt = 3 + rng() * 4;
+    const rot = (rng() - 0.5) * Math.PI;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.globalAlpha = 0.35 + rng() * 0.45;
+    ctx.fillStyle = colors[Math.floor(rng() * colors.length)];
+    ctx.fillRect(-len / 2, -wdt / 2, len, wdt);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A small four-point sparkle star. */
+function drawSparkle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  color: string,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = color;
+  ctx.shadowColor = withAlpha(color, 0.7);
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const a2 = a + Math.PI / 4;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.lineTo(Math.cos(a2) * r * 0.36, Math.sin(a2) * r * 0.36);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 /* ===================== variant: surface ===================== */

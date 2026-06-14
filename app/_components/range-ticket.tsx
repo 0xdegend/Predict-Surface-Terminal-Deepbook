@@ -19,7 +19,8 @@ import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { quoteRange } from '@/lib/sui/quote';
-import { fundingSplit } from '@/lib/sui/funding';
+import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
+import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
 import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
@@ -38,6 +39,9 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // Gasless Google/zkLogin mints have no wallet pop-up → confirm in-app first.
   const isEnoki = useIsEnokiWallet();
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Live Skew builder fee (bps); >0 routes through the on-chain fee router.
+  const { feeBps } = useSkewFee();
 
   const oracle = active.oracle;
   const sym = predictConfig.quote.symbol;
@@ -85,15 +89,24 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
   async function handleMint() {
     if (!q || !band || expired) return;
-    const { depositAmount } = fundingSplit(q.mintCost, acct.tradingBalanceBase);
-    const digest = await acct.mintRange({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      lowerStrike: BigInt(band.lowerScaled),
-      higherStrike: BigInt(band.higherScaled),
-      quantity: qtyBase,
-      depositAmount,
-    });
+    const digest =
+      feeBps > 0
+        ? await acct.mintRangeWithFee({
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band.lowerScaled),
+            higherStrike: BigInt(band.higherScaled),
+            quantity: qtyBase,
+            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+          })
+        : await acct.mintRange({
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band.lowerScaled),
+            higherStrike: BigInt(band.higherScaled),
+            quantity: qtyBase,
+            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
+          });
     setConfirmOpen(false);
     if (digest) {
       pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
@@ -116,10 +129,15 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
   const cost = q ? fromQuote(q.mintCost) : 0;
   const maxPayout = contracts; // each contract pays 1.00 if the band hits
-  const profit = maxPayout - cost;
-  const mult = cost > 0 ? maxPayout / cost : 0;
+  const feeF = q ? fromQuote(skewFee(q.mintCost, feeBps)) : 0;
+  const profit = maxPayout - cost - feeF; // net of the Skew fee too
+  const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
   const chance = q ? Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9 : fair;
-  const walletNow = q ? fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount : 0n;
+  const walletNow = q
+    ? feeBps > 0
+      ? feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount
+      : fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount
+    : 0n;
 
   return (
     <div className="flex flex-col gap-2">
@@ -234,12 +252,25 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               </div>
             </div>
 
-            <div className="glass-inset mt-3 flex items-center justify-between p-3">
-              <span className="text-[11px] text-text-3">Leaves your wallet now</span>
-              <span className="text-[11px] tabular-nums text-text-1">
-                {walletNow > 0n ? '≈ ' : ''}
-                {fmtQuote(fromQuote(walletNow))} {sym}
-              </span>
+            <div className="glass-inset mt-3 flex flex-col gap-2 p-3">
+              {feeBps > 0 && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-text-3">Skew fee · {(feeBps / 100).toFixed(2)}%</span>
+                    <span className="text-[11px] tabular-nums text-text-1">+{fmtQuote(feeF)} {sym}</span>
+                  </div>
+                  <span className="text-[10px] leading-relaxed text-text-3">
+                    Bet cost goes to the DeepBook Predict vault; the Skew fee goes to Skew.
+                  </span>
+                </>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-text-3">Leaves your wallet now</span>
+                <span className="text-[11px] tabular-nums text-text-1">
+                  {walletNow > 0n ? '≈ ' : ''}
+                  {fmtQuote(fromQuote(walletNow))} {sym}
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -275,6 +306,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
             { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
             { label: 'Contracts', value: String(contracts) },
+            ...(feeBps > 0 ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(feeF)} ${sym}` }] : []),
           ]}
           cost={fmtQuote(cost)}
           maxWin={fmtQuote(maxPayout)}

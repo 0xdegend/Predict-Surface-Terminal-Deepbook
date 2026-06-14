@@ -35,6 +35,7 @@ import {
   buildSupplyTx,
   buildWithdrawPlpTx,
   buildMintRangeTx,
+  buildMintRangeWithFeeTx,
   buildRedeemRangeTx,
   buildCashOutTx,
 } from '@/lib/sui/predict-tx';
@@ -269,6 +270,24 @@ export function usePredictAccount() {
     ]);
   }
 
+  /** Mint a vertical-range position THROUGH the skew_fee router (builder fee taken
+   *  on-chain). `paymentAmount` = fee + deposit (size with `feeRouterPayment`). */
+  async function mintRangeWithFee(p: {
+    oracleId: string;
+    expiry: number | bigint;
+    lowerStrike: bigint;
+    higherStrike: bigint;
+    quantity: bigint;
+    paymentAmount: bigint;
+  }) {
+    if (!managerId || !owner) return null;
+    return runTx('mint-range', buildMintRangeWithFeeTx({ managerId, ...p }), [
+      ...managerKeys,
+      qk.managerRanges(managerId),
+      qk.dusdcBalance(owner),
+    ]);
+  }
+
   /** Redeem (close, or claim if settled) a vertical-range position. */
   async function redeemRange(p: {
     oracleId: string;
@@ -334,6 +353,7 @@ export function usePredictAccount() {
     supplyPlp,
     withdrawPlp,
     mintRange,
+    mintRangeWithFee,
     redeemRange,
     cashOut,
     /** True when the connected wallet is a zkLogin (Enoki) account. */

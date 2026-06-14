@@ -28,3 +28,31 @@ export function fundingSplit(
   const depositAmount = buffered > tradingBalanceBase ? buffered - tradingBalanceBase : 0n;
   return { depositAmount, buffered };
 }
+
+/** The Skew builder fee on a given cost, in DUSDC base units. `feeBps` is read
+ *  live from the on-chain FeeConfig (100 = 1.00%). */
+export function skewFee(cost: bigint, feeBps: number): bigint {
+  if (feeBps <= 0) return 0n;
+  return (cost * BigInt(feeBps)) / 10_000n;
+}
+
+/**
+ * Size the single payment coin handed to the `skew_fee` router (`mint_with_fee` /
+ * `mint_range_with_fee`). The router takes its fee from this coin and deposits the
+ * rest into the manager, so the coin must cover BOTH the fee and the deposit the
+ * mint needs. We buffer the fee on the buffered cost too, so a price tick between
+ * quote and signing can't under-fund it; any excess simply lands back in the
+ * user's manager free balance (never lost).
+ *
+ * `fee` is the nominal fee on the *quoted* cost — the figure to SHOW the user.
+ */
+export function feeRouterPayment(
+  mintCost: bigint,
+  tradingBalanceBase: bigint,
+  feeBps: number,
+): { fee: bigint; depositAmount: bigint; paymentAmount: bigint } {
+  const { depositAmount, buffered } = fundingSplit(mintCost, tradingBalanceBase);
+  const fee = skewFee(mintCost, feeBps);
+  const feeBuffered = skewFee(buffered, feeBps);
+  return { fee, depositAmount, paymentAmount: depositAmount + feeBuffered };
+}

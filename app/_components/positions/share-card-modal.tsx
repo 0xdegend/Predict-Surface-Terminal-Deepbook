@@ -8,7 +8,7 @@ import { signed, price } from '@/lib/format';
 import {
   drawShareCard,
   loadShareLogo,
-  SHARE_VARIANTS,
+  shareVariants,
   type ShareCardData,
   type ShareVariant,
 } from './share-card-canvas';
@@ -35,6 +35,18 @@ export function ShareCardModal({
   const [variant, setVariant] = useState<ShareVariant>('glow');
   const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy'>(null);
 
+  // The styles offered depend on the result (winners also get "Celebrate").
+  const variants = shareVariants(data?.result ?? 'live');
+
+  // On each open, lead with the festive card for a win, else the default glow.
+  // Adjusting state during render (guarded by the open transition) is the React-
+  // recommended way to reset on a prop change — no setState-in-effect churn.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setVariant(data?.result === 'won' ? 'celebrate' : 'glow');
+  }
+
   // Repaint the large preview whenever the dialog opens or the style changes.
   useEffect(() => {
     if (!open || !data) return;
@@ -57,7 +69,7 @@ export function ShareCardModal({
     (async () => {
       await Promise.all([document.fonts.ready, loadShareLogo()]);
       if (cancelled) return;
-      for (const v of SHARE_VARIANTS) {
+      for (const v of shareVariants(data.result)) {
         const el = thumbRefs.current[v.id];
         if (el) drawShareCard(el, data, { variant: v.id, scale: 0.5 });
       }
@@ -169,7 +181,7 @@ export function ShareCardModal({
         {/* right rail — style picker */}
         <div className="flex w-full shrink-0 flex-col gap-2.5 sm:w-57.5">
           <p className="eyebrow">Style</p>
-          {SHARE_VARIANTS.map((v) => {
+          {variants.map((v) => {
             const selected = v.id === variant;
             return (
               <button

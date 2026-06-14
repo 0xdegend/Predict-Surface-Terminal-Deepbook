@@ -41,6 +41,15 @@ export interface PredictConfig {
    * "not deployed" state instead of building a doomed tx. See contracts/predict_hedge.
    */
   hedgePackageId: string;
+  /**
+   * Our `skew_fee` builder-fee router package + its shared `FeeConfig` object.
+   * BOTH empty = not deployed for this network → the app falls back to the plain
+   * `predict::mint` flow with NO fee, so the UI never breaks pre-deploy. Fill both
+   * after `sui client publish` (see contracts/skew_fee/README.md). The live fee %
+   * is read on-chain from `FeeConfig.fee_bps`, not hardcoded here.
+   */
+  skewFeePackageId: string;
+  feeConfigId: string;
   /** Optional: testnet DUSDC faucet request form (not the standard USDC faucet). */
   faucetUrl?: string;
 }
@@ -61,6 +70,10 @@ const TESTNET: PredictConfig = {
   },
   plpCoinType: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::plp::PLP',
   hedgePackageId: '0x188db05516fb336aae9efca852e23b2d593430332da5e56266deb84aecdfb787',
+  // skew_fee router — published on testnet 2026-06-14 (AdminCap + UpgradeCap held
+  // by the deployer 0x33a8c3…). FeeConfig defaults: 100 bps (1%), treasury = deployer.
+  skewFeePackageId: '0x3dcc142dd54a471e2c894f7180e59740f473da1024c966a5ea6b1c3be1dbe9f4',
+  feeConfigId: '0xd9b00d5d7060b30fe312f9367336e5289ab4ddcca48c9e6ace8f04bf066e40fd',
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
@@ -81,6 +94,8 @@ const MAINNET: PredictConfig = {
   },
   plpCoinType: '', // TODO
   hedgePackageId: '', // TODO: publish predict_hedge on mainnet, then fill
+  skewFeePackageId: '', // TODO: publish skew_fee on mainnet, then fill
+  feeConfigId: '', // TODO
 };
 
 const CONFIGS: Record<SuiNetwork, PredictConfig> = {
@@ -93,6 +108,12 @@ export const ACTIVE_NETWORK: SuiNetwork =
   (process.env.NEXT_PUBLIC_SUI_NETWORK as SuiNetwork) || 'testnet';
 
 export const predictConfig: PredictConfig = CONFIGS[ACTIVE_NETWORK];
+
+/** True when the skew_fee builder-fee router is deployed for the active network
+ *  (both the package and its FeeConfig object id are set). When false, mints use
+ *  the plain `predict::mint` flow with no fee. */
+export const feeRouterEnabled: boolean =
+  !!predictConfig.skewFeePackageId && !!predictConfig.feeConfigId;
 
 export function getPredictConfig(network: SuiNetwork = ACTIVE_NETWORK): PredictConfig {
   return CONFIGS[network];

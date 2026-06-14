@@ -24,10 +24,11 @@ import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { snapStrikeToTick, gridBounds } from '@/lib/keys';
 import { quoteMarket, type TradeQuote } from '@/lib/sui/quote';
-import { fundingSplit } from '@/lib/sui/funding';
+import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
 import { humanizeError } from '@/lib/sui/abort';
 import { upFair } from '@/lib/svi/svi';
-import { buildMintTx } from '@/lib/sui/predict-tx';
+import { buildMintTx, buildMintWithFeeTx } from '@/lib/sui/predict-tx';
+import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
 import { MintConfirmModal } from './mint-confirm-modal';
@@ -102,6 +103,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // wallets skip it; their signing prompt is already the review moment.
   const isEnoki = useIsEnokiWallet();
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Live Skew builder fee (bps). >0 → route the mint through the on-chain fee
+  // router so the fee is taken atomically; 0 → plain mint, no fee.
+  const { feeBps } = useSkewFee();
 
   const oracle = active?.oracle;
   const forward = active?.forward ?? 0;
@@ -196,20 +201,29 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   async function handleMint() {
     if (!managerId || !q || !oracle || expired) return;
-    const { depositAmount } = fundingSplit(q.mintCost, tradingBalanceBase);
-    const digest = await runTx(
-      'mint',
-      buildMintTx({
-        managerId,
-        oracleId: oracle.oracle_id,
-        expiry: oracle.expiry,
-        strike,
-        isUp,
-        quantity: qtyBase,
-        depositAmount,
-      }),
-      [...managerKeys, qk.dusdcBalance(owner ?? '')],
-    );
+    // With a live builder fee, route through the skew_fee router (fee taken
+    // on-chain in the same tx); otherwise the plain deposit+mint path.
+    const tx =
+      feeBps > 0
+        ? buildMintWithFeeTx({
+            managerId,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            strike,
+            isUp,
+            quantity: qtyBase,
+            paymentAmount: feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps).paymentAmount,
+          })
+        : buildMintTx({
+            managerId,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            strike,
+            isUp,
+            quantity: qtyBase,
+            depositAmount: fundingSplit(q.mintCost, tradingBalanceBase).depositAmount,
+          });
+    const digest = await runTx('mint', tx, [...managerKeys, qk.dusdcBalance(owner ?? '')]);
     setConfirmOpen(false);
     if (digest) pulseFill({ oracleId: oracle.oracle_id, strike: toFloat(Number(strike)), isUp });
   }
@@ -431,14 +445,17 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               (() => {
                 const cost = fromQuote(q.mintCost);
                 const maxPayout = contracts; // each contract pays 1.00 if it wins
-                const profit = maxPayout - cost;
-                const mult = cost > 0 ? maxPayout / cost : 0;
                 const chance = Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
-                // Funding split — mint pays from the manager's FREE BALANCE first;
-                // only the shortfall (cost+2% buffer − free balance) is pulled from
-                // the wallet now. This mirrors `handleMint`'s `depositAmount`, so the
-                // figure here matches the "coin outflow" the wallet popup shows.
-                const { depositAmount: walletNow } = fundingSplit(q.mintCost, tradingBalanceBase);
+                // Skew builder fee (on top of the bet) + funding. With a fee, the
+                // router takes a single payment coin (fee + deposit); without one,
+                // mint pays from the manager free balance first and only the
+                // shortfall is pulled from the wallet now.
+                const router = feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps);
+                const feeF = fromQuote(router.fee);
+                const profit = maxPayout - cost - feeF; // net of the Skew fee too
+                const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
+                const walletNow =
+                  feeBps > 0 ? router.paymentAmount : fundingSplit(q.mintCost, tradingBalanceBase).depositAmount;
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">
@@ -480,6 +497,21 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                     </div>
 
                     <div className="glass-inset mt-3 flex flex-col gap-2 p-3">
+                      {feeBps > 0 && (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-text-3">
+                              Skew fee · {(feeBps / 100).toFixed(2)}%
+                            </span>
+                            <span className="text-[11px] tabular-nums text-text-1">
+                              +{fmtQuote(feeF)} {sym}
+                            </span>
+                          </div>
+                          <span className="text-[10px] leading-relaxed text-text-3">
+                            Bet cost goes to the DeepBook Predict vault; the Skew fee goes to Skew.
+                          </span>
+                        </>
+                      )}
                       {/* What actually leaves the wallet now — reconciles the total
                           cost above with the smaller "coin outflow" the wallet shows,
                           since the manager's free balance funds the rest. */}
@@ -563,6 +595,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
                 { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
                 { label: 'Contracts', value: String(contracts) },
+                ...(feeBps > 0
+                  ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} ${sym}` }]
+                  : []),
               ]}
               cost={fmtQuote(fromQuote(q.mintCost))}
               maxWin={fmtQuote(contracts)}
