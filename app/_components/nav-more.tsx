@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { LuChevronDown, LuVault, LuShieldAlert } from 'react-icons/lu';
+import { LuChevronDown, LuVault, LuShieldAlert, LuKeyRound } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { useAdminCap } from '@/lib/hooks/use-admin-cap';
 
 /**
  * Desktop nav "Vault" group (§10.5). The two vault-facing screens — Hedge Vault
@@ -24,7 +25,14 @@ export function NavMore() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const activeItem = ITEMS.find((i) => pathname.startsWith(i.href));
+  // The Fee Admin entry only exists for the wallet that owns the AdminCap — other
+  // users never see it (and the page itself is cap-gated regardless).
+  const { isAdmin } = useAdminCap();
+  const items = isAdmin
+    ? [...ITEMS, { href: '/admin', label: 'Fee Admin', desc: 'Builder fee · treasury', icon: LuKeyRound }]
+    : ITEMS;
+
+  const activeItem = items.find((i) => pathname.startsWith(i.href));
 
   useEffect(() => {
     if (!open) return;
@@ -66,7 +74,7 @@ export function NavMore() {
           className="glass-menu popover-in absolute left-0 top-[calc(100%+10px)] z-50 w-64 overflow-hidden rounded-2xl p-2"
         >
           <div className="flex flex-col gap-1.5">
-            {ITEMS.map((item) => {
+            {items.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (

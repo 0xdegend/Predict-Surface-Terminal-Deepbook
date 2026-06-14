@@ -19,7 +19,7 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault";
+  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin";
   tape?: {
     oracleId: string;
     underlying: string;

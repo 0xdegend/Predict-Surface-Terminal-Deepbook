@@ -347,6 +347,36 @@ export function buildMintRangeWithFeeTx(p: MintRangeWithFeeParams): Transaction 
   return tx;
 }
 
+/* --------------------------- skew fee admin -------------------------- */
+
+/**
+ * Admin: set the builder fee (basis points). Requires the caller to OWN the
+ * `AdminCap` (passed as `adminCapId`) — the Move fn asserts the cap and caps the
+ * value at MAX_FEE_BPS (200). `public fun`, so it composes as a plain moveCall.
+ */
+export function buildSetFeeBpsTx(adminCapId: string, feeBps: number): Transaction {
+  const pkg = cfg().skewFeePackageId;
+  if (!pkg || !cfg().feeConfigId) throw new Error('Skew fee router not deployed for this network');
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${pkg}::fee_router::set_fee_bps`,
+    arguments: [tx.object(adminCapId), tx.object(cfg().feeConfigId), tx.pure.u64(BigInt(feeBps))],
+  });
+  return tx;
+}
+
+/** Admin: point the fee at a new treasury address. Requires the `AdminCap`. */
+export function buildSetTreasuryTx(adminCapId: string, treasury: string): Transaction {
+  const pkg = cfg().skewFeePackageId;
+  if (!pkg || !cfg().feeConfigId) throw new Error('Skew fee router not deployed for this network');
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${pkg}::fee_router::set_treasury`,
+    arguments: [tx.object(adminCapId), tx.object(cfg().feeConfigId), tx.pure.address(treasury)],
+  });
+  return tx;
+}
+
 /* ------------------------------- range ------------------------------- */
 
 export interface RangeMintParams {
