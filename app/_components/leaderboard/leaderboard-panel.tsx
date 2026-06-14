@@ -23,11 +23,12 @@ import {
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
-import { num, compact, shortId } from '@/lib/format';
+import { num, compact } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { ErrorState } from '../ui/error-state';
 import { WalletAvatar } from './wallet-avatar';
+import { TraderName } from './trader-name';
 import Link from 'next/link';
 
 type Row = ReturnType<typeof sortRows>[number];
@@ -195,7 +196,7 @@ export function LeaderboardPanel() {
                     className="truncate text-text-1 hover:text-[var(--accent)] hover:underline"
                     title={r.owner}
                   >
-                    {shortId(r.owner)}
+                    <TraderName owner={r.owner} />
                     {isMe && <span className="ml-1.5 text-[10px] text-[var(--accent)]">you</span>}
                   </a>
                   <ViewPositionsButton owner={r.owner} variant="icon" />
@@ -311,7 +312,7 @@ function MyRankCard({ rank, total, row }: { rank: number; total: number; row: Ro
             className="inline-flex items-center gap-1.5 font-mono text-[13px] text-text-1 hover:text-[var(--accent)] hover:underline"
             title={row.owner}
           >
-            {shortId(row.owner)}
+            <TraderName owner={row.owner} />
             <span className="text-[10px] text-[var(--accent)]">you</span>
           </a>
           <span className="font-mono text-[10px] tabular-nums text-text-3">of {total} traders</span>
@@ -456,7 +457,7 @@ function PodiumCard({
         className="mt-3 inline-flex items-center gap-1.5 font-mono text-[12px] text-text-1 hover:text-[var(--accent)] hover:underline"
         title={row.owner}
       >
-        {shortId(row.owner)}
+        <TraderName owner={row.owner} />
         {isMe && <span className="text-[10px] text-[var(--accent)]">you</span>}
       </a>
 
