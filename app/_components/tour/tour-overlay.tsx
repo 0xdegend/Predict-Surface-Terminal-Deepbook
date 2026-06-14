@@ -1,20 +1,21 @@
 'use client';
 
 /**
- * Guided product tour — the spotlight + glass-popover wizard (§10.6 motion).
- * Mounted once in the app shell (beside <Toaster />). A single fixed box draws
- * both the dim and the cutout via one giant box-shadow; GSAP morphs that box
- * between steps so the spotlight glides rather than jumps. A transparent
- * full-screen catcher swallows clicks so the page can't be touched mid-tour,
- * and the popover (a solid .glass-menu surface) floats above it.
+ * Guided product tour — a fixed bottom dock of step pills + a moving spotlight.
  *
- * Targets are resolved from `data-tour="..."` anchors at runtime; any step whose
+ * The dock stays pinned to the bottom of the viewport the whole time, so the
+ * controls never travel and you never have to scroll to find them (the home
+ * route isn't a fixed 100vh). Clicking a step pill spotlights that section and
+ * scrolls it into view; only the spotlight glides (GSAP), which reads far calmer
+ * than a popover hopping around the page.
+ *
+ * Targets resolve from `data-tour="..."` anchors at runtime; any step whose
  * anchor isn't mounted (e.g. the ticket before markets load) is filtered out, so
- * the step count always reflects what's actually on screen.
+ * the pills always reflect what's actually on screen.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
-import { LuX } from 'react-icons/lu';
+import { LuX, LuChevronRight, LuCheck } from 'react-icons/lu';
 import { useTourStore } from '@/lib/store/tour-store';
 import { TOUR_STEPS, type TourStep } from '@/lib/tour/steps';
 
@@ -22,26 +23,12 @@ import { TOUR_STEPS, type TourStep } from '@/lib/tour/steps';
 export const TOUR_SEEN_KEY = 'skew.tour.v1';
 /** Breathing room between the target edge and the spotlight cutout. */
 const PAD = 8;
-/** Anchored popover width on tablet/desktop (clamped to the viewport on small ones). */
-const POP_W = 340;
-/** Below this viewport width the popover docks as a bottom sheet instead of anchoring. */
-const SHEET_BELOW = 640;
-/** Gutter the popover keeps from the viewport edges. */
-const GUTTER = 12;
 
 interface Box {
   top: number;
   left: number;
   width: number;
   height: number;
-}
-interface PopPos {
-  /** anchored = floats next to the target; sheet = pinned to the bottom on phones. */
-  mode: 'anchored' | 'sheet';
-  left: number;
-  width: number;
-  top?: number;
-  bottom?: number;
 }
 
 function prefersReducedMotion() {
@@ -60,7 +47,6 @@ export function TourOverlay() {
   // Steps whose anchor is actually in the DOM, recomputed each time the tour opens.
   const [steps, setSteps] = useState<TourStep[]>(TOUR_STEPS);
   const [box, setBox] = useState<Box | null>(null);
-  const [pop, setPop] = useState<PopPos | null>(null);
 
   const spotRef = useRef<HTMLDivElement>(null);
   const morphedRef = useRef(false);
@@ -99,47 +85,22 @@ export function TourOverlay() {
     setStep(0);
   }, [active, setStep]);
 
-  // Measure the active target and place the spotlight box + popover.
+  // Measure the active target → the spotlight box. The nav dock is fixed, so we
+  // only ever position the cutout.
   const measure = useCallback(() => {
     const cur = steps[Math.min(step, steps.length - 1)];
     const el = cur ? (document.querySelector(cur.target) as HTMLElement | null) : null;
     if (!el) {
       setBox(null);
-      setPop(null);
       return;
     }
     const r = el.getBoundingClientRect();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const b: Box = {
+    setBox({
       top: r.top - PAD,
       left: r.left - PAD,
       width: r.width + PAD * 2,
       height: r.height + PAD * 2,
-    };
-    setBox(b);
-
-    // Phones: dock as a full-width bottom sheet — a fixed 340px card anchored to a
-    // tall section just overflows or collides with the cutout on small screens.
-    // The sheet stays put across steps (only its contents change), which reads
-    // calmer on mobile than a popover hopping around the page.
-    if (vw < SHEET_BELOW) {
-      setPop({ mode: 'sheet', left: GUTTER, width: vw - GUTTER * 2 });
-      return;
-    }
-
-    // Tablet/desktop: anchor next to the target. Prefer below; flip above when
-    // there isn't room and the target sits in the lower half. Clamp both the
-    // width and the x-position so the card never leaves the viewport.
-    const w = Math.min(POP_W, vw - GUTTER * 2);
-    const place: 'top' | 'bottom' =
-      b.top + b.height + 190 > vh && b.top > vh * 0.4 ? 'top' : 'bottom';
-    const left = Math.min(Math.max(GUTTER, b.left), Math.max(GUTTER, vw - w - GUTTER));
-    setPop(
-      place === 'bottom'
-        ? { mode: 'anchored', left, width: w, top: b.top + b.height + 14 }
-        : { mode: 'anchored', left, width: w, bottom: vh - b.top + 14 },
-    );
+    });
   }, [steps, step]);
 
   // Re-measure on open, step change, scroll, and resize (rAF-throttled).
@@ -163,7 +124,8 @@ export function TourOverlay() {
     };
   }, [active, measure]);
 
-  // Bring the target into view when the step changes.
+  // Bring the target into view when the step changes. `block: center` keeps it
+  // clear of the fixed dock at the bottom.
   useEffect(() => {
     if (!active) return;
     const cur = steps[Math.min(step, steps.length - 1)];
@@ -201,7 +163,6 @@ export function TourOverlay() {
 
   if (!active || !current) return null;
 
-  const reduce = prefersReducedMotion();
   const isLast = step >= total - 1;
 
   return (
@@ -217,77 +178,92 @@ export function TourOverlay() {
       {/* Spotlight: the dim + cutout in one element (see .tour-spot). */}
       <div ref={spotRef} aria-hidden className="tour-spot pointer-events-none fixed" />
 
-      {/* Popover wizard. */}
-      {pop && (
-        <div
-          className="glass-menu popover-in fixed z-[122] rounded-[12px] p-4"
-          style={{
-            left: pop.left,
-            top: pop.top,
-            // Sheet sits above the mobile dock + iOS safe area; anchored uses its
-            // measured offset from the target.
-            bottom:
-              pop.mode === 'sheet'
-                ? 'calc(env(safe-area-inset-bottom) + 5.25rem)'
-                : pop.bottom,
-            width: pop.width,
-            transition: reduce ? undefined : 'top 0.4s ease, bottom 0.4s ease, left 0.4s ease',
-          }}
-        >
-          {/* Numbered badge, overlapping the corner like the reference. */}
-          <span className="absolute -left-2.5 -top-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent font-mono text-[11px] font-semibold tabular-nums text-bg-0 shadow-[0_4px_12px_-2px_var(--accent-glow)]">
-            {step + 1}
-          </span>
-
-          <div className="mb-1.5 flex items-start justify-between gap-3">
-            <h2 className="text-[15px] font-semibold tracking-tight text-text-1">
-              {current.title}
-            </h2>
-            <button
-              type="button"
-              onClick={end}
-              aria-label="Close tour"
-              className="-mr-1 -mt-1 rounded-md p-1 text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-            >
-              <LuX size={16} />
-            </button>
-          </div>
-
-          <p className="text-[13px] leading-relaxed text-text-2">{current.body}</p>
-
-          {/* Progress dots — their own centered row above the actions. */}
-          <div className="mt-4 flex items-center justify-center gap-1.5" aria-hidden>
-            {steps.map((s, i) => (
-              <span
-                key={s.id}
-                className={`h-1.5 rounded-full transition-all duration-200 ${
-                  i === step ? 'w-4 bg-accent' : 'w-1.5 bg-[var(--line-strong)]'
-                }`}
-              />
-            ))}
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-3">
-            {/* Skip the whole tour. Hidden on the last step, where Finish ends it
-                anyway; the spacer keeps the action buttons right-aligned. */}
-            {!isLast ? (
+      {/* Fixed bottom dock — the navigation never moves. */}
+      <div
+        className="pointer-events-none fixed inset-x-0 z-[122] flex justify-center px-3"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
+      >
+        <div className="glass-dock popover-in pointer-events-auto w-full max-w-3xl rounded-2xl p-3 sm:p-4">
+          {/* Header — eyebrow + progress + close. */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-text-3">
+              Guided tour <span className="text-text-2">· step {step + 1} of {total}</span>
+            </span>
+            <div className="flex items-center gap-1">
+              {!isLast && (
+                <button
+                  type="button"
+                  onClick={end}
+                  className="rounded-md px-2 py-1 text-[11px] font-medium text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                >
+                  Skip tour
+                </button>
+              )}
               <button
                 type="button"
                 onClick={end}
-                className="rounded-md px-1.5 py-1.5 text-[12px] font-medium text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                aria-label="Close tour"
+                className="-mr-1 rounded-md p-1 text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               >
-                Skip tour
+                <LuX size={16} />
               </button>
-            ) : (
-              <span />
-            )}
+            </div>
+          </div>
 
-            <div className="flex items-center gap-2">
+          {/* Step cards (reference style) — number + short label, the active one
+              highlighted. flex-1 + short labels keep all five on one row with no
+              scroll; clicking a card spotlights that section. */}
+          <div className="mt-3 flex gap-1.5">
+            {steps.map((s, i) => {
+              const isActive = i === step;
+              const done = i < step;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setStep(i)}
+                  title={s.title}
+                  aria-current={isActive ? 'step' : undefined}
+                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors ${
+                    isActive
+                      ? 'border-up/50 bg-[var(--accent-soft)]'
+                      : 'border-transparent hover:bg-white/[0.04]'
+                  }`}
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-semibold tabular-nums transition-colors ${
+                      isActive
+                        ? 'bg-accent text-bg-0'
+                        : done
+                          ? 'bg-[var(--accent-soft)] text-accent'
+                          : 'bg-[var(--line-strong)] text-text-3'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    className={`truncate text-[12px] font-medium ${
+                      isActive ? 'text-text-1' : 'text-text-2'
+                    }`}
+                  >
+                    {s.short}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active step detail + linear nav. */}
+          <div className="mt-3 flex items-end justify-between gap-4">
+            <p className="min-h-[2.5rem] max-w-xl text-[12.5px] leading-relaxed text-text-2">
+              {current.body}
+            </p>
+            <div className="flex shrink-0 items-center gap-2">
               {step > 0 && (
                 <button
                   type="button"
                   onClick={prev}
-                  className="rounded-md border border-line px-3 py-1.5 text-[12px] font-medium text-text-2 transition-colors hover:border-[var(--line-strong)] hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                  className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-medium text-text-2 transition-colors hover:border-[var(--line-strong)] hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 >
                   Back
                 </button>
@@ -295,14 +271,22 @@ export function TourOverlay() {
               <button
                 type="button"
                 onClick={next}
-                className="rounded-md bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-bg-0 shadow-[0_0_22px_-8px_var(--accent-glow)] transition-transform hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                className="flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-bg-0 shadow-[0_0_22px_-8px_var(--accent-glow)] transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
               >
-                {isLast ? 'Finish' : 'Next'}
+                {isLast ? (
+                  <>
+                    Finish <LuCheck size={14} />
+                  </>
+                ) : (
+                  <>
+                    Next <LuChevronRight size={15} />
+                  </>
+                )}
               </button>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

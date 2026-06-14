@@ -49,6 +49,20 @@ export function quote(value: number, decimals = 2): string {
   return `${num(value, decimals)}`;
 }
 
+/**
+ * A fee amount, which can be much smaller than the 2-decimal currency grid (a 1%
+ * fee on a 0.42 bet is 0.0042). Shows the normal 2-decimal format at ≥ 0.01, but
+ * for tiny fees keeps ~2 significant figures (0.0043, 0.00043) so it never
+ * collapses to "0.00". Capped at DUSDC's 6-decimal precision; trailing zeros
+ * trimmed.
+ */
+export function feeAmount(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0.00';
+  if (value >= 0.01) return num(value, 2);
+  // 2 significant figures, then drop any trailing zeros (e.g. 0.0000010 → 0.000001)
+  return String(parseFloat(value.toPrecision(2)));
+}
+
 /** Implied vol / ratios as a percentage. */
 export function pct(value: number, decimals = 2): string {
   if (!Number.isFinite(value)) return '—';

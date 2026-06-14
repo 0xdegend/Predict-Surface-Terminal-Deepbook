@@ -14,7 +14,7 @@ import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { predictConfig } from '@/config/predict';
 import { fromQuote, toQuote } from '@/config/scale';
-import { quote as fmtQuote, price, pct, signed } from '@/lib/format';
+import { quote as fmtQuote, feeAmount, price, pct, signed } from '@/lib/format';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
@@ -257,7 +257,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
                 <>
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] text-text-3">Skew fee · {(feeBps / 100).toFixed(2)}%</span>
-                    <span className="text-[11px] tabular-nums text-text-1">+{fmtQuote(feeF)} {sym}</span>
+                    <span className="text-[11px] tabular-nums text-text-1">+{feeAmount(feeF)} {sym}</span>
                   </div>
                   <span className="text-[10px] leading-relaxed text-text-3">
                     Bet cost goes to the DeepBook Predict vault; the Skew fee goes to Skew.
@@ -306,7 +306,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
             { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
             { label: 'Contracts', value: String(contracts) },
-            ...(feeBps > 0 ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(feeF)} ${sym}` }] : []),
+            ...(feeBps > 0 ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(feeF)} ${sym}` }] : []),
           ]}
           cost={fmtQuote(cost)}
           maxWin={fmtQuote(maxPayout)}

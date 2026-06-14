@@ -16,7 +16,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
 import { toFloat, fromQuote, toQuote } from '@/config/scale';
-import { quote as fmtQuote, price, pct, signed, dateUTC, countdown } from '@/lib/format';
+import { quote as fmtQuote, feeAmount, price, pct, signed, dateUTC, countdown } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
@@ -504,7 +504,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                               Skew fee · {(feeBps / 100).toFixed(2)}%
                             </span>
                             <span className="text-[11px] tabular-nums text-text-1">
-                              +{fmtQuote(feeF)} {sym}
+                              +{feeAmount(feeF)} {sym}
                             </span>
                           </div>
                           <span className="text-[10px] leading-relaxed text-text-3">
@@ -596,7 +596,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
                 { label: 'Contracts', value: String(contracts) },
                 ...(feeBps > 0
-                  ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} ${sym}` }]
+                  ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} ${sym}` }]
                   : []),
               ]}
               cost={fmtQuote(fromQuote(q.mintCost))}

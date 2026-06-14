@@ -20,7 +20,7 @@ import { LuX, LuArrowLeft } from 'react-icons/lu';
 import { qk } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
 import { toFloat, fromQuote, toQuote } from '@/config/scale';
-import { quote as fmtQuote, price, pct, signed, countdown } from '@/lib/format';
+import { quote as fmtQuote, feeAmount, price, pct, signed, countdown } from '@/lib/format';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { quoteMarket, quoteRange, type TradeQuote } from '@/lib/sui/quote';
@@ -34,24 +34,14 @@ import { useSurfaceStore } from '@/lib/store/surface-store';
 import { MintConfirmModal } from '../mint-confirm-modal';
 
 const CLOSING_SOON_MS = 120_000;
-const PAD_X = 168; // half popover width + margin (clamp inside the canvas)
-
-export interface PopoverScreen {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
 
 export function SurfaceTradePopover({
   active,
   now,
-  screen,
   onClose,
 }: {
   active: SmileInput | null;
   now: number;
-  screen: PopoverScreen;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -83,18 +73,14 @@ export function SurfaceTradePopover({
     };
   }, [onClose]);
 
-  // Anchor above the click when there's room, else below it. Clamp horizontally
-  // so it never spills off the canvas edge.
-  const below = screen.y < 280;
-  const left = Math.min(Math.max(screen.x, PAD_X), Math.max(screen.w - PAD_X, PAD_X));
-  const top = below ? screen.y + 18 : screen.y - 14;
-  const translate = below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)';
-
+  // Centered over the surface (not anchored to the click) so it never clips at
+  // the top and grows symmetrically from the middle when expanding glance→ticket
+  // — no downward creep into the controls below. max-height keeps it inside the
+  // canvas on short viewports (scrolls internally only if it ever needs to).
   return (
     <div
       ref={ref}
-      className="popover-in glass pointer-events-auto absolute z-20 w-[19rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl shadow-[0_18px_48px_-12px_rgba(0,0,0,0.8)]"
-      style={{ left, top, transform: translate }}
+      className="popover-in glass pointer-events-auto absolute left-1/2 top-1/2 z-20 max-h-[calc(100%-1.5rem)] w-[19rem] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto overflow-x-hidden rounded-xl shadow-[0_18px_48px_-12px_rgba(0,0,0,0.8)]"
     >
       <button
         type="button"
@@ -362,7 +348,7 @@ function BinaryBody({
             { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
             { label: 'Contracts', value: String(qty) },
             ...(feeBps > 0
-              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
+              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
               : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
@@ -546,7 +532,7 @@ function RangeBody({
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
             { label: 'Contracts', value: String(qty) },
             ...(feeBps > 0
-              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${fmtQuote(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
+              ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
               : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
@@ -684,7 +670,7 @@ function QuoteCard({
         {feeBps > 0 && (
           <div className="mt-2.5 flex items-center justify-between">
             <span className="text-[10px] text-text-3">Skew fee · {(feeBps / 100).toFixed(2)}%</span>
-            <span className="font-mono text-[10px] tabular-nums text-text-1">+{fmtQuote(feeF)} {sym}</span>
+            <span className="font-mono text-[10px] tabular-nums text-text-1">+{feeAmount(feeF)} {sym}</span>
           </div>
         )}
         <div className="mt-2.5 flex items-center justify-between">

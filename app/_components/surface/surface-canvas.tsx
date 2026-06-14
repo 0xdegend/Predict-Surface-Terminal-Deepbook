@@ -20,7 +20,7 @@ import { useMediaQuery } from "@/lib/hooks/use-media-query";
 import { useNow } from "@/lib/hooks/use-now";
 import { useSurfaceInputs } from "./use-surface-inputs";
 import { SurfaceControls } from "./surface-controls";
-import { SurfaceTradePopover, type PopoverScreen } from "./surface-trade-popover";
+import { SurfaceTradePopover } from "./surface-trade-popover";
 import type { Oracle } from "@/lib/api/types";
 
 /** Respect the OS reduced-motion setting (§10.6). */
@@ -78,7 +78,7 @@ export function SurfaceCanvas({
   // Click-to-mint popover anchored at the clicked node (desktop only — on mobile
   // a tap scrolls to the right-rail ticket instead). `clickId` remounts the
   // popover on each new pick so its internal step/size reset cleanly.
-  const [popover, setPopover] = useState<PopoverScreen | null>(null);
+  const [popover, setPopover] = useState(false);
   const [clickId, setClickId] = useState(0);
 
   const { surface, mesh } = useMemo(() => {
@@ -110,7 +110,7 @@ export function SurfaceCanvas({
     return null;
   }, [ticketMode, rangeSelection, rangeAnchor, selection, inputs]);
 
-  function pick(row: number, col: number, e?: ThreeEvent<MouseEvent>) {
+  function pick(row: number, col: number) {
     const r = surface.rows[row];
     const cell = r?.cells[col];
     const oracle = oracleById.get(r?.oracleId ?? "");
@@ -142,24 +142,15 @@ export function SurfaceCanvas({
       });
     }
     // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
-    // into view. Desktop opens the quick-mint popover anchored at the click.
+    // into view. Desktop opens the quick-mint popover (centered over the surface).
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       document
         .getElementById("trade-ticket")
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    if (e) {
-      const canvas = e.nativeEvent.target as HTMLCanvasElement | null;
-      const rect = canvas?.getBoundingClientRect();
-      setPopover({
-        x: e.nativeEvent.offsetX,
-        y: e.nativeEvent.offsetY,
-        w: rect?.width ?? window.innerWidth,
-        h: rect?.height ?? window.innerHeight,
-      });
-      setClickId((n) => n + 1);
-    }
+    setPopover(true);
+    setClickId((n) => n + 1); // remount so glance/size reset on each new pick
   }
 
   return (
@@ -224,8 +215,7 @@ export function SurfaceCanvas({
           key={clickId}
           active={popoverActive}
           now={now}
-          screen={popover}
-          onClose={() => setPopover(null)}
+          onClose={() => setPopover(false)}
         />
       )}
       <SurfaceLegend ivMin={mesh.ivMin} ivMax={mesh.ivMax} />
@@ -242,7 +232,10 @@ export function SurfaceCanvas({
         historyReady={historyReady}
       />
 
-      <SurfaceCaption />
+      {/* Keep the "Reading the surface" explainer mounted but suppressed while the
+          trade popover is open, so it never shows through behind the card yet
+          reliably reappears (with its state intact) on close. */}
+      <SurfaceCaption suppressed={!!popover} />
 
       {/* Empty-state hint — fades out once a node is selected. */}
       <div
@@ -299,7 +292,7 @@ function MorphSurface({
   showNoArb: boolean;
   reduced: boolean;
   onHover: (h: HoverInfo | null) => void;
-  onPick: (row: number, col: number, e?: ThreeEvent<MouseEvent>) => void;
+  onPick: (row: number, col: number) => void;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const lastCell = useRef<{ row: number; col: number }>({ row: -1, col: -1 });
@@ -405,7 +398,7 @@ function MorphSurface({
         onClick={(e) => {
           e.stopPropagation();
           const { row, col } = nearestCell(mesh, e.point);
-          onPick(row, col, e);
+          onPick(row, col);
         }}
       >
         <meshStandardMaterial
@@ -1004,7 +997,7 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
  * note never blankets the hero — and the large backdrop-blur box isn't painted
  * up front (easier on first paint / LCP). Desktop shows the full note inline.
  */
-function SurfaceCaption() {
+function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
   // Read the dismissal lazily — this canvas is dynamically imported with
   // ssr:false, so `window`/`localStorage` exist at init and we avoid a
   // setState-in-effect (which triggers cascading renders).
@@ -1015,7 +1008,9 @@ function SurfaceCaption() {
   );
   const [open, setOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 640px)");
-  if (!show) return null;
+  // `suppressed` (trade popover open) hides the explainer without unmounting it,
+  // so its dismiss/expand state survives and it reliably reappears on close.
+  if (!show || suppressed) return null;
 
   // Desktop always shows the body; mobile only when the user expands it.
   const expanded = isDesktop || open;
