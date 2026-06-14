@@ -16,7 +16,7 @@ export function TourButton() {
       onClick={start}
       aria-label="Take a tour"
       title="Take a tour"
-      className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-white/[0.04] hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 lg:inline-flex"
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-white/[0.04] hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
       <LuCircleHelp size={18} />
     </button>

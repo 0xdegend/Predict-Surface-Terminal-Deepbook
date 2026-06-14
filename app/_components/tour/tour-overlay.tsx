@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { LuX, LuChevronRight, LuCheck } from 'react-icons/lu';
 import { useTourStore } from '@/lib/store/tour-store';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { TOUR_STEPS, type TourStep } from '@/lib/tour/steps';
 
 /** Persisted once the tour is finished or skipped — bump the suffix to re-show. */
@@ -47,6 +48,11 @@ export function TourOverlay() {
   // Steps whose anchor is actually in the DOM, recomputed each time the tour opens.
   const [steps, setSteps] = useState<TourStep[]>(TOUR_STEPS);
   const [box, setBox] = useState<Box | null>(null);
+
+  // Desktop gets the dim + moving spotlight + scroll-to-section. On phones that
+  // flow is awkward (and mobile is read-only), so there the tour is a calm,
+  // static bottom card with the steps stacked — no dim, no page scroll.
+  const isDesktop = useMediaQuery('(min-width: 640px)');
 
   const spotRef = useRef<HTMLDivElement>(null);
   const morphedRef = useRef(false);
@@ -103,9 +109,10 @@ export function TourOverlay() {
     });
   }, [steps, step]);
 
-  // Re-measure on open, step change, scroll, and resize (rAF-throttled).
+  // Re-measure on open, step change, scroll, and resize (rAF-throttled). Desktop
+  // only — mobile has no spotlight to place.
   useEffect(() => {
-    if (!active) return;
+    if (!active || !isDesktop) return;
     // Initial placement from a DOM measurement (getBoundingClientRect) — DOM→React
     // sync, not a derived-state cascade; the lint rule can't see the measurement.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -122,19 +129,19 @@ export function TourOverlay() {
       window.removeEventListener('scroll', onMove, true);
       window.removeEventListener('resize', onMove);
     };
-  }, [active, measure]);
+  }, [active, isDesktop, measure]);
 
-  // Bring the target into view when the step changes. `block: center` keeps it
-  // clear of the fixed dock at the bottom.
+  // Bring the target into view when the step changes (desktop spotlight only —
+  // mobile never scrolls the page, the card just describes each section).
   useEffect(() => {
-    if (!active) return;
+    if (!active || !isDesktop) return;
     const cur = steps[Math.min(step, steps.length - 1)];
     const el = cur ? (document.querySelector(cur.target) as HTMLElement | null) : null;
     el?.scrollIntoView({
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       block: 'center',
     });
-  }, [active, step, steps]);
+  }, [active, isDesktop, step, steps]);
 
   // GSAP-morph the spotlight box. First frame snaps into place; after that it glides.
   useEffect(() => {
@@ -166,23 +173,28 @@ export function TourOverlay() {
   const isLast = step >= total - 1;
 
   return (
-    <div className="fixed inset-0 z-[120]" role="dialog" aria-modal="true" aria-label="Product tour">
-      {/* Click catcher — swallows interaction with the page during the tour. */}
-      <button
-        type="button"
-        aria-label="Skip tour"
-        onClick={end}
-        className="absolute inset-0 h-full w-full cursor-default"
-      />
+    <div
+      className="pointer-events-none fixed inset-0 z-[120]"
+      role="dialog"
+      aria-modal={isDesktop || undefined}
+      aria-label="Product tour"
+    >
+      {/* Desktop only: dim + cutout spotlight + a catcher that blocks the page.
+          On mobile the page stays live behind a calm, static bottom card. */}
+      {isDesktop && (
+        <>
+          <button
+            type="button"
+            aria-label="Skip tour"
+            onClick={end}
+            className="pointer-events-auto absolute inset-0 h-full w-full cursor-default"
+          />
+          <div ref={spotRef} aria-hidden className="tour-spot pointer-events-none fixed" />
+        </>
+      )}
 
-      {/* Spotlight: the dim + cutout in one element (see .tour-spot). */}
-      <div ref={spotRef} aria-hidden className="tour-spot pointer-events-none fixed" />
-
-      {/* Fixed bottom dock — the navigation never moves. */}
-      <div
-        className="pointer-events-none fixed inset-x-0 z-[122] flex justify-center px-3"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 1rem)' }}
-      >
+      {/* Fixed bottom dock — never moves. Sits above the mobile dock on phones. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[122] flex justify-center px-3 sm:bottom-[calc(env(safe-area-inset-bottom)+1rem)]">
         <div className="glass-dock popover-in pointer-events-auto w-full max-w-3xl rounded-2xl p-3 sm:p-4">
           {/* Header — eyebrow + progress + close. */}
           <div className="flex items-center justify-between gap-3">
@@ -210,10 +222,10 @@ export function TourOverlay() {
             </div>
           </div>
 
-          {/* Step cards (reference style) — number + short label, the active one
-              highlighted. flex-1 + short labels keep all five on one row with no
-              scroll; clicking a card spotlights that section. */}
-          <div className="mt-3 flex gap-1.5">
+          {/* Step cards — a single row on desktop (short labels), stacked on mobile
+              (full titles; the active card shows its detail). Clicking a card jumps
+              to that step (and spotlights it on desktop). */}
+          <div className="mt-3 flex flex-col gap-1.5 sm:flex-row">
             {steps.map((s, i) => {
               const isActive = i === step;
               const done = i < step;
@@ -224,7 +236,7 @@ export function TourOverlay() {
                   onClick={() => setStep(i)}
                   title={s.title}
                   aria-current={isActive ? 'step' : undefined}
-                  className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors ${
+                  className={`flex min-w-0 items-start gap-2.5 rounded-xl border px-2.5 py-2 transition-colors sm:flex-1 sm:items-center ${
                     isActive
                       ? 'border-up/50 bg-[var(--accent-soft)]'
                       : 'border-transparent hover:bg-white/[0.04]'
@@ -241,21 +253,30 @@ export function TourOverlay() {
                   >
                     {i + 1}
                   </span>
-                  <span
-                    className={`truncate text-[12px] font-medium ${
-                      isActive ? 'text-text-1' : 'text-text-2'
-                    }`}
-                  >
-                    {s.short}
+                  <span className="flex min-w-0 flex-col text-left">
+                    <span
+                      className={`block text-[12px] font-medium leading-tight sm:truncate ${
+                        isActive ? 'text-text-1' : 'text-text-2'
+                      }`}
+                    >
+                      <span className="sm:hidden">{s.title}</span>
+                      <span className="hidden sm:inline">{s.short}</span>
+                    </span>
+                    {/* Mobile: the active card carries the detail (desktop shows it below). */}
+                    {isActive && (
+                      <span className="mt-1 text-[11.5px] leading-relaxed text-text-2 sm:hidden">
+                        {s.body}
+                      </span>
+                    )}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Active step detail + linear nav. */}
-          <div className="mt-3 flex items-end justify-between gap-4">
-            <p className="min-h-[2.5rem] max-w-xl text-[12.5px] leading-relaxed text-text-2">
+          {/* Desktop detail + linear nav (mobile shows detail in the active card). */}
+          <div className="mt-3 flex items-end justify-end gap-4 sm:justify-between">
+            <p className="hidden min-h-[2.5rem] max-w-xl text-[12.5px] leading-relaxed text-text-2 sm:block">
               {current.body}
             </p>
             <div className="flex shrink-0 items-center gap-2">
