@@ -154,11 +154,14 @@ export function ShareCardModal({
       contentClassName="px-5 pb-5"
     >
       <div className="flex flex-col gap-5 sm:flex-row">
-        {/* preview — the hero of the dialog */}
-        <div className="flex-1 self-center">
+        {/* preview — the hero of the dialog. Full-width on mobile; only center
+            it vertically against the style rail on the sm+ row layout (an
+            unconditional self-center mis-sizes the box in the column and lets it
+            overlap the cards below, eating their taps). */}
+        <div className="w-full sm:flex-1 sm:self-center">
           <canvas
             ref={canvasRef}
-            className="w-full rounded-xl shadow-[0_18px_50px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/6"
+            className="pointer-events-none w-full rounded-xl shadow-[0_18px_50px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/6"
             style={{ aspectRatio: '1200 / 675' }}
           />
         </div>
@@ -171,9 +174,11 @@ export function ShareCardModal({
             return (
               <button
                 key={v.id}
+                type="button"
                 onClick={() => setVariant(v.id)}
                 aria-pressed={selected}
-                className={`group relative overflow-hidden rounded-lg transition-all ${
+                aria-label={`${v.label} style`}
+                className={`group relative cursor-pointer touch-manipulation overflow-hidden rounded-lg transition-all ${
                   selected
                     ? 'ring-2 ring-(--accent-line) shadow-[0_0_24px_-8px_var(--accent-glow)]'
                     : 'ring-1 ring-white/6 hover:ring-white/15'
@@ -183,18 +188,18 @@ export function ShareCardModal({
                   ref={(el) => {
                     thumbRefs.current[v.id] = el;
                   }}
-                  className="block w-full"
+                  className="pointer-events-none block w-full"
                   style={{ aspectRatio: '1200 / 675' }}
                 />
                 <span
-                  className={`absolute bottom-1.5 left-2 text-[11px] font-medium drop-shadow ${
+                  className={`pointer-events-none absolute bottom-1.5 left-2 text-[11px] font-medium drop-shadow ${
                     selected ? 'text-up' : 'text-text-1'
                   }`}
                 >
                   {v.label}
                 </span>
                 {selected && (
-                  <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-up text-bg-0">
+                  <span className="pointer-events-none absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-up text-bg-0">
                     <LuCheck size={11} strokeWidth={3} />
                   </span>
                 )}

@@ -374,17 +374,21 @@ function NotRankedHint() {
  * the board is currently sorted by, then carries the other figures small.
  * ------------------------------------------------------------------ */
 function Podium({ rows, sort, me }: { rows: Row[]; sort: SortKey; me: string | null }) {
-  // Visual order left→right is 2nd · 1st · 3rd; the winner reads tallest.
-  const order = [1, 0, 2].filter((i) => i < rows.length);
+  // DOM order is rank order (#1 · #2 · #3) so the mobile single-column stack —
+  // and screen readers — read top-to-bottom as 1, 2, 3. On sm+ CSS `order`
+  // re-creates the classic podium (2nd · 1st · 3rd, winner tallest in the
+  // middle); the horizontal metaphor only makes sense when it's a row.
+  const SM_ORDER = ['sm:order-2', 'sm:order-1', 'sm:order-3']; // by rank 0,1,2
   return (
     <div className="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
-      {order.map((rank) => (
+      {rows.map((row, rank) => (
         <PodiumCard
-          key={rows[rank].owner}
+          key={row.owner}
           rank={rank}
-          row={rows[rank]}
+          row={row}
           sort={sort}
-          isMe={me != null && rows[rank].owner.toLowerCase() === me.toLowerCase()}
+          isMe={me != null && row.owner.toLowerCase() === me.toLowerCase()}
+          orderClass={SM_ORDER[rank]}
         />
       ))}
     </div>
@@ -402,11 +406,14 @@ function PodiumCard({
   row,
   sort,
   isMe,
+  orderClass,
 }: {
   rank: number;
   row: Row;
   sort: SortKey;
   isMe: boolean;
+  /** sm+ flex/grid order so the row reads 2nd · 1st · 3rd (podium). */
+  orderClass?: string;
 }) {
   const hue = RANK_HUE[rank];
   const champion = rank === 0;
@@ -421,7 +428,7 @@ function PodiumCard({
 
   return (
     <div
-      className={`podium-card relative flex flex-col items-center p-4 text-center transition-transform ${
+      className={`podium-card relative flex flex-col items-center p-4 text-center transition-transform ${orderClass ?? ''} ${
         champion ? 'champion sm:-translate-y-2 sm:pt-6 sm:pb-5' : ''
       }`}
       style={{ ['--rank-hue' as string]: hue }}

@@ -262,7 +262,7 @@ export function PositionCard({
             <button
               onClick={() => onRedeem(p)}
               disabled={busy}
-              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
+              className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
                 isRedeem
                   ? "border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20"
                   : "border-down/45 text-down hover:border-down/70 hover:bg-down/10"

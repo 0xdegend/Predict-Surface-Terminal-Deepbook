@@ -107,6 +107,14 @@ body {
   outline: 1px solid var(--up);
   outline-offset: 2px;
 }
+/* Text fields read too heavy with the ring — focus is shown by the caret and
+   the field's own container instead. Removed globally across all inputs. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[contenteditable]:focus-visible {
+  outline: none;
+}
 
 /* ------------------------------------------------------------------ *
  * Elevation system (§10.3). Depth comes from a near-black top-light
