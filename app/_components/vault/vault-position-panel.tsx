@@ -114,8 +114,9 @@ export function VaultPositionPanel() {
         <div className="glass-card flex flex-col items-start gap-1 p-5">
           <span className="text-[13px] text-text-1">No PLP yet</span>
           <span className="text-[11px] leading-relaxed text-text-3">
-            Open a hedged deposit above to start earning the vault&apos;s house edge. Your PLP stake
-            and yield will show up here, and you can withdraw any time.
+            Supply to the vault above to start earning the vault&apos;s house edge — with or without the
+            crash-insurance hedge. Your PLP stake and yield will show up here, and you can withdraw any
+            time.
           </span>
         </div>
       ) : (

@@ -88,6 +88,22 @@ describe('buildWhatIf', () => {
     expect(Math.abs(center.pnlPct)).toBeLessThan(1e-9); // ~0 at no shock
     expect(wi.worstPnlPct).toBeLessThanOrEqual(0);
   });
+
+  it('stressMultiplier scales the drawdown linearly and defaults to live (×1)', () => {
+    const oi = [{ oracleId: '0xA', strike: 66000, isUp: true, netQty: 5_000_000 }];
+    const common = {
+      oi, inputs, vaultValue: 1_000_000_000_000, totalShares: 1_000_000_000_000,
+      reportedMtm: 800_000, steps: 25, maxSigma: 3,
+    } as const;
+    const live = buildWhatIf(common);
+    const amp = buildWhatIf({ ...common, stressMultiplier: 10 });
+    // ×10 deepens the worst-case loss by ~10×; default matches an explicit ×1.
+    expect(amp.worstPnlPct).toBeCloseTo(live.worstPnlPct * 10, 9);
+    expect(buildWhatIf({ ...common, stressMultiplier: 1 }).worstPnlPct).toBeCloseTo(
+      live.worstPnlPct,
+      12,
+    );
+  });
 });
 
 describe('sigmaUnit', () => {

@@ -15,7 +15,7 @@ import type { IconType } from 'react-icons';
  * (open state + route-derived active). Shown only at lg+; mobile uses BottomNav.
  */
 const ITEMS: { href: string; label: string; desc: string; icon: IconType }[] = [
-  { href: '/vault', label: 'Hedge Vault', desc: 'Provide liquidity · earn PLP', icon: LuVault },
+  { href: '/vault', label: 'Vault', desc: 'Provide liquidity · earn PLP', icon: LuVault },
   { href: '/risk', label: 'Vault Risk', desc: 'Exposure · ±σ stress test', icon: LuShieldAlert },
 ];
 

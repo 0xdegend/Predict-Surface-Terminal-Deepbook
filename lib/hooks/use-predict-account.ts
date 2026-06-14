@@ -32,6 +32,7 @@ import {
   buildCreateManagerTx,
   buildRedeemTx,
   buildWithdrawFromManagerTx,
+  buildSupplyTx,
   buildWithdrawPlpTx,
   buildMintRangeTx,
   buildRedeemRangeTx,
@@ -44,6 +45,7 @@ function txLabel(label: string): string {
   if (label === 'create') return 'Create account';
   if (label === 'mint') return 'Mint';
   if (label === 'withdraw') return 'Withdraw';
+  if (label === 'supply-plp') return 'Vault deposit';
   if (label === 'withdraw-plp') return 'Vault withdrawal';
   if (label === 'mint-range') return 'Mint range';
   if (label === 'redeem-range') return 'Close range';
@@ -56,6 +58,7 @@ function txSuccessTitle(label: string): string {
   if (label === 'create') return 'Trading account created';
   if (label === 'mint') return 'Position minted';
   if (label === 'withdraw') return 'Withdrawn to wallet';
+  if (label === 'supply-plp') return 'Supplied to vault';
   if (label === 'withdraw-plp') return 'Redeemed from vault';
   if (label === 'mint-range') return 'Range minted';
   if (label === 'redeem-range') return 'Range closed';
@@ -282,6 +285,19 @@ export function usePredictAccount() {
     ]);
   }
 
+  /** Supply DUSDC into the PLP vault, un-hedged (plain liquidity provision).
+   *  `amount` is DUSDC base units (@6dec). No manager needed — PLP returns to
+   *  the wallet. The hedged path lives in HedgePanel via buildOpenHedgedTx. */
+  async function supplyPlp(amount: bigint) {
+    if (!owner || amount <= 0n) return null;
+    return runTx('supply-plp', buildSupplyTx(amount, owner), [
+      qk.plpBalance(owner),
+      qk.dusdcBalance(owner),
+      qk.lpFlows(owner),
+      qk.vaultSummary,
+    ]);
+  }
+
   /** Redeem PLP back to wallet DUSDC (LP vault withdrawal). `plpAmount` is PLP
    *  base units (@6dec). The chain may reject amounts above the withdrawal
    *  limiter — callers should cap to the vault's available headroom. */
@@ -315,6 +331,7 @@ export function usePredictAccount() {
     createManager,
     redeem,
     withdrawAll,
+    supplyPlp,
     withdrawPlp,
     mintRange,
     redeemRange,

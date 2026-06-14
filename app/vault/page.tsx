@@ -9,9 +9,9 @@ import { VaultPositionPanel } from '../_components/vault/vault-position-panel';
 import { ErrorState } from '../_components/ui/error-state';
 
 export const metadata: Metadata = {
-  title: 'Hedge Vault',
+  title: 'Vault',
   description:
-    'Provide liquidity to the DeepBook Predict PLP vault on Skew — supply DUSDC, earn PLP, and track vault performance.',
+    'Provide liquidity to the DeepBook Predict PLP vault on Skew — supply DUSDC, earn PLP, optionally hedge with crash insurance, and track vault performance.',
 };
 
 export const dynamic = 'force-dynamic';

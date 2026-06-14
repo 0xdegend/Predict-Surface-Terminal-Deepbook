@@ -36,6 +36,10 @@ interface RiskData {
 }
 
 export default async function RiskRoute() {
+  // Single server-captured clock so the what-if's σ (time-to-expiry dependent)
+  // is identical on SSR and first client render — avoids a hydration mismatch.
+  // eslint-disable-next-line react-hooks/purity
+  const serverNow = Date.now();
   let data: RiskData | null = null;
   let error: string | null = null;
 
@@ -95,6 +99,7 @@ export default async function RiskRoute() {
             inputs={data.inputs}
             oi={data.oi}
             flows={data.flows}
+            serverNow={serverNow}
           />
         </main>
       ) : null}

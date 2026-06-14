@@ -126,10 +126,18 @@ export function buildWhatIf(args: {
   maxSigma?: number;
   steps?: number;
   nowMs?: number;
+  /** Demo-only exposure amplifier (default 1 = strictly live). Scales each
+   *  position's net open interest so the stress impact is visible on thin
+   *  testnet books. Liability is linear in netQty, so this scales the modeled
+   *  drawdown by the same factor — callers must label any value > 1 as amplified. */
+  stressMultiplier?: number;
 }): WhatIf {
-  const { oi, inputs, vaultValue, totalShares, reportedMtm } = args;
+  const { inputs, vaultValue, totalShares, reportedMtm } = args;
   const maxSigma = args.maxSigma ?? 3;
   const steps = args.steps ?? 25;
+  const mult = args.stressMultiplier ?? 1;
+  // Scale open interest for the demo amplifier; ×1 leaves the live book untouched.
+  const oi = mult === 1 ? args.oi : args.oi.map((e) => ({ ...e, netQty: e.netQty * mult }));
   const sigma = sigmaUnit(inputs, args.nowMs);
   const baseLiability = vaultLiability(oi, inputs, 0);
 

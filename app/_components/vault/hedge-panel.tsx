@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * Hedge Vault — "PLP yield minus crash insurance" in one atomic transaction.
- * Deposit DUSDC → most is supplied into the PLP vault (earns the house edge),
- * a small sleeve buys a downside "crash" binary that pays exactly when a sharp
- * drop would hurt PLP. Routed through our predict_hedge::open_hedged_and_keep
- * router, signed by the user (trustless, no operator). Pricing is chain-
- * authoritative (quoteMarket); strike selection is selectDownHedge.
+ * Vault deposit panel — supply DUSDC into the PLP vault, with an optional
+ * crash-insurance hedge.
+ *
+ *  - Hedge OFF (default): plain predict::supply<DUSDC> → PLP to the wallet. No
+ *    manager, no oracle, no quote — the lowest-friction LP action.
+ *  - Hedge ON: "PLP yield minus crash insurance" in one atomic transaction —
+ *    most of the deposit is supplied into PLP, a small sleeve buys a downside
+ *    "crash" binary that pays when a sharp drop would hurt PLP. Routed through
+ *    predict_hedge::open_hedged_and_keep, signed by the user (trustless).
+ *    Pricing is chain-authoritative (quoteMarket); strike via selectDownHedge.
  */
 import { useMemo, useState } from 'react';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
@@ -36,6 +40,8 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
 
   const [depositStr, setDepositStr] = useState('10');
   const [hedgePct, setHedgePct] = useState(5);
+  // Default OFF: plain supply is the baseline LP action; hedge is opt-in.
+  const [hedgeOn, setHedgeOn] = useState(false);
 
   // Hedge against the longest-dated still-live oracle (most variance + runway).
   const chosen = useMemo(() => {
@@ -47,7 +53,8 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
 
   const hedge = useMemo(() => (chosen ? selectDownHedge(chosen) : null), [chosen]);
 
-  // Chain-authoritative per-contract ask for the hedge leg.
+  // Chain-authoritative per-contract ask for the hedge leg. Only fetched while
+  // the hedge is toggled on — plain supply needs no quote.
   const quoteQ = useQuery({
     queryKey: ['hedge-quote', hedge?.oracleId, hedge?.strikeScaled.toString()],
     queryFn: () =>
@@ -59,14 +66,15 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
         isUp: false,
         quantity: PROBE,
       }),
-    enabled: !!hedge && !!acct.owner,
+    enabled: hedgeOn && !!hedge && !!acct.owner,
     refetchInterval: 10_000,
     retry: 0,
   });
 
   const deposit = parseFloat(depositStr) || 0;
   const depositBase = deposit > 0 ? toQuote(deposit) : 0n;
-  const hedgeBudgetBase = (depositBase * BigInt(Math.round(hedgePct * 100))) / 10_000n;
+  // With no hedge, the entire deposit is supplied into PLP.
+  const hedgeBudgetBase = hedgeOn ? (depositBase * BigInt(Math.round(hedgePct * 100))) / 10_000n : 0n;
   const supplyBase = depositBase - hedgeBudgetBase;
   const askPerContract = quoteQ.data?.mintCost ?? 0n; // base units per 1.0 contract
   const hedgeQty = askPerContract > 0n ? (hedgeBudgetBase * PROBE) / askPerContract : 0n;
@@ -76,29 +84,43 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
   const walletDusdc = acct.dusdcBalance ?? 0n;
   const notDeployed = !predictConfig.hedgePackageId;
 
+  // Two state machines: the hedged path needs a manager, a live oracle, and a
+  // chain quote; plain supply needs none of those.
   const reason = !mounted
     ? null
     : !acct.owner
       ? 'connect'
-      : notDeployed
-        ? 'not-deployed'
-        : !chosen || !hedge
-          ? 'no-oracle'
-          : !acct.managerId
-            ? 'no-manager'
-            : depositBase <= 0n
-              ? 'enter-amount'
-              : depositBase > walletDusdc
-                ? 'insufficient'
-                : supplyBase <= 0n
-                  ? 'supply-zero'
-                  : askPerContract <= 0n
-                    ? quoteQ.isError
-                      ? 'unquotable'
-                      : 'pricing'
-                    : hedgeQty <= 0n
-                      ? 'budget-too-small'
-                      : 'ready';
+      : !hedgeOn
+        ? depositBase <= 0n
+          ? 'enter-amount'
+          : depositBase > walletDusdc
+            ? 'insufficient'
+            : 'ready'
+        : notDeployed
+          ? 'not-deployed'
+          : !chosen || !hedge
+            ? 'no-oracle'
+            : !acct.managerId
+              ? 'no-manager'
+              : depositBase <= 0n
+                ? 'enter-amount'
+                : depositBase > walletDusdc
+                  ? 'insufficient'
+                  : supplyBase <= 0n
+                    ? 'supply-zero'
+                    : askPerContract <= 0n
+                      ? quoteQ.isError
+                        ? 'unquotable'
+                        : 'pricing'
+                      : hedgeQty <= 0n
+                        ? 'budget-too-small'
+                        : 'ready';
+
+  async function supply() {
+    if (reason !== 'ready') return;
+    await acct.supplyPlp(depositBase);
+    setDepositStr('');
+  }
 
   async function open() {
     if (reason !== 'ready' || !hedge) return;
@@ -128,13 +150,27 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
     <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-5">
       <div className="mb-5">
         <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">
-          <LuShieldCheck size={18} className="text-[var(--accent)]" />
-          Hedge Vault
+          {hedgeOn ? (
+            <LuShieldCheck size={18} className="text-[var(--accent)]" />
+          ) : (
+            <LuLayers size={18} className="text-[var(--accent)]" />
+          )}
+          {hedgeOn ? 'Hedge Vault' : 'Provide liquidity'}
         </h1>
         <p className="mt-1 text-[12px] leading-relaxed text-text-3">
-          PLP yield minus crash insurance. Most of your deposit earns the vault&apos;s house edge as
-          PLP; a small sleeve buys a downside binary that pays if {chosen?.oracle.underlying_asset ?? 'BTC'} drops —
-          cushioning PLP&apos;s worst day. One atomic, trustless transaction.
+          {hedgeOn ? (
+            <>
+              PLP yield minus crash insurance. Most of your deposit earns the vault&apos;s house edge as
+              PLP; a small sleeve buys a downside binary that pays if {chosen?.oracle.underlying_asset ?? 'BTC'} drops —
+              cushioning PLP&apos;s worst day. One atomic, trustless transaction.
+            </>
+          ) : (
+            <>
+              Supply DUSDC into the PLP vault and earn the protocol&apos;s house edge. You receive PLP
+              at the vault&apos;s live share price; its value floats with the pool&apos;s PnL. Withdraw any
+              time below. Turn on the hedge to cushion PLP&apos;s worst day with crash insurance.
+            </>
+          )}
         </p>
       </div>
 
@@ -162,71 +198,112 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
           </span>
         </label>
 
-        {/* Hedge allocation */}
-        <label className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between">
-            <span className="eyebrow">Crash-insurance sleeve</span>
-            <span className="text-[12px] text-text-1">{hedgePct}%</span>
-          </div>
-          <input
-            type="range"
-            min={1}
-            max={20}
-            step={1}
-            value={hedgePct}
-            onChange={(e) => setHedgePct(Number(e.target.value))}
-            className="surface-scrub w-full"
-          />
-          <span className="text-[10px] text-text-3">
-            {fmtQuote(fromQuote(hedgeBudgetBase))} to the hedge · {fmtQuote(fromQuote(supplyBase))} to PLP
-          </span>
-        </label>
-
-        {/* Auto-selected hedge */}
-        <div className="glass-inset flex items-center justify-between gap-3 p-3">
+        {/* Hedge toggle */}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={hedgeOn}
+          onClick={() => setHedgeOn((v) => !v)}
+          className="glass-inset flex items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-white/[0.02]"
+        >
           <div className="flex items-center gap-2.5">
-            <span className="dir-orb down scale-90" aria-hidden>
-              <LuArrowDown size={18} />
-            </span>
+            <LuShieldCheck size={16} className={hedgeOn ? 'text-[var(--accent)]' : 'text-text-3'} />
             <div className="flex flex-col">
-              <span className="text-[13px] text-text-1">
-                {chosen?.oracle.underlying_asset ?? 'BTC'} ≤ {hedge ? price(hedge.strike, 0) : '—'}
-              </span>
+              <span className="text-[13px] text-text-1">Hedge with crash insurance</span>
               <span className="font-sans text-[11px] text-text-3">
-                {hedge ? `${pct(hedge.otmPct, 1)} OTM` : 'no live market'} ·{' '}
-                {chosen ? `expires ${dateUTC(chosen.oracle.expiry)} (${countdown(chosen.oracle.expiry, now)})` : '—'}
+                {hedgeOn ? 'A sleeve of your deposit buys downside protection' : 'Optional — supply plain PLP without it'}
               </span>
             </div>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="eyebrow">Hedge ask</span>
-            <span className="text-[13px] text-text-1">
-              {askPerContract > 0n ? pct(fromQuote(askPerContract), 1) : '—'}
-            </span>
+          <span
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${hedgeOn ? 'bg-[var(--accent-soft)]' : 'bg-white/[0.08]'}`}
+          >
+            <span
+              className={`absolute top-0.5 h-4 w-4 rounded-full bg-text-1 transition-transform ${hedgeOn ? 'translate-x-[18px]' : 'translate-x-0.5'}`}
+            />
+          </span>
+        </button>
+
+        {hedgeOn ? (
+          <>
+            {/* Hedge allocation */}
+            <label className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between">
+                <span className="eyebrow">Crash-insurance sleeve</span>
+                <span className="text-[12px] text-text-1">{hedgePct}%</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={20}
+                step={1}
+                value={hedgePct}
+                onChange={(e) => setHedgePct(Number(e.target.value))}
+                className="surface-scrub w-full"
+              />
+              <span className="text-[10px] text-text-3">
+                {fmtQuote(fromQuote(hedgeBudgetBase))} to the hedge · {fmtQuote(fromQuote(supplyBase))} to PLP
+              </span>
+            </label>
+
+            {/* Auto-selected hedge */}
+            <div className="glass-inset flex items-center justify-between gap-3 p-3">
+              <div className="flex items-center gap-2.5">
+                <span className="dir-orb down scale-90" aria-hidden>
+                  <LuArrowDown size={18} />
+                </span>
+                <div className="flex flex-col">
+                  <span className="text-[13px] text-text-1">
+                    {chosen?.oracle.underlying_asset ?? 'BTC'} ≤ {hedge ? price(hedge.strike, 0) : '—'}
+                  </span>
+                  <span className="font-sans text-[11px] text-text-3">
+                    {hedge ? `${pct(hedge.otmPct, 1)} OTM` : 'no live market'} ·{' '}
+                    {chosen ? `expires ${dateUTC(chosen.oracle.expiry)} (${countdown(chosen.oracle.expiry, now)})` : '—'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="eyebrow">Hedge ask</span>
+                <span className="text-[13px] text-text-1">
+                  {askPerContract > 0n ? pct(fromQuote(askPerContract), 1) : '—'}
+                </span>
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <Stat icon={LuLayers} color={HUE.teal} label="Supplied to PLP" value={fmtQuote(fromQuote(supplyBase))} unit={predictConfig.quote.symbol} />
+              <Stat icon={LuCoins} color={HUE.amber} label="Hedge cost" value={fmtQuote(fromQuote(hedgeCostBase))} unit={predictConfig.quote.symbol} />
+              <Stat icon={LuShieldCheck} color={HUE.blue} label="Hedge size" value={fmtQuote(maxCrashPayout)} unit="contracts" />
+              <Stat icon={LuTrendingDown} color={HUE.coral} label="Crash payout" value={fmtQuote(maxCrashPayout)} unit={predictConfig.quote.symbol} />
+            </div>
+
+            {hedge && hedgeQty > 0n && (
+              <p className="font-sans text-[11px] leading-relaxed text-text-3">
+                If {chosen?.oracle.underlying_asset ?? 'BTC'} settles below {price(hedge.strike, 0)}, the hedge
+                returns {fmtQuote(maxCrashPayout)} {predictConfig.quote.symbol} — offsetting PLP drawdown. Otherwise it
+                expires and the cost is your insurance premium.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="grid grid-cols-1 gap-2.5">
+            <Stat icon={LuLayers} color={HUE.teal} label="Supplied to PLP" value={fmtQuote(fromQuote(supplyBase))} unit={predictConfig.quote.symbol} />
           </div>
-        </div>
-
-        {/* Preview */}
-        <div className="grid grid-cols-2 gap-2.5">
-          <Stat icon={LuLayers} color={HUE.teal} label="Supplied to PLP" value={fmtQuote(fromQuote(supplyBase))} unit={predictConfig.quote.symbol} />
-          <Stat icon={LuCoins} color={HUE.amber} label="Hedge cost" value={fmtQuote(fromQuote(hedgeCostBase))} unit={predictConfig.quote.symbol} />
-          <Stat icon={LuShieldCheck} color={HUE.blue} label="Hedge size" value={fmtQuote(maxCrashPayout)} unit="contracts" />
-          <Stat icon={LuTrendingDown} color={HUE.coral} label="Crash payout" value={fmtQuote(maxCrashPayout)} unit={predictConfig.quote.symbol} />
-        </div>
-
-        {hedge && hedgeQty > 0n && (
-          <p className="font-sans text-[11px] leading-relaxed text-text-3">
-            If {chosen?.oracle.underlying_asset ?? 'BTC'} settles below {price(hedge.strike, 0)}, the hedge
-            returns {fmtQuote(maxCrashPayout)} {predictConfig.quote.symbol} — offsetting PLP drawdown. Otherwise it
-            expires and the cost is your insurance premium.
-          </p>
         )}
 
         {acct.error && (
           <div className="rounded-lg border border-down/40 bg-down/10 p-2 text-[12px] text-down">{acct.error}</div>
         )}
 
-        <ActionButton reason={reason} busy={acct.busy} onCreate={acct.createManager} onOpen={open} />
+        <ActionButton
+          reason={reason}
+          busy={acct.busy}
+          hedgeOn={hedgeOn}
+          onCreate={acct.createManager}
+          onSupply={supply}
+          onOpen={open}
+        />
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
@@ -240,12 +317,16 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
 function ActionButton({
   reason,
   busy,
+  hedgeOn,
   onCreate,
+  onSupply,
   onOpen,
 }: {
   reason: string | null;
   busy: string | null;
+  hedgeOn: boolean;
   onCreate: () => void;
+  onSupply: () => void;
   onOpen: () => void;
 }) {
   if (reason === null) {
@@ -262,6 +343,13 @@ function ActionButton({
       </button>
     );
   }
+  const readyLabel = hedgeOn
+    ? busy === 'open-hedged'
+      ? 'opening position…'
+      : 'Open hedged position'
+    : busy === 'supply-plp'
+      ? 'supplying…'
+      : 'Supply to vault';
   const label: Record<string, string> = {
     connect: 'Connect a wallet',
     'not-deployed': 'Hedge router not deployed on this network',
@@ -272,12 +360,12 @@ function ActionButton({
     pricing: 'Pricing hedge…',
     unquotable: 'Hedge strike not quotable — try again',
     'budget-too-small': 'Increase deposit or hedge %',
-    ready: busy === 'open-hedged' ? 'opening position…' : 'Open hedged position',
+    ready: readyLabel,
   };
   const disabled = reason !== 'ready' || !!busy;
   return (
     <button
-      onClick={onOpen}
+      onClick={hedgeOn ? onOpen : onSupply}
       disabled={disabled}
       className={`h-11 rounded-lg text-[13px] font-semibold transition-all ${
         reason === 'ready'
@@ -285,7 +373,7 @@ function ActionButton({
           : 'border border-line text-text-3'
       } disabled:opacity-60`}
     >
-      {label[reason] ?? 'Open hedged position'}
+      {label[reason] ?? readyLabel}
     </button>
   );
 }

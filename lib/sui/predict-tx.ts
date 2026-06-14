@@ -105,6 +105,26 @@ export function buildCashOutTx(p: CashOutParams): Transaction {
 /* --------------------------- PLP (LP vault) -------------------------- */
 
 /**
+ * Supply DUSDC into the PLP vault (plain, un-hedged liquidity provision):
+ *   predict::supply<Quote>(&mut Predict, Coin<Quote>, &Clock, &mut TxContext): Coin<PLP>
+ * Mirrors the verified withdraw ABI. No PredictManager needed — PLP is a wallet
+ * coin, so the returned Coin<PLP> is transferred straight to the owner. The
+ * hedge router (buildOpenHedgedTx) wraps this same call plus a crash binary;
+ * this is the leg on its own for users who don't want to hedge.
+ */
+export function buildSupplyTx(amount: bigint, owner: string): Transaction {
+  const tx = new Transaction();
+  const coin = tx.add(coinWithBalance({ type: QUOTE(), balance: amount }));
+  const plp = tx.moveCall({
+    target: `${cfg().packageId}::predict::supply`,
+    typeArguments: [QUOTE()],
+    arguments: [tx.object(cfg().predictObjectId), coin, tx.object(cfg().clockId)],
+  });
+  tx.transferObjects([plp], tx.pure.address(owner));
+  return tx;
+}
+
+/**
  * Redeem PLP back to DUSDC. Verified against the deployed package ABI:
  *   predict::withdraw<Quote>(&mut Predict, Coin<PLP>, &Clock, &mut TxContext): Coin<Quote>
  * The returned DUSDC coin is transferred to the owner's wallet. `coinWithBalance`

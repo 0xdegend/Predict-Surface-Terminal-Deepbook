@@ -32,6 +32,7 @@ function allowedMoveCallTargets(): string[] {
     `${pkg}::predict::redeem_permissionless`,
     `${pkg}::predict::mint_range`,
     `${pkg}::predict::redeem_range`,
+    `${pkg}::predict::supply`,
     `${pkg}::predict::withdraw`,
     `${pkg}::predict_manager::deposit`,
     `${pkg}::predict_manager::withdraw`,

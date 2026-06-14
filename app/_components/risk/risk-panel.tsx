@@ -48,18 +48,25 @@ const ACCOUNT_EXPLORER = (addr: string) =>
 const FALLBACK_SENDER =
   "0x43a5782881f7ae4584fb7a3d9d9b3cd3440ed634a67301de5e45f734505e8e7d";
 
+/** Demo exposure amplifiers for the stress test. ×1 = strictly live. */
+const STRESS_STEPS = [1, 25, 100] as const;
+
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
 export function RiskPanel({
   summary,
   performance,
   inputs,
   oi,
   flows,
+  serverNow,
 }: {
   summary: VaultSummary;
   performance: VaultPerformancePoint[];
   inputs: SmileInput[];
   oi: OpenInterest[];
   flows: VaultFlow[];
+  serverNow: number;
 }) {
   const account = useCurrentAccount();
   const client = useCurrentClient();
@@ -73,6 +80,8 @@ export function RiskPanel({
   const maxExposure = configQ.data?.maxTotalExposurePct ?? 0.8; // constants default 80%
 
   const [nSigma, setNSigma] = useState(0);
+  // Demo-only exposure amplifier — ×1 is strictly live. See STRESS_STEPS.
+  const [stressX, setStressX] = useState(1);
 
   const whatif = useMemo(
     () =>
@@ -84,8 +93,10 @@ export function RiskPanel({
         reportedMtm: summary.total_mtm,
         maxSigma: 3,
         steps: 49,
+        stressMultiplier: stressX,
+        nowMs: serverNow,
       }),
-    [oi, inputs, summary],
+    [oi, inputs, summary, stressX, serverNow],
   );
 
   // Projected scenario at the selected N (nearest swept point).
@@ -100,6 +111,21 @@ export function RiskPanel({
   const positions = oi.length;
   const netExposure = oi.reduce((a, e) => a + e.netQty, 0);
   const resilient = whatif.worstPnlPct > -0.01;
+
+  // Static health dials (current state, not slider-driven).
+  const utilFrac = clamp01(summary.utilization / (maxExposure || 1));
+  const headroomFrac = clamp01(
+    summary.available_withdrawal / Math.max(summary.vault_value, 1),
+  );
+
+  // Reactive safety dial: how much of the pool's loss buffer this simulated move
+  // would leave intact. Buffer = the withdrawal-limiter headroom (the real exit
+  // cushion), floored so a tiny pool still reads against a sane reference.
+  const safetyBuffer = Math.max(headroomFrac, 0.05);
+  const lossFrac = Math.max(0, -sel.pnlPct);
+  const safety = clamp01(1 - lossFrac / safetyBuffer);
+  const safetyColor =
+    safety > 0.8 ? "var(--up)" : safety > 0.5 ? "var(--warn)" : "var(--down)";
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-5">
@@ -173,31 +199,42 @@ export function RiskPanel({
           {/* Utilization */}
           <div className="glass-card p-5">
             <CardTitle icon={LuGauge} color={HUE.amber}>
-              Utilization
+              Vault health
             </CardTitle>
-            <div className="mt-4 flex flex-col gap-4">
-              <Gauge
-                label="Exposure vs cap"
-                value={summary.utilization}
-                max={maxExposure}
-                caption={`${pct(summary.utilization, 3)} of ${pct(maxExposure, 0)} cap`}
+            <div className="mt-4 flex flex-wrap items-start justify-center gap-x-10 gap-y-5 sm:justify-around">
+              <RadialGauge
+                value={utilFrac}
+                display={pct(summary.utilization, 1)}
+                label="Utilization"
+                caption={`of ${pct(maxExposure, 0)} cap`}
+                color={
+                  utilFrac > 0.85
+                    ? "var(--down)"
+                    : utilFrac > 0.6
+                      ? "var(--warn)"
+                      : "var(--up)"
+                }
               />
+              <RadialGauge
+                value={headroomFrac}
+                display={pct(headroomFrac, 0)}
+                label="Headroom"
+                caption={`${fmtQuote(fromQuote(summary.available_withdrawal))} free`}
+                color={
+                  headroomFrac < 0.15
+                    ? "var(--down)"
+                    : headroomFrac < 0.35
+                      ? "var(--warn)"
+                      : "var(--up)"
+                }
+              />
+            </div>
+            <div className="mt-5">
               <Gauge
                 label="Max-payout utilization"
                 value={summary.max_payout_utilization}
                 max={1}
                 caption={pct(summary.max_payout_utilization, 3)}
-              />
-              <Gauge
-                label="Withdrawal headroom"
-                value={
-                  1 -
-                  summary.available_withdrawal /
-                    Math.max(summary.vault_value, 1)
-                }
-                max={1}
-                caption={`${fmtQuote(fromQuote(summary.available_withdrawal))} available`}
-                invert
               />
             </div>
           </div>
@@ -227,6 +264,22 @@ export function RiskPanel({
             <CardTitle icon={LuSlidersHorizontal} color={HUE.blue}>
               Stress test
             </CardTitle>
+
+            {/* Reactive safety dial — sweeps live as the slider moves */}
+            <div className="mt-4 flex justify-center">
+              <RadialGauge
+                value={safety}
+                display={pct(safety, 0)}
+                label="Vault safety"
+                caption={
+                  Math.abs(nSigma) < 0.01
+                    ? "at rest"
+                    : `at ${signed(nSigma, 2)}σ`
+                }
+                color={safetyColor}
+                size={132}
+              />
+            </div>
 
             {/* Verdict — the headline answer, up top and prominent */}
             <div className="glass-inset relative mt-4 flex items-start gap-3 overflow-hidden p-4">
@@ -300,6 +353,34 @@ export function RiskPanel({
               <span>Big rise ↑</span>
             </div>
 
+            {/* Demo exposure amplifier — ×1 is strictly live */}
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-text-3">
+                Demo stress
+                <InfoTip label="demo stress amplifier">
+                  Scales the modeled open interest so the dial visibly swings on a
+                  thin testnet book. ×1 is the real, live exposure; higher
+                  multipliers are illustrative — the projected figures are marked
+                  amplified.
+                </InfoTip>
+              </span>
+              <div className="glass-inset flex items-center gap-0.5 p-0.5">
+                {STRESS_STEPS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStressX(s)}
+                    className={`rounded-md px-2.5 py-1 font-mono text-[11px] tabular-nums transition-colors ${
+                      stressX === s
+                        ? "bg-[var(--accent-soft)] text-up"
+                        : "text-text-3 hover:text-text-2"
+                    }`}
+                  >
+                    ×{s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="glass-inset mt-4 grid grid-cols-2 gap-x-6 gap-y-3 p-4 font-mono text-[12px] tabular-nums">
               <Stat
                 label="Projected share price"
@@ -330,6 +411,11 @@ export function RiskPanel({
             </div>
 
             <p className="mt-3 text-[10px] leading-relaxed text-text-3">
+              {stressX > 1 && (
+                <span className="text-[var(--warn)]">
+                  Exposure amplified ×{stressX} for demo —{" "}
+                </span>
+              )}
               Modeled live from on-chain open interest (binary markets only) —
               reference liability {fmtQuote(fromQuote(whatif.baseLiability))} vs
               reported {fmtQuote(fromQuote(whatif.reportedMtm))}.
@@ -688,18 +774,96 @@ function FlowsPagerArrow({
   );
 }
 
+/**
+ * Radial dial — a 270° arc that fills to `value` (0..1) in `color`. The center
+ * shows `display`, with `label`/`caption` beneath. Drives both the static
+ * health dials and the slider-reactive safety dial (smooth stroke transition;
+ * disabled under prefers-reduced-motion).
+ */
+function RadialGauge({
+  value,
+  display,
+  label,
+  caption,
+  color,
+  size = 112,
+}: {
+  value: number;
+  display: string;
+  label: string;
+  caption?: string;
+  color: string;
+  size?: number;
+}) {
+  const v = clamp01(value);
+  const stroke = Math.round(size * 0.075);
+  const r = size / 2 - stroke / 2 - 2;
+  const c = 2 * Math.PI * r;
+  const sweep = 0.75; // 270° arc, gap centered at the bottom
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg
+          width={size}
+          height={size}
+          style={{ transform: "rotate(135deg)" }}
+          className="block"
+        >
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke="rgba(255,255,255,0.07)"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${sweep * c} ${c}`}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={`${v * sweep * c} ${c}`}
+            className="transition-[stroke-dasharray,stroke] duration-500 ease-out motion-reduce:transition-none"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span
+            className="font-mono tabular-nums leading-none"
+            style={{ color, fontSize: Math.round(size * 0.2) }}
+          >
+            {display}
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-col items-center gap-0.5">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-3">
+          {label}
+        </span>
+        {caption && (
+          <span className="font-mono text-[10px] tabular-nums text-text-2">
+            {caption}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Gauge({
   label,
   value,
   max,
   caption,
-  invert,
 }: {
   label: string;
   value: number;
   max: number;
   caption: string;
-  invert?: boolean;
 }) {
   const frac = Math.max(0, Math.min(1, value / (max || 1)));
   const danger = frac > 0.85;
