@@ -70,10 +70,13 @@ const W = 1200;
 const H = 675;
 const P = 58; // outer padding
 
-type Theme = ReturnType<typeof tokens>;
+/** Logical card dimensions, shared with the performance share card. */
+export const SHARE_DIMS = { W, H, P } as const;
+
+export type Theme = ReturnType<typeof tokens>;
 
 /** Read a CSS token off :root so the card never drifts from the live theme. */
-function tokens() {
+export function tokens() {
   const css = getComputedStyle(document.documentElement);
   const t = (n: string, fallback: string) => css.getPropertyValue(n).trim() || fallback;
   return {
@@ -90,7 +93,7 @@ function tokens() {
 }
 
 /** Resolve the page's actual Geist family names so canvas text matches the UI. */
-function fontFamily(kind: 'sans' | 'mono'): string {
+export function fontFamily(kind: 'sans' | 'mono'): string {
   const probe = document.createElement('span');
   probe.style.cssText = `position:absolute;visibility:hidden;font-family:var(--font-geist-${kind})`;
   document.body.appendChild(probe);
@@ -118,6 +121,12 @@ export function loadShareLogo(): Promise<HTMLImageElement | null> {
     });
   }
   return logoPromise;
+}
+
+/** The cached brand mark (or null if not yet loaded / failed) — `await
+ *  loadShareLogo()` first. Lets the performance card reuse the same header mark. */
+export function getShareLogo(): HTMLImageElement | null {
+  return logoImg;
 }
 
 interface Ctx {
@@ -532,7 +541,7 @@ function drawSurface(s: Ctx) {
 }
 
 /** A faux-3D SVI smile surface: a glowing wireframe across the whole card. */
-function drawMesh(ctx: CanvasRenderingContext2D, color: string) {
+export function drawMesh(ctx: CanvasRenderingContext2D, color: string) {
   const cols = 18;
   const rows = 10;
   const cx = W * 0.62;
@@ -682,7 +691,7 @@ function drawSparkline(
 
 /* ===================== primitives ===================== */
 
-function fitSize(
+export function fitSize(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxW: number,
@@ -700,7 +709,7 @@ function fitSize(
   return px;
 }
 
-function drawTag(
+export function drawTag(
   ctx: CanvasRenderingContext2D,
   label: string,
   x: number,
@@ -762,7 +771,7 @@ function drawResultPill(
   ctx.fillText(text, x + padX + dot + gap, y + h / 2 + 5);
 }
 
-function roundRect(
+export function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -784,12 +793,12 @@ function roundRect(
 }
 
 /** Letter-space a label the way the .eyebrow micro-label does. */
-function spaced(s: string): string {
+export function spaced(s: string): string {
   return s.split('').join(' ');
 }
 
 /** Apply an alpha to a hex (#rgb/#rrggbb) color; passes others through. */
-function withAlpha(color: string, alpha: number): string {
+export function withAlpha(color: string, alpha: number): string {
   const hex = color.replace('#', '');
   if (/^[0-9a-f]{6}$/i.test(hex)) {
     const r = parseInt(hex.slice(0, 2), 16);

@@ -7,12 +7,18 @@
  * Pure presentation; all numbers come pre-derived from `derivePortfolioHistory`.
  */
 import type { IconType } from 'react-icons';
-import { LuTarget, LuTrendingUp, LuTrendingDown, LuTrophy, LuFlame, LuSnowflake } from 'react-icons/lu';
+import { LuTarget, LuTrendingUp, LuTrendingDown, LuTrophy, LuFlame, LuSnowflake, LuShare } from 'react-icons/lu';
 import { quote as fmtQuote, signed, pct } from '@/lib/format';
 import { HUE, IconChip } from '../ui/metric';
 import type { WinStats } from '@/lib/portfolio/history';
 
-export function PerformanceCard({ stats }: { stats: WinStats }) {
+/** Spell out wins ("4 wins" / "1 win") — a bare "4W" reads as weeks. Losses keep
+ *  the compact "4L" form, which isn't ambiguous. */
+function winsLabel(n: number): string {
+  return `${n} ${n === 1 ? 'win' : 'wins'}`;
+}
+
+export function PerformanceCard({ stats, onShare }: { stats: WinStats; onShare?: () => void }) {
   const winPct = stats.winRate * 100;
   const winW = stats.total > 0 ? (stats.wins / stats.total) * 100 : 0;
   const streakWon = stats.streak?.result === 'won';
@@ -33,6 +39,16 @@ export function PerformanceCard({ stats }: { stats: WinStats }) {
         <div className="relative flex items-center gap-2.5">
           <IconChip icon={LuTarget} color={winPct >= 50 ? HUE.teal : HUE.coral} size={30} />
           <span className="eyebrow">Win rate</span>
+          {onShare && (
+            <button
+              onClick={onShare}
+              aria-label="Share performance as image"
+              className="ctrl-soft ml-auto inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-2"
+            >
+              <LuShare size={12} />
+              Share
+            </button>
+          )}
         </div>
 
         <div className="relative flex flex-col gap-3">
@@ -58,7 +74,7 @@ export function PerformanceCard({ stats }: { stats: WinStats }) {
           <div className="flex items-center justify-between text-[11px]">
             <span className="flex items-center gap-1.5 text-up">
               <span className="h-1.5 w-1.5 rounded-full bg-up" />
-              {stats.wins}W
+              {winsLabel(stats.wins)}
             </span>
             <span className="flex items-center gap-1.5 text-down">
               {stats.losses}L
@@ -102,7 +118,7 @@ export function PerformanceCard({ stats }: { stats: WinStats }) {
         icon={streakWon ? LuFlame : LuSnowflake}
         color={streakWon ? HUE.coral : HUE.blue}
         label="Current streak"
-        value={stats.streak ? `${stats.streak.count}${streakWon ? 'W' : 'L'}` : '—'}
+        value={stats.streak ? (streakWon ? winsLabel(stats.streak.count) : `${stats.streak.count}L`) : '—'}
         tone={stats.streak ? (streakWon ? 'up' : 'down') : undefined}
         sub={streakWon ? 'on a heater' : stats.streak ? 'cold run' : 'no trades yet'}
       />

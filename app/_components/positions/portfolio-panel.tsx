@@ -27,6 +27,7 @@ import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
 import { RangeRedeemModal } from './range-redeem-modal';
 import { SuccessModal } from '../ui/success-modal';
+import { PerfShareCardModal } from './perf-share-card-modal';
 import { derivePortfolioHistory, deriveRangeHistory } from '@/lib/portfolio/history';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
@@ -46,6 +47,8 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
   // Animated confirmation after a free-balance withdrawal (toast is easy to miss).
   const [withdrawDone, setWithdrawDone] = useState<{ amount: number; digest: string } | null>(null);
+  // Share-as-image dialog for the settled track record.
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Withdraw the manager's full free balance back to the wallet; on success pop
   // the SuccessModal with the amount that moved (captured before the tx clears it).
@@ -365,7 +368,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       ) : (
         <>
           <Section title="Performance" hint={`${stats.total} settled markets`}>
-            <PerformanceCard stats={stats} />
+            <PerformanceCard stats={stats} onShare={() => setShareOpen(true)} />
           </Section>
           <Section title="Trade history">
             <HistoryTable history={history} />
@@ -412,6 +415,28 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         amount={withdrawDone?.amount ?? 0}
         sub="moved from your free balance to your wallet"
         digest={withdrawDone?.digest}
+      />
+
+      <PerfShareCardModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        data={
+          stats.total > 0
+            ? {
+                winRate: stats.winRate,
+                wins: stats.wins,
+                losses: stats.losses,
+                settled: stats.total,
+                realizedPnl: stats.realizedPnl,
+                staked: stats.staked,
+                avgRoi: stats.staked > 0 ? stats.realizedPnl / stats.staked : 0,
+                best: stats.best,
+                streak: stats.streak
+                  ? { count: stats.streak.count, won: stats.streak.result === 'won' }
+                  : null,
+              }
+            : null
+        }
       />
 
       <p className="mt-6 text-[10px] text-text-3">Quote asset · {predictConfig.quote.symbol} · {predictConfig.network}</p>

@@ -215,10 +215,23 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   const tradingBalance = summary?.trading_balance ?? 0; // @6dec base units
 
+  // DUSDC that must come from the connected WALLET for this mint (the manager's
+  // free balance covers the rest; this is the buffered figure actually pulled).
+  // Same math the "Leaves your wallet now" line shows, hoisted so the button can
+  // gate on it.
+  const walletOutflow = q
+    ? feeBps > 0
+      ? feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps).paymentAmount
+      : fundingSplit(q.mintCost, tradingBalanceBase).depositAmount
+    : 0n;
+  // Block the mint when the wallet can't cover its share (balance must be loaded).
+  const insufficientFunds =
+    !!q && dusdcBalance !== undefined && walletOutflow > dusdcBalance;
+
   // Entry point for the Mint button. Enoki users see a confirm modal first
   // (no wallet pop-up otherwise); everyone else mints straight through.
   function requestMint() {
-    if (!q || !tradeable || mintLocked || busy === 'mint' || preparing) return;
+    if (!q || !tradeable || mintLocked || insufficientFunds || busy === 'mint' || preparing) return;
     if (isEnoki) setConfirmOpen(true);
     else handleMint();
   }
@@ -514,8 +527,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 const feeF = fromQuote(router.fee);
                 const profit = maxPayout - cost - feeF; // net of the Skew fee too
                 const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
-                const walletNow =
-                  feeBps > 0 ? router.paymentAmount : fundingSplit(q.mintCost, tradingBalanceBase).depositAmount;
+                const walletNow = walletOutflow; // hoisted above (same math)
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">
@@ -617,7 +629,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
           <button
             onClick={requestMint}
-            disabled={!q || !tradeable || mintLocked || busy === 'mint' || preparing}
+            disabled={!q || !tradeable || mintLocked || insufficientFunds || busy === 'mint' || preparing}
             className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
               isUp
                 ? 'border-up/50 from-up/25 to-up/10 text-up shadow-[0_0_24px_-6px_var(--accent-glow)] hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)]'
@@ -635,9 +647,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                   ? 'Market expired'
                   : tooCloseToExpiry
                     ? 'Too close to expiry'
-                    : q
-                      ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(contracts)}`
-                      : `Mint ${isUp ? 'UP' : 'DOWN'}`}
+                    : insufficientFunds
+                      ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletOutflow))}`
+                      : q
+                        ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(contracts)}`
+                        : `Mint ${isUp ? 'UP' : 'DOWN'}`}
           </button>
 
           <p className="text-[10px] leading-relaxed text-text-3">
