@@ -46,6 +46,10 @@ const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
 /** Markets inside this window are about to settle — minting may revert. */
 const CLOSING_SOON_MS = 120_000;
 
+/** Hard cutoff: inside the final seconds a sponsored multi-step mint can't
+ *  reliably land before expiry, and the quote goes stale fast — block it. */
+const MINT_CUTOFF_MS = 5_000;
+
 export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileInput[]; serverNow: number }) {
   const client = useCurrentClient();
   const now = useNow(serverNow);
@@ -65,6 +69,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     tradingBalanceBase,
     busy,
     error,
+    setError,
     lastDigest,
     runTx,
     createManager,
@@ -114,6 +119,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // Live Skew builder fee (bps). >0 → route the mint through the on-chain fee
   // router so the fee is taken atomically; 0 → plain mint, no fee.
   const { feeBps } = useSkewFee();
+
+  // True while we re-quote the chain right before submitting (between the click
+  // and runTx taking over with busy='mint'), so the button can't be double-fired.
+  const [preparing, setPreparing] = useState(false);
 
   const oracle = active?.oracle;
   const forward = active?.forward ?? 0;
@@ -170,6 +179,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const msLeft = oracle ? oracle.expiry - now : 0;
   const expired = !!oracle && msLeft <= 0;
   const closingSoon = !!oracle && msLeft > 0 && msLeft < CLOSING_SOON_MS;
+  // Inside the final-seconds cutoff (but not yet expired) — mint is hard-blocked.
+  const tooCloseToExpiry = !!oracle && msLeft > 0 && msLeft < MINT_CUTOFF_MS;
+  // Single gate for the mint action: past expiry OR inside the cutoff.
+  const mintLocked = expired || tooCloseToExpiry;
 
   // The user picks how many contracts; the live quote tells them what they pay.
   const contracts = Math.max(1, contractsInput);
@@ -201,38 +214,62 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // Entry point for the Mint button. Enoki users see a confirm modal first
   // (no wallet pop-up otherwise); everyone else mints straight through.
   function requestMint() {
-    if (!q || !tradeable || expired || busy === 'mint') return;
+    if (!q || !tradeable || mintLocked || busy === 'mint' || preparing) return;
     if (isEnoki) setConfirmOpen(true);
     else handleMint();
   }
 
   async function handleMint() {
-    if (!managerId || !q || !oracle || expired) return;
-    // With a live builder fee, route through the skew_fee router (fee taken
-    // on-chain in the same tx); otherwise the plain deposit+mint path.
-    const tx =
-      feeBps > 0
-        ? buildMintWithFeeTx({
-            managerId,
-            oracleId: oracle.oracle_id,
-            expiry: oracle.expiry,
-            strike,
-            isUp,
-            quantity: qtyBase,
-            paymentAmount: feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps).paymentAmount,
-          })
-        : buildMintTx({
-            managerId,
-            oracleId: oracle.oracle_id,
-            expiry: oracle.expiry,
-            strike,
-            isUp,
-            quantity: qtyBase,
-            depositAmount: fundingSplit(q.mintCost, tradingBalanceBase).depositAmount,
-          });
-    const digest = await runTx('mint', tx, [...managerKeys, qk.dusdcBalance(owner ?? '')]);
-    setConfirmOpen(false);
-    if (digest) pulseFill({ oracleId: oracle.oracle_id, strike: toFloat(Number(strike)), isUp });
+    if (!managerId || !q || !oracle || mintLocked) return;
+    setPreparing(true);
+    try {
+      // Re-quote against the chain right before submitting. The on-screen quote is
+      // polled every ~5s, but the price can move between that and this click (worst
+      // near expiry); a stale cost under-funds the deposit and the mint aborts in
+      // balance_manager::withdraw. Size funding from this fresh, authoritative cost.
+      let fresh: TradeQuote;
+      try {
+        fresh = await quoteMarket(client.core, {
+          sender: owner!,
+          oracleId: oracle.oracle_id,
+          expiry: oracle.expiry,
+          strike,
+          isUp,
+          quantity: qtyBase,
+        });
+      } catch {
+        setConfirmOpen(false);
+        setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
+        return;
+      }
+      // With a live builder fee, route through the skew_fee router (fee taken
+      // on-chain in the same tx); otherwise the plain deposit+mint path.
+      const tx =
+        feeBps > 0
+          ? buildMintWithFeeTx({
+              managerId,
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              strike,
+              isUp,
+              quantity: qtyBase,
+              paymentAmount: feeRouterPayment(fresh.mintCost, tradingBalanceBase, feeBps).paymentAmount,
+            })
+          : buildMintTx({
+              managerId,
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              strike,
+              isUp,
+              quantity: qtyBase,
+              depositAmount: fundingSplit(fresh.mintCost, tradingBalanceBase).depositAmount,
+            });
+      const digest = await runTx('mint', tx, [...managerKeys, qk.dusdcBalance(owner ?? '')]);
+      setConfirmOpen(false);
+      if (digest) pulseFill({ oracleId: oracle.oracle_id, strike: toFloat(Number(strike)), isUp });
+    } finally {
+      setPreparing(false);
+    }
   }
 
   // Until mounted, the connected account is unknown (SSR has no wallet). Render a
@@ -564,33 +601,39 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             )}
           </div>
 
-          {/* Near-expiry caution — the failure mode the user just hit. */}
+          {/* Near-expiry caution — the failure mode the user just hit. Inside the
+              final-seconds cutoff the mint is blocked outright (tooCloseToExpiry). */}
           {closingSoon && !expired && (
             <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
-              Closing in {countdown(oracle.expiry, now)} — a mint may revert if the market settles
-              before your transaction lands on-chain.
+              {tooCloseToExpiry
+                ? 'Too close to expiry to mint — a transaction can’t land in time. Pick another expiry.'
+                : `Closing in ${countdown(oracle.expiry, now)} — a mint may revert if the market settles before your transaction lands on-chain.`}
             </div>
           )}
 
           <button
             onClick={requestMint}
-            disabled={!q || !tradeable || expired || busy === 'mint'}
+            disabled={!q || !tradeable || mintLocked || busy === 'mint' || preparing}
             className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
               isUp
                 ? 'border-up/50 from-up/25 to-up/10 text-up shadow-[0_0_24px_-6px_var(--accent-glow)] hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)]'
                 : 'border-down/50 from-down/25 to-down/10 text-down shadow-[0_0_24px_-6px_rgba(240,121,107,0.3)] hover:from-down/35 hover:to-down/15 hover:shadow-[0_0_30px_-4px_rgba(240,121,107,0.34)]'
             }`}
           >
-            {busy === 'mint' && (
+            {(busy === 'mint' || preparing) && (
               <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
             )}
-            {busy === 'mint'
-              ? 'Confirming in wallet…'
-              : expired
-                ? 'Market expired'
-                : q
-                  ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(contracts)}`
-                  : `Mint ${isUp ? 'UP' : 'DOWN'}`}
+            {preparing
+              ? 'Refreshing price…'
+              : busy === 'mint'
+                ? 'Confirming in wallet…'
+                : expired
+                  ? 'Market expired'
+                  : tooCloseToExpiry
+                    ? 'Too close to expiry'
+                    : q
+                      ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(contracts)}`
+                      : `Mint ${isUp ? 'UP' : 'DOWN'}`}
           </button>
 
           <p className="text-[10px] leading-relaxed text-text-3">
@@ -603,7 +646,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               open={confirmOpen}
               onClose={() => setConfirmOpen(false)}
               onConfirm={handleMint}
-              busy={busy === 'mint'}
+              busy={busy === 'mint' || preparing}
               headline={`${oracle.underlying_asset} · ${isUp ? 'UP' : 'DOWN'}`}
               tone={isUp ? 'up' : 'down'}
               rows={[

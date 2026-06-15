@@ -18,7 +18,7 @@ import { quote as fmtQuote, feeAmount, price, pct, signed } from '@/lib/format';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
-import { quoteRange } from '@/lib/sui/quote';
+import { quoteRange, type TradeQuote } from '@/lib/sui/quote';
 import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
 import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
@@ -26,6 +26,9 @@ import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 import { MintConfirmModal } from './mint-confirm-modal';
 import { dateUTC, countdown } from '@/lib/format';
+
+/** Final-seconds hard cutoff before expiry (mirrors FlowPanel's MINT_CUTOFF_MS). */
+const MINT_CUTOFF_MS = 5_000;
 
 export function RangeTicket({ active, now }: { active: SmileInput; now: number }) {
   const client = useCurrentClient();
@@ -43,9 +46,16 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // Live Skew builder fee (bps); >0 routes through the on-chain fee router.
   const { feeBps } = useSkewFee();
 
+  // True while re-quoting the chain right before submit (mirrors the binary ticket).
+  const [preparing, setPreparing] = useState(false);
+
   const oracle = active.oracle;
   const sym = predictConfig.quote.symbol;
-  const expired = oracle.expiry - now <= 0;
+  const msLeft = oracle.expiry - now;
+  const expired = msLeft <= 0;
+  // Inside the final-seconds cutoff a sponsored mint can't land in time — block it.
+  const tooCloseToExpiry = msLeft > 0 && msLeft < MINT_CUTOFF_MS;
+  const mintLocked = expired || tooCloseToExpiry;
 
   const hasBand = !!band && band.oracleId === oracle.oracle_id;
   const contracts = Math.max(1, contractsInput);
@@ -82,34 +92,57 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const q = tradeable ? quoteQ.data : undefined;
 
   function requestMint() {
-    if (!q || !tradeable || expired || acct.busy === 'mint-range') return;
+    if (!q || !tradeable || mintLocked || acct.busy === 'mint-range' || preparing) return;
     if (isEnoki) setConfirmOpen(true);
     else handleMint();
   }
 
   async function handleMint() {
-    if (!q || !band || expired) return;
-    const digest =
-      feeBps > 0
-        ? await acct.mintRangeWithFee({
-            oracleId: oracle.oracle_id,
-            expiry: oracle.expiry,
-            lowerStrike: BigInt(band.lowerScaled),
-            higherStrike: BigInt(band.higherScaled),
-            quantity: qtyBase,
-            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
-          })
-        : await acct.mintRange({
-            oracleId: oracle.oracle_id,
-            expiry: oracle.expiry,
-            lowerStrike: BigInt(band.lowerScaled),
-            higherStrike: BigInt(band.higherScaled),
-            quantity: qtyBase,
-            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
-          });
-    setConfirmOpen(false);
-    if (digest) {
-      pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
+    if (!q || !band || mintLocked) return;
+    setPreparing(true);
+    try {
+      // Re-quote against the chain right before submitting — a stale (5s-polled)
+      // cost under-funds the deposit and the mint aborts. Size funding from this
+      // fresh, authoritative cost.
+      let fresh: TradeQuote;
+      try {
+        fresh = await quoteRange(client.core, {
+          sender: acct.owner!,
+          oracleId: oracle.oracle_id,
+          expiry: oracle.expiry,
+          lowerStrike: BigInt(band.lowerScaled),
+          higherStrike: BigInt(band.higherScaled),
+          quantity: qtyBase,
+        });
+      } catch {
+        setConfirmOpen(false);
+        acct.setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
+        return;
+      }
+      const digest =
+        feeBps > 0
+          ? await acct.mintRangeWithFee({
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              lowerStrike: BigInt(band.lowerScaled),
+              higherStrike: BigInt(band.higherScaled),
+              quantity: qtyBase,
+              paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+            })
+          : await acct.mintRange({
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              lowerStrike: BigInt(band.lowerScaled),
+              higherStrike: BigInt(band.higherScaled),
+              quantity: qtyBase,
+              depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
+            });
+      setConfirmOpen(false);
+      if (digest) {
+        pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
+      }
+    } finally {
+      setPreparing(false);
     }
   }
 
@@ -278,19 +311,23 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
       <button
         onClick={requestMint}
-        disabled={!q || !tradeable || expired || acct.busy === 'mint-range'}
+        disabled={!q || !tradeable || mintLocked || acct.busy === 'mint-range' || preparing}
         className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
       >
-        {acct.busy === 'mint-range' && (
+        {(acct.busy === 'mint-range' || preparing) && (
           <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
         )}
-        {acct.busy === 'mint-range'
-          ? 'Confirming in wallet…'
-          : expired
-            ? 'Market expired'
-            : q
-              ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
-              : 'Mint range'}
+        {preparing
+          ? 'Refreshing price…'
+          : acct.busy === 'mint-range'
+            ? 'Confirming in wallet…'
+            : expired
+              ? 'Market expired'
+              : tooCloseToExpiry
+                ? 'Too close to expiry'
+                : q
+                  ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
+                  : 'Mint range'}
       </button>
 
       {q && band && (
@@ -298,7 +335,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           open={confirmOpen}
           onClose={() => setConfirmOpen(false)}
           onConfirm={handleMint}
-          busy={acct.busy === 'mint-range'}
+          busy={acct.busy === 'mint-range' || preparing}
           headline={`${oracle.underlying_asset} · Range`}
           tone="up"
           rows={[

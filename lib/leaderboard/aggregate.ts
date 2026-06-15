@@ -9,7 +9,9 @@
  *
  * The leaderboard ranks by Points (and Volume). Authoritative win rate and
  * realized+unrealized PnL live on each trader's Portfolio; here, the Points
- * "performance" input is a realized-net proxy (payout − cost) within the window.
+ * "performance" input is realized PnL over FIFO-matched mint/redeem pairs where
+ * BOTH legs are in the window — a redeem whose mint scrolled out of the window
+ * contributes nothing, so it can't be miscounted as free profit.
  *
  * SCALING: minted.cost / redeemed.payout are @6dec base units → de-scale with
  * fromQuote, never elsewhere.
@@ -55,17 +57,31 @@ function keyOf(e: { oracle_id: string; expiry: number; strike: number; is_up: bo
   return `${e.oracle_id}:${e.expiry}:${e.strike}:${e.is_up}`;
 }
 
+interface FifoResult {
+  /** Liquidity-weighted holding time, Σ cost·days. */
+  dusdcDaysHeld: number;
+  /** Cost of mint lots that were matched to an in-window redeem (realized). */
+  realizedCost: number;
+  /** Payout of redeems that matched an in-window mint lot (realized). */
+  realizedPayout: number;
+}
+
 /**
- * Liquidity-weighted holding time (Σ cost·days) for one owner, by FIFO-matching
- * their redeems against their earliest open mint lots per position key. Lots
- * still open at the end are held to `nowMs`. Redeems with no matching mint in the
- * window contribute nothing (the window-bounded caveat).
+ * FIFO-match one owner's redeems against their earliest open mint lots per
+ * position key, deriving (a) liquidity-weighted holding time and (b) REALIZED
+ * cost/payout — counting only legs where BOTH the mint and the redeem fall in the
+ * window. Lots still open at the end are held to `nowMs` (holding time only).
+ *
+ * The both-legs-in-window rule is the integrity guard: a redeem whose mint
+ * scrolled out of the latest-N window contributes neither cost nor payout, so it
+ * can't be scored as free profit (`netPnl = payout − 0`). Symmetrically, an open
+ * lot earns holding time but no realized PnL until it's redeemed in-window.
  */
-function holdingDusdcDays(
+function realizeFifo(
   mints: PositionMintedEvent[],
   redeems: PositionRedeemedEvent[],
   nowMs: number,
-): number {
+): FifoResult {
   const lotsByKey = new Map<string, Lot[]>();
   for (const m of mints) {
     const qty = fromQuote(m.quantity);
@@ -84,18 +100,26 @@ function holdingDusdcDays(
     else redeemsByKey.set(k, [r]);
   }
 
-  let total = 0;
+  let dusdcDaysHeld = 0;
+  let realizedCost = 0;
+  let realizedPayout = 0;
   for (const [k, lots] of lotsByKey) {
     lots.sort((a, b) => a.ts - b.ts);
     const rs = (redeemsByKey.get(k) ?? []).slice().sort((a, b) => a.checkpoint_timestamp_ms - b.checkpoint_timestamp_ms);
     let li = 0;
     for (const r of rs) {
-      let remaining = fromQuote(r.quantity);
+      const rQty = fromQuote(r.quantity);
+      if (rQty <= 0) continue;
+      const payoutPerUnit = fromQuote(r.payout) / rQty;
+      let remaining = rQty;
       while (remaining > 1e-9 && li < lots.length) {
         const lot = lots[li];
         const take = Math.min(remaining, lot.qty);
         const days = Math.max(0, (r.checkpoint_timestamp_ms - lot.ts) / DAY_MS);
-        total += take * lot.costPerUnit * days;
+        dusdcDaysHeld += take * lot.costPerUnit * days;
+        // Only the matched quantity is realized — both legs are in-window here.
+        realizedCost += take * lot.costPerUnit;
+        realizedPayout += take * payoutPerUnit;
         lot.qty -= take;
         remaining -= take;
         if (lot.qty <= 1e-9) li++;
@@ -104,10 +128,10 @@ function holdingDusdcDays(
     for (; li < lots.length; li++) {
       const lot = lots[li];
       if (lot.qty <= 1e-9) continue;
-      total += lot.qty * lot.costPerUnit * Math.max(0, (nowMs - lot.ts) / DAY_MS);
+      dusdcDaysHeld += lot.qty * lot.costPerUnit * Math.max(0, (nowMs - lot.ts) / DAY_MS);
     }
   }
-  return total;
+  return { dusdcDaysHeld, realizedCost, realizedPayout };
 }
 
 /**
@@ -166,10 +190,19 @@ export function aggregateLeaderboard(
 
   const rows: LeaderboardRow[] = [];
   for (const [owner, a] of acc) {
-    const dusdcDaysHeld = holdingDusdcDays(a.mints, a.redeemEvents, nowMs);
-    // Performance input: realized-net proxy within the window (floored at 0 in
-    // the formula → losses never subtract, you always earn points).
-    const points = pointsFromInput({ volume: a.volume, netPnl: a.payout - a.volume, dusdcDaysHeld });
+    // A redeem-only owner (mints scrolled out of the latest-N window) has no
+    // in-window liquidity to rank on — skip them rather than show a 0-volume,
+    // 0-trade card. All three point components derive from mint activity anyway.
+    if (a.trades === 0) continue;
+    const { dusdcDaysHeld, realizedCost, realizedPayout } = realizeFifo(a.mints, a.redeemEvents, nowMs);
+    // Performance input: realized PnL over FIFO-matched mint/redeem pairs only —
+    // a redeem whose mint scrolled out of the window contributes nothing, so it
+    // can't be scored as free profit (`payout − 0`). Floored at 0 in the formula.
+    const points = pointsFromInput({
+      volume: a.volume,
+      netPnl: realizedPayout - realizedCost,
+      dusdcDaysHeld,
+    });
     rows.push({
       owner,
       volume: a.volume,

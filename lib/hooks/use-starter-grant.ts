@@ -17,20 +17,31 @@ import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 
+export interface GrantSuccess {
+  /** DUSDC granted, in human units (already de-scaled). */
+  amount: number;
+  /** Executed transfer digest, for the explorer link. */
+  digest: string;
+}
+
 export function useStarterGrant(owner: string | null) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Set on a successful grant → the caller pops an animated SuccessModal (a
+  // bottom-right toast alone is easy to miss for a gasless, popup-less flow).
+  const [success, setSuccess] = useState<GrantSuccess | null>(null);
 
   async function claim() {
     if (!owner || busy) return;
     setBusy(true);
     setFailed(false);
     try {
-      const { amount } = await claimStarterGrant(owner);
+      const { amount, digest } = await claimStarterGrant(owner);
       // Let the fullnode index the transfer, then refetch wallet DUSDC.
       await new Promise((r) => setTimeout(r, 1500));
       await queryClient.invalidateQueries({ queryKey: qk.dusdcBalance(owner) });
+      setSuccess({ amount: fromQuote(BigInt(amount)), digest });
       toast.success('Account funded', {
         desc: `${fmtQuote(fromQuote(BigInt(amount)))} ${predictConfig.quote.symbol} added — you're ready to trade`,
       });
@@ -44,5 +55,5 @@ export function useStarterGrant(owner: string | null) {
     }
   }
 
-  return { claim, busy, failed };
+  return { claim, busy, failed, success, clearSuccess: () => setSuccess(null) };
 }

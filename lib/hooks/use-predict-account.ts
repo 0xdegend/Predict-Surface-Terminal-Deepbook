@@ -153,7 +153,18 @@ export function usePredictAccount() {
         digest = result.Transaction.digest;
       }
       setLastDigest(digest);
-      await client.core.waitForTransaction({ digest });
+      // `waitForTransaction` resolves once the tx is FINALIZED — but an aborted tx
+      // is also finalized (it's on-chain with a failure status). The gasless path
+      // is the trap: Enoki returns a digest regardless of outcome, so without this
+      // check a MoveAbort (e.g. minting into a just-expired oracle) would be
+      // reported to the trader as success while no position opens. Verify the
+      // execution status and treat a failure as a thrown error.
+      const confirmed = await client.core.waitForTransaction({ digest });
+      if (confirmed.$kind === 'FailedTransaction') {
+        throw new Error(
+          confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain',
+        );
+      }
       await new Promise((r) => setTimeout(r, 1200));
       for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
       toast.success(txSuccessTitle(label), {

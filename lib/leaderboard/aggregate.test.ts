@@ -83,6 +83,35 @@ describe('aggregateLeaderboard', () => {
     expect(loss.points.performance).toBe(0);
   });
 
+  it('does not score a redeem whose mint scrolled out of the window as free profit', () => {
+    // The bug: the latest-N redeemed window holds this redeem, but its mint fell
+    // outside the latest-N minted window. `netPnl = payout − 0` once scored the
+    // full payout as profit → a 0-volume, 0-trade trader topped the board.
+    const rows = aggregateLeaderboard(
+      [], // no mints captured in the window
+      [redeemed({ owner: '0xGHOST', payout: 2924 * Q, quantity: 2924 * Q, checkpoint_timestamp_ms: 0 })],
+      [],
+      0,
+    );
+    // Redeem-only owner has no in-window liquidity → omitted entirely (no podium
+    // artifact), so they can never earn payout·rate points.
+    expect(rows.find((r) => r.owner === '0xGHOST')).toBeUndefined();
+  });
+
+  it('realizes PnL only over matched quantity, ignoring unmatched redeem overflow', () => {
+    // Mint 4 units (cost 4) in-window; redeem 10 units (payout 30) — only 4 units
+    // match an in-window lot. Realized = payout(4u) − cost(4u), not 30 − 4.
+    const r = aggregateLeaderboard(
+      [minted({ trader: '0xM', cost: 4 * Q, quantity: 4 * Q, checkpoint_timestamp_ms: 0 })],
+      [redeemed({ owner: '0xM', payout: 30 * Q, quantity: 10 * Q, checkpoint_timestamp_ms: 0 })],
+      [],
+      0,
+    )[0];
+    // payoutPerUnit = 30/10 = 3 → matched payout = 4·3 = 12; matched cost = 4.
+    // netPnl = 12 − 4 = 8 → performance = 8 · rate (NOT (30−4)·rate = 26·rate).
+    expect(r.points.performance).toBeCloseTo(8 * POINTS_RATES.perDusdcProfit, 6);
+  });
+
   it('scores holding as liquidity-weighted days, FIFO-matched mint→redeem', () => {
     // 10 DUSDC minted at t0, fully redeemed 2 days later → 10·2 = 20 DUSDC·days.
     const r = aggregateLeaderboard(

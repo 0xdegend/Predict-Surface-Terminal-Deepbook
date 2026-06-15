@@ -10,11 +10,12 @@
  * review the tx, so the confirm step is the safety gate, and the success step
  * counts the sent amount up as on-screen reassurance the funds went out.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { isValidSuiAddress } from '@mysten/sui/utils';
 import { LuArrowRight, LuArrowLeft, LuTriangleAlert, LuCheck, LuExternalLink } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
+import { useCountUp } from '@/lib/hooks/use-count-up';
 import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, shortId } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
@@ -243,24 +244,6 @@ function CashOutSuccess({
       </a>
     </div>
   );
-}
-
-/** Eases a number from 0 → target once (easeOutCubic). setState only fires inside
- *  the rAF callback, so this never cascades a synchronous render. */
-function useCountUp(target: number, ms = 700): number {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min((now - start) / ms, 1);
-      setV(target * (1 - Math.pow(1 - t, 3)));
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, ms]);
-  return v;
 }
 
 /* ------------------------------- bits -------------------------------- */
