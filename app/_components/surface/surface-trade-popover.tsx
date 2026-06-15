@@ -189,12 +189,15 @@ function BinaryBody({
   // as the first edge — the user clicks one more node to complete the band.
   function switchToRange() {
     if (!oracle || strike <= 0n) return;
-    pickRangeStrike({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      strikeScaled: strike.toString(),
-      strike: strikeFloat,
-    });
+    pickRangeStrike(
+      {
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: strike.toString(),
+        strike: strikeFloat,
+      },
+      'surface',
+    );
     setTicketMode('range');
   }
 

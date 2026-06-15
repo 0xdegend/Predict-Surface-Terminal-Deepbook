@@ -149,20 +149,26 @@ export function SurfaceCanvas({
     const strike = toFloat(Number(strikeScaled));
     if (ticketMode === "range") {
       // In range mode a click is one edge of the band; two clicks form it.
-      pickRangeStrike({
-        oracleId: r.oracleId,
-        expiry: r.expiry,
-        strikeScaled: strikeScaled.toString(),
-        strike,
-      });
+      pickRangeStrike(
+        {
+          oracleId: r.oracleId,
+          expiry: r.expiry,
+          strikeScaled: strikeScaled.toString(),
+          strike,
+        },
+        'surface',
+      );
     } else {
-      select({
-        oracleId: r.oracleId,
-        expiry: r.expiry,
-        strikeScaled: strikeScaled.toString(),
-        strike,
-        isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
-      });
+      select(
+        {
+          oracleId: r.oracleId,
+          expiry: r.expiry,
+          strikeScaled: strikeScaled.toString(),
+          strike,
+          isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
+        },
+        'surface',
+      );
     }
     // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
     // into view. Desktop opens the quick-mint popover (centered over the surface).

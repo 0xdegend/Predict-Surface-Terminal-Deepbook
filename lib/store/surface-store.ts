@@ -18,6 +18,10 @@ export interface SurfaceSelection {
 /** Which trade ticket the right rail shows. */
 export type TicketMode = 'binary' | 'range';
 
+/** Where the current selection was made — drives the "From surface / From market"
+ *  badge. Preserved across in-ticket tweaks (e.g. flipping UP/DOWN). */
+export type SelectionSource = 'surface' | 'market';
+
 /** A single strike pick (anchor of a range band, or a binary). */
 export interface StrikePick {
   oracleId: string;
@@ -45,6 +49,8 @@ interface SurfaceState {
   stress: number;
 
   selection: SurfaceSelection | null;
+  /** Origin of the current selection/band (surface click vs market list). */
+  selectionSource: SelectionSource | null;
 
   /** Binary vs vertical-range ticket. */
   ticketMode: TicketMode;
@@ -61,11 +67,13 @@ interface SurfaceState {
   goLive: () => void;
   toggleNoArb: () => void;
   setStress: (stress: number) => void;
-  select: (sel: SurfaceSelection | null) => void;
+  /** Set the binary selection. Pass `source` on a real surface/market pick;
+   *  omit it for in-ticket tweaks (direction flip) so the source is preserved. */
+  select: (sel: SurfaceSelection | null, source?: SelectionSource) => void;
   setTicketMode: (mode: TicketMode) => void;
   /** Add a strike to the range band: 1st click anchors, 2nd forms the band
    *  (sorted lower/higher). A click on a different oracle/expiry re-anchors. */
-  pickRangeStrike: (s: StrikePick) => void;
+  pickRangeStrike: (s: StrikePick, source?: SelectionSource) => void;
   clearRange: () => void;
   pulseFill: (f: { oracleId: string; strike: number; isUp: boolean }) => void;
 }
@@ -76,6 +84,7 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
   showNoArb: false,
   stress: 0,
   selection: null,
+  selectionSource: null,
   ticketMode: 'binary',
   rangeAnchor: null,
   rangeSelection: null,
@@ -86,21 +95,29 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
   goLive: () => set({ mode: 'live', scrub: 1 }),
   toggleNoArb: () => set((s) => ({ showNoArb: !s.showNoArb })),
   setStress: (stress) => set({ stress: Math.max(0, Math.min(1, stress)) }),
-  select: (selection) => set({ selection }),
+  select: (selection, source) =>
+    set((state) => ({
+      selection,
+      // Clear source when deselecting; set it on a real pick; otherwise preserve
+      // (e.g. an in-ticket UP/DOWN flip calls select() with no source).
+      selectionSource: selection == null ? null : source ?? state.selectionSource,
+    })),
   setTicketMode: (ticketMode) =>
     set(ticketMode === 'binary' ? { ticketMode, rangeAnchor: null } : { ticketMode }),
-  pickRangeStrike: (s) =>
+  pickRangeStrike: (s, source) =>
     set((state) => {
+      const src = source ?? state.selectionSource;
       const a = state.rangeAnchor;
       // Start (or restart) the band if there's no anchor, or it's on a different market.
       if (!a || a.oracleId !== s.oracleId || a.expiry !== s.expiry) {
-        return { ticketMode: 'range', rangeAnchor: s, rangeSelection: null };
+        return { ticketMode: 'range', rangeAnchor: s, rangeSelection: null, selectionSource: src };
       }
       if (s.strikeScaled === a.strikeScaled) return {}; // same node — ignore
       const [lo, hi] = a.strike < s.strike ? [a, s] : [s, a];
       return {
         ticketMode: 'range',
         rangeAnchor: null,
+        selectionSource: src,
         rangeSelection: {
           oracleId: s.oracleId,
           expiry: s.expiry,

@@ -76,13 +76,16 @@ export function MarketGroups({
     const { oracle, forward } = input;
     // At-the-money: snap the live forward to the nearest tradeable grid strike.
     const strikeScaled = snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle);
-    select({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      strikeScaled: strikeScaled.toString(),
-      strike: toFloat(Number(strikeScaled)),
-      isUp,
-    });
+    select(
+      {
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: strikeScaled.toString(),
+        strike: toFloat(Number(strikeScaled)),
+        isUp,
+      },
+      'market',
+    );
     if (typeof document !== 'undefined') {
       document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }

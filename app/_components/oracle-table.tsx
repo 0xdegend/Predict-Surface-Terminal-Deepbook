@@ -95,13 +95,16 @@ export function OracleTable({
     const { oracle, forward } = input;
     // At-the-money: snap the forward to the nearest tradeable grid strike.
     const strikeScaled = snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle);
-    select({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      strikeScaled: strikeScaled.toString(),
-      strike: toFloat(Number(strikeScaled)),
-      isUp: true,
-    });
+    select(
+      {
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: strikeScaled.toString(),
+        strike: toFloat(Number(strikeScaled)),
+        isUp: true,
+      },
+      'market',
+    );
     // Scroll the ticket into view on narrow layouts where it sits below.
     if (typeof document !== 'undefined') {
       document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

@@ -112,12 +112,15 @@ export function SmileStrip({ input }: { input: SmileInput }) {
   function onPick(e: React.PointerEvent<SVGSVGElement>) {
     if (!rangeMode) return;
     const scaled = snapStrikeToTick(BigInt(Math.round(priceAt(e) * 1e9)), oracle);
-    pickRangeStrike({
-      oracleId: oracle.oracle_id,
-      expiry: oracle.expiry,
-      strikeScaled: scaled.toString(),
-      strike: toFloat(Number(scaled)),
-    });
+    pickRangeStrike(
+      {
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: scaled.toString(),
+        strike: toFloat(Number(scaled)),
+      },
+      'surface',
+    );
   }
 
   // Live odds at the pointer — computed at the exact price, not read off a vertex.

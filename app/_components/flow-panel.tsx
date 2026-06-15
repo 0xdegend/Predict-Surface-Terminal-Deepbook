@@ -91,6 +91,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const ticketMode = useSurfaceStore((s) => s.ticketMode);
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const select = useSurfaceStore((s) => s.select);
+  const selectionSource = useSurfaceStore((s) => s.selectionSource);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   // Active oracle = the selection for the current ticket mode, falling back to
@@ -346,7 +347,13 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     setStrike((s) => snapStrikeToTick(s + BigInt(dir) * grid.tickSize, oracle));
   const openPositions = positions.filter((p) => p.open_quantity > 0);
   const openRanges = rangesData.positions.filter((p) => p.openQty > 0);
-  const fromSurface = !!selection && selection.oracleId === oracle.oracle_id;
+  // Source badge — where the current pick came from (surface/odds curve vs the
+  // market list), shown when that pick is on the active oracle.
+  const pickOnActive =
+    (!!selection && selection.oracleId === oracle.oracle_id) ||
+    (!!rangeSelection && rangeSelection.oracleId === oracle.oracle_id);
+  const showSourceBadge = !!selectionSource && pickOnActive;
+  const sourceLabel = selectionSource === 'market' ? 'From market' : 'From surface';
   const sym = predictConfig.quote.symbol;
 
   // Live step for the first-timer guide. Binary: 3 = reviewing in the modal,
@@ -418,10 +425,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 {expired ? 'expired' : `${countdown(oracle.expiry, now)} left`}
               </span>
             </span>
-            {fromSurface && (
+            {showSourceBadge && (
               <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--accent-soft) px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
                 <span className="h-1 w-1 rounded-full bg-accent" />
-                From surface
+                {sourceLabel}
               </span>
             )}
           </div>
