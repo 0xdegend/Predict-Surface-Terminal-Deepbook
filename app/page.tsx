@@ -1,33 +1,36 @@
-import { getStatus, getPredictState, getOracles, getOracleState } from '@/lib/api/client';
-import { predictConfig } from '@/config/predict';
-import { toFloat } from '@/config/scale';
-import { parseSvi } from '@/lib/svi/svi';
-import type { SmileInput } from '@/lib/svi/surface';
-import { TopChrome } from './_components/top-chrome';
-import { FlowPanel } from './_components/flow-panel';
-import { MarketView } from './_components/surface/market-view';
-import { LiveSviPanel } from './_components/live-svi-panel';
-import { MarketPicker } from './_components/market-picker';
-import { ErrorState } from './_components/ui/error-state';
-import type { Oracle } from '@/lib/api/types';
+import {
+  getStatus,
+  getPredictState,
+  getOracles,
+  getOracleState,
+} from "@/lib/api/client";
+import { predictConfig } from "@/config/predict";
+import { toFloat } from "@/config/scale";
+import { parseSvi } from "@/lib/svi/svi";
+import type { SmileInput } from "@/lib/svi/surface";
+import { TopChrome } from "./_components/top-chrome";
+import { FlowPanel } from "./_components/flow-panel";
+import { MarketView } from "./_components/surface/market-view";
+import { LiveSviPanel } from "./_components/live-svi-panel";
+import { MarketPicker } from "./_components/market-picker";
+import { ErrorState } from "./_components/ui/error-state";
+import type { Oracle } from "@/lib/api/types";
 
 // Phase 0 verification screen. Server Component: fetches the live snapshot so the
 // terminal renders WITH data; the client tape attaches on top for the live feed.
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  let snapshot:
-    | {
-        statusOk: boolean;
-        checkpointLag: number;
-        timeLagS: number;
-        tradingPaused: boolean | null;
-        quoteAssets: string[];
-        oracles: Oracle[];
-        first: Awaited<ReturnType<typeof getOracleState>> | null;
-        surfaceInputs: SmileInput[];
-      }
-    | null = null;
+  let snapshot: {
+    statusOk: boolean;
+    checkpointLag: number;
+    timeLagS: number;
+    tradingPaused: boolean | null;
+    quoteAssets: string[];
+    oracles: Oracle[];
+    first: Awaited<ReturnType<typeof getOracleState>> | null;
+    surfaceInputs: SmileInput[];
+  } | null = null;
   let error: string | null = null;
 
   try {
@@ -38,11 +41,13 @@ export default async function Page() {
     ]);
     // Active oracles, soonest expiry first.
     const active = oracles
-      .filter((o) => o.status === 'active')
+      .filter((o) => o.status === "active")
       .sort((a, b) => a.expiry - b.expiry);
 
     // Fetch every active oracle's state in parallel to build the surface.
-    const states = await Promise.all(active.map((o) => getOracleState(o.oracle_id)));
+    const states = await Promise.all(
+      active.map((o) => getOracleState(o.oracle_id)),
+    );
     const surfaceInputs: SmileInput[] = states.flatMap((st, i) => {
       if (!st.latest_svi || !st.latest_price) return [];
       return [
@@ -51,13 +56,15 @@ export default async function Page() {
           svi: parseSvi(st.latest_svi),
           forward: toFloat(st.latest_price.forward),
           settlement:
-            active[i].settlement_price != null ? toFloat(active[i].settlement_price!) : null,
+            active[i].settlement_price != null
+              ? toFloat(active[i].settlement_price!)
+              : null,
         },
       ];
     });
 
     snapshot = {
-      statusOk: status.status === 'OK',
+      statusOk: status.status === "OK",
       checkpointLag: status.max_checkpoint_lag,
       timeLagS: status.max_time_lag_seconds,
       tradingPaused: state.trading_paused,
@@ -70,8 +77,6 @@ export default async function Page() {
     error = e instanceof Error ? e.message : String(e);
   }
 
-  // Seed for the live clocks (countdown ticking) — keeps SSR/first-paint stable.
-  // This is an async Server Component; a request-time timestamp is intentional.
   // eslint-disable-next-line react-hooks/purity
   const serverNow = Date.now();
 
@@ -118,14 +123,20 @@ export default async function Page() {
                 data-tour="surface"
                 className="h-[48vh] min-h-[360px] bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-[520px]"
               >
-                <MarketView oracles={snapshot.oracles} initialInputs={snapshot.surfaceInputs} />
+                <MarketView
+                  oracles={snapshot.oracles}
+                  initialInputs={snapshot.surfaceInputs}
+                />
               </div>
 
               {/* Market picker — cards (beginner) or table (dense), both clickable:
                   select on the surface + load the ticket. flex column so the picker
                   can stretch to fill the column (the right rail is taller) instead of
                   leaving an empty band below a short table. */}
-              <div data-tour="picker" className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
+              <div
+                data-tour="picker"
+                className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5"
+              >
                 <MarketPicker
                   oracles={snapshot.oracles}
                   inputs={snapshot.surfaceInputs}
@@ -150,9 +161,14 @@ export default async function Page() {
                   data-tour="ticket"
                   className="glass-divider-top scroll-mt-20 pt-5"
                 >
-                  <SectionTitle>Trade ticket · click surface → mint</SectionTitle>
+                  <SectionTitle>
+                    Trade ticket · click surface → mint
+                  </SectionTitle>
                   <div className="mt-3">
-                    <FlowPanel inputs={snapshot.surfaceInputs} serverNow={serverNow} />
+                    <FlowPanel
+                      inputs={snapshot.surfaceInputs}
+                      serverNow={serverNow}
+                    />
                   </div>
                 </div>
               )}
