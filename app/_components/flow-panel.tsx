@@ -31,6 +31,7 @@ import { buildMintTx, buildMintWithFeeTx } from '@/lib/sui/predict-tx';
 import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
+import { TicketGuide } from './ticket-guide';
 import { MintConfirmModal } from './mint-confirm-modal';
 import { RedeemModal } from './positions/redeem-modal';
 import { RangeRedeemModal } from './positions/range-redeem-modal';
@@ -332,13 +333,13 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   }
   if (!owner) {
     return (
-      <div className="text-[12px] text-text-3">
+      <div className="text-[12px] leading-relaxed text-text-2">
         Connect a wallet (top-right), then click a node on the surface to trade it.
       </div>
     );
   }
   if (!oracle || !grid) {
-    return <div className="text-[12px] text-text-3">Waiting for live oracle data…</div>;
+    return <div className="text-[12px] text-text-2">Waiting for live oracle data…</div>;
   }
 
   const stepStrike = (dir: 1 | -1) =>
@@ -348,14 +349,34 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const fromSurface = !!selection && selection.oracleId === oracle.oracle_id;
   const sym = predictConfig.quote.symbol;
 
+  // Live step for the first-timer guide. Binary: 3 = reviewing in the modal,
+  // 2 = bet step, else 1. Range has no inner step state here, so we advance it
+  // from the picked band — step 2 once a band exists for this oracle, else 1.
+  const rangeBandPicked =
+    !!rangeSelection && !!oracle && rangeSelection.oracleId === oracle.oracle_id;
+  const guideStep: 1 | 2 | 3 =
+    ticketMode === 'range'
+      ? rangeBandPicked
+        ? 2
+        : 1
+      : confirmOpen
+        ? 3
+        : step === 2
+          ? 2
+          : 1;
+
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
+      {/* Plain-language "what do I do here" guide for first-timers (step-aware,
+          and mode-aware so range traders aren't told to pick Up/Down). */}
+      <TicketGuide step={guideStep} mode={ticketMode} />
+
       {/* Onboarding actions only — the wallet balance now lives in the top nav
           (BalancePill → Portfolio), freeing the rail. These render only when
           relevant, so an established, funded user starts straight at the trade. */}
       {!managerId && (
         <div className="glass-card flex items-center justify-between gap-2 px-3 py-2.5">
-          <span className="text-[11px] text-text-3">Create a trading account to start.</span>
+          <span className="text-[12px] text-text-2">Create a trading account to start.</span>
           <button
             onClick={() => createManager()}
             disabled={busy === 'create'}
@@ -441,8 +462,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </div>
 
           {/* Plain-language explainer so a first-time visitor understands the bet. */}
-          <p className="text-[11px] leading-relaxed text-text-3">
-            You win if <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
+          <p className="text-[12px] leading-relaxed text-text-2">
+            You win if <span className="text-text-1">{oracle.underlying_asset}</span> settles{' '}
             <span className={isUp ? 'text-up' : 'text-down'}>
               {isUp ? 'above' : 'below'} {price(toFloat(Number(strike)))}
             </span>{' '}
@@ -472,9 +493,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </Row>
 
           {!tradeable && !expired && (
-            <p className="text-[11px] leading-relaxed text-text-3">
+            <p className="text-[12px] leading-relaxed text-text-2">
               That strike is too far from spot to price — move it nearer{' '}
-              <span className="text-text-2">{price(forward)}</span> to continue.
+              <span className="text-text-1">{price(forward)}</span> to continue.
             </p>
           )}
 
@@ -558,12 +579,12 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             className={`glass-card p-3.5 ${q && tradeable && !expired ? (isUp ? 'up glow-accent' : 'down glow-down') : ''}`}
           >
             {expired ? (
-              <span className="text-text-3">
+              <span className="text-text-2">
                 This market has expired and is awaiting settlement — pick another expiry on the
                 surface or in the table.
               </span>
             ) : !tradeable ? (
-              <span className="text-text-3">
+              <span className="text-text-2">
                 Strike too far from spot to trade — pick one nearer {price(forward)} (only odds away
                 from the 0%/100% extremes can be priced).
               </span>
@@ -776,7 +797,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           {positionsLoading || rangesData.loading ? (
             <span className="text-text-3">loading…</span>
           ) : openPositions.length === 0 && openRanges.length === 0 ? (
-            <span className="text-text-3">No open positions — click the surface and mint.</span>
+            <span className="text-text-2">No open positions yet — pick a market above and place your first bet.</span>
           ) : (
             <>
               {openPositions.slice(0, 3).map((p) => {

@@ -81,6 +81,28 @@ export function SurfaceCanvas({
   const [popover, setPopover] = useState(false);
   const [clickId, setClickId] = useState(0);
 
+  // First-run coach mark — a pulsing ripple on a real near-the-money node that
+  // makes "tap the surface to trade" unmistakable (the mesh otherwise reads as
+  // decorative). Shown to first-timers only; dismissed for good on first pick.
+  // localStorage is safe to read at init here — this canvas is dynamically
+  // imported with ssr:false, so `window` exists (same pattern as SurfaceCaption).
+  const [coachSeen, setCoachSeen] = useState(() => {
+    try {
+      return localStorage.getItem('skew:surface-coach-seen') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function markCoachSeen() {
+    if (coachSeen) return;
+    try {
+      localStorage.setItem('skew:surface-coach-seen', '1');
+    } catch {
+      /* private mode — just hide for this session */
+    }
+    setCoachSeen(true);
+  }
+
   const { surface, mesh } = useMemo(() => {
     const s = buildSurface(inputs, { kMin: -0.12, kMax: 0.12, kSteps: 49 });
     return { surface: s, mesh: buildSurfaceMesh(s) };
@@ -118,6 +140,7 @@ export function SurfaceCanvas({
     // Dead-zone nodes (fair UP outside the 1%–99% band) are dimmed and not
     // mintable — ignore the click rather than load a doomed ticket.
     if (!cell.tradeable) return;
+    markCoachSeen(); // first real interaction — retire the coach mark for good
     const strikeFloat = r.forward * Math.exp(cell.k);
     const strikeScaled = snapStrikeToTick(
       BigInt(Math.round(strikeFloat * 1e9)),
@@ -182,6 +205,18 @@ export function SurfaceCanvas({
           <BinaryWinZone mesh={mesh} surface={surface} />
           <RangeBandMarker mesh={mesh} surface={surface} />
           <FillRipple mesh={mesh} surface={surface} />
+          <FirstRunPulse
+            mesh={mesh}
+            surface={surface}
+            reduced={reduced}
+            show={
+              !coachSeen &&
+              !selection &&
+              !rangeSelection &&
+              !rangeAnchor &&
+              !popover
+            }
+          />
           <SurfaceAxes mesh={mesh} />
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
@@ -237,15 +272,22 @@ export function SurfaceCanvas({
           reliably reappears (with its state intact) on close. */}
       <SurfaceCaption suppressed={!!popover} />
 
-      {/* Empty-state hint — fades out once a node is selected. */}
+      {/* Empty-state hint — mode-aware (a range needs two taps), fading out once
+          the relevant selection is made. */}
       <div
         className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 -translate-x-1/2 transition-all duration-300 ${
-          selection ? "translate-y-1 opacity-0" : "opacity-100"
+          (ticketMode === "range" ? !!rangeSelection : !!selection)
+            ? "translate-y-1 opacity-0"
+            : "opacity-100"
         }`}
       >
         <span className="chip h-7 px-3 text-[11px] text-text-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          Tap a point on the surface to build a trade
+          {ticketMode === "range"
+            ? rangeAnchor && !rangeSelection
+              ? "Tap the second price level to set your band"
+              : "Tap two price levels to set your band"
+            : "Tap a point on the surface to build a trade"}
         </span>
       </div>
     </div>
@@ -632,6 +674,73 @@ function SelectedMarker({
       >
         <sphereGeometry args={[0.1, 20, 20]} />
         <meshBasicMaterial color="#f4f6f8" />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * FirstRunPulse — a one-time coach mark for newcomers: a teal orb with an
+ * outward-rippling ring, sitting on the near-the-money node of the soonest
+ * expiry, so "tap the surface to trade" is unmistakable. `show` is gated to
+ * first-timers (and cleared on the first pick) by the parent; this just draws
+ * the marker. Honors reduced-motion by holding the ripple static.
+ */
+function FirstRunPulse({
+  mesh,
+  surface,
+  show,
+  reduced,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  show: boolean;
+  reduced: boolean;
+}) {
+  const rippleRef = useRef<THREE.Mesh>(null);
+  const orbRef = useRef<THREE.Mesh>(null);
+  const accent = '#4dd6b0';
+
+  // The soonest-expiry row's at-the-money node (k≈0 → strike≈forward).
+  const pos = useMemo(() => {
+    if (!show) return null;
+    let front: Surface['rows'][number] | null = null;
+    for (const r of surface.rows) if (!front || r.expiry < front.expiry) front = r;
+    return front ? locate(mesh, surface, front.oracleId, front.forward) : null;
+  }, [mesh, surface, show]);
+
+  useFrame((state) => {
+    if (!pos) return;
+    const t = state.clock.elapsedTime;
+    if (rippleRef.current) {
+      const phase = reduced ? 0.35 : (t % 1.6) / 1.6; // expanding 0→1 loop
+      const s = 0.6 + phase * 1.9;
+      rippleRef.current.scale.set(s, s, s);
+      (rippleRef.current.material as THREE.MeshBasicMaterial).opacity =
+        0.55 * (1 - phase);
+    }
+    if (orbRef.current && !reduced) {
+      orbRef.current.scale.setScalar(1 + 0.12 * Math.sin(t * 4));
+    }
+  });
+
+  if (!pos) return null;
+  return (
+    <group>
+      {/* Outward-rippling ring — the "tap here" pulse. */}
+      <mesh
+        ref={rippleRef}
+        position={[pos.x, pos.y + 0.02, pos.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
+        <ringGeometry args={[0.13, 0.2, 40]} />
+        <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} />
+      </mesh>
+      {/* The node itself — a steady glowing orb to tap. */}
+      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.085, 18, 18]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.9} />
       </mesh>
     </group>
   );

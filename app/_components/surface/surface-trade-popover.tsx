@@ -21,9 +21,8 @@ import { qk } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
 import { toFloat, fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, feeAmount, price, pct, signed, countdown } from '@/lib/format';
-import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
-import { quoteMarket, quoteRange, type TradeQuote } from '@/lib/sui/quote';
+import { quoteMarket, quoteRange, solveQuoteForStake, type StakeQuote } from '@/lib/sui/quote';
 import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
 import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
@@ -112,7 +111,6 @@ function BinaryBody({
 }) {
   const client = useCurrentClient();
   const acct = usePredictAccount();
-  const isEnoki = useIsEnokiWallet();
   const { feeBps } = useSkewFee();
 
   const selection = useSurfaceStore((s) => s.selection);
@@ -122,7 +120,7 @@ function BinaryBody({
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   const [view, setView] = useState<'glance' | 'ticket'>('glance');
-  const [contracts, setContracts] = useState(1);
+  const [betInput, setBetInput] = useState(1); // DUSDC stake (matches the rail ticket)
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active?.oracle ?? null;
@@ -141,27 +139,40 @@ function BinaryBody({
     oracle && onActive ? upFair(strikeFloat, active!.forward, active!.svi, active!.settlement ?? null) : null;
   const tradeable = fairUp != null && isTradeableFair(fairUp);
 
-  const qty = Math.max(1, contracts);
-  const qtyBase = toQuote(qty);
+  // Stake-first (matches the rail ticket): the user pays exactly their bet and
+  // the payout floats. Solve for the size whose cost equals the stake, seeding
+  // from the client fair for the chosen direction.
+  const betAmount = Math.max(0, betInput);
+  const stakeBase = toQuote(betAmount);
+  const dirFair = fairUp == null ? null : isUp ? fairUp : 1 - fairUp;
+  const unitPrice = dirFair != null ? Math.min(0.99, Math.max(0.01, dirFair)) : 0.5;
+  const qtyGuess = toQuote(betAmount / unitPrice);
 
   const quoteQ = useQuery({
-    queryKey: ['quote', oracle?.oracle_id, strike.toString(), isUp, qtyBase.toString(), acct.owner],
+    queryKey: ['quote', oracle?.oracle_id, strike.toString(), isUp, stakeBase.toString(), acct.owner],
     queryFn: () =>
-      quoteMarket(client.core, {
-        sender: acct.owner!,
-        oracleId: oracle!.oracle_id,
-        expiry: oracle!.expiry,
-        strike,
-        isUp,
-        quantity: qtyBase,
-      }),
-    enabled: view === 'ticket' && !!acct.owner && !!oracle && strike > 0n && tradeable && !expired,
+      solveQuoteForStake(
+        (quantity) =>
+          quoteMarket(client.core, {
+            sender: acct.owner!,
+            oracleId: oracle!.oracle_id,
+            expiry: oracle!.expiry,
+            strike,
+            isUp,
+            quantity,
+          }),
+        stakeBase,
+        qtyGuess,
+      ),
+    enabled: view === 'ticket' && !!acct.owner && !!oracle && strike > 0n && stakeBase > 0n && tradeable && !expired,
     placeholderData: keepPreviousData,
     refetchInterval: 5000,
     refetchOnWindowFocus: false,
     retry: 0,
   });
-  const q: TradeQuote | undefined = tradeable ? quoteQ.data : undefined;
+  const q: StakeQuote | undefined = tradeable ? quoteQ.data : undefined;
+  const qtyBase = q?.quantity ?? 0n;
+  const payoutDollars = q ? fromQuote(q.quantity) : 0; // "You win" — floats with odds
 
   function setDirection(nextUp: boolean) {
     if (!oracle || strike <= 0n) return;
@@ -187,14 +198,36 @@ function BinaryBody({
     setTicketMode('range');
   }
 
-  function requestMint() {
+  // Review modal is the final step for everyone now (matches the rail ticket).
+  function openReview() {
     if (!q || !tradeable || expired || acct.busy === 'mint') return;
-    if (isEnoki) setConfirmOpen(true);
-    else handleMint();
+    setConfirmOpen(true);
   }
 
   async function handleMint() {
-    if (!acct.managerId || !acct.owner || !q || !oracle || expired) return;
+    if (!acct.managerId || !acct.owner || !oracle || expired) return;
+    // Re-solve for the stake against fresh prices so the cost stays pinned to the
+    // user's bet at mint time, and funding is sized from the authoritative cost.
+    let fresh: StakeQuote;
+    try {
+      fresh = await solveQuoteForStake(
+        (quantity) =>
+          quoteMarket(client.core, {
+            sender: acct.owner!,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            strike,
+            isUp,
+            quantity,
+          }),
+        stakeBase,
+        qtyBase > 0n ? qtyBase : qtyGuess,
+      );
+    } catch {
+      setConfirmOpen(false);
+      acct.setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
+      return;
+    }
     const tx =
       feeBps > 0
         ? buildMintWithFeeTx({
@@ -203,8 +236,8 @@ function BinaryBody({
             expiry: oracle.expiry,
             strike,
             isUp,
-            quantity: qtyBase,
-            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+            quantity: fresh.quantity,
+            paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
           })
         : buildMintTx({
             managerId: acct.managerId,
@@ -212,8 +245,8 @@ function BinaryBody({
             expiry: oracle.expiry,
             strike,
             isUp,
-            quantity: qtyBase,
-            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
+            quantity: fresh.quantity,
+            depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
           });
     const digest = await acct.runTx('mint', tx, [...acct.managerKeys, qk.dusdcBalance(acct.owner)]);
     setConfirmOpen(false);
@@ -296,12 +329,10 @@ function BinaryBody({
             <LuArrowLeft size={11} /> back
           </button>
 
-          <SizeRow contracts={contracts} setContracts={setContracts} />
+          <BetRow betInput={betInput} setBetInput={setBetInput} />
 
           <QuoteCard
             q={q}
-            qty={qty}
-            qtyBase={qtyBase}
             tradeable={tradeable}
             expired={expired}
             isUp={isUp}
@@ -320,8 +351,8 @@ function BinaryBody({
           <MintButton
             label={
               q
-                ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(qty)}`
-                : `Mint ${isUp ? 'UP' : 'DOWN'}`
+                ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}`
+                : 'Review bet'
             }
             tone={accent}
             busy={acct.busy === 'mint'}
@@ -330,7 +361,7 @@ function BinaryBody({
             owner={acct.owner}
             creating={acct.busy === 'create'}
             onCreate={() => acct.createManager()}
-            onMint={requestMint}
+            onMint={openReview}
           />
         </div>
       )}
@@ -346,13 +377,12 @@ function BinaryBody({
           rows={[
             { label: 'Outcome', value: isUp ? 'Pays if price ends ABOVE' : 'Pays if price ends BELOW' },
             { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
-            { label: 'Contracts', value: String(qty) },
             ...(feeBps > 0
               ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
               : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
-          maxWin={fmtQuote(qty)}
+          maxWin={fmtQuote(payoutDollars)}
           confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
         />
       )}
@@ -373,7 +403,6 @@ function RangeBody({
 }) {
   const client = useCurrentClient();
   const acct = usePredictAccount();
-  const isEnoki = useIsEnokiWallet();
   const { feeBps } = useSkewFee();
 
   const band = useSurfaceStore((s) => s.rangeSelection);
@@ -382,47 +411,79 @@ function RangeBody({
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
-  const [contracts, setContracts] = useState(1);
+  const [betInput, setBetInput] = useState(1); // DUSDC stake (matches the rail ticket)
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active?.oracle ?? null;
   const expired = !!oracle && oracle.expiry - now <= 0;
 
   const hasBand = !!band && !!oracle && band.oracleId === oracle.oracle_id;
-  const qty = Math.max(1, contracts);
-  const qtyBase = toQuote(qty);
   const fair = hasBand
     ? rangeFair(band!.lower, band!.higher, active!.forward, active!.svi, active!.settlement ?? null)
     : 0;
   const tradeable = hasBand && isTradeableFair(fair);
 
+  // Stake-first: pay exactly the bet, payout floats. Solve for the size whose
+  // cost equals the stake, seeding from the client range-fair.
+  const betAmount = Math.max(0, betInput);
+  const stakeBase = toQuote(betAmount);
+  const unitPrice = fair > 0 ? Math.min(0.99, Math.max(0.01, fair)) : 0.5;
+  const qtyGuess = toQuote(betAmount / unitPrice);
+
   const quoteQ = useQuery({
-    queryKey: ['range-quote', oracle?.oracle_id, band?.lowerScaled ?? '', band?.higherScaled ?? '', qtyBase.toString(), acct.owner],
+    queryKey: ['range-quote', oracle?.oracle_id, band?.lowerScaled ?? '', band?.higherScaled ?? '', stakeBase.toString(), acct.owner],
     queryFn: () =>
-      quoteRange(client.core, {
-        sender: acct.owner!,
-        oracleId: oracle!.oracle_id,
-        expiry: oracle!.expiry,
-        lowerStrike: BigInt(band!.lowerScaled),
-        higherStrike: BigInt(band!.higherScaled),
-        quantity: qtyBase,
-      }),
+      solveQuoteForStake(
+        (quantity) =>
+          quoteRange(client.core, {
+            sender: acct.owner!,
+            oracleId: oracle!.oracle_id,
+            expiry: oracle!.expiry,
+            lowerStrike: BigInt(band!.lowerScaled),
+            higherStrike: BigInt(band!.higherScaled),
+            quantity,
+          }),
+        stakeBase,
+        qtyGuess,
+      ),
     enabled: !!acct.owner && hasBand && tradeable && !expired,
     placeholderData: keepPreviousData,
     refetchInterval: 5000,
     refetchOnWindowFocus: false,
     retry: 0,
   });
-  const q = tradeable ? quoteQ.data : undefined;
+  const q: StakeQuote | undefined = tradeable ? quoteQ.data : undefined;
+  const payoutDollars = q ? fromQuote(q.quantity) : 0; // "You win" — floats with odds
 
-  function requestMint() {
+  // Review modal is the final step for everyone now (matches the rail ticket).
+  function openReview() {
     if (!q || !tradeable || expired || acct.busy === 'mint-range') return;
-    if (isEnoki) setConfirmOpen(true);
-    else handleMint();
+    setConfirmOpen(true);
   }
 
   async function handleMint() {
-    if (!q || !band || !oracle || expired) return;
+    if (!band || !oracle || expired) return;
+    // Re-solve for the stake against fresh prices at mint time.
+    let fresh: StakeQuote;
+    try {
+      fresh = await solveQuoteForStake(
+        (quantity) =>
+          quoteRange(client.core, {
+            sender: acct.owner!,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band.lowerScaled),
+            higherStrike: BigInt(band.higherScaled),
+            quantity,
+          }),
+        stakeBase,
+        qtyGuess,
+      );
+    } catch {
+      setConfirmOpen(false);
+      acct.setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
+      return;
+    }
     const digest =
       feeBps > 0
         ? await acct.mintRangeWithFee({
@@ -430,16 +491,16 @@ function RangeBody({
             expiry: oracle.expiry,
             lowerStrike: BigInt(band.lowerScaled),
             higherStrike: BigInt(band.higherScaled),
-            quantity: qtyBase,
-            paymentAmount: feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+            quantity: fresh.quantity,
+            paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
           })
         : await acct.mintRange({
             oracleId: oracle.oracle_id,
             expiry: oracle.expiry,
             lowerStrike: BigInt(band.lowerScaled),
             higherStrike: BigInt(band.higherScaled),
-            quantity: qtyBase,
-            depositAmount: fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount,
+            quantity: fresh.quantity,
+            depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
           });
     setConfirmOpen(false);
     if (digest) {
@@ -489,24 +550,21 @@ function RangeBody({
             <span>{price(band!.higher)}</span>
           </div>
 
-          <SizeRow contracts={contracts} setContracts={setContracts} />
+          <BetRow betInput={betInput} setBetInput={setBetInput} />
 
           <QuoteCard
             q={q}
-            qty={qty}
-            qtyBase={qtyBase}
             tradeable={tradeable}
             expired={expired}
             isUp
             isError={quoteQ.isError}
             error={quoteQ.error}
             tradingBalanceBase={acct.tradingBalanceBase}
-            fairFallback={fair}
             feeBps={feeBps}
           />
 
           <MintButton
-            label={q ? `Mint range · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(qty)}` : 'Mint range'}
+            label={q ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}` : 'Review bet'}
             tone="up"
             busy={acct.busy === 'mint-range'}
             disabled={!q || !tradeable || expired || !acct.managerId || acct.busy === 'mint-range'}
@@ -514,7 +572,7 @@ function RangeBody({
             owner={acct.owner}
             creating={acct.busy === 'create'}
             onCreate={() => acct.createManager()}
-            onMint={requestMint}
+            onMint={openReview}
           />
         </div>
       )}
@@ -530,13 +588,12 @@ function RangeBody({
           rows={[
             { label: 'Outcome', value: 'Pays if price ends in band' },
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
-            { label: 'Contracts', value: String(qty) },
             ...(feeBps > 0
               ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC` }]
               : []),
           ]}
           cost={fmtQuote(fromQuote(q.mintCost))}
-          maxWin={fmtQuote(qty)}
+          maxWin={fmtQuote(payoutDollars)}
           confirmLabel="Mint range"
         />
       )}
@@ -570,21 +627,21 @@ function PopoverHeader({
   );
 }
 
-function SizeRow({ contracts, setContracts }: { contracts: number; setContracts: (n: number) => void }) {
+function BetRow({ betInput, setBetInput }: { betInput: number; setBetInput: (n: number) => void }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[11px] text-text-3">Contracts</span>
+      <span className="text-[11px] text-text-3">Bet</span>
       <div className="ml-auto flex gap-1.5">
         {[1, 5, 10, 25].map((n) => (
           <button
             key={n}
             type="button"
-            onClick={() => setContracts(n)}
+            onClick={() => setBetInput(n)}
             className={`min-w-7 rounded-md px-2 py-1 text-[11px] tabular-nums transition-colors ${
-              contracts === n ? 'border border-up/40 bg-[var(--accent-soft)] text-accent' : 'ctrl-soft text-text-3'
+              betInput === n ? 'border border-up/40 bg-[var(--accent-soft)] text-accent' : 'ctrl-soft text-text-3'
             }`}
           >
-            {n}
+            ${n}
           </button>
         ))}
       </div>
@@ -594,27 +651,21 @@ function SizeRow({ contracts, setContracts }: { contracts: number; setContracts:
 
 function QuoteCard({
   q,
-  qty,
-  qtyBase,
   tradeable,
   expired,
   isUp,
   isError,
   error,
   tradingBalanceBase,
-  fairFallback,
   feeBps,
 }: {
-  q: TradeQuote | undefined;
-  qty: number;
-  qtyBase: bigint;
+  q: StakeQuote | undefined;
   tradeable: boolean;
   expired: boolean;
   isUp: boolean;
   isError: boolean;
   error: unknown;
   tradingBalanceBase: bigint;
-  fairFallback?: number;
   feeBps: number;
 }) {
   const sym = predictConfig.quote.symbol;
@@ -632,13 +683,13 @@ function QuoteCard({
       <span className="text-text-3">quoting…</span>
     );
   } else {
+    const qtyBase = q.quantity; // solved size — cost ≈ the stake, payout floats
     const cost = fromQuote(q.mintCost);
-    const maxPayout = qty;
+    const maxPayout = fromQuote(qtyBase);
     const feeF = fromQuote(skewFee(q.mintCost, feeBps));
     const profit = maxPayout - cost - feeF; // net of the Skew fee too
     const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
-    const chance =
-      fairFallback != null && q == null ? fairFallback : Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
+    const chance = Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
     const walletNow =
       feeBps > 0
         ? feeRouterPayment(q.mintCost, tradingBalanceBase, feeBps).paymentAmount
