@@ -79,10 +79,14 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     managerKeys,
   } = acct;
 
-  // One-click "fund my account" — drips DUSDC from the app treasury so a new
-  // user never has to leave for the public faucet. Falls back to the faucet link
-  // if it's disabled or the grant fails (e.g. treasury low / already funded).
-  const grant = useStarterGrant(owner);
+  // True for Google/zkLogin (Enoki) accounts — they're gasless and sponsored.
+  const isEnoki = useIsEnokiWallet();
+
+  // One-click "fund my account" — drips DUSDC from the app treasury so a new user
+  // never has to leave for the public faucet (and, for EXTERNAL wallets only, a
+  // little gas SUI — Google accounts are gasless so they don't need it). Falls
+  // back to the faucet link if it's disabled or the grant fails.
+  const grant = useStarterGrant(owner, !isEnoki);
 
   const selection = useSurfaceStore((s) => s.selection);
   const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
@@ -112,9 +116,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const rangesData = useRangePositions(managerId);
 
   // Google/zkLogin (Enoki) mints are gasless and sponsored — no wallet pop-up to
-  // review the trade — so gate them behind an explicit in-app confirm. Normal
-  // wallets skip it; their signing prompt is already the review moment.
-  const isEnoki = useIsEnokiWallet();
+  // review the trade — so gate them behind an explicit in-app confirm (isEnoki is
+  // declared above). Normal wallets skip it; their signing prompt is the review.
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Live Skew builder fee (bps). >0 → route the mint through the on-chain fee
@@ -814,6 +817,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
         eyebrow="Received"
         amount={grant.success?.amount ?? 0}
         sub="added to your wallet — you’re ready to trade"
+        gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
         digest={grant.success?.digest}
       />
     </div>

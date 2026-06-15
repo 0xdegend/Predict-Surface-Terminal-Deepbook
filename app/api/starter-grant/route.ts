@@ -1,12 +1,18 @@
 /**
  * /api/starter-grant — app-run DUSDC drip faucet for first-time traders.
  *
- * Gas is already sponsored (see /api/sponsor), so a fresh zkLogin wallet only
- * lacks the trading asset. This route sends a small, fixed amount of DUSDC from
- * an app-controlled TREASURY wallet straight to the user's wallet, so they never
- * have to leave for an external faucet. Their normal mint then pulls that DUSDC
- * from wallet → manager (the deposit is owner-gated, so the treasury can't fund
- * a manager directly — a wallet transfer is the clean path).
+ * A fresh wallet lacks the trading asset (DUSDC). This route sends a small, fixed
+ * amount of DUSDC from an app-controlled TREASURY wallet straight to the user's
+ * wallet, so they never have to leave for an external faucet. Their normal mint
+ * then pulls that DUSDC from wallet → manager (the deposit is owner-gated, so the
+ * treasury can't fund a manager directly — a wallet transfer is the clean path).
+ *
+ * GAS: zkLogin (Google) accounts execute gaslessly via Enoki, so they need no SUI.
+ * EXTERNAL wallets pay their own SUI gas, so for them — and only them — we ALSO
+ * drip a little SUI (split off the treasury's gas coin in the same tx) when their
+ * SUI balance is near zero, so a brand-new wallet can make its first trades. The
+ * client signals this with `includeSui` (true for external wallets, false for
+ * Google); the server still gates it on the recipient's actual SUI balance.
  *
  * These are REAL funds, and zkLogin wallets are cheap to mint, so every payout
  * is gated server-side BEFORE we sign anything:
@@ -59,7 +65,17 @@ const DAILY_CAP = Number(process.env.STARTER_GRANT_DAILY_CAP ?? '200');
 /** Keep at least this much DUSDC in the treasury (base units) — refuse below it. */
 const TREASURY_FLOOR = envBigInt('STARTER_GRANT_TREASURY_FLOOR', GRANT_BASE);
 
+/** SUI dripped to a low-SUI external wallet so it can pay its own gas (MIST, @9dec).
+ *  Default 0.05 SUI. */
+const SUI_GRANT = envBigInt('STARTER_GRANT_SUI_BASE', 50_000_000n);
+/** Only drip SUI to wallets below this SUI balance (MIST). Default 0.01 SUI. */
+const SUI_CEILING = envBigInt('STARTER_GRANT_SUI_CEILING', 10_000_000n);
+/** Keep at least this much SUI in the treasury for its own gas on top of the drip
+ *  (MIST). Default 0.1 SUI. */
+const SUI_GAS_RESERVE = envBigInt('STARTER_GRANT_SUI_RESERVE', 100_000_000n);
+
 const QUOTE = predictConfig.quote.coinType;
+const SUI = '0x2::sui::SUI';
 
 /** Lazily build the treasury keypair from STARTER_GRANT_PRIVATE_KEY (a
  *  `suiprivkey1...` bech32 string). Returns null when unconfigured. */
@@ -78,8 +94,8 @@ const client = new SuiGrpcClient({
   baseUrl: process.env.STARTER_GRANT_RPC_URL ?? predictConfig.grpcUrl,
 });
 
-async function dusdcBalance(owner: string): Promise<bigint> {
-  const r = await client.core.getBalance({ owner, coinType: QUOTE });
+async function balanceOf(owner: string, coinType: string): Promise<bigint> {
+  const r = await client.core.getBalance({ owner, coinType });
   return BigInt(r.balance.balance);
 }
 
@@ -93,8 +109,9 @@ export async function POST(req: Request) {
   }
 
   let address: string | undefined;
+  let includeSui = false;
   try {
-    ({ address } = await req.json());
+    ({ address, includeSui = false } = await req.json());
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body', code: 'bad_request' }, { status: 400 });
   }
@@ -129,7 +146,7 @@ export async function POST(req: Request) {
 
   try {
     // 3) balance gate — never top up a wallet that already has DUSDC.
-    if ((await dusdcBalance(address)) >= BALANCE_CEILING) {
+    if ((await balanceOf(address, QUOTE)) >= BALANCE_CEILING) {
       await markGranted(address); // they don't need it; don't re-check them.
       return NextResponse.json(
         { error: 'Wallet already holds enough DUSDC', code: 'already_funded' },
@@ -137,20 +154,36 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5) treasury circuit breaker — leave the floor untouched.
+    // 5) treasury circuit breaker — leave the DUSDC floor untouched.
     const treasuryAddr = signer.toSuiAddress();
-    if ((await dusdcBalance(treasuryAddr)) < TREASURY_FLOOR + GRANT_BASE) {
+    if ((await balanceOf(treasuryAddr, QUOTE)) < TREASURY_FLOOR + GRANT_BASE) {
       return NextResponse.json(
         { error: 'Treasury is low — try the faucet', code: 'treasury_empty' },
         { status: 503 },
       );
     }
 
+    // SUI drip (external wallets only): include it when the client asked AND the
+    // recipient is near-zero on SUI AND the treasury can spare it on top of its
+    // own gas reserve. Best-effort — if the treasury is low on SUI we still send
+    // the DUSDC rather than fail the whole grant.
+    const dripSui =
+      includeSui &&
+      (await balanceOf(address, SUI)) < SUI_CEILING &&
+      (await balanceOf(treasuryAddr, SUI)) >= SUI_GRANT + SUI_GAS_RESERVE;
+
     // Build + sign + execute the transfer (treasury pays its own gas in SUI).
     const tx = new Transaction();
     tx.setSender(treasuryAddr);
-    const coin = tx.add(coinWithBalance({ type: QUOTE, balance: GRANT_BASE }));
-    tx.transferObjects([coin], tx.pure.address(address));
+    const dusdc = tx.add(coinWithBalance({ type: QUOTE, balance: GRANT_BASE }));
+    const recipient = tx.pure.address(address);
+    if (dripSui) {
+      // Split the SUI drip off the gas coin (the treasury's own SUI) — same tx.
+      const [sui] = tx.splitCoins(tx.gas, [SUI_GRANT]);
+      tx.transferObjects([dusdc, sui], recipient);
+    } else {
+      tx.transferObjects([dusdc], recipient);
+    }
 
     const res = await client.core.signAndExecuteTransaction({ signer, transaction: tx });
     if (res.$kind === 'FailedTransaction') {
@@ -163,7 +196,11 @@ export async function POST(req: Request) {
     // payout leaves no permanent mark and can be retried.
     await markGranted(address, digest);
     await bumpDaily();
-    return NextResponse.json({ digest, amount: GRANT_BASE.toString() });
+    return NextResponse.json({
+      digest,
+      amount: GRANT_BASE.toString(),
+      suiAmount: dripSui ? SUI_GRANT.toString() : '0',
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Grant failed';
     return NextResponse.json({ error: msg, code: 'error' }, { status: 502 });

@@ -17,14 +17,24 @@ import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 
+/** MIST per SUI (SUI is 9-decimal). */
+const SUI_DECIMALS = 1_000_000_000;
+
 export interface GrantSuccess {
   /** DUSDC granted, in human units (already de-scaled). */
   amount: number;
+  /** SUI dripped for gas, in human units (0 when none — e.g. Google accounts). */
+  sui: number;
   /** Executed transfer digest, for the explorer link. */
   digest: string;
 }
 
-export function useStarterGrant(owner: string | null) {
+/**
+ * `includeSui` should be true only for EXTERNAL wallets — Google/zkLogin accounts
+ * are gasless via Enoki, so they never need gas SUI. The server still gates the
+ * SUI drip on the recipient's actual balance.
+ */
+export function useStarterGrant(owner: string | null, includeSui: boolean) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -37,14 +47,17 @@ export function useStarterGrant(owner: string | null) {
     setBusy(true);
     setFailed(false);
     try {
-      const { amount, digest } = await claimStarterGrant(owner);
+      const { amount, suiAmount, digest } = await claimStarterGrant(owner, includeSui);
+      const sui = Number(BigInt(suiAmount)) / SUI_DECIMALS;
       // Let the fullnode index the transfer, then refetch wallet DUSDC.
       await new Promise((r) => setTimeout(r, 1500));
       await queryClient.invalidateQueries({ queryKey: qk.dusdcBalance(owner) });
-      setSuccess({ amount: fromQuote(BigInt(amount)), digest });
-      toast.success('Account funded', {
-        desc: `${fmtQuote(fromQuote(BigInt(amount)))} ${predictConfig.quote.symbol} added — you're ready to trade`,
-      });
+      setSuccess({ amount: fromQuote(BigInt(amount)), sui, digest });
+      const sym = predictConfig.quote.symbol;
+      const desc = sui > 0
+        ? `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} + ${sui} SUI for gas added`
+        : `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} added — you're ready to trade`;
+      toast.success('Account funded', { desc });
     } catch (e) {
       setFailed(true);
       toast.error('Could not fund account', {

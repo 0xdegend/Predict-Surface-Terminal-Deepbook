@@ -26,6 +26,7 @@ export function SuccessModal({
   amount,
   sym = predictConfig.quote.symbol,
   sub,
+  gasNote,
   digest,
 }: {
   open: boolean;
@@ -40,6 +41,8 @@ export function SuccessModal({
   sym?: string;
   /** Optional line under the amount, e.g. "added to your wallet". */
   sub?: string;
+  /** Optional gas-SUI note shown as a pill, e.g. "+ 0.05 SUI for gas". */
+  gasNote?: string;
   /** Optional executed tx digest → renders a "View on explorer" link. */
   digest?: string;
 }) {
@@ -59,7 +62,7 @@ export function SuccessModal({
         </button>
       }
     >
-      <SuccessBody eyebrow={eyebrow} amount={amount} sym={sym} sub={sub} digest={digest} />
+      <SuccessBody eyebrow={eyebrow} amount={amount} sym={sym} sub={sub} gasNote={gasNote} digest={digest} />
     </Modal>
   );
 }
@@ -69,12 +72,14 @@ function SuccessBody({
   amount,
   sym,
   sub,
+  gasNote,
   digest,
 }: {
   eyebrow: string;
   amount: number;
   sym: string;
   sub?: string;
+  gasNote?: string;
   digest?: string;
 }) {
   const shown = useCountUp(amount, 750);
@@ -91,13 +96,18 @@ function SuccessBody({
         </span>
       </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col items-center gap-1.5">
         <span className="eyebrow">{eyebrow}</span>
         <span className="flex items-baseline justify-center gap-1.5 font-mono tabular-nums">
           <span className="text-[34px] leading-none text-up">{fmtQuote(shown)}</span>
           <span className="text-[13px] text-text-3">{sym}</span>
         </span>
         {sub && <span className="text-[12px] text-text-2">{sub}</span>}
+        {gasNote && (
+          <span className="mt-0.5 rounded-full border border-line bg-bg-2/50 px-2.5 py-1 font-mono text-[11px] tabular-nums text-text-2">
+            {gasNote}
+          </span>
+        )}
       </div>
 
       {explorer && (
