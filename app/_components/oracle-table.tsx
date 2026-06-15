@@ -45,7 +45,7 @@ export function OracleTable({
   // Paginate so the dense grid never becomes an endless wall — fewer rows on a
   // phone where vertical space is precious, a fuller page on desktop.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const pageSize = isDesktop ? 14 : 6;
+  const pageSize = isDesktop ? 9 : 6;
   const [page, setPage] = useState(0);
 
   const bodyRef = useRef<HTMLTableSectionElement>(null);
@@ -126,7 +126,7 @@ export function OracleTable({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-baseline justify-between">
         <h2 className="flex items-center gap-2">
-          <span className="eyebrow">Active oracles</span>
+          <span className="eyebrow">Active markets</span>
           {visible.length > 0 && (
             <span className="rounded-full bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
               {visible.length}

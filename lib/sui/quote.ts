@@ -102,6 +102,47 @@ export async function quoteMarket(
   return decodeTwoU64(res);
 }
 
+/** A chain quote plus the position size it was solved for. */
+export interface StakeQuote extends TradeQuote {
+  quantity: bigint; // payout-quantity whose mintCost ≈ the target stake (base units)
+}
+
+/**
+ * Solve for the position size whose mint cost equals a target DUSDC stake — so
+ * the trader pays exactly the amount they picked and the *payout* floats instead
+ * of the cost.
+ *
+ * `mintCost(qty)` is monotone increasing and very nearly linear in qty for normal
+ * sizes (the only curvature is the utilization/inventory part of the spread), so
+ * a single secant step from a measured unit-ask lands within a fraction of a cent.
+ * We seed with `qtyGuess` (from the client fair), then step `qty ← qty·stake/cost`
+ * until within `tolBase` or `maxSteps` is hit. At most `maxSteps + 1` simulate
+ * calls; returns the final quote AND the quantity it priced, ready to mint.
+ */
+export async function solveQuoteForStake(
+  quoteFn: (quantity: bigint) => Promise<TradeQuote>,
+  stakeBase: bigint,
+  qtyGuess: bigint,
+  opts: { maxSteps?: number; tolBase?: bigint } = {},
+): Promise<StakeQuote> {
+  const maxSteps = opts.maxSteps ?? 1;
+  const tolBase = opts.tolBase ?? 2_000n; // 0.002 DUSDC — below display resolution
+  let qty = qtyGuess > 0n ? qtyGuess : 1n;
+  let q = await quoteFn(qty);
+  for (let i = 0; i < maxSteps; i++) {
+    if (q.mintCost === 0n) break;
+    const diff = q.mintCost - stakeBase;
+    if ((diff < 0n ? -diff : diff) <= tolBase) break;
+    // Secant on the near-linear cost(qty): scale qty by stake / cost.
+    const next = (qty * stakeBase) / q.mintCost;
+    const nextQty = next > 0n ? next : 1n;
+    if (nextQty === qty) break;
+    qty = nextQty;
+    q = await quoteFn(qty);
+  }
+  return { ...q, quantity: qty };
+}
+
 export interface RangeQuoteInput {
   sender: string;
   oracleId: string;

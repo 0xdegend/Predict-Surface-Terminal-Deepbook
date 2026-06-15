@@ -16,9 +16,8 @@ import { predictConfig } from '@/config/predict';
 import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, feeAmount, price, pct, signed } from '@/lib/format';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
-import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
 import { useSurfaceStore } from '@/lib/store/surface-store';
-import { quoteRange, type TradeQuote } from '@/lib/sui/quote';
+import { quoteRange, solveQuoteForStake, type StakeQuote } from '@/lib/sui/quote';
 import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
 import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
@@ -37,10 +36,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const anchor = useSurfaceStore((s) => s.rangeAnchor);
   const clearRange = useSurfaceStore((s) => s.clearRange);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
-  const [contractsInput, setContractsInput] = useState(1);
+  const [betInput, setBetInput] = useState(1); // DUSDC the user wants to bet (stake)
 
-  // Gasless Google/zkLogin mints have no wallet pop-up → confirm in-app first.
-  const isEnoki = useIsEnokiWallet();
+  // Everyone reviews the trade in a modal before minting (the in-app preview
+  // gasless Google/zkLogin accounts always needed, now shown for all wallets).
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Live Skew builder fee (bps); >0 routes through the on-chain fee router.
@@ -48,6 +47,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
   // True while re-quoting the chain right before submit (mirrors the binary ticket).
   const [preparing, setPreparing] = useState(false);
+
+  // Cost breakdown collapsed by default (mirrors the binary ticket) — opens
+  // automatically when funds are short so that blocker is never hidden.
+  const [showCostDetails, setShowCostDetails] = useState(false);
 
   const oracle = active.oracle;
   const sym = predictConfig.quote.symbol;
@@ -58,12 +61,18 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const mintLocked = expired || tooCloseToExpiry;
 
   const hasBand = !!band && band.oracleId === oracle.oracle_id;
-  const contracts = Math.max(1, contractsInput);
-  const qtyBase = toQuote(contracts);
   const fair = hasBand
     ? rangeFair(band!.lower, band!.higher, active.forward, active.svi, active.settlement ?? null)
     : 0;
   const tradeable = hasBand && isTradeableFair(fair);
+  // The user bets a dollar amount and pays EXACTLY that: we solve for the size
+  // whose chain cost equals the stake (cost is fixed, the *payout* floats). The
+  // range-fair gives the seed; keying the query on the stake (not the solved qty)
+  // keeps it stable. On-chain quantity == payout in dollars.
+  const betAmount = Math.max(0, betInput);
+  const stakeBase = toQuote(betAmount);
+  const unitPrice = fair > 0 ? Math.min(0.99, Math.max(0.01, fair)) : 0.5;
+  const qtyGuess = toQuote(betAmount / unitPrice);
 
   const quoteQ = useQuery({
     queryKey: [
@@ -71,25 +80,34 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
       oracle.oracle_id,
       band?.lowerScaled ?? '',
       band?.higherScaled ?? '',
-      qtyBase.toString(),
+      stakeBase.toString(),
       acct.owner,
     ],
     queryFn: () =>
-      quoteRange(client.core, {
-        sender: acct.owner!,
-        oracleId: oracle.oracle_id,
-        expiry: oracle.expiry,
-        lowerStrike: BigInt(band!.lowerScaled),
-        higherStrike: BigInt(band!.higherScaled),
-        quantity: qtyBase,
-      }),
+      solveQuoteForStake(
+        (quantity) =>
+          quoteRange(client.core, {
+            sender: acct.owner!,
+            oracleId: oracle.oracle_id,
+            expiry: oracle.expiry,
+            lowerStrike: BigInt(band!.lowerScaled),
+            higherStrike: BigInt(band!.higherScaled),
+            quantity,
+          }),
+        stakeBase,
+        qtyGuess,
+      ),
     enabled: !!acct.owner && hasBand && tradeable && !expired,
     placeholderData: keepPreviousData,
     refetchInterval: 5000,
     refetchOnWindowFocus: false,
     retry: 0,
   });
-  const q = tradeable ? quoteQ.data : undefined;
+  const q: StakeQuote | undefined = tradeable ? quoteQ.data : undefined;
+
+  // Solved position size we actually mint, and its dollar payout ("You win").
+  const qtyBase = q?.quantity ?? 0n;
+  const payoutDollars = q ? fromQuote(q.quantity) : 0;
 
   // DUSDC pulled from the connected WALLET for this mint (manager free balance
   // covers the rest). Gate the button on it so a wallet that can't cover its
@@ -102,29 +120,35 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const insufficient =
     !!q && acct.dusdcBalance !== undefined && walletNow > acct.dusdcBalance;
 
-  function requestMint() {
+  // Open the review modal — the final step for everyone now (matches the binary
+  // ticket's preview-before-mint). handleMint runs after the user confirms.
+  function openReview() {
     if (!q || !tradeable || mintLocked || insufficient || acct.busy === 'mint-range' || preparing) return;
-    if (isEnoki) setConfirmOpen(true);
-    else handleMint();
+    setConfirmOpen(true);
   }
 
   async function handleMint() {
     if (!q || !band || mintLocked || insufficient) return;
     setPreparing(true);
     try {
-      // Re-quote against the chain right before submitting — a stale (5s-polled)
-      // cost under-funds the deposit and the mint aborts. Size funding from this
-      // fresh, authoritative cost.
-      let fresh: TradeQuote;
+      // Re-solve against the chain right before submitting — pins the cost to the
+      // user's stake at the moment of minting, and the fresh, authoritative cost
+      // sizes funding (a stale 5s-polled cost under-funds the deposit and aborts).
+      let fresh: StakeQuote;
       try {
-        fresh = await quoteRange(client.core, {
-          sender: acct.owner!,
-          oracleId: oracle.oracle_id,
-          expiry: oracle.expiry,
-          lowerStrike: BigInt(band.lowerScaled),
-          higherStrike: BigInt(band.higherScaled),
-          quantity: qtyBase,
-        });
+        fresh = await solveQuoteForStake(
+          (quantity) =>
+            quoteRange(client.core, {
+              sender: acct.owner!,
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              lowerStrike: BigInt(band.lowerScaled),
+              higherStrike: BigInt(band.higherScaled),
+              quantity,
+            }),
+          stakeBase,
+          qtyBase > 0n ? qtyBase : qtyGuess,
+        );
       } catch {
         setConfirmOpen(false);
         acct.setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
@@ -137,7 +161,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               expiry: oracle.expiry,
               lowerStrike: BigInt(band.lowerScaled),
               higherStrike: BigInt(band.higherScaled),
-              quantity: qtyBase,
+              quantity: fresh.quantity,
               paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
             })
           : await acct.mintRange({
@@ -145,7 +169,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               expiry: oracle.expiry,
               lowerStrike: BigInt(band.lowerScaled),
               higherStrike: BigInt(band.higherScaled),
-              quantity: qtyBase,
+              quantity: fresh.quantity,
               depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
             });
       setConfirmOpen(false);
@@ -172,21 +196,22 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   }
 
   const cost = q ? fromQuote(q.mintCost) : 0;
-  const maxPayout = contracts; // each contract pays 1.00 if the band hits
+  const maxPayout = payoutDollars; // what you win if the band hits
   const feeF = q ? fromQuote(skewFee(q.mintCost, feeBps)) : 0;
   const profit = maxPayout - cost - feeF; // net of the Skew fee too
   const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
   const chance = q ? Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9 : fair;
+  // Breakdown collapsed by default; force open when funds are short.
+  const detailsOpen = showCostDetails || insufficient;
 
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[11px] leading-relaxed text-text-3">
-        Pays <span className="text-text-1">1.00 {sym}</span> per contract if{' '}
-        <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
+        You win if <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
         <span className="text-accent">
           between {price(band!.lower)} and {price(band!.higher)}
         </span>{' '}
-        at expiry. Otherwise it expires worthless.
+        at expiry. Otherwise your bet is lost.
       </p>
 
       <div className="flex items-center justify-between">
@@ -204,31 +229,35 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
         <span>{price(band!.higher)}</span>
       </div>
 
-      {/* Contracts */}
+      {/* Bet amount — a dollar stake; sized to a mintable position under the hood. */}
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-text-3">Contracts</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={contractsInput}
-            onChange={(e) => setContractsInput(Math.max(1, Number(e.target.value) || 1))}
-            className="ctrl-soft w-20 rounded-md px-2 py-1 text-right text-text-1 outline-none focus:border-white/20"
-          />
+          <span className="text-text-3">Bet amount</span>
+          <div className="ctrl-soft inline-flex items-center gap-1 rounded-md px-2 py-1 focus-within:border-white/20">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={betInput}
+              onChange={(e) => setBetInput(Math.max(0, Number(e.target.value) || 0))}
+              className="w-16 bg-transparent text-right text-text-1 outline-none"
+              aria-label={`Bet amount in ${sym}`}
+            />
+            <span className="text-[10px] text-text-3">{sym}</span>
+          </div>
         </div>
         <div className="flex gap-1.5">
           {[1, 5, 10, 25].map((n) => (
             <button
               key={n}
-              onClick={() => setContractsInput(n)}
+              onClick={() => setBetInput(n)}
               className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-                contractsInput === n
+                betInput === n
                   ? 'border border-up/40 bg-[var(--accent-soft)] text-accent'
                   : 'ctrl-soft text-text-3'
               }`}
             >
-              {n}
+              ${n}
             </button>
           ))}
         </div>
@@ -291,7 +320,17 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               </div>
             </div>
 
-            <div className="glass-inset mt-3 flex flex-col gap-2 p-3">
+            <button
+              type="button"
+              onClick={() => setShowCostDetails((v) => !v)}
+              aria-expanded={detailsOpen}
+              className="mt-3 flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-text-3 transition-colors hover:text-text-2"
+            >
+              <span>Cost details</span>
+              <span className="tabular-nums text-text-3">{detailsOpen ? '−' : '+'}</span>
+            </button>
+            {detailsOpen && (
+            <div className="glass-inset mt-1 flex flex-col gap-2 p-3">
               {feeBps > 0 && (
                 <>
                   <div className="flex items-center justify-between">
@@ -313,35 +352,29 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               {insufficient && (
                 <span className="text-[10px] leading-relaxed text-down">
                   That’s more than your {fmtQuote(fromQuote(acct.dusdcBalance ?? 0n))} {sym} wallet
-                  balance — add {sym} or lower the contract size.
+                  balance — add {sym} or lower your bet.
                 </span>
               )}
             </div>
+            )}
           </div>
         )}
       </div>
 
       <button
-        onClick={requestMint}
+        onClick={openReview}
         disabled={!q || !tradeable || mintLocked || insufficient || acct.busy === 'mint-range' || preparing}
         className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
       >
-        {(acct.busy === 'mint-range' || preparing) && (
-          <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
-        )}
-        {preparing
-          ? 'Refreshing price…'
-          : acct.busy === 'mint-range'
-            ? 'Confirming in wallet…'
-            : expired
-              ? 'Market expired'
-              : tooCloseToExpiry
-                ? 'Too close to expiry'
-                : insufficient
-                  ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletNow))}`
-                  : q
-                    ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
-                    : 'Mint range'}
+        {expired
+          ? 'Market expired'
+          : tooCloseToExpiry
+            ? 'Too close to expiry'
+            : insufficient
+              ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletNow))}`
+              : q
+                ? `Review · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
+                : 'Review bet'}
       </button>
 
       {q && band && (
@@ -356,7 +389,6 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             { label: 'Outcome', value: 'Pays if price ends in band' },
             { label: 'Band', value: `${price(band.lower)} – ${price(band.higher)}`, emphasize: true },
             { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
-            { label: 'Contracts', value: String(contracts) },
             ...(feeBps > 0 ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(feeF)} ${sym}` }] : []),
           ]}
           cost={fmtQuote(cost)}

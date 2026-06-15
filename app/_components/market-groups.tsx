@@ -11,7 +11,7 @@
  * ticket. Cards are grouped by cadence (15-minute / hourly / daily) — see
  * `lib/markets/grouping`.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LuTimer,
   LuClock3,
@@ -20,9 +20,12 @@ import {
   LuCalendarRange,
   LuTrendingUp,
   LuTrendingDown,
+  LuChevronLeft,
+  LuChevronRight,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useSurfaceStore } from '@/lib/store/surface-store';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { snapStrikeToTick } from '@/lib/keys';
@@ -87,6 +90,44 @@ export function MarketGroups({
 
   const total = groups.reduce((n, g) => n + g.oracles.length, 0);
 
+  // Paginate the whole card list so it never runs the page on forever — fewer
+  // cards on a phone, a fuller page on desktop (mirrors the table's pager).
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const pageSize = isDesktop ? 8 : 4;
+  const [page, setPage] = useState(0);
+
+  // Flatten in group order so we can slice across groups, keeping each card's
+  // cadence so the page can re-group only what it shows.
+  const flat = useMemo(
+    () =>
+      groups.flatMap((g) =>
+        g.oracles.map((oracle) => ({ oracle, horizon: g.horizon, meta: g.meta })),
+      ),
+    [groups],
+  );
+  // True size of each cadence group, so a header badge stays accurate even when
+  // the group is split across pages.
+  const groupTotals = useMemo(
+    () => new Map(groups.map((g) => [g.horizon, g.oracles.length])),
+    [groups],
+  );
+
+  // Clamp the page in render (no effect) so a shrinking list — expiries dropping
+  // each second, or the page size halving on a viewport change — can't strand us
+  // on an empty page.
+  const pageCount = Math.max(1, Math.ceil(flat.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageStart = safePage * pageSize;
+  const pageItems = flat.slice(pageStart, pageStart + pageSize);
+
+  // Re-group consecutive page items by cadence (flat is already in group order).
+  const pageGroups: { horizon: Horizon; meta: (typeof groups)[number]['meta']; oracles: Oracle[] }[] = [];
+  for (const it of pageItems) {
+    const last = pageGroups[pageGroups.length - 1];
+    if (last && last.horizon === it.horizon) last.oracles.push(it.oracle);
+    else pageGroups.push({ horizon: it.horizon, meta: it.meta, oracles: [it.oracle] });
+  }
+
   return (
     <div>
       <div className="flex items-baseline justify-between">
@@ -108,7 +149,7 @@ export function MarketGroups({
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-6">
-          {groups.map((g) => {
+          {pageGroups.map((g) => {
             const Icon = HORIZON_ICON[g.horizon];
             return (
               <section key={g.horizon}>
@@ -120,7 +161,7 @@ export function MarketGroups({
                     <div className="flex items-center gap-2">
                       <h3 className="text-[12px] font-medium text-text-1">{g.meta.label}</h3>
                       <span className="rounded-full bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
-                        {g.oracles.length}
+                        {groupTotals.get(g.horizon) ?? g.oracles.length}
                       </span>
                     </div>
                     <p className="mt-0.5 text-[11px] leading-snug text-text-3">{g.meta.blurb}</p>
@@ -143,9 +184,51 @@ export function MarketGroups({
               </section>
             );
           })}
+
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+              <span className="font-mono text-[10px] tabular-nums text-text-3">
+                {pageStart + 1}–{pageStart + pageItems.length} of {flat.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <PagerArrow dir="prev" disabled={safePage === 0} onClick={() => setPage(safePage - 1)} />
+                <span className="px-1.5 font-mono text-[11px] tabular-nums text-text-2">
+                  {safePage + 1}
+                  <span className="text-text-3"> / {pageCount}</span>
+                </span>
+                <PagerArrow
+                  dir="next"
+                  disabled={safePage >= pageCount - 1}
+                  onClick={() => setPage(safePage + 1)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function PagerArrow({
+  dir,
+  disabled,
+  onClick,
+}: {
+  dir: 'prev' | 'next';
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={dir === 'prev' ? 'Previous page' : 'Next page'}
+      className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 disabled:opacity-30 disabled:hover:bg-transparent"
+    >
+      {dir === 'prev' ? <LuChevronLeft size={14} /> : <LuChevronRight size={14} />}
+    </button>
   );
 }
 

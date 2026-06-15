@@ -9,8 +9,6 @@
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { LuWallet, LuCoins } from 'react-icons/lu';
-import { HUE, IconChip } from './ui/metric';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -25,7 +23,7 @@ import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-gr
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { snapStrikeToTick, gridBounds } from '@/lib/keys';
-import { quoteMarket, type TradeQuote } from '@/lib/sui/quote';
+import { quoteMarket, solveQuoteForStake, type StakeQuote } from '@/lib/sui/quote';
 import { fundingSplit, feeRouterPayment, skewFee } from '@/lib/sui/funding';
 import { humanizeError } from '@/lib/sui/abort';
 import { upFair } from '@/lib/svi/svi';
@@ -63,7 +61,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const {
     owner,
     managerId,
-    summary,
     positions,
     positionsLoading,
     dusdcBalance,
@@ -128,13 +125,22 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // and runTx taking over with busy='mint'), so the button can't be double-fired.
   const [preparing, setPreparing] = useState(false);
 
+  // Cost breakdown (skew fee, wallet outflow, funding split, sell-now) is protocol
+  // plumbing, not part of the bet decision — collapsed by default so the ticket
+  // stays short. Auto-opens when funds are short (see detailsOpen below) so a
+  // blocker is never hidden.
+  const [showCostDetails, setShowCostDetails] = useState(false);
+
   const oracle = active?.oracle;
   const forward = active?.forward ?? 0;
   const grid = useMemo(() => (oracle ? gridBounds(oracle) : null), [oracle]);
 
   const [strike, setStrike] = useState<bigint>(0n);
   const [isUp, setIsUp] = useState(true);
-  const [contractsInput, setContractsInput] = useState(1); // how many contracts to mint
+  const [betInput, setBetInput] = useState(1); // DUSDC the user wants to bet (stake)
+  // Two-step guided flow: 1 = side & level, 2 = bet (+ review modal). A fresh
+  // surface/table/card pick jumps straight to step 2 (see the selection sync).
+  const [step, setStep] = useState<1 | 2>(1);
 
   // Sync the ticket to the active oracle / latest selection by adjusting state
   // during render (React's documented pattern for "reset state on prop change").
@@ -148,6 +154,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       setAppliedSel(selKey);
       setStrike(BigInt(selection!.strikeScaled));
       setIsUp(selection!.isUp);
+      // A surface/table/card click already chose side + level — skip ahead to the
+      // bet step. (Internal UP/DOWN toggles pre-sync appliedSel in setDirection so
+      // they don't reach here and can't bounce the user forward.)
+      setStep(2);
     } else if (!selKey && strike === 0n) {
       setStrike(snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle));
     }
@@ -165,6 +175,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
         strike: toFloat(Number(strike)),
         isUp: nextUp,
       });
+      // Mark this selection as already-applied so the render-time sync above
+      // treats it as an internal echo (no re-apply, no jump to the bet step).
+      setAppliedSel(`${strike.toString()}:${nextUp}`);
     }
   }
 
@@ -188,22 +201,35 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   // Single gate for the mint action: past expiry OR inside the cutoff.
   const mintLocked = expired || tooCloseToExpiry;
 
-  // The user picks how many contracts; the live quote tells them what they pay.
-  const contracts = Math.max(1, contractsInput);
-  const qtyBase = toQuote(contracts);
+  // The user bets a dollar amount and pays EXACTLY that: we solve for the
+  // position size whose chain cost equals the stake (cost is fixed, the *payout*
+  // floats with the odds). On-chain quantity == payout in dollars; the client
+  // fair gives a good seed so the solve is one probe + one secant step. Keying
+  // the query on the stake (not the solved qty) keeps it stable — the qty the
+  // solver returns can't feed back and re-trigger the query.
+  const betAmount = Math.max(0, betInput);
+  const stakeBase = toQuote(betAmount);
+  const dirFair = clientUp == null ? null : isUp ? clientUp : 1 - clientUp;
+  const unitPrice = dirFair != null ? Math.min(0.99, Math.max(0.01, dirFair)) : 0.5;
+  const qtyGuess = toQuote(betAmount / unitPrice);
 
   const quoteQ = useQuery({
-    queryKey: ['quote', oracle?.oracle_id, strike.toString(), isUp, qtyBase.toString(), owner],
+    queryKey: ['quote', oracle?.oracle_id, strike.toString(), isUp, stakeBase.toString(), owner],
     queryFn: () =>
-      quoteMarket(client.core, {
-        sender: owner!,
-        oracleId: oracle!.oracle_id,
-        expiry: oracle!.expiry,
-        strike,
-        isUp,
-        quantity: qtyBase,
-      }),
-    enabled: !!owner && !!oracle && strike > 0n && qtyBase > 0n && tradeable && !expired,
+      solveQuoteForStake(
+        (quantity) =>
+          quoteMarket(client.core, {
+            sender: owner!,
+            oracleId: oracle!.oracle_id,
+            expiry: oracle!.expiry,
+            strike,
+            isUp,
+            quantity,
+          }),
+        stakeBase,
+        qtyGuess,
+      ),
+    enabled: !!owner && !!oracle && strike > 0n && stakeBase > 0n && tradeable && !expired,
     // Keep the last quote on screen while a refetch (or a strike/size change) is
     // in flight, so figures update in place instead of blanking the card.
     placeholderData: keepPreviousData,
@@ -211,9 +237,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     refetchOnWindowFocus: false,
     retry: 0,
   });
-  const q: TradeQuote | undefined = tradeable ? quoteQ.data : undefined;
+  const q: StakeQuote | undefined = tradeable ? quoteQ.data : undefined;
 
-  const tradingBalance = summary?.trading_balance ?? 0; // @6dec base units
+  // The solved position size we actually mint, and its dollar payout ("You win").
+  const qtyBase = q?.quantity ?? 0n;
+  const payoutDollars = q ? fromQuote(q.quantity) : 0;
 
   // DUSDC that must come from the connected WALLET for this mint (the manager's
   // free balance covers the rest; this is the buffered figure actually pulled).
@@ -228,32 +256,39 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const insufficientFunds =
     !!q && dusdcBalance !== undefined && walletOutflow > dusdcBalance;
 
-  // Entry point for the Mint button. Enoki users see a confirm modal first
-  // (no wallet pop-up otherwise); everyone else mints straight through.
-  function requestMint() {
+  // Open the review modal — the final step for EVERYONE now (it doubles as the
+  // in-app preview that gasless Enoki accounts always needed; other wallets then
+  // get their signing prompt from handleMint after they confirm here).
+  function openReview() {
     if (!q || !tradeable || mintLocked || insufficientFunds || busy === 'mint' || preparing) return;
-    if (isEnoki) setConfirmOpen(true);
-    else handleMint();
+    setConfirmOpen(true);
   }
 
   async function handleMint() {
     if (!managerId || !q || !oracle || mintLocked || insufficientFunds) return;
     setPreparing(true);
     try {
-      // Re-quote against the chain right before submitting. The on-screen quote is
+      // Re-solve against the chain right before submitting. The on-screen quote is
       // polled every ~5s, but the price can move between that and this click (worst
-      // near expiry); a stale cost under-funds the deposit and the mint aborts in
-      // balance_manager::withdraw. Size funding from this fresh, authoritative cost.
-      let fresh: TradeQuote;
+      // near expiry). Re-solving for the stake here keeps the cost pinned to what
+      // the user picked at the moment of minting (and the fresh, authoritative cost
+      // sizes funding — a stale cost under-funds the deposit and the mint aborts in
+      // balance_manager::withdraw).
+      let fresh: StakeQuote;
       try {
-        fresh = await quoteMarket(client.core, {
-          sender: owner!,
-          oracleId: oracle.oracle_id,
-          expiry: oracle.expiry,
-          strike,
-          isUp,
-          quantity: qtyBase,
-        });
+        fresh = await solveQuoteForStake(
+          (quantity) =>
+            quoteMarket(client.core, {
+              sender: owner!,
+              oracleId: oracle.oracle_id,
+              expiry: oracle.expiry,
+              strike,
+              isUp,
+              quantity,
+            }),
+          stakeBase,
+          qtyBase > 0n ? qtyBase : qtyGuess,
+        );
       } catch {
         setConfirmOpen(false);
         setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
@@ -269,7 +304,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               expiry: oracle.expiry,
               strike,
               isUp,
-              quantity: qtyBase,
+              quantity: fresh.quantity,
               paymentAmount: feeRouterPayment(fresh.mintCost, tradingBalanceBase, feeBps).paymentAmount,
             })
           : buildMintTx({
@@ -278,7 +313,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
               expiry: oracle.expiry,
               strike,
               isUp,
-              quantity: qtyBase,
+              quantity: fresh.quantity,
               depositAmount: fundingSplit(fresh.mintCost, tradingBalanceBase).depositAmount,
             });
       const digest = await runTx('mint', tx, [...managerKeys, qk.dusdcBalance(owner ?? '')]);
@@ -315,80 +350,55 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
-      <div className="glass-card flex flex-col gap-2.5 p-2.5">
-        <div className={`grid gap-2.5 ${managerId ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          <div className="glass-inset flex flex-col gap-2 p-3">
-            <div className="flex items-center gap-2">
-              <IconChip icon={LuWallet} color={HUE.violet} size={22} />
-              <span className="eyebrow">Wallet · {sym}</span>
-            </div>
-            <span className="text-[18px] leading-none tabular-nums text-text-1">
-              {dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(dusdcBalance))}
-            </span>
-          </div>
-          {managerId && (
-            <div className="glass-inset flex flex-col gap-2 p-3">
-              <div className="flex items-center gap-2">
-                <IconChip icon={LuCoins} color={HUE.amber} size={22} />
-                <span className="eyebrow">Free balance</span>
-              </div>
-              <span className="text-[18px] leading-none tabular-nums text-text-1">
-                {fmtQuote(fromQuote(tradingBalance))}
-              </span>
-            </div>
-          )}
+      {/* Onboarding actions only — the wallet balance now lives in the top nav
+          (BalancePill → Portfolio), freeing the rail. These render only when
+          relevant, so an established, funded user starts straight at the trade. */}
+      {!managerId && (
+        <div className="glass-card flex items-center justify-between gap-2 px-3 py-2.5">
+          <span className="text-[11px] text-text-3">Create a trading account to start.</span>
+          <button
+            onClick={() => createManager()}
+            disabled={busy === 'create'}
+            className="ctrl-soft shrink-0 rounded-md px-2.5 py-1 text-[11px] text-accent disabled:opacity-50"
+          >
+            {busy === 'create' ? 'creating…' : 'Create manager'}
+          </button>
         </div>
-        {dusdcBalance !== undefined &&
-          dusdcBalance < STARTER_GRANT_BALANCE_CEILING &&
-          (starterGrant.enabled && !grant.failed ? (
-            <button
-              onClick={grant.claim}
-              disabled={grant.busy}
-              className="px-1 text-left text-[11px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
-            >
-              {grant.busy
-                ? 'Funding your account…'
-                : `New here? Get ${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym} to start trading →`}
-            </button>
-          ) : predictConfig.faucetUrl ? (
-            <a
-              href={predictConfig.faucetUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-1 text-[11px] text-accent underline-offset-2 hover:underline"
-            >
-              Low balance — get testnet {sym} →
-            </a>
-          ) : null)}
-        <div className="flex items-center justify-between px-1 pb-0.5">
-          <span className="eyebrow">Manager</span>
-          {managerId ? (
-            <span className="font-mono text-[11px] tabular-nums text-text-2">
-              {managerId.slice(0, 10)}…{managerId.slice(-4)}
-            </span>
-          ) : (
-            <button
-              onClick={() => createManager()}
-              disabled={busy === 'create'}
-              className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-accent disabled:opacity-50"
-            >
-              {busy === 'create' ? 'creating…' : 'Create manager'}
-            </button>
-          )}
-        </div>
-      </div>
+      )}
+      {dusdcBalance !== undefined &&
+        dusdcBalance < STARTER_GRANT_BALANCE_CEILING &&
+        (starterGrant.enabled && !grant.failed ? (
+          <button
+            onClick={grant.claim}
+            disabled={grant.busy}
+            className="glass-card px-3 py-2 text-left text-[11px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+          >
+            {grant.busy
+              ? 'Funding your account…'
+              : `New here? Get ${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym} to start trading →`}
+          </button>
+        ) : predictConfig.faucetUrl ? (
+          <a
+            href={predictConfig.faucetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="glass-card px-3 py-2 text-[11px] text-accent underline-offset-2 hover:underline"
+          >
+            Low balance — get testnet {sym} →
+          </a>
+        ) : null)}
 
       {managerId && (
-        <div className="glass-divider-top flex flex-col gap-2 pt-3">
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-[11px] tabular-nums text-text-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="min-w-0 font-mono text-[11px] tabular-nums text-text-2">
               {oracle.underlying_asset} · {dateUTC(oracle.expiry)} ·{' '}
               <span className={expired || closingSoon ? 'text-down' : 'text-text-3'}>
                 {expired ? 'expired' : `${countdown(oracle.expiry, now)} left`}
               </span>
             </span>
             {fromSurface && (
-              <span className="flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
+              <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--accent-soft) px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
                 <span className="h-1 w-1 rounded-full bg-accent" />
                 From surface
               </span>
@@ -417,6 +427,10 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             <RangeTicket active={active!} now={now} />
           ) : (
             <>
+          <StepBar step={step} onStep={setStep} />
+
+          {step === 1 ? (
+          <>
           <div className="flex gap-2">
             <Toggle active={isUp} onClick={() => setDirection(true)} tone="up">
               UP
@@ -428,13 +442,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
           {/* Plain-language explainer so a first-time visitor understands the bet. */}
           <p className="text-[11px] leading-relaxed text-text-3">
-            Pays{' '}
-            <span className="text-text-1">1.00 {predictConfig.quote.symbol}</span> per contract if{' '}
-            <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
+            You win if <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
             <span className={isUp ? 'text-up' : 'text-down'}>
               {isUp ? 'above' : 'below'} {price(toFloat(Number(strike)))}
             </span>{' '}
-            at expiry. Otherwise it expires worthless.
+            at expiry. Otherwise your bet is lost.
           </p>
 
           <Row label={`Strike (settles ${isUp ? 'above' : 'below'})`}>
@@ -459,36 +471,86 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             </div>
           </Row>
 
-          {/* Bet size — number of contracts; the live quote below shows the cost. */}
+          {!tradeable && !expired && (
+            <p className="text-[11px] leading-relaxed text-text-3">
+              That strike is too far from spot to price — move it nearer{' '}
+              <span className="text-text-2">{price(forward)}</span> to continue.
+            </p>
+          )}
+
+          <button
+            onClick={() => setStep(2)}
+            disabled={expired || !tradeable}
+            className="flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-white/[0.03] px-3 py-3 text-[13px] font-semibold text-text-1 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:border-line disabled:bg-transparent disabled:text-text-3"
+          >
+            {expired ? 'Market expired' : 'Continue · set your bet →'}
+          </button>
+          </>
+          ) : (
+          <>
+          {/* Entry recap doubles as an inline side toggle — tap to flip UP/DOWN
+              right here (no trip back to step 1). The level stays editable via the
+              "Side & level" step in the bar above. */}
+          <button
+            type="button"
+            onClick={() => setDirection(!isUp)}
+            aria-label={`Currently ${isUp ? 'UP' : 'DOWN'} — switch to ${isUp ? 'DOWN' : 'UP'}`}
+            className="group glass-inset flex items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:border-line-strong"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}
+              >
+                {isUp ? '▲ UP' : '▼ DOWN'}
+              </span>
+              <span className="truncate text-[11px] text-text-3">
+                settles {isUp ? 'above' : 'below'}{' '}
+                <span className="text-text-1">{price(toFloat(Number(strike)))}</span>
+              </span>
+            </span>
+            <span
+              className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                isUp
+                  ? 'border-down/30 text-down/70 group-hover:border-down/50 group-hover:text-down'
+                  : 'border-up/30 text-up/70 group-hover:border-up/50 group-hover:text-up'
+              }`}
+            >
+              {isUp ? '▼ DOWN' : '▲ UP'}
+            </span>
+          </button>
+
+          {/* Bet size — a plain dollar stake. We translate it to a mintable
+              position under the hood; the quote below shows what you pay & win. */}
           <div className="flex flex-col gap-1.5">
-            <Row label="Contracts">
-              <input
-                type="number"
-                min={1}
-                step={1}
-                value={contractsInput}
-                onChange={(e) => setContractsInput(Math.max(1, Number(e.target.value) || 1))}
-                className="ctrl-soft w-20 rounded-md px-2 py-1 text-right text-text-1 outline-none focus:border-white/20"
-              />
+            <Row label="Bet amount">
+              <div className="ctrl-soft inline-flex items-center gap-1 rounded-md px-2 py-1 focus-within:border-white/20">
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={betInput}
+                  onChange={(e) => setBetInput(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-16 bg-transparent text-right text-text-1 outline-none"
+                  aria-label={`Bet amount in ${sym}`}
+                />
+                <span className="text-[10px] text-text-3">{sym}</span>
+              </div>
             </Row>
             <div className="flex gap-1.5">
               {[1, 5, 10, 25].map((n) => (
                 <button
                   key={n}
-                  onClick={() => setContractsInput(n)}
+                  onClick={() => setBetInput(n)}
                   className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-                    contractsInput === n
+                    betInput === n
                       ? 'border border-up/40 bg-[var(--accent-soft)] text-accent'
                       : 'ctrl-soft text-text-3'
                   }`}
                 >
-                  {n}
+                  ${n}
                 </button>
               ))}
             </div>
-            <span className="text-[10px] text-text-3">
-              each contract pays 1.00 {predictConfig.quote.symbol} if it wins · you pay the quote below
-            </span>
           </div>
 
           {/* Risk → Reward: the answer to "what do I pay and what can I win?" */}
@@ -517,7 +579,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             ) : (
               (() => {
                 const cost = fromQuote(q.mintCost);
-                const maxPayout = contracts; // each contract pays 1.00 if it wins
+                const maxPayout = payoutDollars; // what you win if the bet is right
                 const chance = Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9;
                 // Skew builder fee (on top of the bet) + funding. With a fee, the
                 // router takes a single payment coin (fee + deposit); without one,
@@ -528,6 +590,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 const profit = maxPayout - cost - feeF; // net of the Skew fee too
                 const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
                 const walletNow = walletOutflow; // hoisted above (same math)
+                // Keep the breakdown collapsed normally, but force it open when the
+                // wallet can't cover its share — that warning must never be hidden.
+                const detailsOpen = showCostDetails || insufficientFunds;
                 return (
                   <div className="flex flex-col">
                     <div className="grid grid-cols-2 gap-3">
@@ -568,7 +633,17 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                       </div>
                     </div>
 
-                    <div className="glass-inset mt-3 flex flex-col gap-2 p-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowCostDetails((v) => !v)}
+                      aria-expanded={detailsOpen}
+                      className="mt-3 flex items-center justify-between rounded-md px-1 py-1 text-[11px] text-text-3 transition-colors hover:text-text-2"
+                    >
+                      <span>Cost details</span>
+                      <span className="tabular-nums text-text-3">{detailsOpen ? '−' : '+'}</span>
+                    </button>
+                    {detailsOpen && (
+                    <div className="glass-inset mt-1 flex flex-col gap-2 p-3">
                       {feeBps > 0 && (
                         <>
                           <div className="flex items-center justify-between">
@@ -597,7 +672,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                       {insufficientFunds && (
                         <span className="text-[10px] leading-relaxed text-down">
                           That’s more than your {fmtQuote(fromQuote(dusdcBalance ?? 0n))} {sym} wallet
-                          balance — add {sym} or lower the contract size.
+                          balance — add {sym} or lower your bet.
                         </span>
                       )}
                       {walletNow > 0n && tradingBalanceBase > 0n ? (
@@ -617,6 +692,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                         </span>
                       </div>
                     </div>
+                    )}
                   </div>
                 );
               })()
@@ -634,7 +710,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           )}
 
           <button
-            onClick={requestMint}
+            onClick={openReview}
             disabled={!q || !tradeable || mintLocked || insufficientFunds || busy === 'mint' || preparing}
             className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
               isUp
@@ -642,28 +718,23 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 : 'border-down/50 from-down/25 to-down/10 text-down shadow-[0_0_24px_-6px_rgba(240,121,107,0.3)] hover:from-down/35 hover:to-down/15 hover:shadow-[0_0_30px_-4px_rgba(240,121,107,0.34)]'
             }`}
           >
-            {(busy === 'mint' || preparing) && (
-              <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
-            )}
-            {preparing
-              ? 'Refreshing price…'
-              : busy === 'mint'
-                ? 'Confirming in wallet…'
-                : expired
-                  ? 'Market expired'
-                  : tooCloseToExpiry
-                    ? 'Too close to expiry'
-                    : insufficientFunds
-                      ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletOutflow))}`
-                      : q
-                        ? `Mint ${isUp ? 'UP' : 'DOWN'} · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(contracts)}`
-                        : `Mint ${isUp ? 'UP' : 'DOWN'}`}
+            {expired
+              ? 'Market expired'
+              : tooCloseToExpiry
+                ? 'Too close to expiry'
+                : insufficientFunds
+                  ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletOutflow))}`
+                  : q
+                    ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}`
+                    : 'Review bet'}
           </button>
 
           <p className="text-[10px] leading-relaxed text-text-3">
-            The chain confirms the final price when you sign — a transaction can still be rejected
-            in your wallet or revert if the market moves or expires first.
+            You’ll preview the trade next; the final price is confirmed on-chain when you sign and
+            can revert if the market moves or expires first.
           </p>
+          </>
+          )}
 
           {q && (
             <MintConfirmModal
@@ -680,13 +751,12 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 },
                 { label: 'Strike', value: price(strikeFloat, 0), emphasize: true },
                 { label: 'Expiry', value: `${dateUTC(oracle.expiry)} · ${countdown(oracle.expiry, now)}` },
-                { label: 'Contracts', value: String(contracts) },
                 ...(feeBps > 0
                   ? [{ label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`, value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} ${sym}` }]
                   : []),
               ]}
               cost={fmtQuote(fromQuote(q.mintCost))}
-              maxWin={fmtQuote(contracts)}
+              maxWin={fmtQuote(payoutDollars)}
               confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
             />
           )}
@@ -730,7 +800,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                         <span className="text-text-1">{price(toFloat(p.strike))}</span>
                       </span>
                       <span className="text-[10px] text-text-3">
-                        {fmtQuote(m.contracts)} contracts ·{' '}
+                        {fmtQuote(m.contracts)} {sym} to win ·{' '}
                         <span className={m.pnl >= 0 ? 'text-up' : 'text-down'}>
                           {signed(m.pnl)} ({signed(m.pnlPct * 100, 1)}%)
                         </span>
@@ -763,7 +833,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                         </span>
                       </span>
                       <span className="text-[10px] text-text-3">
-                        {fmtQuote(fromQuote(p.openQty))} contracts ·{' '}
+                        {fmtQuote(fromQuote(p.openQty))} {sym} to win ·{' '}
                         <span className={rPnl >= 0 ? 'text-up' : 'text-down'}>{signed(rPnl)}</span>
                       </span>
                     </div>
@@ -850,6 +920,59 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="text-text-3">{label}</span>
       <span className="text-text-1">{children}</span>
     </div>
+  );
+}
+
+/** Compact two-step progress for the guided binary flow. Each segment is a
+ *  back-nav target: step 1 is always reachable, step 2 only once you've advanced. */
+function StepBar({ step, onStep }: { step: 1 | 2; onStep: (s: 1 | 2) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <StepSeg n={1} label="Side & level" active={step === 1} done={step > 1} onClick={() => onStep(1)} clickable />
+      <span className={`h-px flex-1 transition-colors ${step > 1 ? 'bg-accent/40' : 'bg-line'}`} />
+      <StepSeg n={2} label="Your bet" active={step === 2} done={false} onClick={() => onStep(2)} clickable={step >= 2} />
+    </div>
+  );
+}
+
+function StepSeg({
+  n,
+  label,
+  active,
+  done,
+  onClick,
+  clickable,
+}: {
+  n: number;
+  label: string;
+  active: boolean;
+  done: boolean;
+  onClick: () => void;
+  clickable: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!clickable}
+      aria-current={active ? 'step' : undefined}
+      className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider transition-colors disabled:cursor-default ${
+        active ? 'text-text-1' : clickable ? 'text-text-3 hover:text-text-2' : 'text-text-3'
+      }`}
+    >
+      <span
+        className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] tabular-nums ${
+          active
+            ? 'border-accent/60 bg-[var(--accent-soft)] text-accent'
+            : done
+              ? 'border-accent/40 text-accent'
+              : 'border-line text-text-3'
+        }`}
+      >
+        {done ? '✓' : n}
+      </span>
+      {label}
+    </button>
   );
 }
 

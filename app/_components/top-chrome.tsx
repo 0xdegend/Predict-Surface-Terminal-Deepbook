@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
+import { BalancePill } from "./balance-pill";
 import { BottomNav } from "./bottom-nav";
 import { NavMore } from "./nav-more";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
@@ -41,7 +42,11 @@ export function TopChrome({
             priority
             className="h-5.5 w-5.5 transition-transform group-hover:scale-105"
           />
-          <span className="text-[15px] font-semibold tracking-tight text-text-1">Skew</span>
+          {/* Wordmark hides on phones — the mark alone links home, freeing the
+              tight mobile header for the live chip + wallet. */}
+          <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:inline">
+            Skew
+          </span>
         </Link>
         <nav className="hidden items-center gap-1 lg:flex">
           <NavLink href="/" label="Trade" active={active === "surface"} />
@@ -77,7 +82,11 @@ export function TopChrome({
       {/* Zone 3 — wallet. shrink-0 so the Connect/account control is always
           fully visible, even when the chip is wide. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-        <TourButton />
+        {/* Tour replay is secondary — hidden on phones to declutter the header. */}
+        <span className="hidden sm:inline-flex">
+          <TourButton />
+        </span>
+        <BalancePill />
         <WalletBar />
       </div>
     </header>
