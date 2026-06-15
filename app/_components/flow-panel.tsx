@@ -20,6 +20,8 @@ import { quote as fmtQuote, feeAmount, price, pct, signed, dateUTC, countdown } 
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useIsEnokiWallet } from '@/lib/hooks/use-is-enoki';
+import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
+import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { useLiveOracleData } from '@/lib/hooks/use-live-oracle-data';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
 import { snapStrikeToTick, gridBounds } from '@/lib/keys';
@@ -70,6 +72,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     redeemRange,
     managerKeys,
   } = acct;
+
+  // One-click "fund my account" — drips DUSDC from the app treasury so a new
+  // user never has to leave for the public faucet. Falls back to the faucet link
+  // if it's disabled or the grant fails (e.g. treasury low / already funded).
+  const grant = useStarterGrant(owner);
 
   const selection = useSurfaceStore((s) => s.selection);
   const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
@@ -277,16 +284,28 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             </div>
           )}
         </div>
-        {dusdcBalance !== undefined && dusdcBalance < 1_000_000n && predictConfig.faucetUrl && (
-          <a
-            href={predictConfig.faucetUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="px-1 text-[11px] text-accent underline-offset-2 hover:underline"
-          >
-            Low balance — get testnet DUSDC →
-          </a>
-        )}
+        {dusdcBalance !== undefined &&
+          dusdcBalance < STARTER_GRANT_BALANCE_CEILING &&
+          (starterGrant.enabled && !grant.failed ? (
+            <button
+              onClick={grant.claim}
+              disabled={grant.busy}
+              className="px-1 text-left text-[11px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {grant.busy
+                ? 'Funding your account…'
+                : `New here? Get ${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym} to start trading →`}
+            </button>
+          ) : predictConfig.faucetUrl ? (
+            <a
+              href={predictConfig.faucetUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-1 text-[11px] text-accent underline-offset-2 hover:underline"
+            >
+              Low balance — get testnet {sym} →
+            </a>
+          ) : null)}
         <div className="flex items-center justify-between px-1 pb-0.5">
           <span className="eyebrow">Manager</span>
           {managerId ? (

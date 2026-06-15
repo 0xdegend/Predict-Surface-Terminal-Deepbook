@@ -42,6 +42,15 @@ function allowedMoveCallTargets(): string[] {
   if (predictConfig.hedgePackageId) {
     targets.push(`${predictConfig.hedgePackageId}::hedged_position::open_hedged_and_keep`);
   }
+  // Skew builder-fee router: when deployed, mints route through fee_router (which
+  // builds the MarketKey/RangeKey internally and composes predict::mint), so the
+  // top-level PTB call is fee_router::* — allowlist it or sponsored fee-mints 403.
+  if (predictConfig.skewFeePackageId) {
+    targets.push(
+      `${predictConfig.skewFeePackageId}::fee_router::mint_with_fee`,
+      `${predictConfig.skewFeePackageId}::fee_router::mint_range_with_fee`,
+    );
+  }
   return targets;
 }
 
