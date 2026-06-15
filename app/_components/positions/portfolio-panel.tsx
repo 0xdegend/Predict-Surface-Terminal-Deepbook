@@ -26,6 +26,7 @@ import { PointsTile } from './points-tile';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
 import { RangeRedeemModal } from './range-redeem-modal';
+import { SuccessModal } from '../ui/success-modal';
 import { derivePortfolioHistory, deriveRangeHistory } from '@/lib/portfolio/history';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
@@ -43,6 +44,16 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
   const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
+  // Animated confirmation after a free-balance withdrawal (toast is easy to miss).
+  const [withdrawDone, setWithdrawDone] = useState<{ amount: number; digest: string } | null>(null);
+
+  // Withdraw the manager's full free balance back to the wallet; on success pop
+  // the SuccessModal with the amount that moved (captured before the tx clears it).
+  async function handleWithdrawAll() {
+    const amount = fromQuote(acct.tradingBalanceBase);
+    const digest = await acct.withdrawAll();
+    if (digest) setWithdrawDone({ amount, digest });
+  }
 
   if (!mounted) {
     return (
@@ -225,7 +236,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           action={
             acct.tradingBalanceBase > 0n ? (
               <button
-                onClick={() => acct.withdrawAll()}
+                onClick={handleWithdrawAll}
                 disabled={acct.busy === 'withdraw'}
                 className="group glass-inset mt-1 inline-flex w-fit items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-1 transition-all duration-200 hover:border-(--accent-line) hover:text-accent disabled:opacity-50"
               >
@@ -391,6 +402,16 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           setRedeemingRange(null);
         }}
         onClose={() => setRedeemingRange(null)}
+      />
+
+      <SuccessModal
+        open={!!withdrawDone}
+        onClose={() => setWithdrawDone(null)}
+        title="Withdrawn to wallet"
+        eyebrow="Withdrawn"
+        amount={withdrawDone?.amount ?? 0}
+        sub="moved from your free balance to your wallet"
+        digest={withdrawDone?.digest}
       />
 
       <p className="mt-6 text-[10px] text-text-3">Quote asset · {predictConfig.quote.symbol} · {predictConfig.network}</p>

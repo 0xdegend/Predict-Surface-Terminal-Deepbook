@@ -36,6 +36,7 @@ import { RangeTicket } from './range-ticket';
 import { MintConfirmModal } from './mint-confirm-modal';
 import { RedeemModal } from './positions/redeem-modal';
 import { RangeRedeemModal } from './positions/range-redeem-modal';
+import { SuccessModal } from './ui/success-modal';
 import { positionMetrics } from './positions/position-metrics';
 import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
@@ -802,6 +803,18 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           setRedeemingRange(null);
         }}
         onClose={() => setRedeemingRange(null)}
+      />
+
+      {/* Animated confirmation that the starter grant landed — a toast alone is
+          easy to miss for this gasless flow. */}
+      <SuccessModal
+        open={!!grant.success}
+        onClose={grant.clearSuccess}
+        title="Account funded"
+        eyebrow="Received"
+        amount={grant.success?.amount ?? 0}
+        sub="added to your wallet — you’re ready to trade"
+        digest={grant.success?.digest}
       />
     </div>
   );
