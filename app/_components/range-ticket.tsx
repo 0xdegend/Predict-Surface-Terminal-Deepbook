@@ -91,14 +91,25 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   });
   const q = tradeable ? quoteQ.data : undefined;
 
+  // DUSDC pulled from the connected WALLET for this mint (manager free balance
+  // covers the rest). Gate the button on it so a wallet that can't cover its
+  // share can't fire a doomed mint.
+  const walletNow = q
+    ? feeBps > 0
+      ? feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount
+      : fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount
+    : 0n;
+  const insufficient =
+    !!q && acct.dusdcBalance !== undefined && walletNow > acct.dusdcBalance;
+
   function requestMint() {
-    if (!q || !tradeable || mintLocked || acct.busy === 'mint-range' || preparing) return;
+    if (!q || !tradeable || mintLocked || insufficient || acct.busy === 'mint-range' || preparing) return;
     if (isEnoki) setConfirmOpen(true);
     else handleMint();
   }
 
   async function handleMint() {
-    if (!q || !band || mintLocked) return;
+    if (!q || !band || mintLocked || insufficient) return;
     setPreparing(true);
     try {
       // Re-quote against the chain right before submitting — a stale (5s-polled)
@@ -166,11 +177,6 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const profit = maxPayout - cost - feeF; // net of the Skew fee too
   const mult = cost + feeF > 0 ? maxPayout / (cost + feeF) : 0;
   const chance = q ? Number((q.mintCost * 1_000_000_000n) / qtyBase) / 1e9 : fair;
-  const walletNow = q
-    ? feeBps > 0
-      ? feeRouterPayment(q.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount
-      : fundingSplit(q.mintCost, acct.tradingBalanceBase).depositAmount
-    : 0n;
 
   return (
     <div className="flex flex-col gap-2">
@@ -299,11 +305,17 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               )}
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-text-3">Leaves your wallet now</span>
-                <span className="text-[11px] tabular-nums text-text-1">
+                <span className={`text-[11px] tabular-nums ${insufficient ? 'text-down' : 'text-text-1'}`}>
                   {walletNow > 0n ? '≈ ' : ''}
                   {fmtQuote(fromQuote(walletNow))} {sym}
                 </span>
               </div>
+              {insufficient && (
+                <span className="text-[10px] leading-relaxed text-down">
+                  That’s more than your {fmtQuote(fromQuote(acct.dusdcBalance ?? 0n))} {sym} wallet
+                  balance — add {sym} or lower the contract size.
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -311,7 +323,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
       <button
         onClick={requestMint}
-        disabled={!q || !tradeable || mintLocked || acct.busy === 'mint-range' || preparing}
+        disabled={!q || !tradeable || mintLocked || insufficient || acct.busy === 'mint-range' || preparing}
         className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border border-up/50 bg-linear-to-b from-up/25 to-up/10 px-3 py-3 text-[13px] font-semibold text-up shadow-[0_0_24px_-6px_var(--accent-glow)] transition-all hover:from-up/35 hover:to-up/15 disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none"
       >
         {(acct.busy === 'mint-range' || preparing) && (
@@ -325,9 +337,11 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               ? 'Market expired'
               : tooCloseToExpiry
                 ? 'Too close to expiry'
-                : q
-                  ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
-                  : 'Mint range'}
+                : insufficient
+                  ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletNow))}`
+                  : q
+                    ? `Mint range · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
+                    : 'Mint range'}
       </button>
 
       {q && band && (

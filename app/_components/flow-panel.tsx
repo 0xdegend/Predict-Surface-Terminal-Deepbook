@@ -237,7 +237,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   }
 
   async function handleMint() {
-    if (!managerId || !q || !oracle || mintLocked) return;
+    if (!managerId || !q || !oracle || mintLocked || insufficientFunds) return;
     setPreparing(true);
     try {
       // Re-quote against the chain right before submitting. The on-screen quote is
@@ -589,11 +589,17 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                           since the manager's free balance funds the rest. */}
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-text-3">Leaves your wallet now</span>
-                        <span className="text-[11px] tabular-nums text-text-1">
+                        <span className={`text-[11px] tabular-nums ${insufficientFunds ? 'text-down' : 'text-text-1'}`}>
                           {walletNow > 0n ? '≈ ' : ''}
                           {fmtQuote(fromQuote(walletNow))} {sym}
                         </span>
                       </div>
+                      {insufficientFunds && (
+                        <span className="text-[10px] leading-relaxed text-down">
+                          That’s more than your {fmtQuote(fromQuote(dusdcBalance ?? 0n))} {sym} wallet
+                          balance — add {sym} or lower the contract size.
+                        </span>
+                      )}
                       {walletNow > 0n && tradingBalanceBase > 0n ? (
                         <span className="text-[10px] leading-relaxed text-text-3">
                           The rest of the {fmtQuote(cost)} {sym} cost is covered by your{' '}
