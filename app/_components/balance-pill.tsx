@@ -41,14 +41,17 @@ export function BalancePill() {
   // so the server/first-client paint match and the header doesn't shift.
   if (!mounted || !owner) return null;
 
+  // Rendered as the leading SEGMENT of the unified account cluster (see
+  // WalletBar) — borderless; the cluster shell owns the border + hairline
+  // dividers. Hidden below md, where the balance lives under Portfolio.
   return (
     <Link
       href="/portfolio"
       title="View portfolio"
       aria-label={`Balance ${data === undefined ? '' : fmtQuote(fromQuote(data))} ${sym} — view portfolio`}
-      className="chip hidden h-9 items-center gap-1.5 px-2.5 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:border-line-strong md:inline-flex"
+      className="hidden h-full items-center gap-1.5 px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] md:inline-flex"
     >
-      <span>{data === undefined ? '…' : fmtQuote(fromQuote(data))}</span>
+      <span className="text-text-1">{data === undefined ? '…' : fmtQuote(fromQuote(data))}</span>
       <span className="text-text-3">{sym}</span>
     </Link>
   );

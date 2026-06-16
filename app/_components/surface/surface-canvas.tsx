@@ -134,46 +134,78 @@ export function SurfaceCanvas({
   }, [ticketMode, rangeSelection, rangeAnchor, selection, inputs]);
 
   function pick(row: number, col: number) {
-    const r = surface.rows[row];
-    const cell = r?.cells[col];
-    const oracle = oracleById.get(r?.oracleId ?? "");
-    if (!r || !cell || !oracle) return;
+    const clickedRow = surface.rows[row];
+    const clickedCell = clickedRow?.cells[col];
+    if (!clickedRow || !clickedCell) return;
     // Dead-zone nodes (fair UP outside the 1%–99% band) are dimmed and not
     // mintable — ignore the click rather than load a doomed ticket.
-    if (!cell.tradeable) return;
+    if (!clickedCell.tradeable) return;
     markCoachSeen(); // first real interaction — retire the coach mark for good
-    const strikeFloat = r.forward * Math.exp(cell.k);
-    const strikeScaled = snapStrikeToTick(
-      BigInt(Math.round(strikeFloat * 1e9)),
-      oracle,
-    );
-    const strike = toFloat(Number(strikeScaled));
+    // The actual price the user pointed at (this node's strike).
+    const clickedPrice = clickedRow.forward * Math.exp(clickedCell.k);
+    const onMobile = typeof window !== "undefined" && window.innerWidth < 1024;
+
     if (ticketMode === "range") {
-      // In range mode a click is one edge of the band; two clicks form it.
+      // A range lives on ONE expiry (oracle). Picking two arbitrary nodes on the
+      // 3-D surface almost never lands twice on the same expiry row, so once a
+      // first edge is anchored we KEEP the band on the anchor's oracle/expiry and
+      // treat the second click as just the PRICE of the second edge. Without this
+      // the second click re-anchors on its own row and the band never forms.
+      const anchorRow =
+        rangeAnchor &&
+        surface.rows.find(
+          (rr) => rr.oracleId === rangeAnchor.oracleId && rr.expiry === rangeAnchor.expiry,
+        );
+      const targetRow = anchorRow || clickedRow;
+      const targetOracle = oracleById.get(targetRow.oracleId);
+      if (!targetOracle) return;
+      const strikeScaled = snapStrikeToTick(
+        BigInt(Math.round(clickedPrice * 1e9)),
+        targetOracle,
+      );
+      const strike = toFloat(Number(strikeScaled));
       pickRangeStrike(
         {
-          oracleId: r.oracleId,
-          expiry: r.expiry,
+          oracleId: targetRow.oracleId,
+          expiry: targetRow.expiry,
           strikeScaled: strikeScaled.toString(),
           strike,
         },
         'surface',
       );
-    } else {
-      select(
-        {
-          oracleId: r.oracleId,
-          expiry: r.expiry,
-          strikeScaled: strikeScaled.toString(),
-          strike,
-          isUp: cell.k <= 0, // below forward → UP is the natural side; user can flip
-        },
-        'surface',
-      );
+      if (onMobile) {
+        openTicketSheet();
+        return;
+      }
+      // Keep the surface clear while the band is still being drawn (first edge),
+      // so the second click is never blocked by the centered card. Open the card
+      // only once this click COMPLETES the band: an edge was already anchored on
+      // the target oracle and the second edge is a different strike.
+      const completesBand = !!anchorRow && rangeAnchor!.strikeScaled !== strikeScaled.toString();
+      if (!completesBand) return;
+      setPopover(true);
+      setClickId((n) => n + 1);
+      return;
     }
+
+    // Binary: the clicked node is the strike directly.
+    const oracle = oracleById.get(clickedRow.oracleId);
+    if (!oracle) return;
+    const strikeScaled = snapStrikeToTick(BigInt(Math.round(clickedPrice * 1e9)), oracle);
+    const strike = toFloat(Number(strikeScaled));
+    select(
+      {
+        oracleId: clickedRow.oracleId,
+        expiry: clickedRow.expiry,
+        strikeScaled: strikeScaled.toString(),
+        strike,
+        isUp: clickedCell.k <= 0, // below forward → UP is the natural side; user can flip
+      },
+      'surface',
+    );
     // Mobile/tablet: open the slide-up trade sheet (the ticket comes to the
     // user). Desktop opens the quick-mint popover (centered over the surface).
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+    if (onMobile) {
       openTicketSheet();
       return;
     }
@@ -242,7 +274,7 @@ export function SurfaceCanvas({
           minDistance={8}
           maxDistance={22}
           maxPolarAngle={Math.PI / 2.05}
-          autoRotate={isLive && !hover && !reduced && !popover}
+          autoRotate={isLive && !hover && !reduced && !popover && !rangeAnchor}
           autoRotateSpeed={0.1}
           target={[0, -0.5, 0]}
         />
@@ -250,7 +282,10 @@ export function SurfaceCanvas({
 
       {hover && !popover && <SurfaceTooltip hover={hover} />}
 
-      {popover && (
+      {/* While a range band is still being drawn (no finalized band yet), never
+          mount the centered card — it would cover the surface and block the second
+          pick. The bottom hint covers guidance until both edges are set. */}
+      {popover && !(ticketMode === "range" && !rangeSelection) && (
         <SurfaceTradePopover
           key={clickId}
           active={popoverActive}

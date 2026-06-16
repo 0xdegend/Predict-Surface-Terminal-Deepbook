@@ -62,8 +62,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const {
     owner,
     managerId,
-    positions,
-    positionsLoading,
     dusdcBalance,
     tradingBalanceBase,
     busy,
@@ -72,8 +70,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     lastDigest,
     runTx,
     createManager,
-    redeem,
-    redeemRange,
     managerKeys,
   } = acct;
 
@@ -110,9 +106,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     return inputs[0];
   }, [selection, rangeSelection, ticketMode, inputs]);
 
-  const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
-  const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
-  const rangesData = useRangePositions(managerId);
 
   // Google/zkLogin (Enoki) mints are gasless and sponsored — no wallet pop-up to
   // review the trade — so gate them behind an explicit in-app confirm (isEnoki is
@@ -345,8 +338,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
   const stepStrike = (dir: 1 | -1) =>
     setStrike((s) => snapStrikeToTick(s + BigInt(dir) * grid.tickSize, oracle));
-  const openPositions = positions.filter((p) => p.open_quantity > 0);
-  const openRanges = rangesData.positions.filter((p) => p.openQty > 0);
   // Source badge — where the current pick came from (surface/odds curve vs the
   // market list), shown when that pick is on the active oracle.
   const pickOnActive =
@@ -793,100 +784,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
         </div>
       )}
 
-      {managerId && (
-        <div className="glass-divider-top flex flex-col gap-2 pt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider text-text-3">Open positions</span>
-            <Link href="/portfolio" className="text-[10px] text-text-2 underline hover:text-text-1">
-              Portfolio →
-            </Link>
-          </div>
-          {positionsLoading || rangesData.loading ? (
-            <span className="text-text-3">loading…</span>
-          ) : openPositions.length === 0 && openRanges.length === 0 ? (
-            <span className="text-text-2">No open positions yet — pick a market above and place your first bet.</span>
-          ) : (
-            <>
-              {openPositions.slice(0, 3).map((p) => {
-                const m = positionMetrics(p);
-                return (
-                  <div
-                    key={`${p.oracle_id}-${p.strike}-${p.is_up}`}
-                    className={`glass-card interactive flex items-center justify-between py-2 pl-3.5 pr-2 ${
-                      p.is_up ? 'up' : 'down'
-                    }`}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className={`text-[10px] font-medium uppercase tracking-wider ${
-                            p.is_up ? 'text-up' : 'text-down'
-                          }`}
-                        >
-                          {p.is_up ? 'UP' : 'DOWN'}
-                        </span>
-                        <span className="text-text-1">{price(toFloat(p.strike))}</span>
-                      </span>
-                      <span className="text-[10px] text-text-3">
-                        {fmtQuote(m.contracts)} {sym} to win ·{' '}
-                        <span className={m.pnl >= 0 ? 'text-up' : 'text-down'}>
-                          {signed(m.pnl)} ({signed(m.pnlPct * 100, 1)}%)
-                        </span>
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setRedeeming(p)}
-                      disabled={!!busy}
-                      className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
-                    >
-                      {m.isSettled ? 'Redeem' : 'Close'}
-                    </button>
-                  </div>
-                );
-              })}
-              {openRanges.slice(0, 3).map((p) => {
-                const rPnl = fromQuote(p.unrealizedPnl);
-                return (
-                  <div
-                    key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
-                    className="glass-card interactive up flex items-center justify-between py-2 pl-3.5 pr-2"
-                  >
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-medium uppercase tracking-wider text-up">
-                          RANGE
-                        </span>
-                        <span className="truncate text-text-1">
-                          {price(toFloat(p.lowerStrike))}–{price(toFloat(p.higherStrike))}
-                        </span>
-                      </span>
-                      <span className="text-[10px] text-text-3">
-                        {fmtQuote(fromQuote(p.openQty))} {sym} to win ·{' '}
-                        <span className={rPnl >= 0 ? 'text-up' : 'text-down'}>{signed(rPnl)}</span>
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setRedeemingRange(p)}
-                      disabled={!!busy}
-                      className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
-                    >
-                      {p.settled ? 'Redeem' : 'Close'}
-                    </button>
-                  </div>
-                );
-              })}
-              {(openPositions.length > 3 || openRanges.length > 3) && (
-                <Link
-                  href="/portfolio"
-                  className="text-[10px] text-text-3 underline hover:text-text-2"
-                >
-                  view all {openPositions.length + openRanges.length} positions →
-                </Link>
-              )}
-            </>
-          )}
-        </div>
-      )}
 
       {error && <div className="rounded border border-down/40 bg-down/10 p-2 text-down">{error}</div>}
       {lastDigest && (
@@ -899,32 +796,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           last tx: {lastDigest.slice(0, 12)}… ↗
         </a>
       )}
-
-      <RedeemModal
-        position={redeeming}
-        busy={!!busy}
-        onConfirm={async (p, quantityBase) => {
-          await redeem(p, quantityBase);
-          setRedeeming(null);
-        }}
-        onClose={() => setRedeeming(null)}
-      />
-
-      <RangeRedeemModal
-        position={redeemingRange}
-        busy={!!busy}
-        onConfirm={async (p, quantityBase) => {
-          await redeemRange({
-            oracleId: p.oracleId,
-            expiry: p.expiry,
-            lowerStrike: BigInt(Math.round(p.lowerStrike)),
-            higherStrike: BigInt(Math.round(p.higherStrike)),
-            quantity: quantityBase,
-          });
-          setRedeemingRange(null);
-        }}
-        onClose={() => setRedeemingRange(null)}
-      />
 
       {/* Animated confirmation that the starter grant landed — a toast alone is
           easy to miss for this gasless flow. */}

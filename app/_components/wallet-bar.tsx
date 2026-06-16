@@ -26,6 +26,7 @@ import { dAppKit } from '@/lib/sui/dapp-kit';
 import { shortId } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { CashOutModal } from './cash-out-modal';
+import { BalancePill } from './balance-pill';
 
 const ACCOUNT_EXPLORER = (network: string, addr: string) =>
   `https://suiscan.xyz/${network}/account/${addr}`;
@@ -88,43 +89,42 @@ export function WalletBar() {
 
   return (
     <div ref={ref} className="relative flex items-center gap-2.5">
-      {/* network pill */}
-      <span
-        className={`hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider sm:inline-flex ${
-          isTestnet
-            ? 'border-[var(--warn-soft)] bg-[var(--warn-soft)] text-warn'
-            : 'border-[var(--line)] text-text-2'
-        }`}
-      >
-        <span className={`h-1.5 w-1.5 rounded-full ${isTestnet ? 'bg-warn' : 'bg-accent'}`} />
-        {network}
-      </span>
-
-      {/* trigger */}
       {!mounted ? (
         <span className="inline-flex h-9 w-28 animate-pulse rounded-lg border border-white/10 bg-white/[0.03]" />
       ) : connected ? (
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="chip h-9 px-2.5 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:border-line-strong"
-          aria-expanded={open}
-        >
-          <WalletGlyph wallet={conn.wallet} />
-          <span className="hidden md:inline">{shortId(conn.account.address)}</span>
-          <LuChevronDown
-            size={13}
-            className={`text-text-3 transition-transform ${open ? 'rotate-180' : ''}`}
-          />
-        </button>
+        // Unified account cluster — balance · network · wallet fused into ONE
+        // segmented glass control with hairline dividers, instead of three loose
+        // floating pills. The shell owns the border; each segment is borderless
+        // and divided by a 1px rule that appears only where neighbours are shown.
+        <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--bg-2)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+          <BalancePill />
+          <NetworkBadge network={network} isTestnet={isTestnet} variant="segment" />
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex h-full items-center gap-1.5 border-[var(--line)] px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] sm:border-l"
+            aria-expanded={open}
+            aria-label="Account menu"
+          >
+            <WalletGlyph wallet={conn.wallet} />
+            <span className="hidden md:inline">{shortId(conn.account.address)}</span>
+            <LuChevronDown
+              size={13}
+              className={`text-text-3 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </div>
       ) : (
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 text-[12px] font-semibold tracking-tight text-up transition-shadow hover:shadow-[0_0_22px_-6px_var(--accent-glow)]"
-          aria-expanded={open}
-        >
-          <LuWallet size={14} />
-          Connect
-        </button>
+        <div className="flex items-center gap-2.5">
+          <NetworkBadge network={network} isTestnet={isTestnet} variant="pill" />
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 text-[12px] font-semibold tracking-tight text-up transition-shadow hover:shadow-[0_0_22px_-6px_var(--accent-glow)]"
+            aria-expanded={open}
+          >
+            <LuWallet size={14} />
+            Connect
+          </button>
+        </div>
       )}
 
       {/* dropdown */}
@@ -278,6 +278,50 @@ function ConnectMenu({
         })
       )}
     </div>
+  );
+}
+
+/* ------------------------------ network ------------------------------ */
+
+/** The network indicator. `segment` = borderless cell inside the account cluster
+ *  (divided from the balance only at md+, where the balance shows); `pill` = the
+ *  standalone tinted capsule shown next to the disconnected Connect button. */
+function NetworkBadge({
+  network,
+  isTestnet,
+  variant,
+}: {
+  network: string;
+  isTestnet: boolean;
+  variant: 'segment' | 'pill';
+}) {
+  const dot = (
+    <span className={`h-1.5 w-1.5 rounded-full ${isTestnet ? 'bg-warn' : 'bg-accent'}`} />
+  );
+  if (variant === 'segment') {
+    return (
+      <span
+        title={`Connected to ${network}`}
+        className={`hidden h-full items-center gap-1.5 border-[var(--line)] px-3 text-[10px] font-medium uppercase tracking-wider sm:inline-flex md:border-l ${
+          isTestnet ? 'text-warn' : 'text-text-2'
+        }`}
+      >
+        {dot}
+        {network}
+      </span>
+    );
+  }
+  return (
+    <span
+      className={`hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider sm:inline-flex ${
+        isTestnet
+          ? 'border-[var(--warn-soft)] bg-[var(--warn-soft)] text-warn'
+          : 'border-[var(--line)] text-text-2'
+      }`}
+    >
+      {dot}
+      {network}
+    </span>
   );
 }
 

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
-import { BalancePill } from "./balance-pill";
 import { BottomNav } from "./bottom-nav";
 import { NavMore } from "./nav-more";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
@@ -79,14 +78,14 @@ export function TopChrome({
         ) : null}
       </div>
 
-      {/* Zone 3 — wallet. shrink-0 so the Connect/account control is always
-          fully visible, even when the chip is wide. */}
+      {/* Zone 3 — the account cluster (balance · network · wallet fused into one
+          segmented control by WalletBar), with the quiet tour "?" beside it.
+          shrink-0 so it's always fully visible, even when the chip is wide. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         {/* Tour replay is secondary — hidden on phones to declutter the header. */}
         <span className="hidden sm:inline-flex">
           <TourButton />
         </span>
-        <BalancePill />
         <WalletBar />
       </div>
     </header>
