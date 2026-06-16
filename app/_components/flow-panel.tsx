@@ -8,7 +8,6 @@
  * node pulses a fill ripple back on the surface.
  */
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -33,13 +32,8 @@ import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
 import { TicketGuide } from './ticket-guide';
 import { MintConfirmModal } from './mint-confirm-modal';
-import { RedeemModal } from './positions/redeem-modal';
-import { RangeRedeemModal } from './positions/range-redeem-modal';
 import { SuccessModal } from './ui/success-modal';
-import { positionMetrics } from './positions/position-metrics';
-import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
-import type { PositionSummary } from '@/lib/api/types';
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
 

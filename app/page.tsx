@@ -12,6 +12,7 @@ import { TopChrome } from "./_components/top-chrome";
 import { TicketRail, TradeSheet, TicketTitle } from "./_components/trade-dock";
 import { MarketView } from "./_components/surface/market-view";
 import { LiveSviPanel } from "./_components/live-svi-panel";
+import { OpenPositions } from "./_components/positions/open-positions";
 import { MarketPicker } from "./_components/market-picker";
 import { ErrorState } from "./_components/ui/error-state";
 import type { Oracle } from "@/lib/api/types";
@@ -174,6 +175,12 @@ export default async function Page() {
                   initialInputs={snapshot.surfaceInputs}
                   serverNow={serverNow}
                 />
+              </div>
+
+              {/* Open positions — sits at the BOTTOM of the rail, under the odds
+                  panel. Renders nothing until the trader has an account/positions. */}
+              <div className="border-t border-line pt-5">
+                <OpenPositions />
               </div>
             </aside>
           </main>
