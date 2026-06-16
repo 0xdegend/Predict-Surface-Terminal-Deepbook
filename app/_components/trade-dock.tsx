@@ -97,7 +97,7 @@ export function TradeSheet({ inputs, serverNow }: { inputs: SmileInput[]; server
             <LuX size={16} />
           </button>
         </div>
-        <div className="min-h-0 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1">
+        <div className="scroll-quiet min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
           <FlowPanel inputs={inputs} serverNow={serverNow} />
         </div>
       </div>

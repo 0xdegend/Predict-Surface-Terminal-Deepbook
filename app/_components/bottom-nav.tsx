@@ -15,6 +15,7 @@ import {
   LuBookOpen,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { useSurfaceStore } from '@/lib/store/surface-store';
 
 /**
  * Mobile bottom tab bar (§10.5, Phase 6 mobile). On small screens the top-chrome
@@ -54,6 +55,10 @@ const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: 
 export function BottomNav() {
   const pathname = usePathname() ?? '/';
   const [open, setOpen] = useState(false);
+  // The mobile trade sheet is a focused modal that slides up over this dock — so
+  // tuck the dock away while it's open (otherwise it floats on top of the sheet's
+  // bottom content, which is exactly where the range-pick curve lives).
+  const ticketSheetOpen = useSurfaceStore((s) => s.ticketSheetOpen);
 
   const primaryIndex = PRIMARY.findIndex((t) => t.match(pathname));
   const moreActive = MORE.some((m) => pathname.startsWith(m.href));
@@ -74,7 +79,10 @@ export function BottomNav() {
     // only the dock (and, when open, the sheet/backdrop) are interactive.
     <nav
       aria-label="Primary"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] lg:hidden"
+      aria-hidden={ticketSheetOpen}
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
+        ticketSheetOpen ? 'pointer-events-none translate-y-[130%]' : 'translate-y-0'
+      }`}
     >
       {/* Backdrop — dims the page behind the sheet; tap to dismiss. Sits behind
           the sheet + dock (negative z within this stacking context) but above
