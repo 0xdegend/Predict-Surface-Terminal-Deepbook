@@ -9,7 +9,7 @@ import { toFloat } from "@/config/scale";
 import { parseSvi } from "@/lib/svi/svi";
 import type { SmileInput } from "@/lib/svi/surface";
 import { TopChrome } from "./_components/top-chrome";
-import { TicketRail, TradeSheet } from "./_components/trade-dock";
+import { TicketRail, TradeSheet, TicketTitle } from "./_components/trade-dock";
 import { MarketView } from "./_components/surface/market-view";
 import { LiveSviPanel } from "./_components/live-svi-panel";
 import { MarketPicker } from "./_components/market-picker";
@@ -156,9 +156,7 @@ export default async function Page() {
                   data-tour="ticket"
                   className="hidden scroll-mt-20 lg:block"
                 >
-                  <SectionTitle>
-                    Trade ticket · click surface → mint
-                  </SectionTitle>
+                  <TicketTitle />
                   <div className="mt-3">
                     <TicketRail
                       inputs={snapshot.surfaceInputs}
@@ -188,14 +186,5 @@ export default async function Page() {
         </>
       ) : null}
     </div>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
-      <span className="h-3 w-px bg-accent/70" />
-      {children}
-    </h2>
   );
 }

@@ -10,10 +10,11 @@
  * read the same live selection, so clicking a market keeps the strike in sync.
  */
 import dynamic from 'next/dynamic';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LuBoxes, LuChartArea } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useSurfaceStore } from '@/lib/store/surface-store';
 import { SurfaceMount } from './surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -64,6 +65,13 @@ export function MarketView({
   const mounted = useMounted();
   const [override, setOverride] = useState<View | null>(null);
   const view: View = override ?? (mounted ? readSaved() ?? defaultView() : null) ?? 'surface';
+
+  // Mirror the resolved view into the store so other UI (e.g. the ticket title's
+  // "click surface / click a market" hint) tracks which hero is showing.
+  const setHeroView = useSurfaceStore((s) => s.setHeroView);
+  useEffect(() => {
+    setHeroView(view);
+  }, [view, setHeroView]);
 
   function choose(next: View) {
     setOverride(next);

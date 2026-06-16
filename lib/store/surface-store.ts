@@ -22,6 +22,10 @@ export type TicketMode = 'binary' | 'range';
  *  badge. Preserved across in-ticket tweaks (e.g. flipping UP/DOWN). */
 export type SelectionSource = 'surface' | 'market';
 
+/** Which hero view is showing (set by MarketView). Lets other UI — e.g. the
+ *  ticket title's "click surface / click a market" hint — track it reactively. */
+export type HeroView = 'surface' | 'chart';
+
 /** A single strike pick (anchor of a range band, or a binary). */
 export interface StrikePick {
   oracleId: string;
@@ -67,6 +71,9 @@ interface SurfaceState {
    *  ticket lives in the always-visible right rail there). */
   ticketSheetOpen: boolean;
 
+  /** The hero view currently shown (3-D surface vs price chart). */
+  heroView: HeroView;
+
   setMode: (mode: SurfaceMode) => void;
   setScrub: (scrub: number) => void; // also flips to scrub mode
   goLive: () => void;
@@ -83,6 +90,7 @@ interface SurfaceState {
   pulseFill: (f: { oracleId: string; strike: number; isUp: boolean }) => void;
   openTicketSheet: () => void;
   closeTicketSheet: () => void;
+  setHeroView: (v: HeroView) => void;
 }
 
 export const useSurfaceStore = create<SurfaceState>((set) => ({
@@ -97,6 +105,7 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
   rangeSelection: null,
   fill: null,
   ticketSheetOpen: false,
+  heroView: 'surface',
 
   setMode: (mode) => set({ mode }),
   setScrub: (scrub) => set({ scrub: Math.max(0, Math.min(1, scrub)), mode: 'scrub' }),
@@ -140,4 +149,5 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
   pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
   openTicketSheet: () => set({ ticketSheetOpen: true }),
   closeTicketSheet: () => set({ ticketSheetOpen: false }),
+  setHeroView: (heroView) => set({ heroView }),
 }));

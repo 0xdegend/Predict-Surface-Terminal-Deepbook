@@ -21,6 +21,19 @@ import type { SmileInput } from '@/lib/svi/surface';
 
 const DESKTOP_MQ = '(min-width: 1024px)';
 
+/** Rail ticket heading whose hint follows the hero view: you click the surface
+ *  to trade it, but the chart isn't pickable — there you pick from the markets. */
+export function TicketTitle() {
+  const heroView = useSurfaceStore((s) => s.heroView);
+  const hint = heroView === 'chart' ? 'click a market → mint' : 'click surface → mint';
+  return (
+    <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+      <span className="h-3 w-px bg-accent/70" />
+      Trade ticket · {hint}
+    </h2>
+  );
+}
+
 /** Desktop right-rail ticket. Renders nothing on mobile (the sheet takes over). */
 export function TicketRail({ inputs, serverNow }: { inputs: SmileInput[]; serverNow: number }) {
   const isDesktop = useMediaQuery(DESKTOP_MQ);
