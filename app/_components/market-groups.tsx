@@ -59,6 +59,7 @@ export function MarketGroups({
 }) {
   const selection = useSurfaceStore((s) => s.selection);
   const select = useSurfaceStore((s) => s.select);
+  const openTicketSheet = useSurfaceStore((s) => s.openTicketSheet);
   const now = useNow(serverNow);
   // Shared poll with the table/ticket — newly opened expiries appear, settled
   // ones drop, no reload.
@@ -86,9 +87,8 @@ export function MarketGroups({
       },
       'market',
     );
-    if (typeof document !== 'undefined') {
-      document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    // Mobile: pop the trade sheet. Desktop: the rail ticket is always visible.
+    openTicketSheet();
   }
 
   const total = groups.reduce((n, g) => n + g.oracles.length, 0);

@@ -37,6 +37,7 @@ export function OracleTable({
 }) {
   const selection = useSurfaceStore((s) => s.selection);
   const select = useSurfaceStore((s) => s.select);
+  const openTicketSheet = useSurfaceStore((s) => s.openTicketSheet);
   const now = useNow(serverNow);
   // Live set — picks up newly opened expiries and drops settled ones server-side
   // (the clock drops expired-but-unsettled below); no reload needed.
@@ -105,10 +106,8 @@ export function OracleTable({
       },
       'market',
     );
-    // Scroll the ticket into view on narrow layouts where it sits below.
-    if (typeof document !== 'undefined') {
-      document.getElementById('trade-ticket')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
+    // Mobile: pop the trade sheet. Desktop: the rail ticket is always visible.
+    openTicketSheet();
   }
 
   // Once a market expires it's no longer tradeable — drop it from the picker so

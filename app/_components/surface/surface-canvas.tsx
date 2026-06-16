@@ -72,6 +72,7 @@ export function SurfaceCanvas({
   const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
   const rangeAnchor = useSurfaceStore((s) => s.rangeAnchor);
   const pickRangeStrike = useSurfaceStore((s) => s.pickRangeStrike);
+  const openTicketSheet = useSurfaceStore((s) => s.openTicketSheet);
   const reduced = usePrefersReducedMotion();
   const now = useNow(0);
 
@@ -170,12 +171,10 @@ export function SurfaceCanvas({
         'surface',
       );
     }
-    // On stacked (mobile/tablet) layouts the ticket sits far below — bring it
-    // into view. Desktop opens the quick-mint popover (centered over the surface).
+    // Mobile/tablet: open the slide-up trade sheet (the ticket comes to the
+    // user). Desktop opens the quick-mint popover (centered over the surface).
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      document
-        .getElementById("trade-ticket")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      openTicketSheet();
       return;
     }
     setPopover(true);

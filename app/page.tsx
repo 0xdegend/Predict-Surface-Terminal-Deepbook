@@ -9,7 +9,7 @@ import { toFloat } from "@/config/scale";
 import { parseSvi } from "@/lib/svi/svi";
 import type { SmileInput } from "@/lib/svi/surface";
 import { TopChrome } from "./_components/top-chrome";
-import { FlowPanel } from "./_components/flow-panel";
+import { TicketRail, TradeSheet } from "./_components/trade-dock";
 import { MarketView } from "./_components/surface/market-view";
 import { LiveSviPanel } from "./_components/live-svi-panel";
 import { MarketPicker } from "./_components/market-picker";
@@ -118,7 +118,7 @@ export default async function Page() {
         <>
           <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
             <section className="flex min-w-0 flex-col gap-px bg-white/[0.06]">
-              {/* 3-D SVI surface — the hero */}
+              {/* 3-D SVI surface — the hero, on top across all breakpoints. */}
               <div
                 data-tour="surface"
                 className="h-[48vh] min-h-[360px] bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-[520px]"
@@ -155,17 +155,19 @@ export default async function Page() {
                 />
               </div>
 
+              {/* Desktop-only rail ticket. On mobile the ticket lives in the
+                  slide-up sheet (TradeSheet) opened by picking a market. */}
               {snapshot.surfaceInputs.length > 0 && (
                 <div
                   id="trade-ticket"
                   data-tour="ticket"
-                  className="glass-divider-top scroll-mt-20 pt-5"
+                  className="glass-divider-top hidden scroll-mt-20 pt-5 lg:block"
                 >
                   <SectionTitle>
                     Trade ticket · click surface → mint
                   </SectionTitle>
                   <div className="mt-3">
-                    <FlowPanel
+                    <TicketRail
                       inputs={snapshot.surfaceInputs}
                       serverNow={serverNow}
                     />
@@ -174,6 +176,12 @@ export default async function Page() {
               )}
             </aside>
           </main>
+
+          {/* Mobile trade ticket — slides up over the page when a market is
+              picked (any selection). Renders nothing on desktop. */}
+          {snapshot.surfaceInputs.length > 0 && (
+            <TradeSheet inputs={snapshot.surfaceInputs} serverNow={serverNow} />
+          )}
         </>
       ) : null}
     </div>

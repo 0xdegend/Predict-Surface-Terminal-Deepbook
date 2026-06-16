@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { LuLayoutGrid, LuTable2 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { MarketGroups } from './market-groups';
 import { OracleTable } from './oracle-table';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -42,11 +43,13 @@ export function MarketPicker({
 }) {
   // Server + first client paint render the default; the saved preference only
   // applies once mounted, so SSR and hydration agree. An explicit user choice
-  // overrides both. Default is the dense Table view — traders land on the full
-  // strike/IV/oracle grid and can switch to Cards for the simpler decision view.
+  // overrides both. Default is the dense Table on desktop; on mobile we lead with
+  // the friendlier, tappable Cards (the primary mobile trade surface).
   const mounted = useMounted();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [override, setOverride] = useState<View | null>(null);
-  const view: View = override ?? (mounted ? readSaved() : null) ?? 'table';
+  const fallback: View = mounted && !isDesktop ? 'cards' : 'table';
+  const view: View = override ?? (mounted ? (readSaved() ?? fallback) : null) ?? 'table';
 
   function choose(next: View) {
     setOverride(next);

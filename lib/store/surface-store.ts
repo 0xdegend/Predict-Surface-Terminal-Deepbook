@@ -62,6 +62,11 @@ interface SurfaceState {
   /** Last confirmed mint — drives the fill ripple on the surface. */
   fill: { oracleId: string; strike: number; isUp: boolean; ts: number } | null;
 
+  /** Mobile only: whether the bottom-sheet trade ticket is open. Picking any
+   *  market (surface node / card / table row) opens it; desktop ignores it (the
+   *  ticket lives in the always-visible right rail there). */
+  ticketSheetOpen: boolean;
+
   setMode: (mode: SurfaceMode) => void;
   setScrub: (scrub: number) => void; // also flips to scrub mode
   goLive: () => void;
@@ -76,6 +81,8 @@ interface SurfaceState {
   pickRangeStrike: (s: StrikePick, source?: SelectionSource) => void;
   clearRange: () => void;
   pulseFill: (f: { oracleId: string; strike: number; isUp: boolean }) => void;
+  openTicketSheet: () => void;
+  closeTicketSheet: () => void;
 }
 
 export const useSurfaceStore = create<SurfaceState>((set) => ({
@@ -89,6 +96,7 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
   rangeAnchor: null,
   rangeSelection: null,
   fill: null,
+  ticketSheetOpen: false,
 
   setMode: (mode) => set({ mode }),
   setScrub: (scrub) => set({ scrub: Math.max(0, Math.min(1, scrub)), mode: 'scrub' }),
@@ -130,4 +138,6 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
     }),
   clearRange: () => set({ rangeAnchor: null, rangeSelection: null }),
   pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
+  openTicketSheet: () => set({ ticketSheetOpen: true }),
+  closeTicketSheet: () => set({ ticketSheetOpen: false }),
 }));
