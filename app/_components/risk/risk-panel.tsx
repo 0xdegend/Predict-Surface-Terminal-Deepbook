@@ -136,8 +136,8 @@ export function RiskPanel({
           Vault risk
         </h1>
         <p className="mt-1 text-[12px] text-text-3">
-          Is the PLP pool safe? · live vault health and a ±Nσ stress test ·{" "}
-          {predictConfig.network}
+          How safe is the pool? · live health check, plus a what-if price-move
+          simulator · {predictConfig.network}
         </p>
       </div>
 
@@ -161,36 +161,36 @@ export function RiskPanel({
 
             <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               <Inset
-                label="PLP share price"
+                label="Price per share"
                 value={num(summary.plp_share_price, 6)}
                 strong
               />
               <Inset
-                label="Liability (MTM)"
+                label="Owed to traders"
                 value={fmtQuote(fromQuote(summary.total_mtm))}
               />
               <Inset
-                label="Max payout"
+                label="Most it could pay"
                 value={fmtQuote(fromQuote(summary.total_max_payout))}
               />
               <Inset
-                label="PLP supply"
+                label="Total shares"
                 value={fmtQuote(fromQuote(summary.plp_total_supply))}
               />
               <Inset
-                label="Balance"
+                label="Cash in pool"
                 value={fmtQuote(fromQuote(summary.vault_balance))}
               />
               <Inset
-                label="Net deposits"
+                label="Net deposited"
                 value={fmtQuote(fromQuote(summary.net_deposits))}
               />
               <Inset
-                label="Supplied"
+                label="Total added"
                 value={fmtQuote(fromQuote(summary.total_supplied))}
               />
               <Inset
-                label="Withdrawn"
+                label="Total withdrawn"
                 value={fmtQuote(fromQuote(summary.total_withdrawn))}
               />
             </div>
@@ -205,8 +205,8 @@ export function RiskPanel({
               <RadialGauge
                 value={utilFrac}
                 display={pct(summary.utilization, 1)}
-                label="Utilization"
-                caption={`of ${pct(maxExposure, 0)} cap`}
+                label="In use"
+                caption={`of ${pct(maxExposure, 0)} limit`}
                 color={
                   utilFrac > 0.85
                     ? "var(--down)"
@@ -218,7 +218,7 @@ export function RiskPanel({
               <RadialGauge
                 value={headroomFrac}
                 display={pct(headroomFrac, 0)}
-                label="Headroom"
+                label="Free now"
                 caption={`${fmtQuote(fromQuote(summary.available_withdrawal))} free`}
                 color={
                   headroomFrac < 0.15
@@ -231,7 +231,7 @@ export function RiskPanel({
             </div>
             <div className="mt-5">
               <Gauge
-                label="Max-payout utilization"
+                label="Payout cap used"
                 value={summary.max_payout_utilization}
                 max={1}
                 caption={pct(summary.max_payout_utilization, 3)}
@@ -242,7 +242,7 @@ export function RiskPanel({
           {/* Share-price history */}
           <div className="glass-card p-5">
             <CardTitle icon={LuTrendingUp} color={HUE.teal}>
-              PLP share price · history
+              Price per share · history
             </CardTitle>
             <div className="glass-inset mt-4 p-3">
               <PerfChart points={performance} />
@@ -252,7 +252,7 @@ export function RiskPanel({
           {/* Vault flows — LP capital in / out */}
           <div className="glass-card p-5">
             <CardTitle icon={LuArrowLeftRight} color={HUE.violet}>
-              Vault flows
+              Money in &amp; out
             </CardTitle>
             <FlowsTable flows={flows} />
           </div>
@@ -262,7 +262,7 @@ export function RiskPanel({
         <aside className="lg:sticky lg:top-6 lg:self-start">
           <div className="glass-card p-5">
             <CardTitle icon={LuSlidersHorizontal} color={HUE.blue}>
-              Stress test
+              What-if price move
             </CardTitle>
 
             {/* Reactive safety dial — sweeps live as the slider moves */}
@@ -270,11 +270,11 @@ export function RiskPanel({
               <RadialGauge
                 value={safety}
                 display={pct(safety, 0)}
-                label="Vault safety"
+                label="Pool safety"
                 caption={
-                  Math.abs(nSigma) < 0.01
+                  Math.abs(sel.shockPct) < 0.0001
                     ? "at rest"
-                    : `at ${signed(nSigma, 2)}σ`
+                    : `if price moves ${signed(sel.shockPct * 100, 1)}%`
                 }
                 color={safetyColor}
                 size={132}
@@ -304,30 +304,20 @@ export function RiskPanel({
                 </span>
                 <p className="text-[12px] leading-relaxed text-text-2">
                   {resilient
-                    ? "Even in a rare, extreme price swing, liquidity providers would lose under 1% of the pool."
+                    ? "Even in a rare, extreme price swing, people who put money in the pool would lose under 1% of it."
                     : `In a rare, extreme price swing the pool could drop about ${pct(Math.abs(whatif.worstPnlPct), 1)}.`}
                 </p>
               </div>
             </div>
 
             <p className="mt-4 text-[12px] leading-relaxed text-text-3">
-              Drag the slider to simulate a sudden price move and see how the
-              pool would hold up — its live open bets are re-priced in real
-              time.
+              Drag the slider to imagine the price suddenly jumping or dropping,
+              and see how the pool would hold up — every open bet is re-valued
+              live. The far ends are rare, extreme swings.
             </p>
-            <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-text-3">
-              <span className="inline-flex items-center gap-1">
-                1σ ≈ {pct(whatif.sigma, 2)} move
-                <InfoTip label="standard deviation (sigma)">
-                  σ (sigma) measures how big a price move is. 1σ ≈{" "}
-                  {pct(whatif.sigma, 2)} is a normal day; ±3σ is a rare, extreme
-                  swing — about 99.7% of moves are smaller.
-                </InfoTip>
-              </span>
-              <span>
-                · {positions} live strikes, {fmtQuote(fromQuote(netExposure))}{" "}
-                {predictConfig.quote.symbol} at risk
-              </span>
+            <p className="mt-2 text-[11px] text-text-3">
+              {positions} open bets · {fmtQuote(fromQuote(netExposure))}{" "}
+              {predictConfig.quote.symbol} at risk right now
             </p>
 
             <div className="glass-inset mt-4 p-2.5">
@@ -342,13 +332,12 @@ export function RiskPanel({
               value={nSigma}
               onChange={(e) => setNSigma(Number(e.target.value))}
               className="surface-scrub mt-4 h-4 w-full cursor-pointer focus:outline-none focus-visible:outline-none"
-              aria-label="Simulated price move, in standard deviations"
+              aria-label="Simulated price move"
             />
             <div className="mt-2 flex items-center justify-between text-[10px] text-text-3">
               <span>↓ Big drop</span>
               <span className="font-mono tabular-nums text-text-1">
-                {signed(sel.shockPct * 100, 2)}% move{" "}
-                <span className="text-text-3">({signed(nSigma, 2)}σ)</span>
+                {signed(sel.shockPct * 100, 2)}% move
               </span>
               <span>Big rise ↑</span>
             </div>
@@ -356,11 +345,11 @@ export function RiskPanel({
             {/* Demo exposure amplifier — ×1 is strictly live */}
             <div className="mt-4 flex items-center justify-between gap-3">
               <span className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-text-3">
-                Demo stress
-                <InfoTip label="demo stress amplifier">
-                  Scales the modeled open interest so the dial visibly swings on a
-                  thin testnet book. ×1 is the real, live exposure; higher
-                  multipliers are illustrative — the projected figures are marked
+                Amplify (demo)
+                <InfoTip label="demo amplifier">
+                  The test network has very few open bets, so the dials barely
+                  move. ×1 is the real, live amount; higher settings exaggerate it
+                  so you can see the effect — those figures are marked as
                   amplified.
                 </InfoTip>
               </span>
@@ -383,28 +372,28 @@ export function RiskPanel({
 
             <div className="glass-inset mt-4 grid grid-cols-2 gap-x-6 gap-y-3 p-4 font-mono text-[12px] tabular-nums">
               <Stat
-                label="Projected share price"
-                tip="What one PLP share would be worth after this simulated move."
+                label="Share price after"
+                tip="What one share would be worth after this price move."
                 value={num(sel.sharePrice, 6)}
                 strong
               />
               <Stat
-                label="Pool P&L"
-                tip="Profit or loss for liquidity providers at this move."
+                label="Pool profit / loss"
+                tip="Profit or loss for people who put money in the pool, at this move."
                 value={pct(sel.pnlPct, 3)}
                 tone={
                   sel.pnlPct < 0 ? "down" : sel.pnlPct > 0 ? "up" : undefined
                 }
               />
               <Stat
-                label="Vault change"
-                tip="Change in the pool's total value at this move."
+                label="Pool value change"
+                tip="How much the pool's total value changes at this move."
                 value={fmtQuote(fromQuote(sel.deltaValue))}
                 tone={sel.deltaValue < 0 ? "down" : "up"}
               />
               <Stat
                 label="Worst case"
-                tip="The biggest loss across a rare, extreme swing (±3 standard deviations)."
+                tip="The biggest loss in a rare, extreme price swing."
                 value={pct(whatif.worstPnlPct, 3)}
                 tone={whatif.worstPnlPct < -0.005 ? "down" : undefined}
               />
@@ -413,12 +402,11 @@ export function RiskPanel({
             <p className="mt-3 text-[10px] leading-relaxed text-text-3">
               {stressX > 1 && (
                 <span className="text-[var(--warn)]">
-                  Exposure amplified ×{stressX} for demo —{" "}
+                  Amplified ×{stressX} for demo —{" "}
                 </span>
               )}
-              Modeled live from on-chain open interest (binary markets only) —
-              reference liability {fmtQuote(fromQuote(whatif.baseLiability))} vs
-              reported {fmtQuote(fromQuote(whatif.reportedMtm))}.
+              Calculated live from the pool&apos;s current open bets (up/down
+              markets only).
             </p>
           </div>
         </aside>
@@ -512,7 +500,7 @@ function WhatIfCurve({
         fontSize={9}
         fontFamily="monospace"
       >
-        PLP P&amp;L vs spot shock
+        Pool profit / loss vs price move
       </text>
     </svg>
   );
@@ -642,7 +630,7 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
   if (flows.length === 0) {
     return (
       <div className="glass-inset mt-4 px-4 py-8 text-center text-[12px] text-text-3">
-        No LP flows yet.
+        No deposits or withdrawals yet.
       </div>
     );
   }
@@ -663,10 +651,10 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:px-3 [&>th]:py-2.5 [&>th]:font-normal">
             <th>Time</th>
-            <th>Flow</th>
-            <th>LP account</th>
+            <th>Type</th>
+            <th>Account</th>
             <th className="text-right">Amount</th>
-            <th className="text-right">PLP</th>
+            <th className="text-right">Shares</th>
           </tr>
         </thead>
         <tbody className="row-divider">
@@ -691,7 +679,7 @@ function FlowsTable({ flows }: { flows: VaultFlow[] }) {
                     ) : (
                       <LuArrowUpFromLine size={12} />
                     )}
-                    {inflow ? "Supply" : "Withdraw"}
+                    {inflow ? "Added" : "Withdrew"}
                   </span>
                 </td>
                 <td>

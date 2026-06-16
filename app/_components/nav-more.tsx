@@ -16,8 +16,8 @@ import { useAdminCap } from '@/lib/hooks/use-admin-cap';
  * (open state + route-derived active). Shown only at lg+; mobile uses BottomNav.
  */
 const ITEMS: { href: string; label: string; desc: string; icon: IconType }[] = [
-  { href: '/vault', label: 'Vault', desc: 'Provide liquidity · earn PLP', icon: LuVault },
-  { href: '/risk', label: 'Vault Risk', desc: 'Exposure · ±σ stress test', icon: LuShieldAlert },
+  { href: '/vault', label: 'Vault', desc: 'Add funds · earn a share of fees', icon: LuVault },
+  { href: '/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
 ];
 
 export function NavMore() {

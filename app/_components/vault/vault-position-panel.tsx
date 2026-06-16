@@ -101,21 +101,21 @@ export function VaultPositionPanel() {
     <div className="mx-auto w-full max-w-2xl px-4 pb-12 sm:px-5">
       <div className="mb-4 flex items-center gap-2">
         <LuLandmark size={16} className="text-[var(--accent)]" />
-        <h2 className="text-[15px] font-semibold tracking-tight text-text-1">Your vault position</h2>
+        <h2 className="text-[15px] font-semibold tracking-tight text-text-1">Your pool stake</h2>
       </div>
 
       {!mounted ? (
         <div className="glass-card h-44 animate-pulse" />
       ) : !owner ? (
         <div className="glass-card p-5 text-[12px] text-text-3">
-          Connect a wallet to see your PLP stake.
+          Connect a wallet to see your stake in the pool.
         </div>
       ) : !hasPlp ? (
         <div className="glass-card flex flex-col items-start gap-1 p-5">
-          <span className="text-[13px] text-text-1">No PLP yet</span>
+          <span className="text-[13px] text-text-1">Nothing in the pool yet</span>
           <span className="text-[11px] leading-relaxed text-text-3">
-            Supply to the vault above to start earning the vault&apos;s house edge — with or without the
-            crash-insurance hedge. Your PLP stake and yield will show up here, and you can withdraw any
+            Add to the pool above to start earning a share of the trading fees — with or without crash
+            protection. Your stake and earnings will show up here, and you can take your money out any
             time.
           </span>
         </div>
@@ -147,9 +147,9 @@ export function VaultPositionPanel() {
 
           {/* Stat grid */}
           <div className="grid grid-cols-2 gap-2.5">
-            <Field label="PLP held" value={`${fmtQuote(plpFloat)} PLP`} />
+            <Field label="Shares held" value={`${fmtQuote(plpFloat)} shares`} />
             <Field label="Net deposited" value={`${fmtQuote(netDeposited)} ${sym}`} />
-            <Field label="Share price" value={priced ? `${sharePrice.toFixed(4)} ${sym}/PLP` : '…'} />
+            <Field label="Price per share" value={priced ? `${sharePrice.toFixed(4)} ${sym}` : '…'} />
             <Field label="Available now" value={`${fmtQuote(maxOut)} ${sym}`} />
           </div>
 
@@ -173,13 +173,13 @@ export function VaultPositionPanel() {
             </div>
             {!redeemAll && amount > 0 && priced && (
               <span className="text-[10px] text-text-3">
-                ≈ {fmtQuote(fromQuote(plpToRedeem))} PLP redeemed
+                ≈ {fmtQuote(fromQuote(plpToRedeem))} shares cashed out
               </span>
             )}
             {limiterCaps && (
               <span className="font-sans text-[10px] leading-relaxed text-text-3">
-                The withdrawal limiter caps you at {fmtQuote(availableWithdrawal)} {sym} right now —
-                some capital is backing open positions. The rest frees up as those settle.
+                You can take out up to {fmtQuote(availableWithdrawal)} {sym} right now — some of the pool
+                is backing open bets. The rest frees up as those finish.
               </span>
             )}
           </label>
@@ -193,9 +193,9 @@ export function VaultPositionPanel() {
           <WithdrawButton reason={reason} busy={acct.busy} onClick={withdraw} sym={sym} />
 
           <p className="font-sans text-[10px] leading-relaxed text-text-3">
-            Withdrawing burns PLP for {sym} at the vault&apos;s live share price — its value floats
-            with the pool&apos;s PnL, so it isn&apos;t principal-guaranteed. The crash-insurance leg is
-            a separate position in your Portfolio.
+            Taking money out converts your pool shares back to {sym} at the current price per share.
+            That value rises and falls with the pool, so it isn&apos;t guaranteed. Any crash protection
+            is a separate position on your Portfolio.
           </p>
         </div>
       )}
@@ -228,8 +228,8 @@ function WithdrawButton({
   }
   const label: Record<string, string> = {
     enter: 'Enter an amount',
-    exceeds: 'Amount exceeds your position',
-    limiter: 'Exceeds available right now',
+    exceeds: 'More than your stake',
+    limiter: 'More than you can take out now',
     ready: busy === 'withdraw-plp' ? 'withdrawing…' : `Withdraw ${sym}`,
   };
   const disabled = reason !== 'ready' || !!busy;

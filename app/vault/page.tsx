@@ -11,7 +11,7 @@ import { ErrorState } from '../_components/ui/error-state';
 export const metadata: Metadata = {
   title: 'Vault',
   description:
-    'Provide liquidity to the DeepBook Predict PLP vault on Skew — supply DUSDC, earn PLP, optionally hedge with crash insurance, and track vault performance.',
+    'Add funds to the Skew pool and earn a share of the trading fees — with optional one-click crash protection. Take your money out any time.',
 };
 
 export const dynamic = 'force-dynamic';

@@ -22,7 +22,7 @@ import { ErrorState } from '../_components/ui/error-state';
 export const metadata: Metadata = {
   title: 'Vault Risk',
   description:
-    'Is PLP safe? Skew’s risk panel for the DeepBook Predict vault — utilization, withdrawal headroom, per-oracle exposure, and a ±Nσ what-if simulator.',
+    'How safe is the Skew pool? A live health check — how much is in use, how much you can withdraw, and a what-if simulator showing how the pool holds up if the price suddenly moves.',
 };
 
 export const dynamic = 'force-dynamic';
