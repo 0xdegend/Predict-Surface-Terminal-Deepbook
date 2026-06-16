@@ -24,6 +24,7 @@ import { humanizeError } from '@/lib/sui/abort';
 import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 import { MintConfirmModal } from './mint-confirm-modal';
+import { SmileStrip } from './smile-strip';
 import { dateUTC, countdown } from '@/lib/format';
 
 /** Final-seconds hard cutoff before expiry (mirrors FlowPanel's MINT_CUTOFF_MS). */
@@ -181,16 +182,17 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
     }
   }
 
-  // No band yet → guide the pick on the odds curve.
+  // No band yet → tap two levels on the embedded odds curve (self-contained, so
+  // it works inside the mobile drawer where the rail curve is out of reach).
   if (!hasBand) {
     return (
-      <div className="glass-inset flex flex-col gap-1.5 p-3 text-[11px] leading-relaxed text-text-3">
-        <span className="text-text-2">Pick your range on the odds curve above.</span>
-        <span>
+      <div className="flex flex-col gap-2">
+        <p className="text-[11px] leading-relaxed text-text-2">
           {anchor && anchor.oracleId === oracle.oracle_id
-            ? `Lower bound set at ${price(anchor.strike)} — now click the upper price.`
-            : `Click two price levels to bet ${oracle.underlying_asset} settles between them.`}
-        </span>
+            ? `Lower level set at ${price(anchor.strike)} — now tap the upper price on the curve.`
+            : `Tap two price levels on the curve to bet ${oracle.underlying_asset} settles between them.`}
+        </p>
+        <SmileStrip input={active} />
       </div>
     );
   }
@@ -206,13 +208,17 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[11px] leading-relaxed text-text-3">
-        You win if <span className="text-text-2">{oracle.underlying_asset}</span> settles{' '}
+      <p className="text-[11px] leading-relaxed text-text-2">
+        You win if <span className="text-text-1">{oracle.underlying_asset}</span> settles{' '}
         <span className="text-accent">
           between {price(band!.lower)} and {price(band!.higher)}
         </span>{' '}
         at expiry. Otherwise your bet is lost.
       </p>
+
+      {/* Keep the curve in view so the band is adjustable right here — tap to
+          re-pick (or use reset below). Essential inside the mobile drawer. */}
+      <SmileStrip input={active} />
 
       <div className="flex items-center justify-between">
         <span className="eyebrow">Your band</span>

@@ -145,23 +145,16 @@ export default async function Page() {
               </div>
             </section>
 
-            {/* Right rail: live SVI + the trade flow. Stacks below on mobile. */}
+            {/* Right rail. Desktop: trade ticket on top, market odds underneath.
+                On mobile the rail is just the odds panel (the ticket lives in the
+                slide-up TradeSheet), stacking below the surface + markets. */}
             <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-              <div data-tour="svi">
-                <LiveSviPanel
-                  oracles={snapshot.oracles}
-                  initialInputs={snapshot.surfaceInputs}
-                  serverNow={serverNow}
-                />
-              </div>
-
-              {/* Desktop-only rail ticket. On mobile the ticket lives in the
-                  slide-up sheet (TradeSheet) opened by picking a market. */}
+              {/* Desktop-only rail ticket (mobile uses the drawer). */}
               {snapshot.surfaceInputs.length > 0 && (
                 <div
                   id="trade-ticket"
                   data-tour="ticket"
-                  className="glass-divider-top hidden scroll-mt-20 pt-5 lg:block"
+                  className="hidden scroll-mt-20 lg:block"
                 >
                   <SectionTitle>
                     Trade ticket · click surface → mint
@@ -174,6 +167,16 @@ export default async function Page() {
                   </div>
                 </div>
               )}
+
+              {/* Market odds — below the ticket on desktop (a desktop-only hairline
+                  separates them); on mobile it's the lone rail panel, no divider. */}
+              <div data-tour="svi" className="lg:border-t lg:border-line lg:pt-5">
+                <LiveSviPanel
+                  oracles={snapshot.oracles}
+                  initialInputs={snapshot.surfaceInputs}
+                  serverNow={serverNow}
+                />
+              </div>
             </aside>
           </main>
 
