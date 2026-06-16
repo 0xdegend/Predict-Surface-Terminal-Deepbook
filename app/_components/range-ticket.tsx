@@ -35,7 +35,6 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const acct = usePredictAccount();
   const band = useSurfaceStore((s) => s.rangeSelection);
   const anchor = useSurfaceStore((s) => s.rangeAnchor);
-  const clearRange = useSurfaceStore((s) => s.clearRange);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
   const [betInput, setBetInput] = useState(1); // DUSDC the user wants to bet (stake)
 
@@ -62,6 +61,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const mintLocked = expired || tooCloseToExpiry;
 
   const hasBand = !!band && band.oracleId === oracle.oracle_id;
+
   const fair = hasBand
     ? rangeFair(band!.lower, band!.higher, active.forward, active.svi, active.settlement ?? null)
     : 0;
@@ -185,13 +185,28 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // No band yet → tap two levels on the embedded odds curve (self-contained, so
   // it works inside the mobile drawer where the rail curve is out of reach).
   if (!hasBand) {
+    const anchored = anchor && anchor.oracleId === oracle.oracle_id;
     return (
       <div className="flex flex-col gap-2">
-        <p className="text-[11px] leading-relaxed text-text-2">
-          {anchor && anchor.oracleId === oracle.oracle_id
-            ? `Lower level set at ${price(anchor.strike)} — now tap the upper price on the curve.`
-            : `Tap two price levels on the curve to bet ${oracle.underlying_asset} settles between them.`}
-        </p>
+        {/* Prominent instruction callout (accent bar + bright text) so it's
+            obvious how to build a range — not a faint grey line. */}
+        <div className="flex items-start gap-2.5 rounded-lg border border-up/30 bg-(--accent-soft) p-2.5">
+          <span aria-hidden className="mt-0.5 h-3.5 w-px shrink-0 bg-accent" />
+          <p className="text-[12px] leading-relaxed text-text-1">
+            {anchored ? (
+              <>
+                Lower level set at{' '}
+                <span className="tabular-nums text-accent">{price(anchor!.strike)}</span> — now tap
+                the <span className="text-accent">upper</span> price on the curve.
+              </>
+            ) : (
+              <>
+                Tap <span className="text-accent">two price levels</span> on the curve to bet{' '}
+                {oracle.underlying_asset} settles between them.
+              </>
+            )}
+          </p>
+        </div>
         <SmileStrip input={active} />
       </div>
     );
@@ -216,24 +231,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
         at expiry. Otherwise your bet is lost.
       </p>
 
-      {/* Keep the curve in view so the band is adjustable right here — tap to
-          re-pick (or use reset below). Essential inside the mobile drawer. */}
+      {/* The band lives on the curve: drag either edge handle to adjust it (works
+          on touch too), tap elsewhere to re-pick, or Reset on the chart. This is
+          the only band control now — no separate steppers. */}
       <SmileStrip input={active} />
-
-      <div className="flex items-center justify-between">
-        <span className="eyebrow">Your band</span>
-        <button
-          onClick={clearRange}
-          className="ctrl-soft rounded-md px-2 py-0.5 text-[10px] uppercase tracking-wider text-text-3"
-        >
-          reset
-        </button>
-      </div>
-      <div className="glass-inset flex items-center justify-between px-3 py-2 text-[13px] tabular-nums text-text-1">
-        <span>{price(band!.lower)}</span>
-        <span className="text-text-3">—</span>
-        <span>{price(band!.higher)}</span>
-      </div>
 
       {/* Bet amount — a dollar stake; sized to a mintable position under the hood. */}
       <div className="flex flex-col gap-1.5">

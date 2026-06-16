@@ -12,7 +12,7 @@
  * lazy localStorage read can't cause a hydration mismatch.
  */
 import { useState } from 'react';
-import { LuX } from 'react-icons/lu';
+import { LuX, LuCircleHelp } from 'react-icons/lu';
 
 const GUIDE_KEY = 'skew:ticket-guide-dismissed';
 
@@ -67,11 +67,14 @@ export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 
   }
 
   if (dismissed) {
+    // Clear, always-available reopen affordance — a chip with a help icon, so a
+    // confused user can pull the steps back up at a glance (not a faint link).
     return (
       <button
         onClick={reopen}
-        className="self-start text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
+        className="inline-flex items-center gap-1.5 self-start rounded-md border border-line bg-white/3 px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:border-line-strong hover:text-text-1"
       >
+        <LuCircleHelp size={13} className="text-accent" />
         How it works
       </button>
     );

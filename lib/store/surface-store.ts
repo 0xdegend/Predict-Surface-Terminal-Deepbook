@@ -87,6 +87,9 @@ interface SurfaceState {
    *  (sorted lower/higher). A click on a different oracle/expiry re-anchors. */
   pickRangeStrike: (s: StrikePick, source?: SelectionSource) => void;
   clearRange: () => void;
+  /** Replace the finalized band directly (e.g. nudging a bound with the +/-
+   *  steppers). Clears any pending anchor; preserves the selection source. */
+  setRangeBand: (band: RangeSelection) => void;
   pulseFill: (f: { oracleId: string; strike: number; isUp: boolean }) => void;
   openTicketSheet: () => void;
   closeTicketSheet: () => void;
@@ -146,6 +149,7 @@ export const useSurfaceStore = create<SurfaceState>((set) => ({
       };
     }),
   clearRange: () => set({ rangeAnchor: null, rangeSelection: null }),
+  setRangeBand: (rangeSelection) => set({ rangeSelection, rangeAnchor: null }),
   pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
   openTicketSheet: () => set({ ticketSheetOpen: true }),
   closeTicketSheet: () => set({ ticketSheetOpen: false }),

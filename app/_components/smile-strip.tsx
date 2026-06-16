@@ -8,10 +8,10 @@
  * butterfly violation (odds rising with price — internally inconsistent) is
  * flagged. The 3-D surface shows the whole thing; this is the readable slice.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { buildSmile, type SmileInput } from '@/lib/svi/surface';
 import { rangeFair, upFair } from '@/lib/svi/svi';
-import { snapStrikeToTick } from '@/lib/keys';
+import { gridBounds, snapStrikeToTick } from '@/lib/keys';
 import { toFloat } from '@/config/scale';
 import { price, pct } from '@/lib/format';
 import { useSurfaceStore } from '@/lib/store/surface-store';
@@ -25,8 +25,16 @@ export function SmileStrip({ input }: { input: SmileInput }) {
   // Exact price under the pointer (continuous), not a sampled vertex index — so a
   // trader can dial any chance, snapping to the $1 grid only at pick time.
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  // Which finalized band edge is being dragged (null = not dragging). The svg ref
+  // lets a drag map clientX → price even when the pointer leaves the handle.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [dragEdge, setDragEdge] = useState<'lower' | 'higher' | null>(null);
+  // True from the moment a handle drag started until the next pick — swallows the
+  // synthetic click that follows pointerup so a drag never re-anchors the band.
+  const draggedRef = useRef(false);
   const ticketMode = useSurfaceStore((s) => s.ticketMode);
   const pickRangeStrike = useSurfaceStore((s) => s.pickRangeStrike);
+  const setRangeBand = useSurfaceStore((s) => s.setRangeBand);
   const clearRange = useSurfaceStore((s) => s.clearRange);
   const selection = useSurfaceStore((s) => s.selection);
   const anchor = useSurfaceStore((s) => s.rangeAnchor);
@@ -103,14 +111,88 @@ export function SmileStrip({ input }: { input: SmileInput }) {
     return xMin + Math.max(0, Math.min(1, t)) * xSpan;
   }
 
+  // How close (in viewBox x-units) the pointer must be to a band edge to grab it
+  // instead of re-picking. Generous so both handles are easy to catch on touch.
+  const GRAB_PX = 16;
+
+  /** The band edge nearest the pointer, if within GRAB_PX — else null (a tap there
+   *  re-picks instead). Disambiguates by raw pixel distance so the two handles are
+   *  equally grabbable, even when the band is narrow. */
+  function edgeNear(vx: number): 'lower' | 'higher' | null {
+    if (!bandForThis) return null;
+    const dLo = Math.abs(vx - cx(bandForThis.lower));
+    const dHi = Math.abs(vx - cx(bandForThis.higher));
+    if (Math.min(dLo, dHi) > GRAB_PX) return null;
+    return dLo <= dHi ? 'lower' : 'higher';
+  }
+
+  /** Snap a dragged edge to the grid, keep lower < higher by ≥ one tick, and push
+   *  the new band to the store (re-quotes downstream). `vx` is in viewBox units. */
+  function applyDrag(edge: 'lower' | 'higher', vx: number) {
+    if (!bandForThis) return;
+    const t = (vx - PAD.l) / plotW;
+    const p = xMin + Math.max(0, Math.min(1, t)) * xSpan;
+    const { tickSize } = gridBounds(oracle);
+    const lo = BigInt(bandForThis.lowerScaled);
+    const hi = BigInt(bandForThis.higherScaled);
+    let next = snapStrikeToTick(BigInt(Math.round(p * 1e9)), oracle);
+    if (edge === 'lower') {
+      if (next >= hi) next = snapStrikeToTick(hi - tickSize, oracle);
+      setRangeBand({ ...bandForThis, lowerScaled: next.toString(), lower: toFloat(Number(next)) });
+    } else {
+      if (next <= lo) next = snapStrikeToTick(lo + tickSize, oracle);
+      setRangeBand({ ...bandForThis, higherScaled: next.toString(), higher: toFloat(Number(next)) });
+    }
+  }
+
+  /** Pointer x relative to the svg, in viewBox units (0..W). */
+  function vxOf(e: React.PointerEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return ((e.clientX - rect.left) / rect.width) * W;
+  }
+
+  // The SVG owns every pointer interaction (one capture target, no paint-order
+  // races): pressing on/near a band edge starts a drag; anywhere else hovers/picks.
+  function onDown(e: React.PointerEvent<SVGSVGElement>) {
+    if (!rangeMode || !bandForThis) return;
+    const vx = vxOf(e);
+    const edge = edgeNear(vx);
+    if (!edge) return; // not near a handle — fall through to hover/re-pick
+    e.preventDefault();
+    draggedRef.current = true;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragEdge(edge);
+    setHoverPrice(null);
+    applyDrag(edge, vx); // snap to the press point immediately — feels responsive
+  }
+
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (dragEdge) {
+      applyDrag(dragEdge, vxOf(e));
+      return;
+    }
     setHoverPrice(priceAt(e));
+  }
+
+  function onUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (!dragEdge) return;
+    setDragEdge(null);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      /* capture may already be released */
+    }
   }
 
   /** In range mode, a click sets a band bound at the exact pointed price
    *  (snapped only to the $1 grid). */
   function onPick(e: React.PointerEvent<SVGSVGElement>) {
     if (!rangeMode) return;
+    // Swallow the click that trails a band-edge drag so it doesn't re-anchor.
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
     const scaled = snapStrikeToTick(BigInt(Math.round(priceAt(e) * 1e9)), oracle);
     pickRangeStrike(
       {
@@ -126,6 +208,10 @@ export function SmileStrip({ input }: { input: SmileInput }) {
   // Live odds at the pointer — computed at the exact price, not read off a vertex.
   const hUp =
     hoverPrice != null ? upFair(hoverPrice, input.forward, input.svi, input.settlement ?? null) : null;
+  // Show a resize cursor whenever the pointer is over a draggable band edge (or
+  // mid-drag) so the affordance reads before the user even presses.
+  const overEdge =
+    !!dragEdge || (rangeMode && bandForThis != null && hoverPrice != null && edgeNear(cx(hoverPrice)) != null);
   // While placing the second range bound, the live chance of the band so far —
   // drag until it reads the odds you want.
   const liveRangeChance =
@@ -169,10 +255,13 @@ export function SmileStrip({ input }: { input: SmileInput }) {
 
       <div className="relative">
         <svg
+          ref={svgRef}
           width="100%"
           viewBox={`0 0 ${W} ${H}`}
-          className="card block cursor-crosshair touch-none"
+          className={`card block touch-none ${overEdge ? 'cursor-ew-resize' : 'cursor-crosshair'}`}
+          onPointerDown={onDown}
           onPointerMove={onMove}
+          onPointerUp={onUp}
           onPointerLeave={() => setHoverPrice(null)}
           onClick={onPick}
         >
@@ -201,21 +290,17 @@ export function SmileStrip({ input }: { input: SmileInput }) {
           {/* forward marker */}
           <line x1={fwdX} y1={PAD.t} x2={fwdX} y2={H - PAD.b} stroke="rgba(255,255,255,0.12)" />
 
-          {/* range band — finalized shade + bounds */}
+          {/* range band — finalized shade (edge handles drawn on top, after the
+              curve, below). Hit-testing for dragging lives on the <svg>. */}
           {rangeMode && bandForThis && (
-            <>
-              <rect
-                x={cx(bandForThis.lower)}
-                y={PAD.t}
-                width={Math.max(0, cx(bandForThis.higher) - cx(bandForThis.lower))}
-                height={plotH}
-                fill="var(--up)"
-                opacity={0.14}
-              />
-              {[bandForThis.lower, bandForThis.higher].map((s) => (
-                <line key={s} x1={cx(s)} y1={PAD.t} x2={cx(s)} y2={H - PAD.b} stroke="var(--up)" strokeWidth={1} opacity={0.7} />
-              ))}
-            </>
+            <rect
+              x={cx(bandForThis.lower)}
+              y={PAD.t}
+              width={Math.max(0, cx(bandForThis.higher) - cx(bandForThis.lower))}
+              height={plotH}
+              fill="var(--up)"
+              opacity={0.14}
+            />
           )}
           {/* range anchor — first bound set, preview to the pointed price */}
           {rangeMode && !bandForThis && anchorForThis && (
@@ -251,6 +336,45 @@ export function SmileStrip({ input }: { input: SmileInput }) {
           {butterflies.map((p) => (
             <circle key={p.strike} cx={sx(p.strike)} cy={sy(p.up)} r={2.5} fill="var(--down)" />
           ))}
+
+          {/* draggable band edges — drawn on top of the curve so the grab handles
+              are always visible. Pointer-events go to the <svg> (see onDown). */}
+          {rangeMode &&
+            bandForThis &&
+            (['lower', 'higher'] as const).map((edge) => {
+              const sval = edge === 'lower' ? bandForThis.lower : bandForThis.higher;
+              const x = cx(sval);
+              const active = dragEdge === edge;
+              const pillH = 22;
+              const pillY = PAD.t + plotH / 2 - pillH / 2;
+              return (
+                <g key={edge} pointerEvents="none">
+                  <line
+                    x1={x}
+                    y1={PAD.t}
+                    x2={x}
+                    y2={H - PAD.b}
+                    stroke="var(--up)"
+                    strokeWidth={active ? 1.75 : 1}
+                    opacity={active ? 1 : 0.75}
+                  />
+                  {/* grab pill with two grip lines — the obvious "drag me" affordance */}
+                  <rect
+                    x={x - 4}
+                    y={pillY}
+                    width={8}
+                    height={pillH}
+                    rx={4}
+                    fill="var(--up)"
+                    stroke="rgba(0,0,0,0.5)"
+                    strokeWidth={0.75}
+                    opacity={active ? 1 : 0.95}
+                  />
+                  <line x1={x - 1.5} y1={pillY + 6} x2={x - 1.5} y2={pillY + pillH - 6} stroke="rgba(0,0,0,0.45)" strokeWidth={0.75} />
+                  <line x1={x + 1.5} y1={pillY + 6} x2={x + 1.5} y2={pillY + pillH - 6} stroke="rgba(0,0,0,0.45)" strokeWidth={0.75} />
+                </g>
+              );
+            })}
 
           {/* selected market's chance — a level on the 0–100% axis (range = band
               chance, binary = the picked side's chance) */}
@@ -304,6 +428,7 @@ export function SmileStrip({ input }: { input: SmileInput }) {
                 <span className="text-up">
                   {price(bandForThis.lower, 0)}–{price(bandForThis.higher, 0)}
                   {bandFair != null && <span className="text-text-3"> · {pct(bandFair, 0)} chance</span>}
+                  <span className="text-text-3"> · drag edges</span>
                 </span>
               ) : anchorForThis ? (
                 <span className="text-text-2">
