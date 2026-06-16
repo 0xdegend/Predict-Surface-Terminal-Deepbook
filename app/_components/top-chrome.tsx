@@ -3,6 +3,7 @@ import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
 import { BottomNav } from "./bottom-nav";
 import { NavMore } from "./nav-more";
+import { NavRewards } from "./nav-rewards";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
 import { TourButton } from "./tour/tour-button";
 import type { PriceEvent } from "@/lib/api/types";
@@ -19,7 +20,7 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin";
+  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin" | "quests" | "competitions";
   tape?: {
     oracleId: string;
     underlying: string;
@@ -59,6 +60,9 @@ export function TopChrome({
             label="Leaderboard"
             active={active === "leaderboard"}
           />
+          {/* Quests + Competitions (the gamification roadmap) grouped under one
+              dropdown, like the Vault group below. */}
+          <NavRewards />
           {/* Hedge Vault + Vault Risk grouped under one dropdown to free header
               space for the wallet (route-aware, self-highlighting). */}
           <NavMore />

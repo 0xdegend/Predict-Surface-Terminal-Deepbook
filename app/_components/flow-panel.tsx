@@ -31,6 +31,7 @@ import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { RangeTicket } from './range-ticket';
 import { TicketGuide } from './ticket-guide';
+import { TicketEmpty } from './ticket-empty';
 import { MintConfirmModal } from './mint-confirm-modal';
 import { SuccessModal } from './ui/success-modal';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
@@ -320,11 +321,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     return <div className="text-[12px] text-text-3">Loading trade ticket…</div>;
   }
   if (!owner) {
-    return (
-      <div className="text-[12px] leading-relaxed text-text-2">
-        Connect a wallet (top-right), then click a node on the surface to trade it.
-      </div>
-    );
+    return <TicketEmpty />;
   }
   if (!oracle || !grid) {
     return <div className="text-[12px] text-text-2">Waiting for live oracle data…</div>;
