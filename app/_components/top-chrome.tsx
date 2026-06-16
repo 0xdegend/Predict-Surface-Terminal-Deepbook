@@ -20,7 +20,7 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin" | "quests" | "competitions";
+  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin" | "quests" | "competitions" | "docs";
   tape?: {
     oracleId: string;
     underlying: string;
@@ -66,6 +66,7 @@ export function TopChrome({
           {/* Hedge Vault + Vault Risk grouped under one dropdown to free header
               space for the wallet (route-aware, self-highlighting). */}
           <NavMore />
+          <NavLink href="/docs" label="Docs" active={active === "docs"} />
         </nav>
       </div>
 

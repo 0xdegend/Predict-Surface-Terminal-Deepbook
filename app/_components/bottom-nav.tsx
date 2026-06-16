@@ -12,6 +12,7 @@ import {
   LuTarget,
   LuSwords,
   LuLayoutGrid,
+  LuBookOpen,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 
@@ -47,6 +48,7 @@ const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: 
   { href: '/risk', label: 'Vault Risk', desc: 'Exposure · ±σ stress test', icon: LuShieldAlert },
   { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },
+  { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];
 
 export function BottomNav() {
