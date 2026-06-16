@@ -58,16 +58,21 @@ export function RangeRedeemModal({
   const closeValue = value * fraction;
   const closePnl = pnl * fraction;
 
+  // Settled out of the band → marks to exactly 0, so it paid nothing. Frame this
+  // as clearing a worthless position, not "redeeming" a payout that doesn't
+  // exist. Value-based (a live lot always carries positive value) because
+  // `p.settled` only flips once a redeem record exists.
+  const worthless = !!p && value <= 0;
   const up = pnl >= 0;
   const toneVar = up ? 'var(--up)' : 'var(--down)';
-  const proceedsLabel = decided ? 'Settlement payout' : 'Proceeds (sell now)';
+  const proceedsLabel = worthless ? 'Payout' : decided ? 'Settlement payout' : 'Proceeds (sell now)';
 
   return (
     <Modal
       open={!!p}
       onClose={onClose}
       variant="glass"
-      title={decided ? 'Redeem settled range' : 'Close range'}
+      title={worthless ? 'Clear settled range' : decided ? 'Redeem settled range' : 'Close range'}
       subtitle={
         p ? `${p.underlying || 'BTC'} ${price(toFloat(p.lowerStrike))} — ${price(toFloat(p.higherStrike))}` : undefined
       }
@@ -85,16 +90,20 @@ export function RangeRedeemModal({
             className="rounded-lg border border-(--accent-line) bg-(--accent-soft) px-4 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
             {busy
-              ? decided
-                ? 'redeeming…'
-                : 'closing…'
-              : decided
-                ? partial
-                  ? 'Redeem portion'
-                  : 'Confirm redeem'
-                : partial
-                  ? 'Close portion'
-                  : 'Close full range'}
+              ? worthless
+                ? 'clearing…'
+                : decided
+                  ? 'redeeming…'
+                  : 'closing…'
+              : worthless
+                ? 'Clear position'
+                : decided
+                  ? partial
+                    ? 'Redeem portion'
+                    : 'Confirm redeem'
+                  : partial
+                    ? 'Close portion'
+                    : 'Close full range'}
           </button>
         </>
       }
@@ -102,9 +111,11 @@ export function RangeRedeemModal({
       {p && (
         <div className="flex flex-col gap-4">
           <p className="text-[12px] leading-relaxed text-text-3">
-            {decided
-              ? 'This range has settled — redeeming pays out the final result. You can claim part now and the rest later.'
-              : 'Closing returns the range’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
+            {worthless
+              ? 'This range settled out of the band, so it paid nothing. Clearing just removes the worthless position from your account.'
+              : decided
+                ? 'This range has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+                : 'Closing returns the range’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 
           <CloseAmountPicker openBase={openBase} closeBase={closeBase} onChange={setCloseBase} />

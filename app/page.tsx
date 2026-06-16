@@ -178,10 +178,9 @@ export default async function Page() {
               </div>
 
               {/* Open positions — sits at the BOTTOM of the rail, under the odds
-                  panel. Renders nothing until the trader has an account/positions. */}
-              <div className="border-t border-line pt-5">
-                <OpenPositions />
-              </div>
+                  panel. Renders nothing (incl. its own divider) until the trader
+                  has an account, so there's no empty bordered gap. */}
+              <OpenPositions />
             </aside>
           </main>
 

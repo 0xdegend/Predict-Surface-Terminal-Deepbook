@@ -45,7 +45,11 @@ export function OpenPositions() {
   const shownRanges = openRanges.slice(0, Math.max(0, MAX_SHOWN - shownPositions.length));
 
   return (
-    <div className="flex flex-col gap-2">
+    // Owns its own top divider (desktop) so it only appears when there's content
+    // — keeps the rail clean for users without an account/positions. `font-mono
+    // tabular-nums` mirrors the FlowPanel root this block used to live under, so
+    // the prices/PnL render in the terminal's monospace figures, not the UI sans.
+    <div className="flex flex-col gap-2 font-mono text-[12px] tabular-nums lg:border-t lg:border-line lg:pt-5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-wider text-text-3">Open positions</span>
         <Link href="/portfolio" className="text-[10px] text-text-2 underline hover:text-text-1">
@@ -60,6 +64,9 @@ export function OpenPositions() {
         <>
           {shownPositions.map((p) => {
             const m = positionMetrics(p);
+            // A lost (settled) bet marks to exactly 0 — nothing to redeem, so
+            // "Clear" it. A live position always carries some positive value.
+            const worthless = m.value != null && m.value <= 0;
             return (
               <div
                 key={`${p.oracle_id}-${p.strike}-${p.is_up}`}
@@ -90,13 +97,15 @@ export function OpenPositions() {
                   disabled={!!busy}
                   className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
                 >
-                  {m.isSettled ? 'Redeem' : 'Close'}
+                  {worthless ? 'Clear' : m.isSettled ? 'Redeem' : 'Close'}
                 </button>
               </div>
             );
           })}
           {shownRanges.map((p) => {
             const rPnl = fromQuote(p.unrealizedPnl);
+            // Settled out of band marks to exactly 0 — "Clear" it, don't "Redeem".
+            const worthless = p.currentValue <= 0;
             return (
               <div
                 key={`${p.oracleId}-${p.lowerStrike}-${p.higherStrike}`}
@@ -121,7 +130,7 @@ export function OpenPositions() {
                   disabled={!!busy}
                   className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
                 >
-                  {p.settled ? 'Redeem' : 'Close'}
+                  {worthless ? 'Clear' : p.settled ? 'Redeem' : 'Close'}
                 </button>
               </div>
             );

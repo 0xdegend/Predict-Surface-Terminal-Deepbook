@@ -64,6 +64,12 @@ export function PositionCard({
     won === null ? "live" : won ? "won" : "lost";
   const positive = m.pnl >= 0;
   const isRedeem = m.isSettled;
+  // Decided but lost → the bet paid nothing, so there's no payout to "redeem".
+  // Offer a muted "Clear" (removes the worthless position) instead of an
+  // inviting green Redeem that implies a payout. Keys off `decided` (settled OR
+  // expired) + `won` — same signal as the Lost chip — not the unreliable
+  // `m.isSettled`, which never flips for a never-redeemed loser.
+  const worthless = decided && won === false;
   const deltaPp =
     m.markPrice != null ? (m.markPrice - m.entryPrice) * 100 : null;
   const pnlColor = positive ? "var(--up)" : "var(--down)";
@@ -255,21 +261,26 @@ export function PositionCard({
         {/* footer — quiet one-line disclaimer + actions (redeem is the only glow) */}
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-3 px-1">
           <p className="font-sans text-[10px] leading-snug text-text-3">
-            Probabilistic · resolved by oracle data.
+            {worthless
+              ? "Settled out of the money — this bet paid nothing."
+              : "Probabilistic · resolved by oracle data."}
           </p>
           <div className="flex items-center gap-2">
             <ShareButton onClick={() => setShareOpen(true)} />
             <button
               onClick={() => onRedeem(p)}
               disabled={busy}
+              title={worthless ? "Remove this settled position — it paid nothing" : undefined}
               className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
-                isRedeem
-                  ? "border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20"
-                  : "border-down/45 text-down hover:border-down/70 hover:bg-down/10"
+                worthless
+                  ? "border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2"
+                  : isRedeem
+                    ? "border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20"
+                    : "border-down/45 text-down hover:border-down/70 hover:bg-down/10"
               }`}
             >
-              {isRedeem ? "Redeem position" : "Close position"}
-              {isRedeem ? <LuDownload size={14} /> : <LuCircleX size={14} />}
+              {worthless ? "Clear" : isRedeem ? "Redeem position" : "Close position"}
+              {worthless ? <LuCircleX size={14} /> : isRedeem ? <LuDownload size={14} /> : <LuCircleX size={14} />}
             </button>
           </div>
         </div>

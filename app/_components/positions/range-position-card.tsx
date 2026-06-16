@@ -37,6 +37,13 @@ export function RangePositionCard({
   const expired = p.expiry - now <= 0;
   const decided = p.settled || expired;
   const won = p.fairUp >= 0.5;
+  // Decided OUT of the band → the bet paid nothing, so there's no payout to
+  // "redeem". Don't show an inviting green Redeem; offer a muted "Clear" that
+  // just removes the now-worthless position from the manager (redeems 0).
+  // Keys off `decided` (settled OR expired) + `won` — same signal as the OUT
+  // badge above — because `p.settled` only flips once a redeem record exists,
+  // which a never-redeemed loser never has.
+  const worthless = decided && !won;
   const positive = pnl >= 0;
   const sym = predictConfig.quote.symbol;
   const asset = p.underlying || 'BTC';
@@ -134,19 +141,24 @@ export function RangePositionCard({
         {/* Action */}
         <div className="flex items-center justify-between gap-3 px-1">
           <p className="font-sans text-[10px] leading-snug text-text-3">
-            Pays 1.00 {sym} per contract if {asset} settles in the band.
+            {worthless
+              ? `Settled out of the band — this bet paid nothing.`
+              : `Pays 1.00 ${sym} per contract if ${asset} settles in the band.`}
           </p>
           <button
             onClick={() => onRedeem(p)}
             disabled={busy}
+            title={worthless ? 'Remove this settled position — it paid nothing' : undefined}
             className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
-              decided
-                ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
-                : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
+              worthless
+                ? 'border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2'
+                : decided
+                  ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
+                  : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
             }`}
           >
-            {decided ? 'Redeem range' : 'Close range'}
-            {decided ? <LuDownload size={14} /> : <LuCircleX size={14} />}
+            {worthless ? 'Clear' : decided ? 'Redeem range' : 'Close range'}
+            {worthless ? <LuCircleX size={14} /> : decided ? <LuDownload size={14} /> : <LuCircleX size={14} />}
           </button>
         </div>
       </div>

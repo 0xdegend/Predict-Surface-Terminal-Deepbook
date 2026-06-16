@@ -49,7 +49,12 @@ export function RedeemModal({
   // Fraction of the lot being closed (0..1) — scales the linear breakdown.
   const fraction = openBase > 0n ? Number(closeBase) / Number(openBase) : 0;
 
-  const proceedsLabel = m?.isSettled ? 'Settlement payout' : 'Proceeds (sell now)';
+  // Lost (settled) → marks to exactly 0, so it paid nothing. Frame as clearing a
+  // worthless position rather than "redeeming" a payout that isn't there.
+  // Value-based (a live lot always carries positive value) because the status
+  // flag is unreliable for a never-redeemed loser.
+  const worthless = !!m && m.value != null && m.value <= 0;
+  const proceedsLabel = worthless ? 'Payout' : m?.isSettled ? 'Settlement payout' : 'Proceeds (sell now)';
   const partial = closeBase > 0n && closeBase < openBase;
   const up = (m?.pnl ?? 0) >= 0;
   const toneVar = up ? 'var(--up)' : 'var(--down)';
@@ -67,7 +72,7 @@ export function RedeemModal({
       open={!!p}
       onClose={onClose}
       variant="glass"
-      title={m?.isSettled ? 'Redeem settled position' : 'Close position'}
+      title={worthless ? 'Clear settled position' : m?.isSettled ? 'Redeem settled position' : 'Close position'}
       subtitle={
         p ? `${p.is_up ? 'UP' : 'DOWN'} · ${p.underlying_asset} ${price(toFloat(p.strike))}` : undefined
       }
@@ -85,16 +90,20 @@ export function RedeemModal({
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
             {busy
-              ? m?.isSettled
-                ? 'redeeming…'
-                : 'closing…'
-              : m?.isSettled
-                ? partial
-                  ? 'Redeem portion'
-                  : 'Confirm redeem'
-                : partial
-                  ? 'Close portion'
-                  : 'Close full position'}
+              ? worthless
+                ? 'clearing…'
+                : m?.isSettled
+                  ? 'redeeming…'
+                  : 'closing…'
+              : worthless
+                ? 'Clear position'
+                : m?.isSettled
+                  ? partial
+                    ? 'Redeem portion'
+                    : 'Confirm redeem'
+                  : partial
+                    ? 'Close portion'
+                    : 'Close full position'}
           </button>
         </>
       }
@@ -102,9 +111,11 @@ export function RedeemModal({
       {p && m && (
         <div className="flex flex-col gap-4">
           <p className="text-[12px] leading-relaxed text-text-3">
-            {m.isSettled
-              ? 'This market has settled — redeeming pays out the final result. You can claim part now and the rest later.'
-              : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
+            {worthless
+              ? 'This market settled against your bet, so it paid nothing. Clearing just removes the worthless position from your account.'
+              : m.isSettled
+                ? 'This market has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+                : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 
           <CloseAmountPicker openBase={openBase} closeBase={closeBase} onChange={setCloseBase} />
