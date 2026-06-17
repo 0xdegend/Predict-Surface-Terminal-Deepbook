@@ -147,7 +147,7 @@ interface Ctx {
 export function drawShareCard(
   canvas: HTMLCanvasElement,
   d: ShareCardData,
-  opts: { variant?: ShareVariant; scale?: number } = {},
+  opts: { variant?: ShareVariant; scale?: number; confetti?: boolean } = {},
 ) {
   const variant = opts.variant ?? 'glow';
   const scale = opts.scale ?? 2;
@@ -168,7 +168,7 @@ export function drawShareCard(
   drawBackground(s, variant);
   if (variant === 'glow') drawGlow(s);
   else if (variant === 'spotlight') drawSpotlight(s);
-  else if (variant === 'celebrate') drawCelebrate(s);
+  else if (variant === 'celebrate') drawCelebrate(s, opts.confetti ?? true);
   else drawSurface(s);
   drawHeader(s);
   drawFooter(s);
@@ -243,9 +243,16 @@ function drawHeader({ ctx, c, accent, sans, d }: Ctx) {
 
 function drawFooter({ ctx, c, sans }: Ctx) {
   ctx.textAlign = 'left';
+  const y = H - 30;
+  // The live site — prominent (brand teal) so every shared card points home.
+  ctx.font = `600 15px ${sans}`;
+  ctx.fillStyle = c.up;
+  ctx.fillText('tryskew.xyz', P, y);
+  const urlW = ctx.measureText('tryskew.xyz').width;
+  // Context, secondary.
   ctx.font = `400 14px ${sans}`;
   ctx.fillStyle = c.text2;
-  ctx.fillText('Trade the live volatility surface — DeepBook Predict on Sui', P, H - 30);
+  ctx.fillText('   ·   the live volatility surface · DeepBook Predict on Sui', P + urlW, y);
 
   ctx.font = `600 11px ${sans}`;
   const tnW = ctx.measureText(spaced('TESTNET')).width;
@@ -343,7 +350,7 @@ function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
  * deterministic (confetti is seeded off the position) so the thumbnail, preview,
  * and exported PNG are pixel-identical. No photos, no likenesses.
  */
-function drawCelebrate(s: Ctx) {
+function drawCelebrate(s: Ctx, confetti = true) {
   const { ctx, c, sans, mono, d } = s;
   const win = c.up;
   const gold = c.warn;
@@ -356,7 +363,7 @@ function drawCelebrate(s: Ctx) {
   ctx.fillStyle = burst;
   ctx.fillRect(0, 0, W, H);
 
-  drawConfetti(s, celebrateSeed(d));
+  if (confetti) drawConfetti(s, celebrateSeed(d));
 
   ctx.textAlign = 'center';
 

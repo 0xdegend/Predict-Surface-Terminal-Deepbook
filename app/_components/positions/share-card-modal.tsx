@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { LuDownload, LuCopy, LuCheck } from 'react-icons/lu';
+import { LuDownload, LuCopy, LuCheck, LuImagePlay } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { Modal } from '@/app/_components/ui/modal';
 import { signed, price } from '@/lib/format';
@@ -12,6 +12,7 @@ import {
   type ShareCardData,
   type ShareVariant,
 } from './share-card-canvas';
+import { renderCardGif } from './animated-share-card';
 
 /**
  * Share-as-image dialog. Renders the position as a promotional card on a canvas
@@ -33,7 +34,9 @@ export function ShareCardModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const [variant, setVariant] = useState<ShareVariant>('glow');
-  const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy'>(null);
+  const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy' | 'gif' | 'giferr'>(null);
+  // GIF export progress: null = idle, 0..1 = generating.
+  const [gifPct, setGifPct] = useState<number | null>(null);
 
   // The styles offered depend on the result (winners also get "Celebrate").
   const variants = shareVariants(data?.result ?? 'live');
@@ -105,6 +108,28 @@ export function ShareCardModal({
     flash('saved');
   };
 
+  // Animated GIF — downloadable (not copyable): X loops an *uploaded* GIF, but
+  // won't animate a pasted/linked image, so the user attaches this file.
+  const saveGif = async () => {
+    if (!data || gifPct != null) return;
+    setStatus(null);
+    setGifPct(0);
+    try {
+      const blob = await renderCardGif(data, variant, setGifPct);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `skew-${data.underlying.toLowerCase()}-${data.result}-${variant}.gif`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash('gif');
+    } catch {
+      flash('giferr');
+    } finally {
+      setGifPct(null);
+    }
+  };
+
   const copyImage = async (): Promise<boolean> => {
     try {
       const blob = await toBlob();
@@ -142,18 +167,24 @@ export function ShareCardModal({
   };
 
   const msg =
-    status === 'saved'
-      ? 'Image saved.'
-      : status === 'copied'
-        ? 'Image copied to clipboard.'
-        : status === 'shared'
-          ? 'Image copied — paste it into your tweet (Ctrl/⌘+V).'
-          : status === 'nocopy'
-            ? 'Clipboard unavailable — use Save Image instead.'
-            : 'Pick a style, then save or post it.';
+    gifPct != null
+      ? `Building GIF… ${Math.round(gifPct * 100)}%`
+      : status === 'saved'
+        ? 'Image saved.'
+        : status === 'copied'
+          ? 'Image copied to clipboard.'
+          : status === 'shared'
+            ? 'Image copied — paste it into your tweet (Ctrl/⌘+V).'
+            : status === 'gif'
+              ? 'GIF saved — attach it to your tweet and X will loop it.'
+              : status === 'giferr'
+                ? 'Couldn’t build the GIF — try Save Image instead.'
+                : status === 'nocopy'
+                  ? 'Clipboard unavailable — use Save Image instead.'
+                  : 'Pick a style, then save, post, or grab an animated GIF.';
 
   const statusTone =
-    status === 'nocopy' ? 'text-warn' : status ? 'text-up' : 'text-text-3';
+    status === 'nocopy' || status === 'giferr' ? 'text-warn' : status ? 'text-up' : 'text-text-3';
 
   return (
     <Modal
@@ -229,13 +260,29 @@ export function ShareCardModal({
         <div className="flex w-full flex-wrap items-center justify-center gap-2.5">
           <button
             onClick={save}
-            className="ctrl-soft inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-[12px] font-medium text-text-1"
+            disabled={gifPct != null}
+            className="ctrl-soft inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-[12px] font-medium text-text-1 disabled:opacity-60"
           >
             {status === 'saved' ? <LuCheck size={14} /> : <LuDownload size={14} />}
             Save Image
           </button>
           <button
+            onClick={saveGif}
+            disabled={gifPct != null}
+            className="ctrl-soft inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-[12px] font-medium text-text-1 disabled:opacity-60"
+          >
+            {gifPct != null ? (
+              <span className="font-mono tabular-nums">{Math.round(gifPct * 100)}%</span>
+            ) : (
+              <>
+                <LuImagePlay size={14} />
+                Download GIF
+              </>
+            )}
+          </button>
+          <button
             onClick={copy}
+            disabled={gifPct != null}
             className="ctrl-soft inline-flex items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-[12px] font-medium text-text-1"
           >
             {status === 'copied' ? <LuCheck size={14} /> : <LuCopy size={14} />}

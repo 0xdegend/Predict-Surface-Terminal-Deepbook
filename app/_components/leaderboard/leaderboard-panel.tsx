@@ -19,8 +19,12 @@ import {
   LuChevronRight,
   LuCrown,
   LuLayers,
+  LuGlobe,
+  LuSparkles,
 } from 'react-icons/lu';
+import type { IconType } from 'react-icons';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
+import { useSkewTraders } from '@/lib/hooks/use-skew-traders';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortRows, leaderboardTotals, type SortKey } from '@/lib/leaderboard/aggregate';
 import { num, compact } from '@/lib/format';
@@ -52,10 +56,18 @@ export function LeaderboardPanel() {
   const mounted = useMounted();
   const [sort, setSort] = useState<SortKey>('points');
   const [page, setPage] = useState(0);
+  // 'all' = the whole DeepBook Predict protocol; 'skew' = only addresses that
+  // have traded through Skew (the on-chain FeeCharged roster).
+  const [scope, setScope] = useState<'all' | 'skew'>('all');
+  const skew = useSkewTraders();
 
   // Switching the ranking reorders everything → jump back to the top page.
   function selectSort(key: SortKey) {
     setSort(key);
+    setPage(0);
+  }
+  function selectScope(next: 'all' | 'skew') {
+    setScope(next);
     setPage(0);
   }
 
@@ -69,8 +81,17 @@ export function LeaderboardPanel() {
     );
   }
 
-  const sorted = sortRows(rows, sort);
-  const totals = leaderboardTotals(rows);
+  // 'skew' scope filters the protocol roster to addresses in the FeeCharged set
+  // (empty until that set loads, so the table shows its loading skeleton).
+  const scopedRows =
+    scope === 'skew'
+      ? skew.data
+        ? rows.filter((r) => skew.data!.addresses.has(r.owner.toLowerCase()))
+        : []
+      : rows;
+  const sorted = sortRows(scopedRows, sort);
+  const totals = leaderboardTotals(scopedRows);
+  const listLoading = loading || (scope === 'skew' && skew.loading);
   const me = mounted ? account?.address ?? null : null;
 
   // The connected wallet's standing — pinned at the top so a trader can find
@@ -87,7 +108,7 @@ export function LeaderboardPanel() {
 
   // The podium owns the top three on the first page; the table picks up from
   // rank 4 there so nobody is listed twice. Other pages table everything.
-  const showPodium = !loading && safePage === 0 && sorted.length > 0;
+  const showPodium = !listLoading && safePage === 0 && sorted.length > 0;
   const podiumRows = showPodium ? sorted.slice(0, 3) : [];
   const tableStart = showPodium ? Math.min(3, sorted.length) : start;
   const pageRows = sorted.slice(tableStart, start + PAGE_SIZE);
@@ -103,7 +124,10 @@ export function LeaderboardPanel() {
             Leaderboard
           </h1>
           <p className="mt-1 text-[12px] text-text-3">
-            Ranked by Points · {predictConfig.network} · live from the public event stream
+            {scope === 'skew'
+              ? 'Only traders who bet through Skew'
+              : 'The whole DeepBook Predict protocol'}{' '}
+            · ranked by Points · {predictConfig.network}
           </p>
         </div>
         <button
@@ -118,6 +142,28 @@ export function LeaderboardPanel() {
           Refresh
         </button>
       </div>
+
+      {/* Scope: the whole protocol vs only addresses that have traded on Skew
+          (from the on-chain fee-router events). Hidden when the router isn't
+          configured for this network. */}
+      {skew.available && (
+        <div className="mb-4 flex items-center gap-1.5">
+          <ScopeTab
+            label="All protocol"
+            icon={LuGlobe}
+            active={scope === 'all'}
+            onClick={() => selectScope('all')}
+          />
+          <ScopeTab
+            label="Skew traders"
+            icon={LuSparkles}
+            active={scope === 'skew'}
+            onClick={() => selectScope('skew')}
+            count={skew.data ? skew.data.addresses.size : undefined}
+            loading={skew.loading}
+          />
+        </div>
+      )}
 
       {/* Totals strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
@@ -155,9 +201,9 @@ export function LeaderboardPanel() {
 
       {/* Your standing — placed under the podium so the connected wallet finds
           itself instantly without paging */}
-      {!loading && myRow ? (
+      {!listLoading && myRow ? (
         <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} />
-      ) : !loading && me && sorted.length > 0 ? (
+      ) : !listLoading && me && sorted.length > 0 ? (
         <NotRankedHint />
       ) : null}
 
@@ -171,10 +217,12 @@ export function LeaderboardPanel() {
         </div>
 
         <div className="rows-divided">
-        {loading ? (
+        {listLoading ? (
           <SkeletonRows />
         ) : sorted.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[13px] text-text-2">No trading activity yet.</div>
+          <div className="px-4 py-12 text-center text-[13px] text-text-2">
+            {scope === 'skew' ? 'No one has traded on Skew yet.' : 'No trading activity yet.'}
+          </div>
         ) : (
           <>
           {pageRows.map((r, idx) => {
@@ -569,6 +617,44 @@ function SortTab({ label, active, onClick }: { label: string; active: boolean; o
       }`}
     >
       {label}
+    </button>
+  );
+}
+
+/** Scope switch (All protocol ↔ Skew traders) — a pill with an icon + an
+ *  optional count badge for the Skew roster size. */
+function ScopeTab({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+  count,
+  loading,
+}: {
+  label: string;
+  icon: IconType;
+  active: boolean;
+  onClick: () => void;
+  count?: number;
+  loading?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
+        active ? 'bg-[var(--accent-soft)] text-text-1' : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
+      }`}
+    >
+      <Icon size={13} className={active ? 'text-accent' : 'text-text-3'} />
+      {label}
+      {loading ? (
+        <span className="text-[10px] text-text-3">…</span>
+      ) : count != null ? (
+        <span className="rounded-full bg-[var(--bg-3)] px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }
