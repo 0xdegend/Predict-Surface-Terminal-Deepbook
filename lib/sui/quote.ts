@@ -112,12 +112,16 @@ export interface StakeQuote extends TradeQuote {
  * the trader pays exactly the amount they picked and the *payout* floats instead
  * of the cost.
  *
- * `mintCost(qty)` is monotone increasing and very nearly linear in qty for normal
- * sizes (the only curvature is the utilization/inventory part of the spread), so
- * a single secant step from a measured unit-ask lands within a fraction of a cent.
- * We seed with `qtyGuess` (from the client fair), then step `qty ← qty·stake/cost`
- * until within `tolBase` or `maxSteps` is hit. At most `maxSteps + 1` simulate
- * calls; returns the final quote AND the quantity it priced, ready to mint.
+ * `mintCost(qty)` is monotone increasing in qty, but the utilization/inventory
+ * part of the spread makes it non-linear, so a single secant step from a rough
+ * seed can still land a cent or two off the stake (the "you pay 0.89 / 1.05"
+ * flicker before it settles). We seed with `qtyGuess` (from the client fair),
+ * then step `qty ← qty·stake/cost` — a fast fixed-point iteration — until within
+ * `tolBase` or `maxSteps` is hit. It breaks the instant it's within tolerance, so
+ * a good seed still costs 1–2 simulate calls; the extra budget only spends when a
+ * poor seed (e.g. before the surface loads) or high curvature needs more refining,
+ * which is what guarantees "you pay exactly what you picked" on the FIRST solve.
+ * Returns the final quote AND the quantity it priced, ready to mint.
  */
 export async function solveQuoteForStake(
   quoteFn: (quantity: bigint) => Promise<TradeQuote>,
@@ -125,7 +129,7 @@ export async function solveQuoteForStake(
   qtyGuess: bigint,
   opts: { maxSteps?: number; tolBase?: bigint } = {},
 ): Promise<StakeQuote> {
-  const maxSteps = opts.maxSteps ?? 1;
+  const maxSteps = opts.maxSteps ?? 4;
   const tolBase = opts.tolBase ?? 2_000n; // 0.002 DUSDC — below display resolution
   let qty = qtyGuess > 0n ? qtyGuess : 1n;
   let q = await quoteFn(qty);

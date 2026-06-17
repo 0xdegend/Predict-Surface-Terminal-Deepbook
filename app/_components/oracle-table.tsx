@@ -126,7 +126,8 @@ export function OracleTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-baseline justify-between">
+      {/* Stack on mobile so the hint never collides with the title + count. */}
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
         <h2 className="flex items-center gap-2">
           <span className="eyebrow">Active markets</span>
           {visible.length > 0 && (
@@ -136,8 +137,8 @@ export function OracleTable({
           )}
         </h2>
         <span className="font-mono text-[10px] text-text-3">
-          {hiddenCount > 0 && <span className="mr-3">{hiddenCount} expired hidden</span>}
-          click a row → loads the ticket
+          {hiddenCount > 0 && <span>{hiddenCount} expired hidden · </span>}
+          Tap a row to start a trade
         </span>
       </div>
 
@@ -157,14 +158,14 @@ export function OracleTable({
         <table className="w-full border-collapse font-mono text-[11px] tabular-nums sm:text-[12px]">
           <thead>
             <tr className="sticky top-0 z-10 text-left text-[10px] uppercase tracking-wider text-text-3 [&>th]:border-b [&>th]:border-line [&>th]:bg-[color-mix(in_srgb,var(--bg-1)_82%,transparent)] [&>th]:backdrop-blur-xl">
-              <Th>Underlying</Th>
-              <Th>Expiry</Th>
-              <Th>TTL</Th>
-              <Th className="text-right">Forward</Th>
-              <Th className="text-right">ATM IV</Th>
-              <Th className="text-right">Min strike</Th>
-              <Th className="text-right">Tick</Th>
-              <Th className="text-right">Oracle</Th>
+              <Th>Asset</Th>
+              <Th>Closes</Th>
+              <Th>Time left</Th>
+              <Th className="text-right">Price</Th>
+              <Th className="text-right">Volatility</Th>
+              <Th className="hidden text-right sm:table-cell">Min level</Th>
+              <Th className="hidden text-right sm:table-cell">Step</Th>
+              <Th className="hidden text-right sm:table-cell">ID</Th>
             </tr>
           </thead>
           <tbody ref={bodyRef} className="row-divider">
@@ -244,9 +245,9 @@ export function OracleTable({
                   </Td>
                   <Td className="text-right text-text-2">{input ? price(input.forward, 0) : '—'}</Td>
                   <Td className="text-right text-text-1">{atmIv != null ? pct(atmIv, 1) : '—'}</Td>
-                  <Td className="text-right text-text-3">{price(toFloat(o.min_strike), 0)}</Td>
-                  <Td className="text-right text-text-3">{num(toFloat(o.tick_size), 2)}</Td>
-                  <Td className="text-right text-text-3 group-hover:text-text-2">
+                  <Td className="hidden text-right text-text-3 sm:table-cell">{price(toFloat(o.min_strike), 0)}</Td>
+                  <Td className="hidden text-right text-text-3 sm:table-cell">{num(toFloat(o.tick_size), 2)}</Td>
+                  <Td className="hidden text-right text-text-3 group-hover:text-text-2 sm:table-cell">
                     {shortId(o.oracle_id)}
                   </Td>
                 </tr>

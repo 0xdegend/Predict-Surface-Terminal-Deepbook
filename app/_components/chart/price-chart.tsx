@@ -221,6 +221,11 @@ export function PriceChart({
         borderColor: "rgba(255,255,255,0.08)",
         timeVisible: true,
         secondsVisible: false,
+        // Keep a few seconds of breathing room to the right of the latest point so
+        // the live edge never sits flush against the price axis (the "cut off at
+        // the end" look). rightOffset is preserved as new ticks arrive, which also
+        // keeps the chart tracking the most recent point.
+        rightOffset: 6,
       },
       crosshair: {
         vertLine: {
@@ -299,6 +304,9 @@ export function PriceChart({
     lastTimeRef.current = points[points.length - 1].time as number;
     if (!fittedRef.current) {
       chartRef.current?.timeScale().fitContent();
+      // fitContent pins the last bar flush against the right axis; snap to the
+      // live edge so the latest point shows with the rightOffset gap from the start.
+      chartRef.current?.timeScale().scrollToRealTime();
       fittedRef.current = true;
     }
   }, [historyQ.data]);

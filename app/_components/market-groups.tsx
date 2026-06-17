@@ -133,7 +133,8 @@ export function MarketGroups({
 
   return (
     <div>
-      <div className="flex items-baseline justify-between">
+      {/* Stack on mobile so the hint never collides with the title + count. */}
+      <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between">
         <h2 className="flex items-center gap-2">
           <span className="eyebrow">Markets</span>
           {total > 0 && (
@@ -142,7 +143,7 @@ export function MarketGroups({
             </span>
           )}
         </h2>
-        <span className="font-mono text-[10px] text-text-3">pick a side → loads the ticket</span>
+        <span className="font-mono text-[10px] text-text-3">Tap a side to start a trade</span>
       </div>
 
       {total === 0 ? (
