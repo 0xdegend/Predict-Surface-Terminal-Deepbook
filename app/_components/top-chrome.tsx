@@ -87,10 +87,14 @@ export function TopChrome({
           segmented control by WalletBar), with the quiet tour "?" beside it.
           shrink-0 so it's always fully visible, even when the chip is wide. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-        {/* Tour replay is secondary — hidden on phones to declutter the header. */}
-        <span className="hidden sm:inline-flex">
-          <TourButton />
-        </span>
+        {/* Tour replay is secondary — hidden on phones to declutter the header.
+            Only on the Trade/surface page: the tour spotlights elements that
+            only exist there, so it would be a dead button on other routes. */}
+        {active === "surface" && (
+          <span className="hidden sm:inline-flex">
+            <TourButton />
+          </span>
+        )}
         <WalletBar />
       </div>
     </header>

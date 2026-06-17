@@ -130,7 +130,7 @@ export function PerfShareCardModal({
       : status === 'copied'
         ? 'Image copied to clipboard.'
         : status === 'shared'
-          ? 'Image copied — paste it into your tweet (Ctrl/⌘+V).'
+          ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
           : status === 'nocopy'
             ? 'Clipboard unavailable — use Save Image instead.'
             : 'Pick a style, then save or post it.';
