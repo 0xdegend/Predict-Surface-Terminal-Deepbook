@@ -244,7 +244,7 @@ function QuestCard({ quest, index }: { quest: Quest; index: number }) {
         </span>
       </div>
 
-      <p className="text-[12px] leading-relaxed text-text-2">{quest.desc}</p>
+      <p className="text-[13px] leading-relaxed text-text-2">{quest.desc}</p>
 
       {/* progress */}
       <div className="mt-auto flex flex-col gap-1.5">
@@ -310,8 +310,8 @@ function HowStep({ n, title, body }: { n: number; title: string; body: string })
         {n}
       </span>
       <div>
-        <h4 className="text-[12px] font-semibold tracking-tight text-text-1">{title}</h4>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-text-3">{body}</p>
+        <h4 className="text-[13px] font-semibold tracking-tight text-text-1">{title}</h4>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-text-3">{body}</p>
       </div>
     </div>
   );

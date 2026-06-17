@@ -109,14 +109,16 @@ export function PerfShareCardModal({
   const shareOnX = async () => {
     const ok = await copyImage();
     if (data) {
-      const pnl =
-        data.realizedPnl >= 0
-          ? `${signed(data.realizedPnl)} DUSDC up`
-          : `${signed(data.realizedPnl)} DUSDC`;
       const text =
-        `${pct(data.winRate, 1)} win rate over ${data.settled} settled markets (${pnl}) ` +
-        `on DeepBook Predict 📈\n\nTrading the live volatility surface on @SuiNetwork 👇`;
-      const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=Sui,DeepBook`;
+        `My track record on @skew_sui: ${pct(data.winRate, 1)} win rate across ` +
+        `${data.settled} settled markets (${signed(data.realizedPnl)} DUSDC) 📈\n\n` +
+        `Trade the live volatility surface yourself 👇`;
+      // `url=` makes X render a link-preview card (the site OG image) so an image
+      // rides along; a pasted card overrides it. No hashtags — keeps it personal.
+      const intent =
+        `https://twitter.com/intent/tweet` +
+        `?text=${encodeURIComponent(text)}` +
+        `&url=${encodeURIComponent('https://tryskew.xyz')}`;
       window.open(intent, '_blank', 'noopener,noreferrer');
     }
     flash(ok ? 'shared' : 'nocopy');

@@ -60,7 +60,7 @@ export function RewardsHeader({
         </h1>
         <SoonPill />
       </div>
-      <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-text-2">{blurb}</p>
+      <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-text-2">{blurb}</p>
     </div>
   );
 }
@@ -72,7 +72,7 @@ export function RewardsHeader({
  * ------------------------------------------------------------------ */
 export function FundingNote() {
   return (
-    <p className="mt-6 flex items-start gap-2 text-[11px] leading-relaxed text-text-3">
+    <p className="mt-6 flex items-start gap-2 text-[12px] leading-relaxed text-text-3">
       <LuClock size={13} className="mt-px flex-none" />
       <span>
         Rewards will be paid in DUSDC from the Skew treasury — funded by the 1% Skew fee, so

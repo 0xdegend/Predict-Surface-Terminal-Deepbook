@@ -163,9 +163,16 @@ function drawHeader({ ctx, c, accent, sans }: Ctx) {
 
 function drawFooter({ ctx, c, sans }: Ctx) {
   ctx.textAlign = 'left';
+  const y = H - 30;
+  // The live site — prominent (brand teal) so every shared card points home.
+  ctx.font = `600 15px ${sans}`;
+  ctx.fillStyle = c.up;
+  ctx.fillText('tryskew.xyz', P, y);
+  const urlW = ctx.measureText('tryskew.xyz').width;
+  // Context, secondary.
   ctx.font = `400 14px ${sans}`;
   ctx.fillStyle = c.text2;
-  ctx.fillText('Trade the live volatility surface — DeepBook Predict on Sui', P, H - 30);
+  ctx.fillText('   ·   the live volatility surface · DeepBook Predict on Sui', P + urlW, y);
 
   ctx.font = `600 11px ${sans}`;
   const tnW = ctx.measureText(spaced('TESTNET')).width;

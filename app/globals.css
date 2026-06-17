@@ -186,7 +186,7 @@ select:focus-visible,
 
 /* Eyebrow / micro-label — tracked uppercase, tertiary. */
 .eyebrow {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
   letter-spacing: 0.14em;
   text-transform: uppercase;

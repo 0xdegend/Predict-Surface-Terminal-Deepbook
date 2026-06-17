@@ -48,10 +48,10 @@ export function TicketEmpty() {
       </div>
 
       <div className="relative mt-1 text-center">
-        <h3 className="text-[14px] font-semibold tracking-tight text-text-1">
+        <h3 className="text-[15px] font-semibold tracking-tight text-text-1">
           {isChart ? 'Pick a market to trade' : 'Click the surface to trade'}
         </h3>
-        <p className="mx-auto mt-1.5 max-w-[16rem] text-[12px] leading-relaxed text-text-2">
+        <p className="mx-auto mt-1.5 max-w-[16rem] text-[13px] leading-relaxed text-text-2">
           Connect a wallet, then pick a market — from the live surface, the odds list, or the chart —
           to mint a position.
         </p>
@@ -87,8 +87,8 @@ function Step({
         {n}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-[12px] font-medium leading-none text-text-1">{title}</span>
-        <span className="text-[10px] leading-none text-text-3">{hint}</span>
+        <span className="text-[13px] font-medium leading-none text-text-1">{title}</span>
+        <span className="text-[11px] leading-none text-text-3">{hint}</span>
       </span>
       <Icon size={15} className="flex-none text-text-3" />
     </div>
@@ -107,8 +107,8 @@ function TipRow({ icon: Icon, title, hint }: { icon: IconType; title: string; hi
         <Icon size={13} className="text-text-2" />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-[12px] font-medium leading-none text-text-1">{title}</span>
-        <span className="text-[10px] leading-none text-text-3">{hint}</span>
+        <span className="text-[13px] font-medium leading-none text-text-1">{title}</span>
+        <span className="text-[11px] leading-none text-text-3">{hint}</span>
       </span>
       <span className="eyebrow flex-none">Tip</span>
     </div>

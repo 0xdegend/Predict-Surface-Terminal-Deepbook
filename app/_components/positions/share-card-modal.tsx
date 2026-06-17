@@ -148,19 +148,32 @@ export function ShareCardModal({
   const shareOnX = async () => {
     const ok = await copyImage();
     if (data) {
-      const bet = data.band
-        ? `${data.underlying} in $${price(data.band.lower)}–$${price(data.band.higher)}`
-        : `${data.underlying} ${data.up ? '≥' : '≤'} $${price(data.strike)}`;
-      const verb =
+      const asset = data.underlying;
+      const move = `${signed(data.pnlPct * 100, 1)}%`; // signed, e.g. +99.0% / -42.3%
+      // The bet in plain, first-person words.
+      const what = data.band
+        ? `between $${price(data.band.lower)} and $${price(data.band.higher)}`
+        : `${data.up ? 'above' : 'below'} $${price(data.strike)}`;
+      const line =
         data.result === 'won'
-          ? `WON ${signed(data.pnlPct * 100, 1)}%`
+          ? data.band
+            ? `I just won a range bet on ${asset} — it landed ${what} (${move}) 📈`
+            : `I just won a bet on ${asset} settling ${what} (${move}) 📈`
           : data.result === 'lost'
-            ? `closed ${signed(data.pnlPct * 100, 1)}%`
-            : `riding ${signed(data.pnlPct * 100, 1)}%`;
-      const text =
-        `${bet} — ${verb} on DeepBook Predict 📈\n\n` +
-        `Trading the live volatility surface on @SuiNetwork 👇`;
-      const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&hashtags=Sui,DeepBook`;
+            ? data.band
+              ? `So close — my range bet on ${asset} ${what} didn't land (${move}).`
+              : `My bet on ${asset} settling ${what} didn't land (${move}).`
+            : data.band
+              ? `I'm riding a range bet on ${asset} ${what} — currently ${move} 📈`
+              : `I'm riding a bet on ${asset} settling ${what} — currently ${move} 📈`;
+      const text = `${line}\n\nTrade the live volatility surface on @skew_sui 👇`;
+      // `url=` makes X render a link-preview card (the site's OG image), so an
+      // image always rides along; a pasted card overrides it and the link stays a
+      // clickable mention. No hashtags — keeps it personal.
+      const intent =
+        `https://twitter.com/intent/tweet` +
+        `?text=${encodeURIComponent(text)}` +
+        `&url=${encodeURIComponent('https://tryskew.xyz')}`;
       window.open(intent, '_blank', 'noopener,noreferrer');
     }
     flash(ok ? 'shared' : 'nocopy');
@@ -174,7 +187,7 @@ export function ShareCardModal({
         : status === 'copied'
           ? 'Image copied to clipboard.'
           : status === 'shared'
-            ? 'Image copied — paste it into your tweet (Ctrl/⌘+V).'
+            ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
             : status === 'gif'
               ? 'GIF saved — attach it to your tweet and X will loop it.'
               : status === 'giferr'
