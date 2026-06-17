@@ -9,7 +9,7 @@
  * things a roadmap surface needs: an unmistakable "coming soon" signal and a
  * live, ticking clock so the page feels alive rather than a static mock.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { LuArrowRight, LuClock } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
@@ -70,14 +70,18 @@ export function RewardsHeader({
  * rewards loop credible: the 1% Skew fee feeds the treasury, the treasury
  * pays out. Shared so both pages tell the same story.
  * ------------------------------------------------------------------ */
-export function FundingNote() {
+export function FundingNote({ note }: { note?: ReactNode }) {
   return (
     <p className="mt-6 flex items-start gap-2 text-[12px] leading-relaxed text-text-3">
       <LuClock size={13} className="mt-px flex-none" />
       <span>
-        Rewards will be paid in DUSDC from the Skew treasury — funded by the 1% Skew fee, so
-        the prize pool grows as the community trades. Live on testnet first; values shown here are
-        illustrative.
+        {note ?? (
+          <>
+            Rewards will be paid in DUSDC from the Skew treasury — funded by the 1% Skew fee, so
+            the prize pool grows as the community trades. Live on testnet first; values shown here
+            are illustrative.
+          </>
+        )}
       </span>
     </p>
   );

@@ -28,12 +28,15 @@ import {
   FundingNote,
   CrossLink,
   useNow,
-  nextMondayUTC,
   countdownParts,
 } from './shared';
 
 const PRIZE_POOL = 2500; // illustrative DUSDC
 const ENTRANTS = 128;
+
+// Season 01 opens after the DeepBook Predict mainnet launch — targeted for
+// mid-August 2026. Fixed UTC anchor so the countdown lands on a real date.
+const SEASON_START_MS = Date.UTC(2026, 7, 15, 0, 0, 0); // 15 Aug 2026, 00:00 UTC
 
 const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
 
@@ -64,9 +67,8 @@ const PRIZE_SPLIT = [
 export function CompetitionsPanel() {
   const mounted = useMounted();
   const now = useNow(1000);
-  // Anchor the countdown to a real upcoming Monday so the clock genuinely ticks.
-  const target = mounted ? nextMondayUTC(now) : 0;
-  const parts = countdownParts(target - now);
+  // Count down to the fixed mid-August season start (post-mainnet-launch).
+  const parts = countdownParts(SEASON_START_MS - now);
 
   const podium = STANDINGS.slice(0, 3);
   const rest = STANDINGS.slice(3);
@@ -132,6 +134,9 @@ export function CompetitionsPanel() {
               <Colon />
               <TimeBlock value={mounted ? parts.s : '--'} unit="sec" />
             </div>
+            <span className="text-[11px] text-text-3 lg:text-right">
+              Opens after the DeepBook Predict mainnet launch · mid-August 2026
+            </span>
           </div>
         </div>
       </div>

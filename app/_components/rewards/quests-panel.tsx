@@ -1,14 +1,16 @@
-'use client';
+"use client";
 
 /**
  * Quests — a PREVIEW of Skew's gamified trading milestones. Trade to complete
  * challenges (first trade, volume tiers, winning streaks, market coverage) and
- * earn DUSDC from the treasury. Not live yet: progress + rewards shown here are
- * illustrative, the claim action is disabled behind a "soon" state. 100% client,
- * no data, no wallet required — a roadmap surface dressed in the real design
- * language so it reads as a product, not a slide.
+ * earn Skew Points. Points (not DUSDC) are the reward for now — they can't be
+ * farmed for direct payout, which keeps sybils/farmers off the loop while the
+ * system matures. Not live yet: progress + rewards shown here are illustrative,
+ * the claim action is disabled behind a "soon" state. 100% client, no data, no
+ * wallet required — a roadmap surface dressed in the real design language so it
+ * reads as a product, not a slide.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   LuTarget,
   LuRocket,
@@ -16,16 +18,17 @@ import {
   LuZap,
   LuCompass,
   LuCoins,
+  LuStar,
   LuCheck,
   LuLock,
   LuSwords,
-} from 'react-icons/lu';
-import type { IconType } from 'react-icons';
-import { num } from '@/lib/format';
-import { HUE } from '../ui/metric';
-import { RewardsHeader, FundingNote, CrossLink } from './shared';
+} from "react-icons/lu";
+import type { IconType } from "react-icons";
+import { num } from "@/lib/format";
+import { HUE } from "../ui/metric";
+import { RewardsHeader, FundingNote, CrossLink } from "./shared";
 
-type Category = 'onboarding' | 'volume' | 'skill' | 'markets';
+type Category = "onboarding" | "volume" | "skill" | "markets";
 
 interface Quest {
   id: string;
@@ -33,7 +36,7 @@ interface Quest {
   icon: IconType;
   title: string;
   desc: string;
-  /** DUSDC reward on completion. */
+  /** Skew Points reward on completion. */
   reward: number;
   /** 0..1 — illustrative progress for the preview. */
   progress: number;
@@ -42,110 +45,111 @@ interface Quest {
 }
 
 const CAT: Record<Category, { label: string; hue: string }> = {
-  onboarding: { label: 'Onboarding', hue: HUE.teal },
-  volume: { label: 'Volume', hue: HUE.amber },
-  skill: { label: 'Skill', hue: HUE.violet },
-  markets: { label: 'Markets', hue: HUE.blue },
+  onboarding: { label: "Onboarding", hue: HUE.teal },
+  volume: { label: "Volume", hue: HUE.amber },
+  skill: { label: "Skill", hue: HUE.violet },
+  markets: { label: "Markets", hue: HUE.blue },
 };
 
 // Illustrative catalog — the kinds of quests the live system will evaluate from
 // each trader's own position history (volume, wins, holding, market coverage).
 const QUESTS: Quest[] = [
   {
-    id: 'first-trade',
-    category: 'onboarding',
+    id: "first-trade",
+    category: "onboarding",
     icon: LuRocket,
-    title: 'First Prediction',
-    desc: 'Mint your first binary or range position on any market.',
-    reward: 1,
+    title: "First Prediction",
+    desc: "Mint your first binary or range position on any market.",
+    reward: 100,
     progress: 1,
-    label: 'Complete',
+    label: "Complete",
   },
   {
-    id: 'fund-manager',
-    category: 'onboarding',
+    id: "fund-manager",
+    category: "onboarding",
     icon: LuCoins,
-    title: 'Fund Your Manager',
-    desc: 'Deposit DUSDC into your Predict manager to start trading.',
-    reward: 0.5,
+    title: "Fund Your Manager",
+    desc: "Deposit DUSDC into your Predict manager to start trading.",
+    reward: 50,
     progress: 1,
-    label: 'Complete',
+    label: "Complete",
   },
   {
-    id: 'volume-climber',
-    category: 'volume',
+    id: "volume-climber",
+    category: "volume",
     icon: LuTrendingUp,
-    title: 'Volume Climber',
-    desc: 'Trade 50 DUSDC of notional volume this week.',
-    reward: 3,
+    title: "Volume Climber",
+    desc: "Trade 50 DUSDC of notional volume this week.",
+    reward: 300,
     progress: 0.64,
-    label: '32 / 50 DUSDC',
+    label: "32 / 50 DUSDC",
   },
   {
-    id: 'market-maker',
-    category: 'volume',
+    id: "market-maker",
+    category: "volume",
     icon: LuTrendingUp,
-    title: 'Market Mover',
-    desc: 'Reach 250 DUSDC of cumulative trading volume.',
-    reward: 10,
+    title: "Market Mover",
+    desc: "Reach 250 DUSDC of cumulative trading volume.",
+    reward: 1000,
     progress: 0.22,
-    label: '55 / 250 DUSDC',
+    label: "55 / 250 DUSDC",
   },
   {
-    id: 'sharp-shooter',
-    category: 'skill',
+    id: "sharp-shooter",
+    category: "skill",
     icon: LuZap,
-    title: 'Sharp Shooter',
-    desc: 'Close three winning positions (decided, payout above cost).',
-    reward: 5,
+    title: "Sharp Shooter",
+    desc: "Close three winning positions (decided, payout above cost).",
+    reward: 500,
     progress: 0.33,
-    label: '1 / 3 wins',
+    label: "1 / 3 wins",
   },
   {
-    id: 'diamond-hands',
-    category: 'skill',
+    id: "diamond-hands",
+    category: "skill",
     icon: LuTarget,
-    title: 'Hold to Settlement',
-    desc: 'Carry a position all the way to oracle settlement.',
-    reward: 2,
+    title: "Hold to Settlement",
+    desc: "Carry a position all the way to oracle settlement.",
+    reward: 200,
     progress: 0,
-    label: '0 / 1',
+    label: "0 / 1",
   },
   {
-    id: 'explorer',
-    category: 'markets',
+    id: "explorer",
+    category: "markets",
     icon: LuCompass,
-    title: 'Market Explorer',
-    desc: 'Open positions across three different underlying markets.',
-    reward: 4,
+    title: "Market Explorer",
+    desc: "Open positions across three different underlying markets.",
+    reward: 400,
     progress: 0.66,
-    label: '2 / 3 markets',
+    label: "2 / 3 markets",
   },
   {
-    id: 'range-rider',
-    category: 'markets',
+    id: "range-rider",
+    category: "markets",
     icon: LuTarget,
-    title: 'Range Rider',
-    desc: 'Open your first vertical range position on the surface.',
-    reward: 2,
+    title: "Range Rider",
+    desc: "Open your first vertical range position on the surface.",
+    reward: 200,
     progress: 0,
-    label: '0 / 1',
+    label: "0 / 1",
   },
 ];
 
-const FILTERS: { key: 'all' | Category; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'onboarding', label: 'Onboarding' },
-  { key: 'volume', label: 'Volume' },
-  { key: 'skill', label: 'Skill' },
-  { key: 'markets', label: 'Markets' },
+const FILTERS: { key: "all" | Category; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "onboarding", label: "Onboarding" },
+  { key: "volume", label: "Volume" },
+  { key: "skill", label: "Skill" },
+  { key: "markets", label: "Markets" },
 ];
 
 export function QuestsPanel() {
-  const [filter, setFilter] = useState<'all' | Category>('all');
+  const [filter, setFilter] = useState<"all" | Category>("all");
 
   const visible = useMemo(
-    () => (filter === 'all' ? QUESTS : QUESTS.filter((q) => q.category === filter)),
+    () =>
+      filter === "all" ? QUESTS : QUESTS.filter((q) => q.category === filter),
     [filter],
   );
 
@@ -157,21 +161,33 @@ export function QuestsPanel() {
       <RewardsHeader
         icon={LuTarget}
         title="Quests"
-        blurb="Complete trading milestones to earn DUSDC rewards — from your very first prediction to volume tiers, winning streaks and market coverage. Progress tracks automatically from your on-chain activity."
+        blurb="Complete trading milestones to earn Skew Points, from your very first prediction to volume tiers, winning streaks and market coverage. Progress tracks automatically from your on-chain activity."
       />
 
       {/* How it works — the three-beat loop, compact */}
       <div className="mb-6 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        <HowStep n={1} title="Trade" body="Mint positions on the live surface as you normally would." />
-        <HowStep n={2} title="Progress" body="Each trade advances every quest it qualifies for, automatically." />
-        <HowStep n={3} title="Claim" body="Hit the target and claim the DUSDC reward to your wallet." />
+        <HowStep
+          n={1}
+          title="Trade"
+          body="Mint positions on the live surface as you normally would."
+        />
+        <HowStep
+          n={2}
+          title="Progress"
+          body="Each trade advances every quest it qualifies for, automatically."
+        />
+        <HowStep
+          n={3}
+          title="Claim"
+          body="Hit the target and the Skew Points are credited to your profile."
+        />
       </div>
 
       {/* Summary strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
         <Stat label="Quests" value={String(QUESTS.length)} />
         <Stat label="Completed" value={`${completed} / ${QUESTS.length}`} />
-        <Stat label="Reward pool" value={num(totalReward, 1)} unit="DUSDC" />
+        <Stat label="Reward pool" value={num(totalReward, 0)} unit="Points" />
       </div>
 
       {/* Filters */}
@@ -182,8 +198,8 @@ export function QuestsPanel() {
             onClick={() => setFilter(f.key)}
             className={`flex-none rounded-md px-3 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
               filter === f.key
-                ? 'bg-[var(--accent-soft)] text-text-1'
-                : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
+                ? "bg-[var(--accent-soft)] text-text-1"
+                : "text-text-2 hover:bg-white/[0.04] hover:text-text-1"
             }`}
           >
             {f.label}
@@ -198,7 +214,17 @@ export function QuestsPanel() {
         ))}
       </div>
 
-      <FundingNote />
+      <FundingNote
+        note={
+          <>
+            Quests reward Skew Points, not DUSDC — points can’t be cashed out
+            directly, which keeps farmers and sybils off the loop while the
+            system matures. Points feed your leaderboard standing today and
+            unlock future rewards. Live on testnet first; values shown here are
+            illustrative.
+          </>
+        }
+      />
 
       <CrossLink
         href="/competitions"
@@ -224,7 +250,10 @@ function QuestCard({ quest, index }: { quest: Quest; index: number }) {
       <div className="flex items-start gap-3">
         <span
           className="inline-flex h-9 w-9 flex-none items-center justify-center rounded-xl"
-          style={{ color: cat.hue, background: `color-mix(in srgb, ${cat.hue} 14%, transparent)` }}
+          style={{
+            color: cat.hue,
+            background: `color-mix(in srgb, ${cat.hue} 14%, transparent)`,
+          }}
         >
           <Icon size={18} />
         </span>
@@ -234,13 +263,16 @@ function QuestCard({ quest, index }: { quest: Quest; index: number }) {
               {quest.title}
             </h3>
           </div>
-          <span className="eyebrow mt-1 block" style={{ color: cat.hue, opacity: 0.85 }}>
+          <span
+            className="eyebrow mt-1 block"
+            style={{ color: cat.hue, opacity: 0.85 }}
+          >
             {cat.label}
           </span>
         </div>
-        {/* reward chip */}
+        {/* reward chip — Skew Points (not DUSDC) */}
         <span className="chip flex-none gap-1 px-2 py-1 text-[11px] font-semibold text-[var(--accent)]">
-          <LuCoins size={12} />+{num(quest.reward, quest.reward < 1 ? 1 : 0)}
+          <LuStar size={12} />+{num(quest.reward, 0)} pts
         </span>
       </div>
 
@@ -249,7 +281,9 @@ function QuestCard({ quest, index }: { quest: Quest; index: number }) {
       {/* progress */}
       <div className="mt-auto flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[10px]">
-          <span className="font-mono tabular-nums text-text-3">{quest.label}</span>
+          <span className="font-mono tabular-nums text-text-3">
+            {quest.label}
+          </span>
           <span className="font-mono tabular-nums text-text-3">
             {Math.round(quest.progress * 100)}%
           </span>
@@ -258,7 +292,7 @@ function QuestCard({ quest, index }: { quest: Quest; index: number }) {
           <i
             style={{
               width: `${Math.round(quest.progress * 100)}%`,
-              background: done ? 'var(--accent)' : cat.hue,
+              background: done ? "var(--accent)" : cat.hue,
               opacity: done ? 1 : 0.75,
             }}
           />
@@ -296,28 +330,52 @@ function SoonChip() {
   return (
     <span
       className="ml-1 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em]"
-      style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
+      style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
     >
       Soon
     </span>
   );
 }
 
-function HowStep({ n, title, body }: { n: number; title: string; body: string }) {
+function HowStep({
+  n,
+  title,
+  body,
+}: {
+  n: number;
+  title: string;
+  body: string;
+}) {
   return (
     <div className="glass-inset flex items-start gap-3 p-3.5">
-      <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full font-mono text-[11px] font-semibold text-[var(--accent)]" style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent-line)' }}>
+      <span
+        className="flex h-6 w-6 flex-none items-center justify-center rounded-full font-mono text-[11px] font-semibold text-[var(--accent)]"
+        style={{
+          background: "var(--accent-soft)",
+          border: "1px solid var(--accent-line)",
+        }}
+      >
         {n}
       </span>
       <div>
-        <h4 className="text-[13px] font-semibold tracking-tight text-text-1">{title}</h4>
+        <h4 className="text-[13px] font-semibold tracking-tight text-text-1">
+          {title}
+        </h4>
         <p className="mt-0.5 text-[12px] leading-relaxed text-text-3">{body}</p>
       </div>
     </div>
   );
 }
 
-function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function Stat({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+}) {
   return (
     <div className="glass-inset flex flex-col gap-1 px-3 py-2.5">
       <span className="eyebrow">{label}</span>
