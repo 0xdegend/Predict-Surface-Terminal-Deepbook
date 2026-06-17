@@ -38,6 +38,16 @@ import type { PositionSummary } from "@/lib/api/types";
 const OBJECT_EXPLORER = (id: string) =>
   `https://suiscan.xyz/testnet/object/${id}`;
 
+/**
+ * Terminal statuses — the oracle has actually settled the market, so the
+ * win/loss verdict is FINAL. `awaiting_settlement` is deliberately excluded:
+ * it means expired-but-not-yet-settled (the oracle hasn't posted a settlement
+ * price), so the outcome is still unknown. Deriving won/lost from the live mark
+ * during that gap is what made a card read "Lost" and then flip to "Won" when a
+ * late settlement landed above the strike.
+ */
+const SETTLED_FINAL = new Set(["redeemable", "settled", "lost", "redeemed"]);
+
 export function PositionCard({
   position,
   now,
@@ -56,20 +66,38 @@ export function PositionCard({
   const up = p.is_up;
   const remaining = p.expiry - now;
   const expired = remaining <= 0;
-  const decided = m.isSettled || expired;
 
-  // A settled binary marks at 1 (won) or 0 (lost); fall back to PnL sign.
-  const won = decided ? (m.markPrice ?? (m.pnl >= 0 ? 1 : 0)) >= 0.5 : null;
-  const result: "live" | "won" | "lost" =
-    won === null ? "live" : won ? "won" : "lost";
+  // The verdict is FINAL only once the oracle has settled (terminal status).
+  const settledFinal = SETTLED_FINAL.has(p.status);
+  // Expired by our clock, or the server says awaiting_settlement, but the oracle
+  // hasn't posted a price yet → outcome unknown. Show a neutral "Settling" state
+  // rather than a provisional Won/Lost that can flip when settlement lands.
+  const settling =
+    !settledFinal && (expired || p.status === "awaiting_settlement");
+
+  // Final outcome — only computed when settledFinal. An explicit `lost` status
+  // loses; otherwise the settled binary marks at 1 (won) / 0 (lost), with the
+  // PnL sign as a defensive fallback. Never derived from the live mark while
+  // still live or settling.
+  const won: boolean | null = settledFinal
+    ? p.status !== "lost" && (m.markPrice ?? (m.pnl >= 0 ? 1 : 0)) >= 0.5
+    : null;
+
+  const result: "live" | "settling" | "won" | "lost" = settledFinal
+    ? won
+      ? "won"
+      : "lost"
+    : settling
+      ? "settling"
+      : "live";
+
+  const decided = settledFinal; // a final verdict is known
   const positive = m.pnl >= 0;
-  const isRedeem = m.isSettled;
-  // Decided but lost → the bet paid nothing, so there's no payout to "redeem".
-  // Offer a muted "Clear" (removes the worthless position) instead of an
-  // inviting green Redeem that implies a payout. Keys off `decided` (settled OR
-  // expired) + `won` — same signal as the Lost chip — not the unreliable
-  // `m.isSettled`, which never flips for a never-redeemed loser.
-  const worthless = decided && won === false;
+  // Claimable payout only when settled in-the-money.
+  const isRedeem = settledFinal && won === true;
+  // Settled out-of-the-money → the bet paid nothing, so there's no payout to
+  // "redeem". Offer a muted "Clear" instead of an inviting green Redeem.
+  const worthless = settledFinal && won === false;
   const deltaPp =
     m.markPrice != null ? (m.markPrice - m.entryPrice) * 100 : null;
   const pnlColor = positive ? "var(--up)" : "var(--down)";
@@ -79,7 +107,8 @@ export function PositionCard({
     up,
     strike: toFloat(p.strike),
     expiry: p.expiry,
-    result,
+    // Settling has no verdict yet → share it as a live card.
+    result: result === "settling" ? "live" : result,
     decided,
     pnl: m.pnl,
     pnlPct: m.pnlPct,
@@ -113,7 +142,7 @@ export function PositionCard({
         className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
         style={{
           background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)`,
-          opacity: result === "live" ? 0.3 : 0.7,
+          opacity: result === "live" || result === "settling" ? 0.3 : 0.7,
         }}
       />
 
@@ -157,11 +186,16 @@ export function PositionCard({
               </p>
               <div className="mt-1 flex items-center gap-2.5">
                 <ResultChip result={result} />
-                {!decided && (
+                {result === "live" && (
                   <span
                     className={`text-[11px] tabular-nums ${urgencyClass(remaining)}`}
                   >
-                    {expired ? "expired" : `${countdown(p.expiry, now)} left`}
+                    {`${countdown(p.expiry, now)} left`}
+                  </span>
+                )}
+                {result === "settling" && (
+                  <span className="font-sans text-[11px] text-text-3">
+                    awaiting oracle settlement
                   </span>
                 )}
               </div>
@@ -263,25 +297,40 @@ export function PositionCard({
           <p className="font-sans text-[10px] leading-snug text-text-3">
             {worthless
               ? "Settled out of the money — this bet paid nothing."
-              : "Probabilistic · resolved by oracle data."}
+              : result === "settling"
+                ? "Expired — waiting on the oracle's final settlement price."
+                : "Probabilistic · resolved by oracle data."}
           </p>
           <div className="flex items-center gap-2">
             <ShareButton onClick={() => setShareOpen(true)} />
-            <button
-              onClick={() => onRedeem(p)}
-              disabled={busy}
-              title={worthless ? "Remove this settled position — it paid nothing" : undefined}
-              className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
-                worthless
-                  ? "border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2"
-                  : isRedeem
-                    ? "border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20"
-                    : "border-down/45 text-down hover:border-down/70 hover:bg-down/10"
-              }`}
-            >
-              {worthless ? "Clear" : isRedeem ? "Redeem position" : "Close position"}
-              {worthless ? <LuCircleX size={14} /> : isRedeem ? <LuDownload size={14} /> : <LuCircleX size={14} />}
-            </button>
+            {result === "settling" ? (
+              // Expired but not yet settled — can't close (expired) or redeem
+              // (no settlement price yet). Disabled until the oracle settles.
+              <button
+                disabled
+                title="The oracle hasn't settled this market yet — redeem unlocks once it does."
+                className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3 opacity-70"
+              >
+                Awaiting settlement
+                <LuClock size={14} />
+              </button>
+            ) : (
+              <button
+                onClick={() => onRedeem(p)}
+                disabled={busy}
+                title={worthless ? "Remove this settled position — it paid nothing" : undefined}
+                className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  worthless
+                    ? "border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2"
+                    : isRedeem
+                      ? "border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20"
+                      : "border-down/45 text-down hover:border-down/70 hover:bg-down/10"
+                }`}
+              >
+                {worthless ? "Clear" : isRedeem ? "Redeem position" : "Close position"}
+                {worthless ? <LuCircleX size={14} /> : isRedeem ? <LuDownload size={14} /> : <LuCircleX size={14} />}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -438,12 +487,24 @@ function MiniMetric({
   );
 }
 
-function ResultChip({ result }: { result: "live" | "won" | "lost" }) {
+function ResultChip({
+  result,
+}: {
+  result: "live" | "settling" | "won" | "lost";
+}) {
   if (result === "live") {
     return (
       <span className="flex items-center gap-1.5 rounded-full border border-line bg-white/3 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-text-2">
         <span className="live-dot scale-90" />
         Live
+      </span>
+    );
+  }
+  if (result === "settling") {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full border border-(--warn-soft) bg-(--warn-soft) px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-warn">
+        <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse" />
+        Settling
       </span>
     );
   }

@@ -375,8 +375,12 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </button>
         </div>
       )}
+      {/* Hidden once a grant has succeeded this session (`!grant.success`), so a
+          freshly-funded user can't re-tap it and assume they can fund again —
+          the balance refetch is async, this hides the CTA immediately. */}
       {dusdcBalance !== undefined &&
         dusdcBalance < STARTER_GRANT_BALANCE_CEILING &&
+        !grant.success &&
         (starterGrant.enabled && !grant.failed ? (
           <button
             onClick={grant.claim}

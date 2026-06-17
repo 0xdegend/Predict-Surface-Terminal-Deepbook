@@ -17,6 +17,10 @@ import { toFloat } from '@/config/scale';
 
 export interface ValuedRangePosition extends RangePosition, RangeValuation {
   underlying: string;
+  /** The oracle has posted a settlement price → the win/loss is FINAL. Distinct
+   *  from `settled` (which only flips once a redeem record exists). Used to avoid
+   *  showing a provisional In-band/Out verdict while expired-but-unsettled. */
+  oracleSettled: boolean;
 }
 
 export function useRangePositions(managerId: string | null) {
@@ -73,7 +77,12 @@ export function useRangePositions(managerId: string | null) {
         const fairUp = o
           ? rangeFair(toFloat(p.lowerStrike), toFloat(p.higherStrike), o.forward, o.svi, o.settlement)
           : 0;
-        return { ...p, ...valueRange(p, fairUp), underlying: o?.underlying ?? '' };
+        return {
+          ...p,
+          ...valueRange(p, fairUp),
+          underlying: o?.underlying ?? '',
+          oracleSettled: o?.settlement != null,
+        };
       }),
     [positions, byOracle],
   );

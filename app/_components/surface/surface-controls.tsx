@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import gsap from 'gsap';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { timeUTC } from '@/lib/format';
+import { InfoTip } from '@/app/_components/ui/info-tip';
 
 /**
  * Floating glass control bar (redesign Phase 2). Sits lifted off the canvas as
@@ -78,14 +79,30 @@ export function SurfaceControls({
 
       {/* Segmented overlay toggles — desktop only. On phones they pushed the bar
           into a tall 3-row box over the surface; the no-arb / stress checks are
-          niche demo overlays, so the mobile bar keeps just the time-travel. */}
-      <div className="hidden shrink-0 items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5 sm:flex">
-        <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
-          No-arb
-        </SegToggle>
-        <SegToggle active={stress > 0} onClick={() => setStress(stress > 0 ? 0 : 0.6)} tone="down">
-          Stress
-        </SegToggle>
+          niche demo overlays, so the mobile bar keeps just the time-travel. The
+          trailing "?" explains both overlays in plain language. */}
+      <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+        <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
+          <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
+            No-arb
+          </SegToggle>
+          <SegToggle active={stress > 0} onClick={() => setStress(stress > 0 ? 0 : 0.6)} tone="down">
+            Stress
+          </SegToggle>
+        </div>
+        <InfoTip label="the surface overlays" size={13}>
+          <span className="block">
+            <span className="font-medium text-accent">No-arb</span> — checks the live surface for
+            prices that can’t logically coexist (a cheaper option paying out more than a pricier
+            one). Toggle it on and any offending strikes flash on the surface; clean data shows
+            nothing.
+          </span>
+          <span className="mt-2 block">
+            <span className="font-medium text-down">Stress</span> — deliberately bends the smile to
+            push the surface out of shape, making the no-arb check fire on demand. Turn both on to
+            watch it catch the break, then off to return to live pricing.
+          </span>
+        </InfoTip>
       </div>
     </div>
   );

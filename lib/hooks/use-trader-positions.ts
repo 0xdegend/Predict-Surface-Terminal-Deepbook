@@ -124,7 +124,12 @@ export function useTraderPositions(managerIds: string[], enabled = true): UseTra
           const fairUp = o
             ? rangeFair(toFloat(p.lowerStrike), toFloat(p.higherStrike), o.forward, o.svi, o.settlement)
             : 0;
-          return { ...p, ...valueRange(p, fairUp), underlying: o?.underlying ?? '' };
+          return {
+            ...p,
+            ...valueRange(p, fairUp),
+            underlying: o?.underlying ?? '',
+            oracleSettled: o?.settlement != null,
+          };
         }),
     [rangePositions, byOracle],
   );

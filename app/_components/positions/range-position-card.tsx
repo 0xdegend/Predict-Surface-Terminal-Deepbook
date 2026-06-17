@@ -6,7 +6,7 @@
  * (or 1/0 once settled); the band is the hero. Redeem closes or claims it.
  */
 import { useState } from 'react';
-import { LuCalendarRange, LuCircleX, LuDownload, LuShare } from 'react-icons/lu';
+import { LuCalendarRange, LuCircleX, LuDownload, LuShare, LuClock } from 'react-icons/lu';
 import { fromQuote, toFloat } from '@/config/scale';
 import { quote as fmtQuote, price, pct, signed, dateUTC, countdown } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
@@ -35,15 +35,18 @@ export function RangePositionCard({
   const pnl = fromQuote(p.unrealizedPnl);
   const pnlPct = p.openCostBasis > 0 ? p.unrealizedPnl / p.openCostBasis : 0;
   const expired = p.expiry - now <= 0;
-  const decided = p.settled || expired;
-  const won = p.fairUp >= 0.5;
-  // Decided OUT of the band → the bet paid nothing, so there's no payout to
-  // "redeem". Don't show an inviting green Redeem; offer a muted "Clear" that
-  // just removes the now-worthless position from the manager (redeems 0).
-  // Keys off `decided` (settled OR expired) + `won` — same signal as the OUT
-  // badge above — because `p.settled` only flips once a redeem record exists,
-  // which a never-redeemed loser never has.
-  const worthless = decided && !won;
+  // FINAL only once the oracle has posted a settlement price. Expired-but-not-
+  // -settled is a neutral "Settling" state — deriving In-band/Out from the live
+  // `fairUp` during that gap is what let a card flip its verdict when a late
+  // settlement landed inside the band.
+  const settledFinal = p.oracleSettled;
+  const settling = !settledFinal && expired;
+  const decided = settledFinal;
+  // When settled, fairUp is exactly 1 (in band) / 0 (out); null while unsettled.
+  const won: boolean | null = settledFinal ? p.fairUp >= 0.5 : null;
+  // Settled OUT of the band → the bet paid nothing, so there's no payout to
+  // "redeem". Offer a muted "Clear" instead of an inviting green Redeem.
+  const worthless = settledFinal && won === false;
   const positive = pnl >= 0;
   const sym = predictConfig.quote.symbol;
   const asset = p.underlying || 'BTC';
@@ -71,8 +74,8 @@ export function RangePositionCard({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
         style={{
-          background: `linear-gradient(90deg, transparent, ${decided ? (won ? 'var(--up)' : 'var(--down)') : 'var(--up)'}, transparent)`,
-          opacity: decided ? 0.7 : 0.3,
+          background: `linear-gradient(90deg, transparent, ${settledFinal ? (won ? 'var(--up)' : 'var(--down)') : 'var(--up)'}, transparent)`,
+          opacity: settledFinal ? 0.7 : 0.3,
         }}
       />
       <div className="flex flex-col gap-3 p-3.5 sm:p-4">
@@ -82,13 +85,18 @@ export function RangePositionCard({
             <span className="eyebrow">{asset} Range</span>
           </span>
           <div className="flex items-center gap-2.5">
-            {decided ? (
+            {settledFinal ? (
               <span
                 className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
                   won ? 'bg-(--accent-soft) text-up' : 'bg-(--down-soft) text-down'
                 }`}
               >
                 {won ? 'In band' : 'Out'}
+              </span>
+            ) : settling ? (
+              <span className="flex items-center gap-1.5 rounded-full border border-(--warn-soft) bg-(--warn-soft) px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-warn">
+                <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse" />
+                Settling
               </span>
             ) : (
               <span className="text-[11px] tabular-nums text-text-2">{countdown(p.expiry, now)} left</span>
@@ -143,23 +151,36 @@ export function RangePositionCard({
           <p className="font-sans text-[10px] leading-snug text-text-3">
             {worthless
               ? `Settled out of the band — this bet paid nothing.`
-              : `Pays 1.00 ${sym} per contract if ${asset} settles in the band.`}
+              : settling
+                ? `Expired — waiting on the oracle's final settlement price.`
+                : `Pays 1.00 ${sym} per contract if ${asset} settles in the band.`}
           </p>
-          <button
-            onClick={() => onRedeem(p)}
-            disabled={busy}
-            title={worthless ? 'Remove this settled position — it paid nothing' : undefined}
-            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
-              worthless
-                ? 'border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2'
-                : decided
-                  ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
-                  : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
-            }`}
-          >
-            {worthless ? 'Clear' : decided ? 'Redeem range' : 'Close range'}
-            {worthless ? <LuCircleX size={14} /> : decided ? <LuDownload size={14} /> : <LuCircleX size={14} />}
-          </button>
+          {settling ? (
+            <button
+              disabled
+              title="The oracle hasn't settled this market yet — redeem unlocks once it does."
+              className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3 opacity-70"
+            >
+              Awaiting settlement
+              <LuClock size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={() => onRedeem(p)}
+              disabled={busy}
+              title={worthless ? 'Remove this settled position — it paid nothing' : undefined}
+              className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
+                worthless
+                  ? 'border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2'
+                  : decided
+                    ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
+                    : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
+              }`}
+            >
+              {worthless ? 'Clear' : decided ? 'Redeem range' : 'Close range'}
+              {worthless ? <LuCircleX size={14} /> : decided ? <LuDownload size={14} /> : <LuCircleX size={14} />}
+            </button>
+          )}
         </div>
       </div>
 
