@@ -76,8 +76,10 @@ export function SurfaceControls({
         </span>
       </div>
 
-      {/* Segmented overlay toggles */}
-      <div className="flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
+      {/* Segmented overlay toggles — desktop only. On phones they pushed the bar
+          into a tall 3-row box over the surface; the no-arb / stress checks are
+          niche demo overlays, so the mobile bar keeps just the time-travel. */}
+      <div className="hidden shrink-0 items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5 sm:flex">
         <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
           No-arb
         </SegToggle>

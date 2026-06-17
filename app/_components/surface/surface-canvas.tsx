@@ -21,6 +21,13 @@ import { useNow } from "@/lib/hooks/use-now";
 import { useSurfaceInputs } from "./use-surface-inputs";
 import { SurfaceControls } from "./surface-controls";
 import { SurfaceTradePopover } from "./surface-trade-popover";
+import {
+  LuBoxes,
+  LuMoveHorizontal,
+  LuMoveDiagonal,
+  LuMoveVertical,
+} from "react-icons/lu";
+import type { IconType } from "react-icons";
 import type { Oracle } from "@/lib/api/types";
 
 /** Respect the OS reduced-motion setting (§10.6). */
@@ -72,9 +79,13 @@ export function SurfaceCanvas({
   const rangeSelection = useSurfaceStore((s) => s.rangeSelection);
   const rangeAnchor = useSurfaceStore((s) => s.rangeAnchor);
   const pickRangeStrike = useSurfaceStore((s) => s.pickRangeStrike);
-  const openTicketSheet = useSurfaceStore((s) => s.openTicketSheet);
   const reduced = usePrefersReducedMotion();
   const now = useNow(0);
+  // Below lg the surface is VIEW-ONLY — trading happens from the markets list
+  // (which opens the slide-up sheet). Tapping a tiny 3-D node on a phone is
+  // imprecise and the node is often hidden behind the controls panel, so we
+  // don't wire surface taps to a trade there.
+  const isMobile = useMediaQuery("(max-width: 1023px)");
 
   // Click-to-mint popover anchored at the clicked node (desktop only — on mobile
   // a tap scrolls to the right-rail ticket instead). `clickId` remounts the
@@ -134,6 +145,8 @@ export function SurfaceCanvas({
   }, [ticketMode, rangeSelection, rangeAnchor, selection, inputs]);
 
   function pick(row: number, col: number) {
+    // Surface is view-only below lg — trade from the markets list instead.
+    if (isMobile) return;
     const clickedRow = surface.rows[row];
     const clickedCell = clickedRow?.cells[col];
     if (!clickedRow || !clickedCell) return;
@@ -143,7 +156,6 @@ export function SurfaceCanvas({
     markCoachSeen(); // first real interaction — retire the coach mark for good
     // The actual price the user pointed at (this node's strike).
     const clickedPrice = clickedRow.forward * Math.exp(clickedCell.k);
-    const onMobile = typeof window !== "undefined" && window.innerWidth < 1024;
 
     if (ticketMode === "range") {
       // A range lives on ONE expiry (oracle). Picking two arbitrary nodes on the
@@ -173,10 +185,6 @@ export function SurfaceCanvas({
         },
         'surface',
       );
-      if (onMobile) {
-        openTicketSheet();
-        return;
-      }
       // Keep the surface clear while the band is still being drawn (first edge),
       // so the second click is never blocked by the centered card. Open the card
       // only once this click COMPLETES the band: an edge was already anchored on
@@ -203,12 +211,7 @@ export function SurfaceCanvas({
       },
       'surface',
     );
-    // Mobile/tablet: open the slide-up trade sheet (the ticket comes to the
-    // user). Desktop opens the quick-mint popover (centered over the surface).
-    if (onMobile) {
-      openTicketSheet();
-      return;
-    }
+    // Desktop: open the quick-mint popover anchored over the surface.
     setPopover(true);
     setClickId((n) => n + 1); // remount so glance/size reset on each new pick
   }
@@ -247,6 +250,7 @@ export function SurfaceCanvas({
             surface={surface}
             reduced={reduced}
             show={
+              !isMobile &&
               !coachSeen &&
               !selection &&
               !rangeSelection &&
@@ -312,10 +316,11 @@ export function SurfaceCanvas({
           reliably reappears (with its state intact) on close. */}
       <SurfaceCaption suppressed={!!popover} />
 
-      {/* Empty-state hint — mode-aware (a range needs two taps), fading out once
-          the relevant selection is made. */}
+      {/* Empty-state hint — desktop only (the surface is view-only below lg, so
+          "tap to trade" doesn't apply there). Mode-aware, fading out once the
+          relevant selection is made. */}
       <div
-        className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 -translate-x-1/2 transition-all duration-300 ${
+        className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
           (ticketMode === "range" ? !!rangeSelection : !!selection)
             ? "translate-y-1 opacity-0"
             : "opacity-100"
@@ -1138,96 +1143,135 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
   );
 }
 
+/** The surface's cool→warm implied-vol ramp, as a flat swatch for the legend so
+ *  the "Color" key matches the colors actually painted on the mesh. */
+const IV_RAMP = "linear-gradient(110deg, #6aa6e6, #4dd6b0 38%, #d9a94e 72%, #f0796b)";
+
+/** One legend row — an axis arrow (or the color swatch) + its plain meaning. */
+function LegendRow({
+  icon: Icon,
+  gradient,
+  label,
+  desc,
+}: {
+  icon?: IconType;
+  gradient?: boolean;
+  label: string;
+  desc: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      {gradient ? (
+        <span aria-hidden className="h-5 w-5 flex-none rounded-md" style={{ background: IV_RAMP }} />
+      ) : (
+        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-md border border-line bg-white/[0.04] text-text-2">
+          {Icon && <Icon size={12} />}
+        </span>
+      )}
+      <span className="text-[10.5px] leading-snug text-text-3">
+        <span className="font-medium text-text-1">{label}</span> — {desc}
+      </span>
+    </div>
+  );
+}
+
 /**
- * Dismissible plain-English explainer (legibility pass) — orients a non-quant
- * judge in one read. Persists dismissal in localStorage so it never re-nags.
+ * Plain-English "how to read the surface" guide (legibility pass) — orients a
+ * non-quant in one read. It is COLLAPSIBLE, never dismissable: the header pill
+ * always stays on the hero, so a confused user can reopen the full guide at any
+ * time. The user's open/collapsed choice is remembered in localStorage.
  *
- * On mobile it collapses to a compact pill the user expands on tap, so the full
- * note never blankets the hero — and the large backdrop-blur box isn't painted
- * up front (easier on first paint / LCP). Desktop shows the full note inline.
+ * Until the user picks, it defaults to open on desktop and collapsed on mobile
+ * (keeps the hero clear + the big backdrop-blur box off the first paint / LCP on
+ * phones). Read lazily — the canvas is dynamically imported ssr:false, so
+ * `window` exists at init and we avoid a setState-in-effect.
  */
 function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
-  // Read the dismissal lazily — this canvas is dynamically imported with
-  // ssr:false, so `window`/`localStorage` exist at init and we avoid a
-  // setState-in-effect (which triggers cascading renders).
-  const [show, setShow] = useState(
-    () =>
-      typeof window === "undefined" ||
-      localStorage.getItem("predict.surfaceCaption") !== "dismissed",
-  );
-  const [open, setOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width: 640px)");
-  // `suppressed` (trade popover open) hides the explainer without unmounting it,
-  // so its dismiss/expand state survives and it reliably reappears on close.
-  if (!show || suppressed) return null;
+  const [pref, setPref] = useState<"open" | "collapsed" | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = localStorage.getItem("predict.surfaceGuide");
+    return v === "open" || v === "collapsed" ? v : null;
+  });
+  // `suppressed` (trade popover open) hides it without unmounting, so the
+  // collapse state survives and it reliably reappears on close.
+  if (suppressed) return null;
 
-  // Desktop always shows the body; mobile only when the user expands it.
-  const expanded = isDesktop || open;
-
-  function dismiss() {
-    localStorage.setItem("predict.surfaceCaption", "dismissed");
-    setShow(false);
+  // No explicit choice yet → open on desktop, collapsed on mobile.
+  const expanded = pref ? pref === "open" : isDesktop;
+  function toggle() {
+    const next = expanded ? "collapsed" : "open";
+    setPref(next);
+    localStorage.setItem("predict.surfaceGuide", next);
   }
 
   return (
-    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl sm:top-6 sm:max-w-sm">
-      {/* Header — title + (mobile) expand toggle + dismiss. Tapping the title
-          row toggles on mobile, so the whole pill is the affordance. */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5"
-        onClick={!isDesktop ? () => setOpen((o) => !o) : undefined}
+    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-[min(22rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl sm:top-6">
+      {/* Header IS the toggle — the whole pill expands/collapses the guide, so a
+          confused user can always reopen it. No dismiss; it never disappears. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={expanded}
+        aria-label={expanded ? "Collapse the guide" : "How to read the surface — expand the guide"}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03] sm:px-3.5 sm:py-2.5"
       >
-        <span aria-hidden className="h-3 w-px shrink-0 bg-accent/70" />
-        <span className="text-[11px] font-medium text-text-1">Reading the surface</span>
-        <div className="ml-auto flex items-center gap-0.5">
-          {!isDesktop && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen((o) => !o);
-              }}
-              aria-expanded={expanded}
-              aria-label={expanded ? "Collapse explainer" : "Expand explainer"}
-              className="rounded p-1 text-text-3 transition-colors hover:text-text-2"
-            >
-              <svg
-                width="11"
-                height="11"
-                viewBox="0 0 10 10"
-                fill="none"
-                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-              >
-                <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-              </svg>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              dismiss();
-            }}
-            aria-label="Dismiss explainer"
-            className="rounded p-1 text-text-3 transition-colors hover:text-text-2"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M2 2 8 8M8 2 2 8" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      </div>
+        <LuBoxes size={13} className="shrink-0 text-accent" />
+        <span className="whitespace-nowrap text-[11px] font-medium text-text-1">How to read the surface</span>
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden
+          className={`ml-auto shrink-0 text-text-3 transition-transform ${expanded ? "rotate-180" : ""}`}
+        >
+          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      </button>
 
       {expanded && (
-        <div className="flex flex-col gap-1 px-3 pb-2.5 sm:gap-1.5 sm:px-3.5 sm:pb-3">
-          <p className="text-[10.5px] leading-snug text-text-2 sm:text-[11px] sm:leading-relaxed">
-            Height is how big a move the market is pricing in. The dip is
-            today&apos;s price; the wings lifting on either side mean it&apos;s
-            bracing for a swing. Warmer colors = more uncertainty.
+        // Capped + scrollable on phones (a safety net so a small hero is never
+        // overrun); natural height on desktop. Content is trimmed on mobile to
+        // stay short — the lead-in is desktop-only and the "aha" is a slim
+        // accent-bar line rather than a boxed note.
+        <div className="scroll-quiet flex max-h-[calc(100dvh-12rem)] flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3 sm:max-h-none sm:gap-2.5 sm:overflow-visible sm:px-3.5">
+          <p className="hidden text-[11px] leading-relaxed text-text-2 sm:block">
+            The 3-D shape is a live map of every bet you can make. Here&apos;s what each part means:
           </p>
-          <p className="text-[10px] leading-snug text-text-3 sm:leading-relaxed">
-            Drag the slider to rewind · tap{" "}
-            <span className="text-down">Stress</span> to fire the no-arb check.
+
+          {/* Visual key — each axis/color tied to its plain meaning. The Color
+              swatch reuses the real cool→warm ramp painted on the mesh. */}
+          <div className="flex flex-col gap-1.5">
+            <LegendRow icon={LuMoveHorizontal} label="Left → right" desc="the price you bet on" />
+            <LegendRow icon={LuMoveDiagonal} label="Front → back" desc="time until it's decided" />
+            <LegendRow icon={LuMoveVertical} label="Height" desc="how big a move the market expects" />
+            <LegendRow gradient label="Color" desc="warmer means more uncertainty" />
+          </div>
+
+          {/* The "aha" — a slim accent-bar note (no boxed inset), so it stays short. */}
+          <div className="flex gap-2">
+            <span aria-hidden className="w-px shrink-0 self-stretch rounded bg-accent/45" />
+            <p className="text-[10.5px] leading-relaxed text-text-3">
+              The <span className="text-text-2">dip</span> is today&apos;s price; the{" "}
+              <span className="text-text-2">wings</span> rising on either side mean the market is
+              bracing for a swing.
+            </p>
+          </div>
+
+          <div className="hairline-fade" />
+          {/* Desktop interactions — the surface is view-only below lg. */}
+          <p className="hidden text-[10px] leading-relaxed text-text-3 sm:block">
+            <span className="text-text-2">Hover</span> for odds ·{" "}
+            <span className="text-text-2">click</span> to trade ·{" "}
+            <span className="text-text-2">drag</span> to rewind ·{" "}
+            <span className="text-down">Stress</span> tests the checker.
+          </p>
+          {/* Mobile — the surface is for reading; trading is from the list below. */}
+          <p className="text-[10px] leading-relaxed text-text-3 sm:hidden">
+            <span className="text-text-2">Tap</span> a point to inspect its odds ·{" "}
+            <span className="text-text-2">drag</span> the slider to rewind. Trade from
+            the markets list below.
           </p>
         </div>
       )}
