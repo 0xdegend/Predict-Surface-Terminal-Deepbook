@@ -23,8 +23,10 @@ import { RangePositionCard } from './range-position-card';
 import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
 import { PerformanceCard } from './performance-card';
 import { PointsTile } from './points-tile';
+import { ConnectGate } from './connect-gate';
 import { HistoryTable } from './history-table';
 import { RedeemModal } from './redeem-modal';
+import { WithdrawModal } from './withdraw-modal';
 import { RangeRedeemModal } from './range-redeem-modal';
 import { SuccessModal } from '../ui/success-modal';
 import { PerfShareCardModal } from './perf-share-card-modal';
@@ -45,17 +47,24 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   const [redeeming, setRedeeming] = useState<PositionSummary | null>(null);
   const [redeemingRange, setRedeemingRange] = useState<ValuedRangePosition | null>(null);
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
-  // Animated confirmation after a free-balance withdrawal (toast is easy to miss).
+  // Confirm-before-withdraw dialog, then an animated confirmation after the tx
+  // lands (the toast is easy to miss).
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [withdrawDone, setWithdrawDone] = useState<{ amount: number; digest: string } | null>(null);
   // Share-as-image dialog for the settled track record.
   const [shareOpen, setShareOpen] = useState(false);
 
   // Withdraw the manager's full free balance back to the wallet; on success pop
   // the SuccessModal with the amount that moved (captured before the tx clears it).
+  // Runs from the confirm dialog — close it once the tx settles either way.
   async function handleWithdrawAll() {
     const amount = fromQuote(acct.tradingBalanceBase);
-    const digest = await acct.withdrawAll();
-    if (digest) setWithdrawDone({ amount, digest });
+    try {
+      const digest = await acct.withdrawAll();
+      if (digest) setWithdrawDone({ amount, digest });
+    } finally {
+      setConfirmWithdraw(false);
+    }
   }
 
   if (!mounted) {
@@ -67,12 +76,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   }
 
   if (!acct.owner) {
-    return (
-      <Centered>
-        <p className="text-[13px] text-text-2">Connect a wallet to view your portfolio.</p>
-        <p className="mt-1 text-[12px] text-text-3">Use the connect button in the top bar.</p>
-      </Centered>
-    );
+    return <ConnectGate />;
   }
 
   if (acct.managersLoading) {
@@ -239,7 +243,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           action={
             acct.tradingBalanceBase > 0n ? (
               <button
-                onClick={handleWithdrawAll}
+                onClick={() => setConfirmWithdraw(true)}
                 disabled={acct.busy === 'withdraw'}
                 className="group glass-inset mt-1 inline-flex w-fit items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-1 transition-all duration-200 hover:border-(--accent-line) hover:text-accent disabled:opacity-50"
               >
@@ -405,6 +409,15 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           setRedeemingRange(null);
         }}
         onClose={() => setRedeemingRange(null)}
+      />
+
+      <WithdrawModal
+        open={confirmWithdraw}
+        amount={fromQuote(acct.tradingBalanceBase)}
+        address={acct.owner}
+        busy={acct.busy === 'withdraw'}
+        onConfirm={handleWithdrawAll}
+        onClose={() => setConfirmWithdraw(false)}
       />
 
       <SuccessModal
