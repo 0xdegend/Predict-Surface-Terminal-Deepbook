@@ -43,6 +43,29 @@ export interface PastPrediction {
   source?: PositionSummary;
 }
 
+export interface EquityPoint {
+  t: number; // settledAt ms
+  cumulative: number; // running realized PnL after this trade (DUSDC, signed)
+  pnl: number; // this trade's PnL (DUSDC, signed)
+  result: 'won' | 'lost';
+  index: number; // 1-based trade number in chronological order
+}
+
+/**
+ * Chronological cumulative-PnL ("equity") curve from the closed-history rows.
+ * `history` arrives newest-first, so we re-sort ascending and accumulate. One
+ * point per settled trade — the renderer prepends the zero baseline so this
+ * stays a pure per-trade series (and an empty history → an empty curve).
+ */
+export function equityCurve(history: PastPrediction[]): EquityPoint[] {
+  const asc = [...history].sort((a, b) => a.settledAt - b.settledAt);
+  let cum = 0;
+  return asc.map((h, i) => {
+    cum += h.pnl;
+    return { t: h.settledAt, cumulative: cum, pnl: h.pnl, result: h.result, index: i + 1 };
+  });
+}
+
 export interface WinStats {
   total: number;
   wins: number;

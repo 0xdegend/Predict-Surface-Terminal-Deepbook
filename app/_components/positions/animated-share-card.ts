@@ -13,7 +13,7 @@
  * Chrome/Firefox (which X rejects), and cross-browser MP4 needs ffmpeg.wasm.
  */
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
-import { drawShareCard, loadShareLogo, type ShareCardData, type ShareVariant } from './share-card-canvas';
+import { drawShareCard, loadShareLogo, loadBrandMarks, type ShareCardData, type ShareVariant } from './share-card-canvas';
 
 // 16:9, downscaled from the 2400×1350 base to keep the GIF well under X's 15MB
 // cap while staying crisp in-stream.
@@ -130,8 +130,8 @@ export async function renderCardGif(
   variant: ShareVariant,
   onProgress?: (frac: number) => void,
 ): Promise<Blob> {
-  // Same prerequisites drawShareCard needs (fonts + the brand mark).
-  await Promise.all([document.fonts.ready, loadShareLogo()]);
+  // Same prerequisites drawShareCard needs (fonts + the brand marks).
+  await Promise.all([document.fonts.ready, loadShareLogo(), loadBrandMarks()]);
 
   // Artwork once, at full res; frames downscale from it. Skip the static
   // confetti on celebrate cards — we animate our own falling field per frame.

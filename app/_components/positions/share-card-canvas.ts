@@ -7,10 +7,13 @@
  * "engineered minimalism" tokens (§10.3) — dark base, a single semantic glow,
  * tabular figures — so a shared card reads as the same product.
  *
- * Three styles the user picks between:
+ * The styles the user picks between:
  *   • glow      — hero ROI + the position's live probability sparkline (default)
  *   • spotlight — a big WIN / LIVE / LOSS word, meme-able, centered
  *   • surface   — the vol-surface wireframe as the hero, data overlaid
+ *   • celebrate — win-only festive card (confetti + popped brand mark)
+ *   • sui       — Sui-branded: the droplet mark in glowing water ripples
+ *   • deepbook  — DeepBook-branded: the D mark over an order-book depth chart
  *
  * 16:9 at 2× → 2400×1350 PNG, the size X renders an in-stream image at.
  */
@@ -45,13 +48,26 @@ function outcomeText(d: ShareCardData): string {
   return d.band ? 'in band' : d.up ? 'UP' : 'DOWN';
 }
 
-export type ShareVariant = 'glow' | 'spotlight' | 'surface' | 'celebrate';
+export type ShareVariant =
+  | 'glow'
+  | 'spotlight'
+  | 'surface'
+  | 'celebrate'
+  | 'sui'
+  | 'deepbook';
 
 export const SHARE_VARIANTS: { id: ShareVariant; label: string }[] = [
   { id: 'glow', label: 'Glow' },
   { id: 'spotlight', label: 'Spotlight' },
   { id: 'surface', label: 'Surface' },
+  { id: 'sui', label: 'Sui' },
+  { id: 'deepbook', label: 'DeepBook' },
 ];
+
+/** Brand accents — used only by the `sui` / `deepbook` cards (a losing card
+ *  still tints coral so the outcome reads, but wins/live carry the chain brand). */
+const SUI_BLUE = '#4da2ff';
+const DEEPBOOK_BLUE = '#2f7bff';
 
 /**
  * Variants offered for a given result. The festive "Celebrate" card is win-only
@@ -129,6 +145,46 @@ export function getShareLogo(): HTMLImageElement | null {
   return logoImg;
 }
 
+/* Generic same-origin image cache for the chain brand marks (DeepBook D / Sui
+ * droplet) used by the `deepbook` / `sui` cards. Same-origin keeps the canvas
+ * untainted so toBlob / clipboard still work. The white variants read cleanly on
+ * the dark card and the brand color comes from the glow/motif around them. */
+const SUI_MARK_SRC = '/Logo_Sui_Droplet_White.png';
+const DEEPBOOK_MARK_SRC = '/DeepBook_Symbol_White.png';
+const imgCache = new Map<string, HTMLImageElement | null>();
+const imgPromises = new Map<string, Promise<HTMLImageElement | null>>();
+
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  if (imgCache.has(src)) return Promise.resolve(imgCache.get(src) ?? null);
+  let p = imgPromises.get(src);
+  if (!p) {
+    p = new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        imgCache.set(src, img);
+        resolve(img);
+      };
+      img.onerror = () => {
+        imgCache.set(src, null);
+        resolve(null);
+      };
+      img.src = src;
+    });
+    imgPromises.set(src, p);
+  }
+  return p;
+}
+
+/** Preload the DeepBook + Sui marks. Await alongside `loadShareLogo()` before
+ *  drawing a `deepbook` / `sui` card so the mark is present on first paint. */
+export function loadBrandMarks(): Promise<unknown> {
+  return Promise.all([loadImage(SUI_MARK_SRC), loadImage(DEEPBOOK_MARK_SRC)]);
+}
+
+function getMark(src: string): HTMLImageElement | null {
+  return imgCache.get(src) ?? null;
+}
+
 interface Ctx {
   ctx: CanvasRenderingContext2D;
   c: Theme;
@@ -161,14 +217,28 @@ export function drawShareCard(
 
   const c = tokens();
   // The card's one semantic color: teal won / coral lost / direction-tint live.
-  const accent =
+  const semantic =
     d.result === 'won' ? c.up : d.result === 'lost' ? c.down : d.pnl >= 0 ? c.up : c.down;
+  // Brand cards carry the chain accent on win/live, but stay coral on a loss so
+  // the outcome still reads at a glance.
+  const accent =
+    variant === 'sui'
+      ? d.result === 'lost'
+        ? c.down
+        : SUI_BLUE
+      : variant === 'deepbook'
+        ? d.result === 'lost'
+          ? c.down
+          : DEEPBOOK_BLUE
+        : semantic;
   const s: Ctx = { ctx, c, sans: fontFamily('sans'), mono: fontFamily('mono'), accent, d };
 
   drawBackground(s, variant);
   if (variant === 'glow') drawGlow(s);
   else if (variant === 'spotlight') drawSpotlight(s);
   else if (variant === 'celebrate') drawCelebrate(s, opts.confetti ?? true);
+  else if (variant === 'sui') drawSui(s);
+  else if (variant === 'deepbook') drawDeepBook(s);
   else drawSurface(s);
   drawHeader(s);
   drawFooter(s);
@@ -180,10 +250,12 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: ShareVariant) {
   ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Accent glow — spotlight pushes it to center-behind the hero word.
-  const gx = variant === 'spotlight' ? W / 2 : W - 120;
-  const gy = variant === 'spotlight' ? H / 2 : 120;
-  const r = variant === 'spotlight' ? 520 : 620;
+  // Accent glow — spotlight centers it; the brand cards bloom behind their mark
+  // on the right; everything else hugs the top-right.
+  const brand = variant === 'sui' || variant === 'deepbook';
+  const gx = variant === 'spotlight' ? W / 2 : brand ? W * 0.78 : W - 120;
+  const gy = variant === 'spotlight' ? H / 2 : brand ? 250 : 120;
+  const r = variant === 'spotlight' ? 520 : brand ? 520 : 620;
   const glow = ctx.createRadialGradient(gx, gy, 30, gx, gy, r);
   glow.addColorStop(0, withAlpha(accent, variant === 'spotlight' ? 0.2 : 0.16));
   glow.addColorStop(1, withAlpha(accent, 0));
@@ -599,6 +671,290 @@ export function drawMesh(ctx: CanvasRenderingContext2D, color: string) {
     ctx.stroke();
   }
   ctx.shadowBlur = 0;
+}
+
+/* ===================== variant: sui ===================== */
+
+/**
+ * Sui-branded card: the droplet mark glowing inside expanding water ripples on
+ * the right, the position data on the left. Mirrors the `glow` split so the
+ * family reads consistent; the ripples + droplet carry the Sui identity.
+ */
+function drawSui(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+  const markX = W * 0.78;
+  const markY = 268;
+
+  // Concentric water ripples emanating from the droplet (the signature motif).
+  // Kept tight so the faint outer ring never crosses the hero ROI on the left.
+  drawRipples(ctx, markX, markY, accent, 5, 70, 44);
+  // The droplet, glowing in a brand medallion.
+  drawBrandMark(ctx, getMark(SUI_MARK_SRC), markX, markY, 132, accent, 'droplet');
+
+  ctx.textAlign = 'left';
+  const colW = markX - 150 - P; // keep the hero clear of the droplet
+
+  ctx.font = `600 38px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(betText(d), P, 196);
+
+  ctx.font = `400 18px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
+    P,
+    226,
+  );
+
+  ctx.font = `600 13px ${sans}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(spaced('BUILT ON SUI'), P, 300);
+
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, colW, 134, 700, mono);
+  const roiBaseline = 300 + roiPx * 0.82;
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.shadowColor = withAlpha(accent, 0.4);
+  ctx.shadowBlur = 30;
+  ctx.fillText(roiText, P, roiBaseline);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `500 26px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(
+    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    P,
+    roiBaseline + 50,
+  );
+
+  drawStatStrip(s);
+}
+
+/* ===================== variant: deepbook ===================== */
+
+/**
+ * DeepBook-branded card: the D mark glowing above a stylized order-book depth
+ * chart on the right (the CLOB identity), position data on the left. Parallel
+ * structure to the Sui card — mark medallion + brand motif + left data column.
+ */
+function drawDeepBook(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+  const panelX = W * 0.55;
+  const panelW = W - P - panelX;
+  const markX = panelX + panelW / 2;
+  const markY = 196;
+
+  // Order-book depth silhouette beneath the mark — bids/asks meeting at mid.
+  drawDepthChart(s, panelX, 286, panelW, 196, accent, depthSeed(d));
+  // The DeepBook D, glowing in a brand medallion above the book.
+  drawBrandMark(ctx, getMark(DEEPBOOK_MARK_SRC), markX, markY, 104, accent, 'rect');
+
+  ctx.textAlign = 'left';
+  ctx.font = `600 36px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(betText(d), P, 250);
+
+  ctx.font = `400 17px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
+    P,
+    278,
+  );
+
+  ctx.font = `600 13px ${sans}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(spaced('POWERED BY DEEPBOOK'), P, 350);
+
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, panelX - P - 24, 116, 700, mono);
+  const roiBaseline = 350 + roiPx * 0.82;
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.shadowColor = withAlpha(accent, 0.35);
+  ctx.shadowBlur = 26;
+  ctx.fillText(roiText, P, roiBaseline);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `500 24px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(`${signed(d.pnl)} DUSDC`, P, roiBaseline + 42);
+
+  drawStatStrip(s);
+}
+
+/** Expanding concentric rings — water ripples around the Sui droplet. */
+function drawRipples(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  color: string,
+  count: number,
+  startR: number,
+  step: number,
+) {
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < count; i++) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, startR + i * step, 0, Math.PI * 2);
+    ctx.strokeStyle = withAlpha(color, 0.22 * (1 - i / count));
+    ctx.stroke();
+  }
+}
+
+/**
+ * A brand mark inside a glowing medallion (teal/blue ring + soft halo). Uses the
+ * cached white PNG; falls back to a simple drawn glyph (droplet or rounded
+ * square) so the card never renders empty if the image failed to load.
+ */
+function drawBrandMark(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  cx: number,
+  cy: number,
+  size: number,
+  glow: string,
+  fallback: 'droplet' | 'rect',
+) {
+  const ringR = size * 0.66;
+  ctx.save();
+  ctx.shadowColor = withAlpha(glow, 0.6);
+  ctx.shadowBlur = 34;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.fillStyle = withAlpha(glow, 0.12);
+  ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha(glow, 0.5);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (img) {
+    // Preserve the mark's native aspect ratio (object-fit: contain) — the
+    // droplet is taller than wide and the D isn't square, so forcing a size×size
+    // box stretched them. Fit inside the box, centered.
+    const iw = img.naturalWidth || img.width || size;
+    const ih = img.naturalHeight || img.height || size;
+    const k = Math.min(size / iw, size / ih);
+    const dw = iw * k;
+    const dh = ih * k;
+    ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh);
+    return;
+  }
+  // Fallback glyph.
+  ctx.fillStyle = glow;
+  if (fallback === 'droplet') {
+    const r = size * 0.34;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 1.5);
+    ctx.bezierCurveTo(cx + r * 1.3, cy - r * 0.2, cx + r, cy + r, cx, cy + r);
+    ctx.bezierCurveTo(cx - r, cy + r, cx - r * 1.3, cy - r * 0.2, cx, cy - r * 1.5);
+    ctx.fill();
+  } else {
+    roundRect(ctx, cx - size * 0.28, cy - size * 0.32, size * 0.56, size * 0.64, 8);
+    ctx.fill();
+  }
+}
+
+/** Stable per-position seed so the depth chart shape is reproducible. */
+function depthSeed(d: ShareCardData): number {
+  return (
+    ((Math.round(Math.abs(d.pnlPct) * 1000) + d.contracts * 13 + Math.round(d.cost * 100) + d.expiry) >>>
+      0) || 1
+  );
+}
+
+/**
+ * A stylized order-book depth chart: cumulative bid (left) and ask (right) step
+ * areas rising toward a center mid line. Seeded so it's deterministic. Both
+ * sides use the brand color (bids brighter, asks dimmer) so it reads as a book
+ * without pulling in a competing green/red palette.
+ */
+function drawDepthChart(
+  s: Ctx,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  seed: number,
+) {
+  const { ctx } = s;
+  const rng = mulberry32(seed);
+  const steps = 9;
+  const midX = x + w / 2;
+  const baseY = y + h;
+
+  // Build cumulative depth for each side (monotonic increasing toward mid).
+  const side = () => {
+    const arr: number[] = [];
+    let cum = 0;
+    for (let i = 0; i <= steps; i++) {
+      cum += 0.4 + rng();
+      arr.push(cum);
+    }
+    return arr;
+  };
+  const bids = side();
+  const asks = side();
+  const peak = Math.max(bids[steps], asks[steps]);
+  const hY = (v: number) => baseY - (v / peak) * (h - 8);
+
+  // Bid area — from left edge up to the mid.
+  const bidStep = (midX - x) / steps;
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  for (let i = 0; i <= steps; i++) {
+    const px = x + i * bidStep;
+    ctx.lineTo(px, hY(bids[i]));
+    if (i < steps) ctx.lineTo(px + bidStep, hY(bids[i])); // step
+  }
+  ctx.lineTo(midX, baseY);
+  ctx.closePath();
+  const bidFill = ctx.createLinearGradient(0, y, 0, baseY);
+  bidFill.addColorStop(0, withAlpha(color, 0.34));
+  bidFill.addColorStop(1, withAlpha(color, 0.04));
+  ctx.fillStyle = bidFill;
+  ctx.fill();
+
+  // Ask area — from mid up to the right edge (dimmer).
+  const askStep = (x + w - midX) / steps;
+  ctx.beginPath();
+  ctx.moveTo(midX, baseY);
+  for (let i = 0; i <= steps; i++) {
+    const px = midX + i * askStep;
+    ctx.lineTo(px, hY(asks[i]));
+    if (i < steps) ctx.lineTo(px + askStep, hY(asks[i]));
+  }
+  ctx.lineTo(x + w, baseY);
+  ctx.closePath();
+  const askFill = ctx.createLinearGradient(0, y, 0, baseY);
+  askFill.addColorStop(0, withAlpha(color, 0.18));
+  askFill.addColorStop(1, withAlpha(color, 0.02));
+  ctx.fillStyle = askFill;
+  ctx.fill();
+
+  // The mid line — a glowing vertical seam where bids meet asks.
+  ctx.beginPath();
+  ctx.moveTo(midX, y - 4);
+  ctx.lineTo(midX, baseY);
+  ctx.strokeStyle = withAlpha(color, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = withAlpha(color, 0.6);
+  ctx.shadowBlur = 10;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Baseline.
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  ctx.lineTo(x + w, baseY);
+  ctx.strokeStyle = withAlpha(color, 0.18);
+  ctx.lineWidth = 1;
+  ctx.stroke();
 }
 
 /* ===================== shared pieces ===================== */
