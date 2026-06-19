@@ -30,7 +30,7 @@ import { WithdrawModal } from './withdraw-modal';
 import { RangeRedeemModal } from './range-redeem-modal';
 import { SuccessModal } from '../ui/success-modal';
 import { PerfShareCardModal } from './perf-share-card-modal';
-import { derivePortfolioHistory, deriveRangeHistory } from '@/lib/portfolio/history';
+import { derivePortfolioHistory, deriveRangeHistory, equityCurve } from '@/lib/portfolio/history';
 import { useLeaderboard } from '@/lib/hooks/use-leaderboard';
 import type { PositionSummary } from '@/lib/api/types';
 
@@ -189,6 +189,9 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Settled track record (closed positions + closed ranges) — drives the
   // performance bento + table.
   const { history, stats } = derivePortfolioHistory(positions, deriveRangeHistory(ranges.positions));
+  // Cumulative-PnL curve from the settled history — drives the interactive
+  // performance chart and the equity curve on the share card.
+  const curve = equityCurve(history);
 
   // Points = this trader's row in the leaderboard aggregation (same formula,
   // same inputs as the board). Undefined while the board loads → tile shows '…'.
@@ -372,7 +375,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       ) : (
         <>
           <Section title="Performance" hint={`${stats.total} settled markets`}>
-            <PerformanceCard stats={stats} onShare={() => setShareOpen(true)} />
+            <PerformanceCard stats={stats} curve={curve} onShare={() => setShareOpen(true)} />
           </Section>
           <Section title="Trade history">
             <HistoryTable history={history} />
@@ -447,6 +450,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
                 streak: stats.streak
                   ? { count: stats.streak.count, won: stats.streak.result === 'won' }
                   : null,
+                curve: curve.map((p) => p.cumulative),
               }
             : null
         }

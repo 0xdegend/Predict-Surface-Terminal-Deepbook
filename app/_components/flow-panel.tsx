@@ -7,7 +7,7 @@
  * with the Portfolio page); this component owns the mint-specific UI. Minting a
  * node pulses a fill ripple back on the surface.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -86,7 +86,11 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   // Active oracle = the selection for the current ticket mode, falling back to
-  // the other mode's selection, then the soonest expiry.
+  // the other mode's selection. With no selection, default to the soonest expiry
+  // that hasn't passed yet — `inputs` is sorted soonest-first and its head can be
+  // an expired-but-unsettled market (still `status: active` on the server), so a
+  // naive inputs[0] would land the ticket on an expired market. Only if every
+  // market is expired (all awaiting settlement) do we fall back to the soonest.
   const active = useMemo(() => {
     const ids =
       ticketMode === 'range'
@@ -98,8 +102,8 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
         if (found) return found;
       }
     }
-    return inputs[0];
-  }, [selection, rangeSelection, ticketMode, inputs]);
+    return inputs.find((i) => i.oracle.expiry > now) ?? inputs[0];
+  }, [selection, rangeSelection, ticketMode, inputs, now]);
 
 
   // Google/zkLogin (Enoki) mints are gasless and sponsored — no wallet pop-up to
@@ -141,13 +145,17 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
   const [appliedSel, setAppliedSel] = useState<string | null>(null);
   if (oracle) {
     if (selKey && selKey !== appliedSel) {
+      // A genuine external pick (surface / table / card) lands a strike+side the
+      // ticket doesn't already show → apply it and skip ahead to the bet step.
+      // An internal echo of the ticket's own publish (default strike, +/- nudge)
+      // already matches local state → record it, but DON'T bounce the user
+      // forward or they'd jump to step 2 just by landing / nudging the strike.
+      const isExternalPick =
+        selection!.strikeScaled !== strike.toString() || selection!.isUp !== isUp;
       setAppliedSel(selKey);
       setStrike(BigInt(selection!.strikeScaled));
       setIsUp(selection!.isUp);
-      // A surface/table/card click already chose side + level — skip ahead to the
-      // bet step. (Internal UP/DOWN toggles pre-sync appliedSel in setDirection so
-      // they don't reach here and can't bounce the user forward.)
-      setStep(2);
+      if (isExternalPick) setStep(2);
     } else if (!selKey && strike === 0n) {
       setStrike(snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle));
     }
@@ -170,6 +178,33 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       setAppliedSel(`${strike.toString()}:${nextUp}`);
     }
   }
+
+  // Publish the ticket's working market/strike/side to the surface store so the
+  // chart, surface, market table, and odds all highlight what the ticket shows —
+  // the DEFAULT market + strike on landing, and every strike nudge. Without this
+  // the ticket runs on local state only, leaving those views blank until the user
+  // makes an explicit pick. We omit `source` (so it stays an implicit echo: no
+  // "From surface" badge, no jump to the bet step) and mark it applied so the
+  // render-time read-back sync above treats it as an internal echo, not a re-pick.
+  useEffect(() => {
+    if (!oracle || strike <= 0n || ticketMode !== 'binary') return;
+    const scaled = strike.toString();
+    if (
+      selection &&
+      selection.oracleId === oracle.oracle_id &&
+      selection.strikeScaled === scaled &&
+      selection.isUp === isUp
+    ) {
+      return; // store already matches — nothing to publish
+    }
+    select({
+      oracleId: oracle.oracle_id,
+      expiry: oracle.expiry,
+      strikeScaled: scaled,
+      strike: toFloat(Number(strike)),
+      isUp,
+    });
+  }, [oracle, strike, isUp, ticketMode, selection, select]);
 
   // The protocol prices the ask as fair + spread, with a ~1% ask floor; deep
   // OTM/ITM strikes round to 0%/100% and can't be priced. We gate on the client
@@ -495,9 +530,22 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           <button
             onClick={() => setStep(2)}
             disabled={expired || !tradeable}
-            className="flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-white/[0.03] px-3 py-3 text-[13px] font-semibold text-text-1 transition-colors hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:border-line disabled:bg-transparent disabled:text-text-3"
+            className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-xl border border-white/10 bg-white/4 px-3 py-3.5 text-[13px] font-semibold text-text-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_10px_30px_-14px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-200 hover:border-(--accent-line) hover:text-up hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_0_30px_-8px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-line disabled:bg-white/2 disabled:text-text-3 disabled:shadow-none disabled:backdrop-blur-none"
           >
-            {expired ? 'Market expired' : 'Continue · set your bet →'}
+            {/* top-edge sheen — the glass highlight */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-6 top-0 h-px bg-linear-to-r from-transparent via-white/20 to-transparent transition-opacity group-hover:via-white/30 group-disabled:opacity-0"
+            />
+            {/* accent wash bloom on hover */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-disabled:opacity-0"
+              style={{ background: 'radial-gradient(120% 120% at 50% 0%, var(--accent-soft), transparent 62%)' }}
+            />
+            <span className="relative">
+              {expired ? 'Market expired' : 'Continue · set your bet →'}
+            </span>
           </button>
           </>
           ) : (

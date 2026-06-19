@@ -5,7 +5,7 @@
  * chrome primitives so a shared card always reads as the same product.
  *
  * Two styles:
- *   • record   — win-rate hero + a teal/coral W–L meter + a stat strip (default)
+ *   • record   — win-rate hero + a cumulative-PnL curve + a stat strip (default)
  *   • spotlight — one big centered WIN RATE %, the record + PnL beneath
  *
  * 1200×675 (16:9) at 2× → 2400×1350 PNG.
@@ -36,6 +36,8 @@ export interface PerfShareData {
   avgRoi: number; // ratio (realizedPnl / staked)
   best: number; // best single-trade PnL (DUSDC, signed)
   streak: { count: number; won: boolean } | null;
+  /** Chronological cumulative realized-PnL values (oldest→newest) for the curve. */
+  curve: number[];
 }
 
 export type PerfShareVariant = 'record' | 'spotlight';
@@ -189,9 +191,9 @@ function drawRecord(s: Ctx) {
   ctx.fillStyle = c.text3;
   ctx.fillText(spaced('WIN RATE'), P, 188);
 
-  // Hero win-rate %.
+  // Hero win-rate % — kept clear of the curve on the right.
   const heroText = pct(d.winRate, 1);
-  const heroPx = fitSize(ctx, heroText, 520, 150, 700, mono);
+  const heroPx = fitSize(ctx, heroText, 460, 150, 700, mono);
   const heroBaseline = 192 + heroPx * 0.8;
   ctx.font = `700 ${heroPx}px ${mono}`;
   ctx.fillStyle = accent;
@@ -202,21 +204,122 @@ function drawRecord(s: Ctx) {
   ctx.fillStyle = c.text2;
   ctx.fillText(recordLine(d), P, heroBaseline + 46);
 
-  // teal/coral split meter.
-  const meterY = heroBaseline + 78;
-  const meterW = 580;
-  const meterH = 14;
-  const winW = d.settled > 0 ? (d.wins / d.settled) * meterW : 0;
-  roundRect(ctx, P, meterY, meterW, meterH, meterH / 2);
-  ctx.fillStyle = withAlpha(c.down, 0.7);
-  ctx.fill();
-  if (winW > 0) {
-    roundRect(ctx, P, meterY, Math.max(winW, meterH), meterH, meterH / 2);
-    ctx.fillStyle = c.up;
-    ctx.fill();
-  }
+  // Cumulative-PnL curve on the right (replaces the old W/L meter) — tells the
+  // story of how the track record was built, trade by trade.
+  drawEquityChart(s, 612, 168, W - P - 612, 300);
 
   drawStatStrip(s);
+}
+
+/** The cumulative-PnL curve: a small labelled equity chart (area + line + a
+ *  dashed zero baseline), colored teal/coral by the final tally. */
+function drawEquityChart(s: Ctx, x: number, y: number, w: number, h: number) {
+  const { ctx, c, accent, sans, mono, d } = s;
+
+  ctx.textAlign = 'left';
+  ctx.font = `500 13px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(spaced('CUMULATIVE PNL'), x, y);
+
+  const finalPnl = d.curve.length ? d.curve[d.curve.length - 1] : d.realizedPnl;
+  ctx.font = `600 20px ${mono}`;
+  ctx.fillStyle = finalPnl >= 0 ? c.up : c.down;
+  ctx.fillText(`${signed(finalPnl)} DUSDC`, x, y + 28);
+
+  const plotY = y + 46;
+  const plotH = y + h - plotY;
+  // Prepend the zero baseline so the curve visibly rises/falls from flat.
+  drawCurve(ctx, [0, ...d.curve], x, plotY, w, plotH, accent, c);
+}
+
+/** Area + line + dashed zero reference, in logical card space. */
+function drawCurve(
+  ctx: CanvasRenderingContext2D,
+  data: number[],
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  color: string,
+  c: Theme,
+) {
+  const min = Math.min(0, ...data);
+  const max = Math.max(0, ...data);
+  const span = max - min || 1;
+  const px = (i: number) => x0 + (data.length > 1 ? (i / (data.length - 1)) * w : 0);
+  const py = (v: number) => y0 + h - ((v - min) / span) * h;
+  const zeroY = py(0);
+
+  // Dashed zero reference.
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = withAlpha(c.text3, 0.5);
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, zeroY);
+  ctx.lineTo(x0 + w, zeroY);
+  ctx.stroke();
+  ctx.restore();
+
+  if (data.length < 2) return;
+
+  // Smoothed (Catmull-Rom) point path, passing through every data point.
+  const pts = data.map((v, i) => ({ x: px(i), y: py(v) }));
+
+  // Area to the zero line.
+  ctx.beginPath();
+  traceSmooth(ctx, pts);
+  ctx.lineTo(px(data.length - 1), zeroY);
+  ctx.lineTo(px(0), zeroY);
+  ctx.closePath();
+  const fill = ctx.createLinearGradient(0, y0, 0, y0 + h);
+  fill.addColorStop(0, withAlpha(color, 0.3));
+  fill.addColorStop(1, withAlpha(color, 0));
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  // Line.
+  ctx.beginPath();
+  traceSmooth(ctx, pts);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = withAlpha(color, 0.6);
+  ctx.shadowBlur = 14;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Endpoint marker.
+  const ex = px(data.length - 1);
+  const ey = py(data[data.length - 1]);
+  ctx.beginPath();
+  ctx.arc(ex, ey, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(ex, ey, 8, 0, Math.PI * 2);
+  ctx.strokeStyle = withAlpha(color, 0.4);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+/** Trace a smooth (Catmull-Rom → bézier) path through `pts` onto the current
+ *  canvas path — same curve the in-app equity chart draws, for consistency. */
+function traceSmooth(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
+  if (pts.length === 0) return;
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
+  }
 }
 
 /* ===================== variant: spotlight ===================== */
