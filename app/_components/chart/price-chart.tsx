@@ -404,7 +404,6 @@ export function PriceChart({
         <span className="font-mono text-[13px] tabular-nums text-text-1">
           {spot == null ? "—" : price(spot)}
         </span>
-        <span className="live-dot" />
       </div>
 
       {!activeId || (historyQ.isError && !historyQ.data) ? (

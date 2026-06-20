@@ -47,8 +47,7 @@ export function LiveSviPanel({
     <div>
       <div className="flex items-center justify-between">
         <h2 className="eyebrow">Market odds · {shown?.source === 'selected' ? 'selected' : 'next to expire'}</h2>
-        <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-text-3">
-          <span className={isLive ? 'live-dot' : 'h-1.5 w-1.5 rounded-full bg-text-3'} />
+        <span className="text-[10px] uppercase tracking-wider text-text-3">
           {isLive ? 'live' : 'scrub'}
         </span>
       </div>

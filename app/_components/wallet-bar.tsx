@@ -20,6 +20,8 @@ import {
   LuExternalLink,
   LuChevronDown,
   LuSend,
+  LuFlaskConical,
+  LuGlobe,
 } from 'react-icons/lu';
 import { isEnokiWallet } from '@mysten/enoki';
 import { dAppKit } from '@/lib/sui/dapp-kit';
@@ -186,8 +188,8 @@ function ConnectedMenu({
         <WalletGlyph wallet={wallet} size={26} />
         <div className="flex min-w-0 flex-col">
           <span className="truncate text-[12px] font-medium text-text-1">{wallet.name}</span>
-          <span className="flex items-center gap-1.5 text-[10px] text-text-3">
-            <span className="live-dot scale-[0.7]" /> Connected · {network}
+          <span className="text-[10px] text-text-3">
+            Connected · {network}
           </span>
         </div>
       </div>
@@ -295,9 +297,8 @@ function NetworkBadge({
   isTestnet: boolean;
   variant: 'segment' | 'pill';
 }) {
-  const dot = (
-    <span className={`h-1.5 w-1.5 rounded-full ${isTestnet ? 'bg-warn' : 'bg-accent'}`} />
-  );
+  const NetIcon = isTestnet ? LuFlaskConical : LuGlobe;
+  const icon = <NetIcon size={11} className={isTestnet ? 'text-warn' : 'text-accent'} />;
   if (variant === 'segment') {
     return (
       <span
@@ -306,7 +307,7 @@ function NetworkBadge({
           isTestnet ? 'text-warn' : 'text-text-2'
         }`}
       >
-        {dot}
+        {icon}
         {network}
       </span>
     );

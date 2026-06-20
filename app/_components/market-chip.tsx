@@ -97,7 +97,7 @@ export function MarketChip({
         aria-expanded={open}
         className="chip interactive h-9 px-3 hover:border-[var(--line-strong)]"
       >
-        <span className={paused ? 'h-[7px] w-[7px] rounded-full bg-warn' : 'live-dot'} />
+        {paused && <span className="h-1.75 w-1.75 rounded-full bg-warn" />}
         <span className="text-[11px] font-medium uppercase tracking-wider text-text-2">
           {underlying}
         </span>
@@ -166,7 +166,6 @@ function Diag({
     <div className="flex items-center justify-between bg-[var(--bg-2)] px-2.5 py-2">
       <span className="text-[10px] uppercase tracking-wider text-text-3">{label}</span>
       <span className={`flex items-center gap-1.5 font-mono text-[11px] tabular-nums ${color}`}>
-        {tone === 'live' && <span className="live-dot scale-75" />}
         {value}
       </span>
     </div>

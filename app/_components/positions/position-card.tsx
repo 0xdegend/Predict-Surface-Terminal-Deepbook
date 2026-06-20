@@ -494,8 +494,7 @@ function ResultChip({
 }) {
   if (result === "live") {
     return (
-      <span className="flex items-center gap-1.5 rounded-full border border-line bg-white/3 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-text-2">
-        <span className="live-dot scale-90" />
+      <span className="rounded-full border border-line bg-white/3 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-text-2">
         Live
       </span>
     );

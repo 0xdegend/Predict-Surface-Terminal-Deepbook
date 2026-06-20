@@ -55,7 +55,6 @@ export function SurfaceControls({
             : 'text-text-3 hover:bg-white/[0.04] hover:text-text-2'
         }`}
       >
-        <span className={isLive ? 'live-dot' : 'h-[7px] w-[7px] rounded-full bg-text-3'} />
         Live
       </button>
 

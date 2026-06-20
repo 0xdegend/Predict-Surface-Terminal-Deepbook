@@ -676,23 +676,6 @@ select:focus-visible,
     var(--bg-2);
 }
 
-/* The breathing live dot — calm, not blinking (§10.6). */
-.live-dot {
-  position: relative;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--accent);
-}
-.live-dot::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 999px;
-  background: var(--accent);
-  opacity: 0.35;
-  animation: breathe 2s ease-in-out infinite;
-}
 @keyframes breathe {
   0%, 100% { transform: scale(1); opacity: 0.35; }
   50% { transform: scale(1.9); opacity: 0; }
