@@ -320,7 +320,7 @@ function NetworkBadge({
           : 'border-[var(--line)] text-text-2'
       }`}
     >
-      {dot}
+      {icon}
       {network}
     </span>
   );
