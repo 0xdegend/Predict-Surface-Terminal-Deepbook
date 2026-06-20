@@ -40,6 +40,8 @@ export function humanizeError(raw: unknown): string {
     return 'Not enough SUI for gas. Add a little testnet SUI to this wallet.';
   if (/getaddrinfo|fetch failed|ENOTFOUND|network/i.test(msg))
     return 'Network hiccup reaching the chain. Check your connection and retry.';
+  if (/Enoki API failed|sponsor failed|sponsorship/i.test(msg))
+    return 'The gasless service briefly rejected the request (it can expire while signing). Please try again — this almost always clears on a retry.';
 
   // Move aborts: pull module + code out of the standard message format.
   if (/MoveAbort|abort code/i.test(msg)) {

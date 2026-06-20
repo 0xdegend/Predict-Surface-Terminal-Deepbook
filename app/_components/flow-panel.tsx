@@ -550,36 +550,57 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </>
           ) : (
           <>
-          {/* Entry recap doubles as an inline side toggle — tap to flip UP/DOWN
-              right here (no trip back to step 1). The level stays editable via the
-              "Side & level" step in the bar above. */}
-          <button
-            type="button"
-            onClick={() => setDirection(!isUp)}
-            aria-label={`Currently ${isUp ? 'UP' : 'DOWN'} — switch to ${isUp ? 'DOWN' : 'UP'}`}
-            className="group glass-inset flex items-center justify-between rounded-lg px-3 py-2 text-left transition-colors hover:border-line-strong"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span
-                className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}
+          {/* Entry recap — direction (tap the chip to flip UP/DOWN) and an
+              EDITABLE strike, so a trader can fine-tune the level right here at
+              the bet step instead of having to go back to "Side & level". */}
+          <div className="glass-inset flex flex-col gap-2.5 rounded-lg p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}
+                >
+                  {isUp ? '▲ UP' : '▼ DOWN'}
+                </span>
+                <span className="truncate text-[11px] text-text-3">
+                  settles {isUp ? 'above' : 'below'}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setDirection(!isUp)}
+                aria-label={`Switch to ${isUp ? 'DOWN' : 'UP'}`}
+                className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
+                  isUp
+                    ? 'border-down/30 text-down/70 hover:border-down/50 hover:text-down'
+                    : 'border-up/30 text-up/70 hover:border-up/50 hover:text-up'
+                }`}
               >
-                {isUp ? '▲ UP' : '▼ DOWN'}
-              </span>
-              <span className="truncate text-[11px] text-text-3">
-                settles {isUp ? 'above' : 'below'}{' '}
-                <span className="text-text-1">{price(toFloat(Number(strike)))}</span>
-              </span>
-            </span>
-            <span
-              className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
-                isUp
-                  ? 'border-down/30 text-down/70 group-hover:border-down/50 group-hover:text-down'
-                  : 'border-up/30 text-up/70 group-hover:border-up/50 group-hover:text-up'
-              }`}
-            >
-              {isUp ? '▼ DOWN' : '▲ UP'}
-            </span>
-          </button>
+                {isUp ? '▼ DOWN' : '▲ UP'}
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-text-3">Strike</span>
+              <div className="inline-flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
+                <button
+                  onClick={() => stepStrike(-1)}
+                  aria-label="Lower strike"
+                  className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
+                >
+                  −
+                </button>
+                <span className="min-w-22 text-center text-[13px] tabular-nums text-text-1">
+                  {price(toFloat(Number(strike)))}
+                </span>
+                <button
+                  onClick={() => stepStrike(1)}
+                  aria-label="Raise strike"
+                  className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
 
           {/* Bet size — a plain dollar stake. We translate it to a mintable
               position under the hood; the quote below shows what you pay & win. */}

@@ -77,13 +77,13 @@ export function SurfaceControls({
       </div>
 
       {/* Segmented overlay toggles — desktop only. On phones they pushed the bar
-          into a tall 3-row box over the surface; the no-arb / stress checks are
-          niche demo overlays, so the mobile bar keeps just the time-travel. The
-          trailing "?" explains both overlays in plain language. */}
+          into a tall 3-row box over the surface; the arb-check / stress overlays
+          are niche, so the mobile bar keeps just the time-travel. Each chip is a
+          state toggle (leading dot = on/off); the trailing "?" explains them. */}
       <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
         <div className="flex items-center gap-0.5 rounded-lg bg-[var(--bg-3)] p-0.5">
           <SegToggle active={showNoArb} onClick={toggleNoArb} tone="accent">
-            No-arb
+            Arb Check
           </SegToggle>
           <SegToggle active={stress > 0} onClick={() => setStress(stress > 0 ? 0 : 0.6)} tone="down">
             Stress
@@ -91,15 +91,14 @@ export function SurfaceControls({
         </div>
         <InfoTip label="the surface overlays" size={13}>
           <span className="block">
-            <span className="font-medium text-accent">No-arb</span> — checks the live surface for
-            prices that can’t logically coexist (a cheaper option paying out more than a pricier
-            one). Toggle it on and any offending strikes flash on the surface; clean data shows
-            nothing.
+            <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
+            that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
+            any bad spots light up; if every price is fair, nothing shows.
           </span>
           <span className="mt-2 block">
-            <span className="font-medium text-down">Stress</span> — deliberately bends the smile to
-            push the surface out of shape, making the no-arb check fire on demand. Turn both on to
-            watch it catch the break, then off to return to live pricing.
+            <span className="font-medium text-down">Stress</span> — bends the surface out of shape on
+            purpose, so Arb Check has something to flag. Turn both on to watch it catch the problem,
+            then off to go back to live prices.
           </span>
         </InfoTip>
       </div>
