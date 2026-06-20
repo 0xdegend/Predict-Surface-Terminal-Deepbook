@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Preloader } from "./_components/preloader";
 import { siteConfig, siteUrl } from "@/config/site";
 
 const geistSans = Geist({
@@ -103,9 +102,6 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-bg-0 text-text-1">
         <Providers>{children}</Providers>
-        {/* Initial-load overlay — in the first HTML so a hard reload never
-            flashes blank; fades out fast once hydrated. */}
-        <Preloader />
       </body>
     </html>
   );

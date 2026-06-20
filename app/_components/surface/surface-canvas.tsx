@@ -542,14 +542,38 @@ function locateCell(
   };
 }
 
+/**
+ * World position for an (oracle, strike), INTERPOLATED continuously along the
+ * strike axis rather than snapped to the nearest grid column. As the trader
+ * nudges the strike on the ticket the marker now glides across the surface
+ * (matching the chart's strike line) instead of jumping cell-to-cell. Height (y)
+ * is lerped between the two bracketing vertices, so the orb stays on the smile.
+ */
 function locate(
   mesh: SurfaceMesh,
   surface: Surface,
   oracleId: string,
   strike: number,
 ): { x: number; y: number; z: number } | null {
-  const cell = locateCell(mesh, surface, oracleId, strike);
-  return cell ? { x: cell.x, y: cell.y, z: cell.z } : null;
+  const row = surface.rows.findIndex((r) => r.oracleId === oracleId);
+  if (row < 0) return null;
+  const r = surface.rows[row];
+  const k = Math.log(strike / r.forward);
+  const grid = surface.kGrid; // ascending log-moneyness, one entry per column
+  // Bracket k between columns c0..c1, then take the fraction t in between.
+  let c1 = grid.findIndex((g) => g >= k);
+  if (c1 < 0) c1 = grid.length - 1; // k past the last column → clamp to the edge
+  const c0 = Math.max(0, c1 - 1);
+  const span = grid[c1] - grid[c0];
+  const t = span !== 0 ? Math.max(0, Math.min(1, (k - grid[c0]) / span)) : 0;
+  const i0 = (row * mesh.cols + c0) * 3;
+  const i1 = (row * mesh.cols + c1) * 3;
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  return {
+    x: lerp(mesh.positions[i0], mesh.positions[i1]),
+    y: lerp(mesh.positions[i0 + 1], mesh.positions[i1 + 1]),
+    z: lerp(mesh.positions[i0 + 2], mesh.positions[i1 + 2]),
+  };
 }
 
 const RANGE_ACCENT = "#4dd6b0";
