@@ -58,8 +58,26 @@ export function SurfaceControls({
         Live
       </button>
 
-      {/* Scrub group */}
+      {/* Scrub group — a "Time Travel" label (+ how-it-works tip) so newcomers
+          know the slider rewinds the surface, then the slider and time readout. */}
       <div className="flex items-center gap-2 px-1 sm:gap-2.5 sm:px-2">
+        <span className="flex shrink-0 items-center gap-1">
+          <span className="hidden text-[10px] font-medium uppercase tracking-wider text-text-3 sm:inline">
+            Time Travel
+          </span>
+          <InfoTip label="Time Travel" size={13}>
+            <span className="block">
+              <span className="font-medium text-accent">Time Travel</span> — drag the slider to rewind
+              the volatility surface through its recent history and watch how the odds shifted minute
+              by minute.
+            </span>
+            <span className="mt-2 block">
+              The time on the right shows the moment you’re viewing. Hit{' '}
+              <span className="font-medium text-accent">Live</span> to snap back to the streaming,
+              up-to-the-second surface.
+            </span>
+          </InfoTip>
+        </span>
         <input
           type="range"
           min={0}
