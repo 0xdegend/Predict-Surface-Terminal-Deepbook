@@ -613,7 +613,7 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                   step={1}
                   value={betInput}
                   onChange={(e) => setBetInput(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-16 bg-transparent text-right text-text-1 outline-none"
+                  className="w-16 bg-transparent text-right text-text-1 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   aria-label={`Bet amount in ${sym}`}
                 />
                 <span className="text-[10px] text-text-3">{sym}</span>
