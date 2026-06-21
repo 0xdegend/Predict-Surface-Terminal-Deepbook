@@ -14,6 +14,8 @@
  *   • celebrate — win-only festive card (confetti + popped brand mark)
  *   • sui       — Sui-branded: the droplet mark in glowing water ripples
  *   • deepbook  — DeepBook-branded: the D mark over an order-book depth chart
+ *   • mascot    — the Skew fox as the hero, expression keyed to the outcome
+ *                 (confident point on a win/live, facepalm on a loss) + a speech bubble
  *
  * 16:9 at 2× → 2400×1350 PNG, the size X renders an in-stream image at.
  */
@@ -54,9 +56,11 @@ export type ShareVariant =
   | 'surface'
   | 'celebrate'
   | 'sui'
-  | 'deepbook';
+  | 'deepbook'
+  | 'mascot';
 
 export const SHARE_VARIANTS: { id: ShareVariant; label: string }[] = [
+  { id: 'mascot', label: 'Mascot' },
   { id: 'glow', label: 'Glow' },
   { id: 'spotlight', label: 'Spotlight' },
   { id: 'surface', label: 'Surface' },
@@ -70,16 +74,17 @@ const SUI_BLUE = '#4da2ff';
 const DEEPBOOK_BLUE = '#2f7bff';
 
 /**
- * Variants offered for a given result. The festive "Celebrate" card is win-only
- * — it leads the list for winners so the share dialog opens on the fun one — and
- * is simply absent for live/lost positions.
+ * Variants offered for a given result. The Mascot card leads the list (our brand
+ * character is the showcase style); the festive "Celebrate" card is win-only and
+ * slots in right after it, and is simply absent for live/lost positions.
  */
 export function shareVariants(
   result: ShareCardData['result'],
 ): { id: ShareVariant; label: string }[] {
-  return result === 'won'
-    ? [{ id: 'celebrate', label: 'Celebrate' }, ...SHARE_VARIANTS]
-    : SHARE_VARIANTS;
+  if (result !== 'won') return SHARE_VARIANTS;
+  // [mascot, celebrate, …rest] — mascot stays first, celebrate follows.
+  const [mascot, ...rest] = SHARE_VARIANTS;
+  return [mascot, { id: 'celebrate', label: 'Celebrate' }, ...rest];
 }
 
 const W = 1200;
@@ -151,6 +156,9 @@ export function getShareLogo(): HTMLImageElement | null {
  * the dark card and the brand color comes from the glow/motif around them. */
 const SUI_MARK_SRC = '/Logo_Sui_Droplet_White.png';
 const DEEPBOOK_MARK_SRC = '/DeepBook_Symbol_White.png';
+// The Skew fox mascot — one expression per outcome (confident point / facepalm).
+const MASCOT_WON_SRC = '/skew-fox-won.png';
+const MASCOT_LOSS_SRC = '/skew-fox-loss.png';
 const imgCache = new Map<string, HTMLImageElement | null>();
 const imgPromises = new Map<string, Promise<HTMLImageElement | null>>();
 
@@ -175,10 +183,16 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   return p;
 }
 
-/** Preload the DeepBook + Sui marks. Await alongside `loadShareLogo()` before
- *  drawing a `deepbook` / `sui` card so the mark is present on first paint. */
+/** Preload the DeepBook + Sui marks and the Skew mascot expressions. Await
+ *  alongside `loadShareLogo()` before drawing a branded / `mascot` card so the
+ *  artwork is present on first paint. */
 export function loadBrandMarks(): Promise<unknown> {
-  return Promise.all([loadImage(SUI_MARK_SRC), loadImage(DEEPBOOK_MARK_SRC)]);
+  return Promise.all([
+    loadImage(SUI_MARK_SRC),
+    loadImage(DEEPBOOK_MARK_SRC),
+    loadImage(MASCOT_WON_SRC),
+    loadImage(MASCOT_LOSS_SRC),
+  ]);
 }
 
 function getMark(src: string): HTMLImageElement | null {
@@ -239,6 +253,7 @@ export function drawShareCard(
   else if (variant === 'celebrate') drawCelebrate(s, opts.confetti ?? true);
   else if (variant === 'sui') drawSui(s);
   else if (variant === 'deepbook') drawDeepBook(s);
+  else if (variant === 'mascot') drawMascot(s);
   else drawSurface(s);
   drawHeader(s);
   drawFooter(s);
@@ -250,9 +265,9 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: ShareVariant) {
   ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Accent glow — spotlight centers it; the brand cards bloom behind their mark
-  // on the right; everything else hugs the top-right.
-  const brand = variant === 'sui' || variant === 'deepbook';
+  // Accent glow — spotlight centers it; the brand/mascot cards bloom behind their
+  // mark on the right; everything else hugs the top-right.
+  const brand = variant === 'sui' || variant === 'deepbook' || variant === 'mascot';
   const gx = variant === 'spotlight' ? W / 2 : brand ? W * 0.78 : W - 120;
   const gy = variant === 'spotlight' ? H / 2 : brand ? 250 : 120;
   const r = variant === 'spotlight' ? 520 : brand ? 520 : 620;
@@ -782,6 +797,149 @@ function drawDeepBook(s: Ctx) {
   ctx.fillText(`${signed(d.pnl)} DUSDC`, P, roiBaseline + 42);
 
   drawStatStrip(s);
+}
+
+/* ===================== variant: mascot ===================== */
+
+/**
+ * The Skew mascot card: the fox is the hero on the right, its expression keyed to
+ * the outcome — the confident point-up on a win or live position, the facepalm on
+ * a loss — with a little speech bubble for personality. Position data sits in the
+ * left column, mirroring the `sui` / `deepbook` split so the family reads
+ * consistent. The semantic color (teal won/live, coral lost) carries the glow,
+ * halo, and bubble, so the card's mood matches the result at a glance.
+ */
+function drawMascot(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+  const loss = d.result === 'lost';
+  const img = getMark(loss ? MASCOT_LOSS_SRC : MASCOT_WON_SRC);
+
+  // Character hero, anchored to the bottom-right so it reads as standing in-card.
+  const SZ = 432;
+  const cx = 912;
+  const bottom = H - 58;
+  const haloY = bottom - SZ * 0.58;
+
+  // Soft halo behind the fox (tighter than the background bloom).
+  const halo = ctx.createRadialGradient(cx, haloY, 30, cx, haloY, 270);
+  halo.addColorStop(0, withAlpha(accent, 0.22));
+  halo.addColorStop(1, withAlpha(accent, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(W * 0.42, 40, W * 0.58, H - 40);
+
+  // Grounding shadow — a flattened ellipse under the character.
+  ctx.save();
+  ctx.translate(cx, bottom - 8);
+  ctx.scale(1, 0.16);
+  ctx.beginPath();
+  ctx.arc(0, 0, 138, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fill();
+  ctx.restore();
+
+  // The fox, contained in an SZ box and anchored bottom-center.
+  let headTopY = bottom - SZ; // fallback for the bubble anchor
+  if (img) {
+    const iw = img.naturalWidth || SZ;
+    const ih = img.naturalHeight || SZ;
+    const k = Math.min(SZ / iw, SZ / ih);
+    const dw = iw * k;
+    const dh = ih * k;
+    headTopY = bottom - dh;
+    ctx.drawImage(img, cx - dw / 2, bottom - dh, dw, dh);
+  } else {
+    // Fallback medallion so the card never renders empty.
+    drawBrandMark(ctx, null, cx, haloY, 150, accent, 'droplet');
+  }
+
+  // Speech bubble above the head — the mascot's reaction to the outcome.
+  const quip = loss ? 'OUCH…' : d.result === 'won' ? 'CALLED IT' : 'RIDING IT';
+  drawSpeechBubble(ctx, cx, headTopY + 34, quip, accent, sans);
+
+  /* Left data column — kept clear of the fox (left edge ≈ cx − SZ/2). */
+  ctx.textAlign = 'left';
+  const colW = cx - SZ / 2 - 36 - P;
+
+  const betPx = fitSize(ctx, betText(d), colW, 38, 600, sans, 26);
+  ctx.font = `600 ${betPx}px ${sans}`;
+  ctx.fillStyle = c.text1;
+  ctx.fillText(betText(d), P, 196);
+
+  ctx.font = `400 18px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(
+    `${d.decided ? 'Settled' : 'Settles'} ${dateUTC(d.expiry)} · ${outcomeText(d)}`,
+    P,
+    226,
+  );
+
+  ctx.font = `500 13px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(spaced(`${d.decided ? 'REALIZED' : 'UNREALIZED'} ROI`), P, 300);
+
+  const roiText = `${signed(d.pnlPct * 100, 1)}%`;
+  const roiPx = fitSize(ctx, roiText, colW, 134, 700, mono);
+  const roiBaseline = 300 + roiPx * 0.82;
+  ctx.font = `700 ${roiPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.shadowColor = withAlpha(accent, 0.4);
+  ctx.shadowBlur = 30;
+  ctx.fillText(roiText, P, roiBaseline);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `500 26px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.fillText(
+    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    P,
+    roiBaseline + 50,
+  );
+
+  drawStatStrip(s);
+}
+
+/**
+ * A rounded speech bubble with a downward tail tipped at (`tipX`, `tipY`). Used by
+ * the mascot card to give the fox a one-word reaction. Text is centered.
+ */
+function drawSpeechBubble(
+  ctx: CanvasRenderingContext2D,
+  tipX: number,
+  tipY: number,
+  text: string,
+  color: string,
+  sans: string,
+) {
+  ctx.font = `700 22px ${sans}`;
+  const tw = ctx.measureText(text).width;
+  const padX = 22;
+  const padY = 14;
+  const w = tw + padX * 2;
+  const h = 22 + padY * 2;
+  const x = tipX - w / 2;
+  const y = tipY - 18 - h;
+
+  // Tail — filled first so the bubble body covers its top edge cleanly.
+  ctx.beginPath();
+  ctx.moveTo(tipX - 13, y + h - 2);
+  ctx.lineTo(tipX + 13, y + h - 2);
+  ctx.lineTo(tipX, tipY);
+  ctx.closePath();
+  ctx.fillStyle = withAlpha(color, 0.16);
+  ctx.fill();
+
+  // Bubble body.
+  roundRect(ctx, x, y, w, h, 16);
+  ctx.fillStyle = withAlpha(color, 0.16);
+  ctx.fill();
+  ctx.strokeStyle = withAlpha(color, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(text, tipX, y + padY + 18);
+  ctx.textAlign = 'left';
 }
 
 /** Expanding concentric rings — water ripples around the Sui droplet. */

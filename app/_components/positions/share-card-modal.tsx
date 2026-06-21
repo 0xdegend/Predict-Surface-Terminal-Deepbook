@@ -34,7 +34,7 @@ export function ShareCardModal({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
-  const [variant, setVariant] = useState<ShareVariant>('glow');
+  const [variant, setVariant] = useState<ShareVariant>('mascot');
   const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy' | 'gif' | 'giferr'>(null);
   // GIF export progress: null = idle, 0..1 = generating.
   const [gifPct, setGifPct] = useState<number | null>(null);
@@ -42,13 +42,13 @@ export function ShareCardModal({
   // The styles offered depend on the result (winners also get "Celebrate").
   const variants = shareVariants(data?.result ?? 'live');
 
-  // On each open, lead with the festive card for a win, else the default glow.
-  // Adjusting state during render (guarded by the open transition) is the React-
-  // recommended way to reset on a prop change — no setState-in-effect churn.
+  // On each open, lead with the Mascot card — our brand character is the showcase
+  // style. Adjusting state during render (guarded by the open transition) is the
+  // React-recommended way to reset on a prop change — no setState-in-effect churn.
   const [wasOpen, setWasOpen] = useState(false);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setVariant(data?.result === 'won' ? 'celebrate' : 'glow');
+    if (open) setVariant('mascot');
   }
 
   // Repaint the large preview whenever the dialog opens or the style changes.
