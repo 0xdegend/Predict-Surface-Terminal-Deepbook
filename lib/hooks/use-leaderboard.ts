@@ -16,8 +16,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getManagers, getPositionsMinted, getPositionsRedeemed, qk } from '@/lib/api/client';
 import { aggregateLeaderboard, type LeaderboardRow } from '@/lib/leaderboard/aggregate';
 
-/** Event-window depth pulled for the board. */
-const EVENT_LIMIT = 2000;
+/** Event-window depth pulled for the board. The public server returns the full
+ *  history up to this cap in a single request (no server-side 2k limit), so this
+ *  covers every protocol trade with headroom — bump it again if mints exceed it. */
+const EVENT_LIMIT = 10000;
 
 export interface UseLeaderboard {
   rows: LeaderboardRow[];
