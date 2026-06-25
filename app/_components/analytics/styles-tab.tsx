@@ -7,6 +7,7 @@
  */
 import Link from 'next/link';
 import { useTraderStyles } from '@/lib/hooks/use-trader-styles';
+import { ALL_ARCHETYPES } from '@/lib/analytics/trader-style';
 import { compact, shortId } from '@/lib/format';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
@@ -62,7 +63,7 @@ export function StylesTab() {
       <div className="glass-card overflow-hidden">
         <div className="border-b border-line-soft px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Top traders by style</div>
-          <div className="eyebrow mt-0.5 text-text-3">ranked by volume · tap to view</div>
+          <div className="eyebrow mt-0.5 text-text-3">ranked by amount bet · tap to view</div>
         </div>
         {loading ? (
           <RowsSkeleton />
@@ -95,6 +96,34 @@ export function StylesTab() {
           </div>
         )}
       </div>
+
+      {/* What the styles mean — plain-language legend */}
+      <div className="glass-card overflow-hidden">
+        <div className="border-b border-line-soft px-4 py-3">
+          <div className="text-[13px] font-semibold tracking-tight text-text-1">What the styles mean</div>
+          <div className="eyebrow mt-0.5 text-text-3">worked out from each trader’s past bets</div>
+        </div>
+        <div className="grid gap-x-5 gap-y-3 p-4 sm:grid-cols-2">
+          {ALL_ARCHETYPES.map((a) => {
+            const vis = ARCH_VIS[a.id];
+            const Icon = vis.icon;
+            return (
+              <div key={a.id} className="flex items-start gap-2.5">
+                <span
+                  className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-md"
+                  style={{ color: vis.hue, background: `color-mix(in srgb, ${vis.hue} 14%, transparent)` }}
+                >
+                  <Icon size={13} />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-medium text-text-1">{a.label}</div>
+                  <div className="text-[11.5px] leading-snug text-text-3">{a.blurb}.</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -117,7 +146,7 @@ function RowsSkeleton() {
     <div className="rows-divided">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-          <span className="h-[22px] w-[22px] flex-none rounded-full bg-line-soft" />
+          <span className="h-5.5 w-5.5 flex-none rounded-full bg-line-soft" />
           <span className="h-3 w-24 flex-none rounded bg-line-soft" />
           <span className="h-5 flex-1 rounded bg-line-soft" />
           <span className="h-3 w-12 flex-none rounded bg-line-soft" />

@@ -30,7 +30,7 @@ export function SentimentGauge({ sentiment }: { sentiment: Sentiment }) {
     <div className="glass-card p-4">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <div className="eyebrow text-text-3">Market sentiment · last hour</div>
+          <div className="eyebrow text-text-3">Crowd mood · last hour</div>
           <div
             className={`mt-0.5 text-[15px] font-semibold tracking-tight ${
               lean === 'up' ? 'text-up' : lean === 'down' ? 'text-down' : 'text-text-1'
@@ -40,7 +40,7 @@ export function SentimentGauge({ sentiment }: { sentiment: Sentiment }) {
           </div>
         </div>
         <div className="text-right">
-          <div className="eyebrow text-text-3">Staked</div>
+          <div className="eyebrow text-text-3">Total bet</div>
           <div className="font-mono text-[13px] tabular-nums text-text-2">
             {compact(totalCost)} <span className="text-text-3">DUSDC</span>
           </div>

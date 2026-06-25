@@ -65,8 +65,8 @@ export function FlowTape() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--accent)]" />
             </span>
-            <span className="text-[13px] font-semibold tracking-tight text-text-1">Live flow</span>
-            <span className="eyebrow text-text-3">every bet, protocol-wide</span>
+            <span className="text-[13px] font-semibold tracking-tight text-text-1">Live bets</span>
+            <span className="eyebrow text-text-3">everyone’s bets, as they happen</span>
           </div>
           <button
             onClick={refetch}
@@ -98,7 +98,7 @@ export function FlowTape() {
         ) : tape.length === 0 ? (
           <div className="px-4 py-12 text-center text-[12px] text-text-3">
             <LuActivity size={20} className="mx-auto mb-2 opacity-40" />
-            No trades in the recent window yet.
+            No bets yet.
           </div>
         ) : (
           <div className="rows-divided">
@@ -222,9 +222,9 @@ function FlowRow({ f, now, whale }: { f: FlowEvent; now: number; whale: boolean 
           <span
             className="inline-flex flex-none items-center gap-0.5 rounded px-1 py-px text-[9px] font-semibold text-[#d9a94e]"
             style={{ background: 'color-mix(in srgb, #d9a94e 15%, transparent)' }}
-            title="Large bet (top 10% by size)"
+            title="One of the biggest bets right now (top 10% by size)"
           >
-            <LuFlame size={9} /> WHALE
+            <LuFlame size={9} /> BIG BET
           </span>
         )}
       </span>
@@ -235,7 +235,7 @@ function FlowRow({ f, now, whale }: { f: FlowEvent; now: number; whale: boolean 
           {f.underlying} {num(f.strike, 0)}
         </span>
         <span className="text-[10px] text-text-3">
-          {isMint ? 'bet' : f.settled ? 'settled' : 'closed'} · {ttl(f.expiry, now)}
+          {isMint ? 'placed a bet' : f.settled ? 'cashed out' : 'closed early'} · {ttl(f.expiry, now)}
         </span>
       </span>
 

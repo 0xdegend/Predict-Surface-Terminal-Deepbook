@@ -29,8 +29,8 @@ export function AnalyticsPanel() {
           Analytics
         </h1>
         <p className="mt-1 text-[12px] text-text-3">
-          The market in motion — live order flow and crowd sentiment across DeepBook Predict ·{' '}
-          {predictConfig.network}
+          See what everyone’s betting on right now — live bets, the crowd’s mood, and how prices are
+          moving · {predictConfig.network}
         </p>
       </div>
 

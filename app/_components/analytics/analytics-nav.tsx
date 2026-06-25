@@ -12,11 +12,11 @@ import { LuGrid3X3, LuGauge, LuActivity, LuWaves, LuUsers } from 'react-icons/lu
 export type AnalyticsTool = 'markets' | 'sentiment' | 'vol' | 'styles' | 'flow';
 
 export const TOOLS: { id: AnalyticsTool; label: string; desc: string; icon: IconType }[] = [
-  { id: 'markets', label: 'Market map', desc: 'Where the action is', icon: LuGrid3X3 },
-  { id: 'sentiment', label: 'Sentiment', desc: 'Crowd UP vs DOWN', icon: LuGauge },
-  { id: 'vol', label: 'Implied vol', desc: 'Term structure & history', icon: LuWaves },
+  { id: 'markets', label: 'Markets', desc: 'Where the action is', icon: LuGrid3X3 },
+  { id: 'sentiment', label: 'Crowd mood', desc: 'UP vs DOWN bets', icon: LuGauge },
+  { id: 'vol', label: 'Price swings', desc: 'How jumpy each market is', icon: LuWaves },
   { id: 'styles', label: 'Trader styles', desc: 'How the top traders bet', icon: LuUsers },
-  { id: 'flow', label: 'Live flow', desc: 'Every bet, live', icon: LuActivity },
+  { id: 'flow', label: 'Live bets', desc: 'Every bet as it happens', icon: LuActivity },
 ];
 
 interface NavProps {

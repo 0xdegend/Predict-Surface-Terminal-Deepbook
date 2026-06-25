@@ -25,10 +25,10 @@ import { compact, num, pct, ttl } from '@/lib/format';
 import { ErrorState } from '../ui/error-state';
 
 const METRICS: { id: GridMetric; label: string }[] = [
-  { id: 'volume', label: 'Volume' },
-  { id: 'oi', label: 'Open interest' },
-  { id: 'iv', label: 'Implied vol' },
-  { id: 'sentiment', label: 'Sentiment' },
+  { id: 'volume', label: 'Money bet' },
+  { id: 'oi', label: 'Open bets' },
+  { id: 'iv', label: 'Price swing' },
+  { id: 'sentiment', label: 'Crowd mood' },
 ];
 
 export function MarketHeatmap() {
@@ -60,9 +60,9 @@ export function MarketHeatmap() {
       {/* Header + metric toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
         <div className="flex items-center gap-2">
-          <LuGrid3X3 size={15} className="text-[var(--accent)]" />
-          <span className="text-[13px] font-semibold tracking-tight text-text-1">Market map</span>
-          <span className="eyebrow text-text-3">active markets · tap to trade</span>
+          <LuGrid3X3 size={15} className="text-accent" />
+          <span className="text-[13px] font-semibold tracking-tight text-text-1">Markets</span>
+          <span className="eyebrow text-text-3">live markets · tap to bet</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex flex-wrap items-center gap-1">
@@ -102,7 +102,7 @@ export function MarketHeatmap() {
         ) : cells.length === 0 ? (
           <div className="px-4 py-12 text-center text-[12px] text-text-3">
             <LuGrid3X3 size={20} className="mx-auto mb-2 opacity-40" />
-            No active markets right now.
+            No live markets right now.
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
@@ -162,7 +162,7 @@ function MarketTile({
   return (
     <button
       onClick={onTrade}
-      title={`Trade ${cell.underlying} ATM (${num(cell.atmStrike, 0)}) · expires ${ttl(cell.expiry, now)}`}
+      title={`Bet on ${cell.underlying} at ${num(cell.atmStrike, 0)} (today’s price) · ends in ${ttl(cell.expiry, now)}`}
       className="group glass-inset relative flex flex-col gap-2 overflow-hidden rounded-lg p-3 text-left transition-all duration-200 hover:border-(--accent-line)"
       style={{ background: tileTint(cell, metric, intensity) }}
     >
@@ -205,15 +205,15 @@ function MarketTile({
 function metricHeadline(cell: MarketCell, metric: GridMetric): { value: string; label: string } {
   switch (metric) {
     case 'volume':
-      return { value: compact(cell.volume), label: `DUSDC · ${cell.trades} bets` };
+      return { value: compact(cell.volume), label: `DUSDC bet · ${cell.trades} bets` };
     case 'oi':
-      return { value: compact(cell.openInterest), label: 'open contracts' };
+      return { value: compact(cell.openInterest), label: 'open bets' };
     case 'iv':
-      return { value: pct(cell.atmIv, 0), label: 'ATM implied vol' };
+      return { value: pct(cell.atmIv, 0), label: 'expected price swing' };
     case 'sentiment':
       return {
         value: `${Math.round((cell.upShare >= 0.5 ? cell.upShare : 1 - cell.upShare) * 100)}%`,
-        label: cell.upShare >= 0.5 ? 'lean UP' : 'lean DOWN',
+        label: cell.upShare >= 0.5 ? 'leaning UP' : 'leaning DOWN',
       };
   }
 }

@@ -9,6 +9,7 @@
 import { LuSparkles } from 'react-icons/lu';
 import { useTraderStyle } from '@/lib/hooks/use-trader-style';
 import { num, pct } from '@/lib/format';
+import { InfoTip } from '../ui/info-tip';
 import { StyleBadge } from '../analytics/style-badge';
 
 export function TraderStyleCard({ managerIds, enabled }: { managerIds: string[]; enabled: boolean }) {
@@ -19,6 +20,10 @@ export function TraderStyleCard({ managerIds, enabled }: { managerIds: string[];
       <div className="mb-3 flex items-center gap-2">
         <LuSparkles size={14} className="text-accent" />
         <h2 className="text-[13px] font-medium text-text-1">Trading style</h2>
+        <InfoTip label="trading style">
+          A quick read of how this person tends to bet, worked out from their past bets — the kinds of
+          markets they pick, how big they bet, and whether they back likely or unlikely outcomes.
+        </InfoTip>
       </div>
 
       {loading ? (
@@ -35,7 +40,7 @@ export function TraderStyleCard({ managerIds, enabled }: { managerIds: string[];
 
           {/* Evidence — the numbers behind the call. */}
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Evidence label="Avg entry" value={pct(style.stats.avgEntry, 0)} />
+            <Evidence label="Avg price" value={pct(style.stats.avgEntry, 0)} />
             <Evidence label="Longshots" value={pct(style.stats.tailShare, 0)} />
             <Evidence label="Markets" value={String(style.stats.markets)} />
             <Evidence label="Avg bet" value={`${num(style.stats.avgBet, 2)}`} unit="DUSDC" />

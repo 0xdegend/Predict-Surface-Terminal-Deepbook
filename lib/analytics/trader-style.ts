@@ -69,12 +69,12 @@ const BIAS_HI = 0.65;
 const BIAS_LO = 0.35;
 
 const ARCHETYPES: Record<StyleArchetype['id'], StyleArchetype> = {
-  tail: { id: 'tail', label: 'Tail hunter', blurb: 'Backs cheap longshots for big payouts' },
-  favorite: { id: 'favorite', label: 'Favorite backer', blurb: 'Piles into high-probability favorites' },
-  range: { id: 'range', label: 'Range trader', blurb: 'Bets the price stays inside a band' },
-  highroller: { id: 'highroller', label: 'High roller', blurb: 'Few bets, big size' },
-  active: { id: 'active', label: 'Active trader', blurb: 'High-frequency across many bets' },
-  balanced: { id: 'balanced', label: 'All-rounder', blurb: 'A balanced mix of bets' },
+  tail: { id: 'tail', label: 'Longshot hunter', blurb: 'Makes cheap bets on unlikely outcomes, hoping for a big payout' },
+  favorite: { id: 'favorite', label: 'Safe bettor', blurb: 'Bets on the likely outcome for small, steady wins' },
+  range: { id: 'range', label: 'In-between bettor', blurb: 'Bets the price will land between two levels' },
+  highroller: { id: 'highroller', label: 'Big spender', blurb: 'Places large bets' },
+  active: { id: 'active', label: 'Frequent bettor', blurb: 'Bets a lot — many bets, often' },
+  balanced: { id: 'balanced', label: 'All-rounder', blurb: 'A balanced mix — no single habit stands out' },
 };
 
 /** Fold a trader's binary positions (+ optional range volume) into the stats the
@@ -118,11 +118,11 @@ export function computeStyleStats(positions: PositionSummary[], rangeVolume = 0)
 /** Trait tags — independent of the primary, capped to keep the badge readable. */
 function deriveTags(s: StyleStats, primaryId: StyleArchetype['id']): StyleTag[] {
   const tags: StyleTag[] = [];
-  if (s.upShare >= BIAS_HI) tags.push({ id: 'up-biased', label: 'UP-biased' });
-  else if (s.upShare <= BIAS_LO) tags.push({ id: 'down-biased', label: 'DOWN-biased' });
-  if (s.markets >= DIVERSE_MARKETS) tags.push({ id: 'diversified', label: 'Diversified' });
-  if (primaryId !== 'highroller' && s.avgBet >= HIGH_ROLLER_DUSDC) tags.push({ id: 'big-tickets', label: 'Big tickets' });
-  if (primaryId !== 'active' && s.positions >= ACTIVE_N) tags.push({ id: 'active', label: 'Active' });
+  if (s.upShare >= BIAS_HI) tags.push({ id: 'up-biased', label: 'Mostly UP' });
+  else if (s.upShare <= BIAS_LO) tags.push({ id: 'down-biased', label: 'Mostly DOWN' });
+  if (s.markets >= DIVERSE_MARKETS) tags.push({ id: 'diversified', label: 'Many markets' });
+  if (primaryId !== 'highroller' && s.avgBet >= HIGH_ROLLER_DUSDC) tags.push({ id: 'big-tickets', label: 'Big bets' });
+  if (primaryId !== 'active' && s.positions >= ACTIVE_N) tags.push({ id: 'active', label: 'Bets often' });
   return tags.slice(0, 3);
 }
 

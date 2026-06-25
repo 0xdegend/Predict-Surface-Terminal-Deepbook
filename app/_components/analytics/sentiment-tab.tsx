@@ -41,8 +41,8 @@ export function SentimentTab() {
 
       <div className="glass-card overflow-hidden">
         <div className="border-b border-line-soft px-4 py-3">
-          <div className="text-[13px] font-semibold tracking-tight text-text-1">Most one-sided markets</div>
-          <div className="eyebrow mt-0.5 text-text-3">where the crowd is most committed · tap to trade</div>
+          <div className="text-[13px] font-semibold tracking-tight text-text-1">Where the crowd agrees most</div>
+          <div className="eyebrow mt-0.5 text-text-3">markets most people are betting the same way · tap to bet</div>
         </div>
 
         {loading ? (

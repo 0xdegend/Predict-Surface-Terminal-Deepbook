@@ -45,11 +45,15 @@ export function VolTab() {
         <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
           <div className="flex items-center gap-2">
             <LuWaves size={15} className="text-accent" />
-            <span className="text-[13px] font-semibold tracking-tight text-text-1">Term structure</span>
-            <span className="eyebrow text-text-3">ATM implied vol by expiry · tap a point</span>
+            <span className="text-[13px] font-semibold tracking-tight text-text-1">Expected price swings</span>
+            <span className="eyebrow text-text-3">how jumpy each market is · tap a point</span>
           </div>
         </div>
         <div className="p-4">
+          <p className="mb-3 text-[11.5px] leading-relaxed text-text-3">
+            How big a price move traders are expecting for each market. A higher point means a bumpier,
+            less certain market — the price could swing more before it ends.
+          </p>
           {loading ? (
             <ChartSkeleton />
           ) : term.length === 0 ? (
@@ -107,7 +111,7 @@ function TermChart({
           {active ? pct(active.atmIv, 1) : '—'}
         </span>
         <span className="font-mono text-[11px] tabular-nums text-text-3">
-          {active ? `expires ${ttl(active.expiry, now)}` : `${n} live expiries`}
+          {active ? `ends in ${ttl(active.expiry, now)}` : `${n} live markets`}
         </span>
       </div>
 
@@ -171,10 +175,10 @@ function VolHistoryCard({ selected, now }: { selected: TermPoint | null; now: nu
       <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <LuActivity size={15} className="text-accent" />
-          <span className="text-[13px] font-semibold tracking-tight text-text-1">ATM IV history</span>
+          <span className="text-[13px] font-semibold tracking-tight text-text-1">Price-swing history</span>
           {selected && (
             <span className="eyebrow text-text-3">
-              {selected.underlying ?? 'BTC'} · expires {ttl(selected.expiry, now)}
+              {selected.underlying ?? 'BTC'} · ends in {ttl(selected.expiry, now)}
             </span>
           )}
         </div>
@@ -220,15 +224,14 @@ function IvHistoryChart({ series }: { series: IvHistoryPoint[] }) {
 
   const hp = hover != null ? series[hover] : series[series.length - 1];
   const first = series[0].atmIv;
-  const changePts = (hp.atmIv - first) * 100; // IV is a ratio → pts of vol
+  const jumpier = hp.atmIv >= first; // got bumpier vs the start of the window
 
   return (
     <div className="relative">
       <div className="mb-2 flex items-baseline justify-between gap-3">
         <span className="font-mono text-[18px] font-semibold tabular-nums text-text-1">{pct(hp.atmIv, 1)}</span>
-        <span className={`font-mono text-[11px] tabular-nums ${changePts >= 0 ? 'text-up' : 'text-down'}`}>
-          {changePts >= 0 ? '+' : ''}
-          {changePts.toFixed(1)} pts
+        <span className={`text-[11px] font-medium ${jumpier ? 'text-up' : 'text-down'}`}>
+          {jumpier ? 'Jumpier' : 'Calmer'} than earlier
         </span>
       </div>
 
