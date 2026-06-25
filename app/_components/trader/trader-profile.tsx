@@ -24,6 +24,7 @@ import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderPositionsList } from './trader-positions-list';
+import { TraderStyleCard } from './trader-style-card';
 import type { IconType } from 'react-icons';
 
 const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictConfig.network}/account/${addr}`;
@@ -124,6 +125,9 @@ export function TraderProfile({ address }: { address: string }) {
         />
         <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={lbLoading ? '…' : row ? String(row.trades) : '—'} />
       </div>
+
+      {/* Trading style — derived archetype + the evidence behind it */}
+      <TraderStyleCard managerIds={managerIds} enabled={!managersQ.isLoading} />
 
       {/* Open positions */}
       <div className="mb-3 flex items-center gap-2">

@@ -7,13 +7,15 @@
  * area, so the page reads one instrument at a time instead of a long scroll.
  */
 import type { IconType } from 'react-icons';
-import { LuGrid3X3, LuGauge, LuActivity } from 'react-icons/lu';
+import { LuGrid3X3, LuGauge, LuActivity, LuWaves, LuUsers } from 'react-icons/lu';
 
-export type AnalyticsTool = 'markets' | 'sentiment' | 'flow';
+export type AnalyticsTool = 'markets' | 'sentiment' | 'vol' | 'styles' | 'flow';
 
 export const TOOLS: { id: AnalyticsTool; label: string; desc: string; icon: IconType }[] = [
   { id: 'markets', label: 'Market map', desc: 'Where the action is', icon: LuGrid3X3 },
   { id: 'sentiment', label: 'Sentiment', desc: 'Crowd UP vs DOWN', icon: LuGauge },
+  { id: 'vol', label: 'Implied vol', desc: 'Term structure & history', icon: LuWaves },
+  { id: 'styles', label: 'Trader styles', desc: 'How the top traders bet', icon: LuUsers },
   { id: 'flow', label: 'Live flow', desc: 'Every bet, live', icon: LuActivity },
 ];
 
@@ -43,7 +45,7 @@ export function AnalyticsRail({ active, onSelect }: NavProps) {
                 {/* active accent rail */}
                 <span
                   aria-hidden
-                  className={`absolute inset-y-2 left-0 w-0.5 rounded-full bg-[var(--accent)] transition-opacity ${
+                  className={`absolute inset-y-2 left-0 w-0.5 rounded-full bg-accent transition-opacity ${
                     isActive ? 'opacity-100' : 'opacity-0'
                   }`}
                 />

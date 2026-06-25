@@ -13,6 +13,8 @@ import { predictConfig } from '@/config/predict';
 import { AnalyticsRail, AnalyticsTabs, type AnalyticsTool } from './analytics-nav';
 import { MarketHeatmap } from './market-heatmap';
 import { SentimentTab } from './sentiment-tab';
+import { VolTab } from './vol-tab';
+import { StylesTab } from './styles-tab';
 import { FlowTape } from './flow-tape';
 
 export function AnalyticsPanel() {
@@ -39,6 +41,8 @@ export function AnalyticsPanel() {
           <AnalyticsTabs active={tool} onSelect={setTool} />
           {tool === 'markets' && <MarketHeatmap />}
           {tool === 'sentiment' && <SentimentTab />}
+          {tool === 'vol' && <VolTab />}
+          {tool === 'styles' && <StylesTab />}
           {tool === 'flow' && <FlowTape />}
         </div>
       </div>
