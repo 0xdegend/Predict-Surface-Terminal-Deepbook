@@ -25,7 +25,6 @@ import type { FlowEvent } from '@/lib/analytics/flow';
 import { num, ago, ttl, shortId } from '@/lib/format';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { ErrorState } from '../ui/error-state';
-import { SentimentGauge } from './sentiment-gauge';
 
 /** Row grid — kind · trader · market · price · amount · age. Tightens on mobile. */
 const COLS =
@@ -34,7 +33,7 @@ const COLS =
 const PAGE_SIZE = 20;
 
 export function FlowTape() {
-  const { tape, sentiment, whaleThreshold, loading, refreshing, error, refetch } = useFlow();
+  const { tape, whaleThreshold, loading, refreshing, error, refetch } = useFlow();
   const now = useNow(0);
   const [page, setPage] = useState(0);
 
@@ -58,10 +57,7 @@ export function FlowTape() {
   }
 
   return (
-    <div className="space-y-4">
-      <SentimentGauge sentiment={sentiment} />
-
-      <div className="glass-card overflow-hidden">
+    <div className="glass-card overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
           <div className="flex items-center gap-2">
@@ -123,7 +119,6 @@ export function FlowTape() {
           </div>
         )}
       </div>
-    </div>
   );
 }
 

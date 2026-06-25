@@ -51,8 +51,13 @@ function percentile(values: number[], p: number): number {
   return sorted[idx];
 }
 
-export function useFlow(): UseFlow {
-  const q = useQuery({
+/**
+ * Shared raw-event query — the single source for both the flow tape and the
+ * market heatmap. Same query key, so TanStack dedupes it to one network fetch no
+ * matter how many analytics widgets are mounted.
+ */
+export function useFlowEvents() {
+  return useQuery({
     queryKey: qk.flow,
     queryFn: async () => {
       const [minted, redeemed] = await Promise.all([
@@ -64,6 +69,10 @@ export function useFlow(): UseFlow {
     refetchInterval: REFETCH_MS,
     refetchOnWindowFocus: true,
   });
+}
+
+export function useFlow(): UseFlow {
+  const q = useFlowEvents();
 
   const { tape, sentiment, whaleThreshold } = useMemo(() => {
     const minted = q.data?.minted ?? [];
