@@ -148,6 +148,89 @@ class BandPaneRenderer implements IPrimitivePaneRenderer {
   }
 }
 
+const ZONE_UP_FILL = "rgba(77, 214, 176, 0.10)";
+const ZONE_DOWN_FILL = "rgba(240, 121, 107, 0.10)";
+
+/**
+ * Shades the WINNING side of a binary bet — everything above the strike (UP) or
+ * below it (DOWN), full-width and tinted by direction — so a trader sees their
+ * win-zone on the chart as they move the strike. A series primitive (pinned to
+ * the price scale; repaints on scroll/zoom/strike change). `setZone(null, …)` hides.
+ */
+class WinZonePrimitive implements ISeriesPrimitive<Time> {
+  private _series: ISeriesApi<"Area"> | null = null;
+  private _requestUpdate?: () => void;
+  private _strike: number | null = null;
+  private _isUp = true;
+  private readonly _view = new WinZonePaneView(this);
+
+  attached(p: SeriesAttachedParameter<Time>) {
+    this._series = p.series as ISeriesApi<"Area">;
+    this._requestUpdate = p.requestUpdate;
+  }
+  detached() {
+    this._series = null;
+    this._requestUpdate = undefined;
+  }
+  updateAllViews() {
+    this._view.update();
+  }
+  paneViews() {
+    return [this._view];
+  }
+
+  setZone(strike: number | null, isUp: boolean) {
+    this._strike = strike;
+    this._isUp = isUp;
+    this._requestUpdate?.();
+  }
+  get series() {
+    return this._series;
+  }
+  get strike() {
+    return this._strike;
+  }
+  get isUp() {
+    return this._isUp;
+  }
+}
+
+class WinZonePaneView implements IPrimitivePaneView {
+  private _yStrike: number | null = null;
+  constructor(private readonly _source: WinZonePrimitive) {}
+  update() {
+    const s = this._source.series;
+    this._yStrike =
+      s && this._source.strike != null ? s.priceToCoordinate(this._source.strike) : null;
+  }
+  zOrder() {
+    return "top" as const;
+  }
+  renderer(): IPrimitivePaneRenderer {
+    return new WinZoneRenderer(this._yStrike, this._source.isUp);
+  }
+}
+
+class WinZoneRenderer implements IPrimitivePaneRenderer {
+  constructor(
+    private readonly _yStrike: number | null,
+    private readonly _isUp: boolean,
+  ) {}
+  draw(target: RenderTarget) {
+    if (this._yStrike == null) return;
+    target.useBitmapCoordinateSpace((scope) => {
+      const ctx = scope.context;
+      const vr = scope.verticalPixelRatio;
+      const w = scope.bitmapSize.width;
+      const h = scope.bitmapSize.height;
+      const y = this._yStrike! * vr;
+      ctx.fillStyle = this._isUp ? ZONE_UP_FILL : ZONE_DOWN_FILL;
+      if (this._isUp) ctx.fillRect(0, 0, w, y); // win zone is ABOVE the strike
+      else ctx.fillRect(0, y, w, h - y); // …or BELOW it
+    });
+  }
+}
+
 export function PriceChart({
   oracles,
   initialInputs,

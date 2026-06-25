@@ -404,6 +404,19 @@ export function FlowPanel({
 
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
+      {/* Back to step 1 to change the strike (read-only on the bet step). Sits at
+          the very top, above the guide, so it's the first thing on the bet step. */}
+      {ticketMode === 'binary' && step === 2 && (
+        <button
+          type="button"
+          onClick={() => setStep(1)}
+          className="-mb-1 inline-flex w-fit items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"
+        >
+          <span aria-hidden className="text-[14px] leading-none">←</span>
+          Back to strike
+        </button>
+      )}
+
       {/* Plain-language "what do I do here" guide for first-timers (step-aware,
           and mode-aware so range traders aren't told to pick Up/Down). */}
       <TicketGuide step={guideStep} mode={ticketMode} />
@@ -557,17 +570,8 @@ export function FlowPanel({
           </>
           ) : (
           <>
-          {/* Back to step 1 to change the strike (it's read-only on this step). */}
-          <button
-            type="button"
-            onClick={() => setStep(1)}
-            className="inline-flex w-fit items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"
-          >
-            <span aria-hidden className="text-[14px] leading-none">←</span>
-            Back to strike
-          </button>
           {/* Entry recap — direction (tap the chip to flip UP/DOWN) and the chosen
-              strike (read-only; change it on step 1 via the arrow above). */}
+              strike (read-only; change it on step 1 via the back arrow up top). */}
           <div className="glass-inset flex flex-col gap-2.5 rounded-lg p-2.5">
             <div className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
