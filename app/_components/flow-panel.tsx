@@ -33,6 +33,7 @@ import { RangeTicket } from './range-ticket';
 import { TicketGuide } from './ticket-guide';
 import { TicketEmpty } from './ticket-empty';
 import { MintConfirmModal } from './mint-confirm-modal';
+import { PayoutSlider } from './ticket/payout-slider';
 import { SuccessModal } from './ui/success-modal';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
 
@@ -362,8 +363,6 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
     return <div className="text-[12px] text-text-2">Waiting for live oracle data…</div>;
   }
 
-  const stepStrike = (dir: 1 | -1) =>
-    setStrike((s) => snapStrikeToTick(s + BigInt(dir) * grid.tickSize, oracle));
   // Source badge — where the current pick came from (surface/odds curve vs the
   // market list), shown when that pick is on the active oracle.
   const pickOnActive =
@@ -498,27 +497,18 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
             at expiry. Otherwise your bet is lost.
           </p>
 
-          <Row label={`Strike (settles ${isUp ? 'above' : 'below'})`}>
-            <div className="glass-inset inline-flex items-center gap-0.5 rounded-lg p-0.5">
-              <button
-                onClick={() => stepStrike(-1)}
-                aria-label="Lower strike"
-                className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
-              >
-                −
-              </button>
-              <span className="min-w-[5.5rem] text-center text-[13px] text-text-1">
-                {price(toFloat(Number(strike)))}
-              </span>
-              <button
-                onClick={() => stepStrike(1)}
-                aria-label="Raise strike"
-                className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
-              >
-                +
-              </button>
-            </div>
-          </Row>
+          {/* Strike as a PAYOUT slider — bounded to the quotable band, centered on
+              today's price; the exact strike + a $1 nudge live on the slider. */}
+          <PayoutSlider
+            oracle={oracle}
+            forward={forward}
+            svi={active!.svi}
+            settlement={active!.settlement ?? null}
+            isUp={isUp}
+            strike={strike}
+            onChange={setStrike}
+            disabled={expired}
+          />
 
           {!tradeable && !expired && (
             <p className="text-[12px] leading-relaxed text-text-2">
@@ -578,28 +568,18 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 {isUp ? '▼ DOWN' : '▲ UP'}
               </button>
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-text-3">Strike</span>
-              <div className="inline-flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
-                <button
-                  onClick={() => stepStrike(-1)}
-                  aria-label="Lower strike"
-                  className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
-                >
-                  −
-                </button>
-                <span className="min-w-22 text-center text-[13px] tabular-nums text-text-1">
-                  {price(toFloat(Number(strike)))}
-                </span>
-                <button
-                  onClick={() => stepStrike(1)}
-                  aria-label="Raise strike"
-                  className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2"
-                >
-                  +
-                </button>
-              </div>
-            </div>
+            {/* Payout slider — also here on the bet step, since an external pick
+                (surface / heatmap / copy) lands the ticket on step 2 directly. */}
+            <PayoutSlider
+              oracle={oracle}
+              forward={forward}
+              svi={active!.svi}
+              settlement={active!.settlement ?? null}
+              isUp={isUp}
+              strike={strike}
+              onChange={setStrike}
+              disabled={expired}
+            />
           </div>
 
           {/* Bet size — a plain dollar stake. We translate it to a mintable
