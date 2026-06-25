@@ -7,11 +7,12 @@
  * area, so the page reads one instrument at a time instead of a long scroll.
  */
 import type { IconType } from 'react-icons';
-import { LuGrid3X3, LuGauge, LuActivity, LuWaves, LuUsers } from 'react-icons/lu';
+import { LuLayoutDashboard, LuGrid3X3, LuGauge, LuActivity, LuWaves, LuUsers } from 'react-icons/lu';
 
-export type AnalyticsTool = 'markets' | 'sentiment' | 'vol' | 'styles' | 'flow';
+export type AnalyticsTool = 'pulse' | 'markets' | 'sentiment' | 'vol' | 'styles' | 'flow';
 
 export const TOOLS: { id: AnalyticsTool; label: string; desc: string; icon: IconType }[] = [
+  { id: 'pulse', label: 'Pulse', desc: 'The whole market at a glance', icon: LuLayoutDashboard },
   { id: 'markets', label: 'Markets', desc: 'Where the action is', icon: LuGrid3X3 },
   { id: 'sentiment', label: 'Crowd mood', desc: 'UP vs DOWN bets', icon: LuGauge },
   { id: 'vol', label: 'Price swings', desc: 'How jumpy each market is', icon: LuWaves },

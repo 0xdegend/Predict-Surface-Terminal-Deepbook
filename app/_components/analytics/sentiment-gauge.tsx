@@ -10,7 +10,7 @@ import { LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import type { Sentiment } from '@/lib/analytics/flow';
 import { compact, num } from '@/lib/format';
 
-export function SentimentGauge({ sentiment }: { sentiment: Sentiment }) {
+export function SentimentGauge({ sentiment, className = '' }: { sentiment: Sentiment; className?: string }) {
   const { upCost, downCost, upCount, downCount, upShare, totalCost } = sentiment;
   const hasFlow = totalCost > 0;
   const upPct = Math.round(upShare * 100);
@@ -27,7 +27,7 @@ export function SentimentGauge({ sentiment }: { sentiment: Sentiment }) {
   }[lean];
 
   return (
-    <div className="glass-card p-4">
+    <div className={`glass-card flex flex-col justify-center p-4 ${className}`}>
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <div className="eyebrow text-text-3">Crowd mood · last hour</div>

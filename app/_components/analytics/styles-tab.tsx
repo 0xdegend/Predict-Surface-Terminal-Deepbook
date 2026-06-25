@@ -22,7 +22,7 @@ export function StylesTab() {
     <div className="space-y-4">
       {/* Distribution */}
       <div className="glass-card overflow-hidden">
-        <div className="border-b border-line-soft px-4 py-3">
+        <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Trader styles</div>
           <div className="eyebrow mt-0.5 text-text-3">how the top {total} traders bet</div>
         </div>
@@ -61,7 +61,7 @@ export function StylesTab() {
 
       {/* Classified roster */}
       <div className="glass-card overflow-hidden">
-        <div className="border-b border-line-soft px-4 py-3">
+        <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Top traders by style</div>
           <div className="eyebrow mt-0.5 text-text-3">ranked by amount bet · tap to view</div>
         </div>
@@ -99,7 +99,7 @@ export function StylesTab() {
 
       {/* What the styles mean — plain-language legend */}
       <div className="glass-card overflow-hidden">
-        <div className="border-b border-line-soft px-4 py-3">
+        <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">What the styles mean</div>
           <div className="eyebrow mt-0.5 text-text-3">worked out from each trader’s past bets</div>
         </div>
@@ -133,8 +133,8 @@ function BarsSkeleton() {
     <div className="flex flex-col gap-2.5">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3">
-          <span className="h-3 w-32 flex-none rounded bg-line-soft" />
-          <span className="h-2 flex-1 rounded-full bg-line-soft" />
+          <span className="h-3 w-32 flex-none rounded skeleton" />
+          <span className="h-2 flex-1 rounded-full skeleton" />
         </div>
       ))}
     </div>
@@ -146,10 +146,10 @@ function RowsSkeleton() {
     <div className="rows-divided">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-          <span className="h-5.5 w-5.5 flex-none rounded-full bg-line-soft" />
-          <span className="h-3 w-24 flex-none rounded bg-line-soft" />
-          <span className="h-5 flex-1 rounded bg-line-soft" />
-          <span className="h-3 w-12 flex-none rounded bg-line-soft" />
+          <span className="h-5.5 w-5.5 flex-none rounded-full skeleton" />
+          <span className="h-3 w-24 flex-none rounded skeleton" />
+          <span className="h-5 flex-1 rounded skeleton" />
+          <span className="h-3 w-12 flex-none rounded skeleton" />
         </div>
       ))}
     </div>

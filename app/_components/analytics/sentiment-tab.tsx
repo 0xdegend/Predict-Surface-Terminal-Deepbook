@@ -40,7 +40,7 @@ export function SentimentTab() {
       <SentimentGauge sentiment={sentiment} />
 
       <div className="glass-card overflow-hidden">
-        <div className="border-b border-line-soft px-4 py-3">
+        <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Where the crowd agrees most</div>
           <div className="eyebrow mt-0.5 text-text-3">markets most people are betting the same way · tap to bet</div>
         </div>
@@ -118,10 +118,10 @@ function SkeletonRows() {
       {Array.from({ length: 5 }).map((_, i) => (
         <div key={i} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-2.5">
           <div className="min-w-0">
-            <span className="h-3 w-28 rounded bg-line-soft" />
-            <span className="mt-2 block h-1.5 w-48 max-w-xs rounded-full bg-line-soft" />
+            <span className="h-3 w-28 rounded skeleton" />
+            <span className="mt-2 block h-1.5 w-48 max-w-xs rounded-full skeleton" />
           </div>
-          <span className="h-4 w-16 justify-self-end rounded bg-line-soft" />
+          <span className="h-4 w-16 justify-self-end rounded skeleton" />
         </div>
       ))}
     </div>

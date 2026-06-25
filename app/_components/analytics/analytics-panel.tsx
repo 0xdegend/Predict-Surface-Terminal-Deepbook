@@ -11,6 +11,7 @@ import { useState } from 'react';
 import { LuChartNoAxesCombined } from 'react-icons/lu';
 import { predictConfig } from '@/config/predict';
 import { AnalyticsRail, AnalyticsTabs, type AnalyticsTool } from './analytics-nav';
+import { PulseOverview } from './pulse/pulse-overview';
 import { MarketHeatmap } from './market-heatmap';
 import { SentimentTab } from './sentiment-tab';
 import { VolTab } from './vol-tab';
@@ -18,10 +19,10 @@ import { StylesTab } from './styles-tab';
 import { FlowTape } from './flow-tape';
 
 export function AnalyticsPanel() {
-  const [tool, setTool] = useState<AnalyticsTool>('markets');
+  const [tool, setTool] = useState<AnalyticsTool>('pulse');
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
       {/* Header */}
       <div className="mb-5">
         <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">
@@ -39,11 +40,16 @@ export function AnalyticsPanel() {
 
         <div className="min-w-0 flex-1">
           <AnalyticsTabs active={tool} onSelect={setTool} />
-          {tool === 'markets' && <MarketHeatmap />}
-          {tool === 'sentiment' && <SentimentTab />}
-          {tool === 'vol' && <VolTab />}
-          {tool === 'styles' && <StylesTab />}
-          {tool === 'flow' && <FlowTape />}
+          {/* Keyed by tool so switching re-mounts the content with one restrained
+              rise (§10.6); reduced-motion clamps it. */}
+          <div key={tool} className="rise">
+            {tool === 'pulse' && <PulseOverview />}
+            {tool === 'markets' && <MarketHeatmap />}
+            {tool === 'sentiment' && <SentimentTab />}
+            {tool === 'vol' && <VolTab />}
+            {tool === 'styles' && <StylesTab />}
+            {tool === 'flow' && <FlowTape />}
+          </div>
         </div>
       </div>
     </div>

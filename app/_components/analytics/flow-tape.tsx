@@ -59,7 +59,7 @@ export function FlowTape() {
   return (
     <div className="glass-card overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between gap-3 border-b border-line-soft px-4 py-3">
+        <div className="flex items-center justify-between gap-3 head-divider px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-60" />
@@ -267,15 +267,15 @@ function SkeletonRows() {
     <div className="rows-divided">
       {Array.from({ length: 10 }).map((_, i) => (
         <div key={i} className={`grid ${COLS} items-center gap-2 px-4 py-2`}>
-          <span className="h-5 w-5 rounded-md bg-line-soft" />
+          <span className="h-5 w-5 rounded-md skeleton" />
           <span className="flex items-center gap-2">
-            <span className="h-[18px] w-[18px] rounded-full bg-line-soft" />
-            <span className="h-3 w-24 rounded bg-line-soft" />
+            <span className="h-[18px] w-[18px] rounded-full skeleton" />
+            <span className="h-3 w-24 rounded skeleton" />
           </span>
-          <span className="hidden h-3 w-20 rounded bg-line-soft sm:block" />
-          <span className="hidden h-3 w-10 justify-self-end rounded bg-line-soft sm:block" />
-          <span className="h-3 w-12 justify-self-end rounded bg-line-soft" />
-          <span className="h-3 w-8 justify-self-end rounded bg-line-soft" />
+          <span className="hidden h-3 w-20 rounded skeleton sm:block" />
+          <span className="hidden h-3 w-10 justify-self-end rounded skeleton sm:block" />
+          <span className="h-3 w-12 justify-self-end rounded skeleton" />
+          <span className="h-3 w-8 justify-self-end rounded skeleton" />
         </div>
       ))}
     </div>
