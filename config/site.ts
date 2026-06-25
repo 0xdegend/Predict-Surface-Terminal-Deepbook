@@ -26,5 +26,5 @@ export const siteConfig = {
   ogImageWidth: 1635,
   ogImageHeight: 962,
   /** Public routes worth indexing (dynamic /trader/* is excluded). */
-  routes: ['', '/portfolio', '/vault', '/leaderboard', '/quests', '/competitions', '/docs', '/risk'] as const,
+  routes: ['', '/portfolio', '/vault', '/leaderboard', '/analytics', '/quests', '/competitions', '/docs', '/risk'] as const,
 } as const;

@@ -183,4 +183,5 @@ export const qk = {
   openInterest: ['open-interest'] as const,
   predictConfig: ['predict', 'config'] as const,
   leaderboardBase: ['leaderboard', 'base'] as const,
+  flow: ['analytics', 'flow'] as const,
 };

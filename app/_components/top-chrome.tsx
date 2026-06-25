@@ -20,7 +20,7 @@ export function TopChrome({
   tape,
   diagnostics,
 }: {
-  active: "surface" | "risk" | "portfolio" | "leaderboard" | "vault" | "admin" | "quests" | "competitions" | "docs";
+  active: "surface" | "risk" | "portfolio" | "leaderboard" | "analytics" | "vault" | "admin" | "quests" | "competitions" | "docs";
   tape?: {
     oracleId: string;
     underlying: string;
@@ -60,6 +60,7 @@ export function TopChrome({
             label="Leaderboard"
             active={active === "leaderboard"}
           />
+          <NavLink href="/analytics" label="Analytics" active={active === "analytics"} />
           {/* Quests + Competitions (the gamification roadmap) grouped under one
               dropdown, like the Vault group below. */}
           <NavRewards />

@@ -133,3 +133,17 @@ export function countdown(expiryMs: number, nowMs: number = Date.now()): string 
   if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
   return `${s}s`;
 }
+
+/** Compact "time since" for a past ms-epoch — "now" / "12s" / "4m" / "2h" / "3d".
+ *  Drives the live flow tape's age column (recompute on a ticking clock). */
+export function ago(tsMs: number, nowMs: number = Date.now()): string {
+  const diff = nowMs - tsMs;
+  if (diff < 5_000) return 'now';
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
