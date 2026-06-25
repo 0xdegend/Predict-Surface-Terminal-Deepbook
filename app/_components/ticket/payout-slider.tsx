@@ -98,7 +98,7 @@ export function PayoutSlider({
       {/* readout — payout multiple + exact strike with a $1 nudge */}
       <div className="mb-2.5 flex items-end justify-between gap-2">
         <div>
-          <div className="eyebrow text-text-3">Pick your payout</div>
+          <div className="eyebrow text-text-3">Pick your strike</div>
           <div className="mt-0.5 font-mono text-[20px] font-semibold leading-none text-text-1">
             {multiple < 10 ? num(multiple, 1) : num(multiple, 0)}×{' '}
             <span className="text-[11px] font-normal text-text-3">if it hits</span>
@@ -139,16 +139,9 @@ export function PayoutSlider({
           aria-valuenow={Math.round(multiple * 10) / 10}
           aria-valuetext={`${num(multiple, 1)} times`}
           onKeyDown={onKey}
-          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-(--accent-line) bg-bg-1 outline-none ring-2 ring-(--accent-soft) transition-shadow focus-visible:ring-(--accent)"
+          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-(--accent-line) bg-bg-1 outline-none ring-2 ring-(--accent-soft) transition-shadow focus-visible:ring-accent"
           style={{ left: `${t * 100}%` }}
         />
-      </div>
-
-      {/* end labels */}
-      <div className="mt-1 flex justify-between text-[10px] text-text-3">
-        <span>Safer · smaller win</span>
-        <span>at today’s price</span>
-        <span>Riskier · bigger win</span>
       </div>
     </div>
   );

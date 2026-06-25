@@ -196,6 +196,9 @@ export function PriceChart({
   // scale always frames the selected range (with padding) — even when it's far
   // from spot. A ref so the provider closure sees the latest without re-creating.
   const bandRangeRef = useRef<{ low: number; high: number } | null>(null);
+  // Selected BINARY strike — same idea as bandRangeRef, so the dashed strike line
+  // is always framed even when the user picks a level away from spot.
+  const strikeRangeRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
   const fittedRef = useRef(false);
 
@@ -250,15 +253,25 @@ export function PriceChart({
       autoscaleInfoProvider: (baseImpl: () => AutoscaleInfo | null): AutoscaleInfo | null => {
         const base = baseImpl();
         const band = bandRangeRef.current;
-        if (!band) return base;
-        // Pad proportional to the band's own height so the scale frames the range
-        // tightly. The old floor of `band.high * 0.015` was 1.5% of the absolute
-        // price — ~±950 on a $63k asset, dwarfing a ~130-wide band and zooming
-        // the chart so far out the line flattened. The floor of 1 here only
-        // guards a degenerate zero-width band (a real range is never that).
-        const pad = Math.max((band.high - band.low) * 0.25, 1);
-        const lo = band.low - pad;
-        const hi = band.high + pad;
+        const strike = strikeRangeRef.current;
+        let lo: number | null = null;
+        let hi: number | null = null;
+        if (band) {
+          // Pad proportional to the band's own height so the scale frames the
+          // range tightly (floor of 1 guards a degenerate zero-width band).
+          const pad = Math.max((band.high - band.low) * 0.25, 1);
+          lo = band.low - pad;
+          hi = band.high + pad;
+        }
+        if (strike != null) {
+          // Pad around a single strike line off the visible price span so it's
+          // never flush to an edge (and the spot history still frames the rest).
+          const span = base?.priceRange ? base.priceRange.maxValue - base.priceRange.minValue : strike * 0.01;
+          const pad = Math.max(span * 0.08, 1);
+          lo = lo == null ? strike - pad : Math.min(lo, strike - pad);
+          hi = hi == null ? strike + pad : Math.max(hi, strike + pad);
+        }
+        if (lo == null || hi == null) return base;
         if (!base?.priceRange) {
           return { priceRange: { minValue: lo, maxValue: hi } };
         }
@@ -340,7 +353,12 @@ export function PriceChart({
         axisLabelVisible: true,
         title: `strike ${selection.isUp ? "▲" : "▼"}`,
       });
+      // Keep the strike line framed (autoscale provider reads this ref).
+      strikeRangeRef.current = selection.strike;
+    } else {
+      strikeRangeRef.current = null;
     }
+    series.priceScale().setAutoScale(true);
   }, [selection, activeId, ticketMode]);
 
   // Highlight the selected vertical range — a shaded band (lower→higher) in range

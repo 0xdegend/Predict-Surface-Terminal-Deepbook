@@ -7,7 +7,7 @@
  * with the Portfolio page); this component owns the mint-specific UI. Minting a
  * node pulses a fill ripple back on the surface.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -46,7 +46,19 @@ const CLOSING_SOON_MS = 120_000;
  *  reliably land before expiry, and the quote goes stale fast — block it. */
 const MINT_CUTOFF_MS = 5_000;
 
-export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileInput[]; serverNow: number }) {
+export function FlowPanel({
+  inputs: initialInputs,
+  serverNow,
+  mobile = false,
+  chart,
+}: {
+  inputs: SmileInput[];
+  serverNow: number;
+  /** Mobile sheet: land on step 1 (chart + strike) instead of jumping to the bet
+   *  step, and render `chart` at the top of step 1. */
+  mobile?: boolean;
+  chart?: ReactNode;
+}) {
   const client = useCurrentClient();
   const now = useNow(serverNow);
   const mounted = useMounted();
@@ -156,7 +168,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
       setAppliedSel(selKey);
       setStrike(BigInt(selection!.strikeScaled));
       setIsUp(selection!.isUp);
-      if (isExternalPick) setStep(2);
+      // Desktop: jump straight to the bet step. Mobile: stay on step 1 so the
+      // user sees the price chart + can adjust the strike before betting.
+      if (isExternalPick && !mobile) setStep(2);
     } else if (!selKey && strike === 0n) {
       setStrike(snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle));
     }
@@ -479,6 +493,9 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
 
           {step === 1 ? (
           <>
+          {/* Live price of this market (mobile sheet only) — read the movement
+              before betting. */}
+          {chart}
           <div className="flex gap-2">
             <Toggle active={isUp} onClick={() => setDirection(true)} tone="up">
               UP
@@ -540,9 +557,17 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
           </>
           ) : (
           <>
-          {/* Entry recap — direction (tap the chip to flip UP/DOWN) and an
-              EDITABLE strike, so a trader can fine-tune the level right here at
-              the bet step instead of having to go back to "Side & level". */}
+          {/* Back to step 1 to change the strike (it's read-only on this step). */}
+          <button
+            type="button"
+            onClick={() => setStep(1)}
+            className="inline-flex w-fit items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"
+          >
+            <span aria-hidden className="text-[14px] leading-none">←</span>
+            Back to strike
+          </button>
+          {/* Entry recap — direction (tap the chip to flip UP/DOWN) and the chosen
+              strike (read-only; change it on step 1 via the arrow above). */}
           <div className="glass-inset flex flex-col gap-2.5 rounded-lg p-2.5">
             <div className="flex items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-2">
@@ -568,18 +593,13 @@ export function FlowPanel({ inputs: initialInputs, serverNow }: { inputs: SmileI
                 {isUp ? '▼ DOWN' : '▲ UP'}
               </button>
             </div>
-            {/* Payout slider — also here on the bet step, since an external pick
-                (surface / heatmap / copy) lands the ticket on step 2 directly. */}
-            <PayoutSlider
-              oracle={oracle}
-              forward={forward}
-              svi={active!.svi}
-              settlement={active!.settlement ?? null}
-              isUp={isUp}
-              strike={strike}
-              onChange={setStrike}
-              disabled={expired}
-            />
+            {/* Strike is read-only here — it was set with the slider on step 1.
+                Go back to change it (the arrow above), so the level can't be
+                accidentally nudged at the bet step. */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-text-3">Strike</span>
+              <span className="font-mono text-[13px] tabular-nums text-text-1">{price(toFloat(Number(strike)))}</span>
+            </div>
           </div>
 
           {/* Bet size — a plain dollar stake. We translate it to a mintable

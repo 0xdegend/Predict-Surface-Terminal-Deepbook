@@ -12,11 +12,12 @@
  * Each is gated by `useMediaQuery`, so exactly ONE FlowPanel is mounted per
  * breakpoint (no duplicated quote polling or state).
  */
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { LuX } from 'react-icons/lu';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { FlowPanel } from './flow-panel';
+import { PriceChart } from './chart/price-chart';
 import type { SmileInput } from '@/lib/svi/surface';
 
 const DESKTOP_MQ = '(min-width: 1024px)';
@@ -46,6 +47,7 @@ export function TradeSheet({ inputs, serverNow }: { inputs: SmileInput[]; server
   const isDesktop = useMediaQuery(DESKTOP_MQ);
   const open = useSurfaceStore((s) => s.ticketSheetOpen);
   const close = useSurfaceStore((s) => s.closeTicketSheet);
+  const oracles = useMemo(() => inputs.map((i) => i.oracle), [inputs]);
 
   // Esc closes; lock the page behind the sheet while it's open.
   useEffect(() => {
@@ -98,7 +100,21 @@ export function TradeSheet({ inputs, serverNow }: { inputs: SmileInput[]; server
           </button>
         </div>
         <div className="scroll-quiet min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
-          <FlowPanel inputs={inputs} serverNow={serverNow} />
+          {/* Mobile: split into two steps (chart + strike, then bet) so nothing
+              needs scrolling. The chart renders inside step 1 (read-only — taps
+              scroll the sheet), and is only mounted while the sheet is open. */}
+          <FlowPanel
+            inputs={inputs}
+            serverNow={serverNow}
+            mobile
+            chart={
+              open && oracles.length > 0 ? (
+                <div className="pointer-events-none mb-3 h-36 overflow-hidden rounded-xl bg-black/20">
+                  <PriceChart oracles={oracles} initialInputs={inputs} />
+                </div>
+              ) : null
+            }
+          />
         </div>
       </div>
     </>
