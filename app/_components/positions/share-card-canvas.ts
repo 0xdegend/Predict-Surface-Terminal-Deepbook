@@ -845,47 +845,12 @@ function drawMascot(s: Ctx, variant: ShareVariant = 'mascot') {
   const expr = MASCOT_EXPR[variant] ?? MASCOT_EXPR.mascot;
   const img = getMark(loss ? MASCOT_LOSS_SRC : expr.src);
 
-  // Character hero, anchored to the bottom-right so it reads as standing in-card.
+  // Character hero, anchored bottom-right, reacting to the result.
   const SZ = 432;
   const cx = 912;
   const bottom = H - 58;
-  const haloY = bottom - SZ * 0.58;
-
-  // Soft halo behind the fox (tighter than the background bloom).
-  const halo = ctx.createRadialGradient(cx, haloY, 30, cx, haloY, 270);
-  halo.addColorStop(0, withAlpha(accent, 0.22));
-  halo.addColorStop(1, withAlpha(accent, 0));
-  ctx.fillStyle = halo;
-  ctx.fillRect(W * 0.42, 40, W * 0.58, H - 40);
-
-  // Grounding shadow — a flattened ellipse under the character.
-  ctx.save();
-  ctx.translate(cx, bottom - 8);
-  ctx.scale(1, 0.16);
-  ctx.beginPath();
-  ctx.arc(0, 0, 138, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fill();
-  ctx.restore();
-
-  // The fox, contained in an SZ box and anchored bottom-center.
-  let headTopY = bottom - SZ; // fallback for the bubble anchor
-  if (img) {
-    const iw = img.naturalWidth || SZ;
-    const ih = img.naturalHeight || SZ;
-    const k = Math.min(SZ / iw, SZ / ih);
-    const dw = iw * k;
-    const dh = ih * k;
-    headTopY = bottom - dh;
-    ctx.drawImage(img, cx - dw / 2, bottom - dh, dw, dh);
-  } else {
-    // Fallback medallion so the card never renders empty.
-    drawBrandMark(ctx, null, cx, haloY, 150, accent, 'droplet');
-  }
-
-  // Speech bubble above the head — the mascot's reaction, varied by expression.
   const quip = loss ? 'OUCH…' : d.result === 'won' ? expr.wonQuip : 'RIDING IT';
-  drawSpeechBubble(ctx, cx, headTopY + 34, quip, accent, sans);
+  drawMascotFigure(ctx, img, { cx, bottom, sz: SZ, accent, quip, sans });
 
   /* Left data column — kept clear of the fox (left edge ≈ cx − SZ/2). */
   ctx.textAlign = 'left';
@@ -927,6 +892,68 @@ function drawMascot(s: Ctx, variant: ShareVariant = 'mascot') {
   );
 
   drawStatStrip(s);
+}
+
+/**
+ * Draw the fox hero: soft halo, grounding shadow, the contained image anchored
+ * bottom-center, and a one-word speech bubble above its head. Shared by the
+ * position and performance share cards so the character reads identically.
+ */
+export function drawMascotFigure(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | null,
+  opts: { cx: number; bottom: number; sz: number; accent: string; quip: string; sans: string },
+) {
+  const { cx, bottom, sz, accent, quip, sans } = opts;
+  const haloY = bottom - sz * 0.58;
+
+  // Soft halo behind the fox (tighter than the background bloom).
+  const halo = ctx.createRadialGradient(cx, haloY, 30, cx, haloY, 270);
+  halo.addColorStop(0, withAlpha(accent, 0.22));
+  halo.addColorStop(1, withAlpha(accent, 0));
+  ctx.fillStyle = halo;
+  ctx.fillRect(W * 0.42, 40, W * 0.58, H - 40);
+
+  // Grounding shadow — a flattened ellipse under the character.
+  ctx.save();
+  ctx.translate(cx, bottom - 8);
+  ctx.scale(1, 0.16);
+  ctx.beginPath();
+  ctx.arc(0, 0, 138, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fill();
+  ctx.restore();
+
+  // The fox, contained in an sz box and anchored bottom-center.
+  let headTopY = bottom - sz; // fallback for the bubble anchor
+  if (img) {
+    const iw = img.naturalWidth || sz;
+    const ih = img.naturalHeight || sz;
+    const k = Math.min(sz / iw, sz / ih);
+    const dw = iw * k;
+    const dh = ih * k;
+    headTopY = bottom - dh;
+    ctx.drawImage(img, cx - dw / 2, bottom - dh, dw, dh);
+  } else {
+    // Fallback medallion so the card never renders empty.
+    drawBrandMark(ctx, null, cx, haloY, 150, accent, 'droplet');
+  }
+
+  drawSpeechBubble(ctx, cx, headTopY + 34, quip, accent, sans);
+}
+
+/** Cached mascot expression image for a mood — await `loadBrandMarks()` first.
+ *  Lets the performance card reuse the same artwork as the position card. */
+export function getMascotMark(mood: 'won' | 'lost' | 'smart' | 'thinking'): HTMLImageElement | null {
+  const src =
+    mood === 'lost'
+      ? MASCOT_LOSS_SRC
+      : mood === 'smart'
+        ? MASCOT_SMART_SRC
+        : mood === 'thinking'
+          ? MASCOT_THINKING_SRC
+          : MASCOT_WON_SRC;
+  return getMark(src);
 }
 
 /**

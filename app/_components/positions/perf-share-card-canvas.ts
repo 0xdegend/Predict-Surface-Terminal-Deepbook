@@ -4,8 +4,10 @@
  * share-card-canvas.ts (which shares a single position); both reuse the same
  * chrome primitives so a shared card always reads as the same product.
  *
- * Two styles:
- *   • record   — win-rate hero + a cumulative-PnL curve + a stat strip (default)
+ * Styles:
+ *   • mascot   — the Skew "quant" fox as the hero (chin-stroke on a winning record,
+ *                facepalm on a losing one), win-rate + record in the left column
+ *   • record   — win-rate hero + a cumulative-PnL curve + a stat strip
  *   • spotlight — one big centered WIN RATE %, the record + PnL beneath
  *
  * 1200×675 (16:9) at 2× → 2400×1350 PNG.
@@ -21,6 +23,8 @@ import {
   roundRect,
   spaced,
   getShareLogo,
+  getMascotMark,
+  drawMascotFigure,
   type Theme,
 } from './share-card-canvas';
 
@@ -40,9 +44,10 @@ export interface PerfShareData {
   curve: number[];
 }
 
-export type PerfShareVariant = 'record' | 'spotlight';
+export type PerfShareVariant = 'mascot' | 'record' | 'spotlight';
 
 export const PERF_SHARE_VARIANTS: { id: PerfShareVariant; label: string }[] = [
+  { id: 'mascot', label: 'Mascot' },
   { id: 'record', label: 'Record' },
   { id: 'spotlight', label: 'Spotlight' },
 ];
@@ -93,6 +98,7 @@ export function drawPerfShareCard(
 
   drawBackground(s, variant);
   if (variant === 'spotlight') drawSpotlight(s);
+  else if (variant === 'mascot') drawMascot(s);
   else drawRecord(s);
   drawHeader(s);
   drawFooter(s);
@@ -104,9 +110,11 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: PerfShareVariant) {
   ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
 
-  const gx = variant === 'spotlight' ? W / 2 : W - 120;
-  const gy = variant === 'spotlight' ? H / 2 : 120;
-  const r = variant === 'spotlight' ? 520 : 620;
+  // Mascot blooms behind the fox on the right; spotlight centers; else top-right.
+  const mascot = variant === 'mascot';
+  const gx = variant === 'spotlight' ? W / 2 : mascot ? W * 0.78 : W - 120;
+  const gy = variant === 'spotlight' ? H / 2 : mascot ? 250 : 120;
+  const r = variant === 'spotlight' ? 520 : mascot ? 520 : 620;
   const glow = ctx.createRadialGradient(gx, gy, 30, gx, gy, r);
   glow.addColorStop(0, withAlpha(accent, variant === 'spotlight' ? 0.2 : 0.16));
   glow.addColorStop(1, withAlpha(accent, 0));
@@ -320,6 +328,51 @@ function traceSmooth(ctx: CanvasRenderingContext2D, pts: { x: number; y: number 
     const c2y = p2.y - (p3.y - p1.y) / 6;
     ctx.bezierCurveTo(c1x, c1y, c2x, c2y, p2.x, p2.y);
   }
+}
+
+/* ===================== variant: mascot ===================== */
+
+/**
+ * The Skew "quant" fox fronting a track record: the chin-stroke (thinking) pose on
+ * a winning record reads as the calculating quant; a losing record falls back to
+ * the facepalm. Win-rate hero + record sit in the left column, mirroring the
+ * position card's mascot split.
+ */
+function drawMascot(s: Ctx) {
+  const { ctx, c, accent, sans, mono, d } = s;
+  const winning = d.winRate >= 0.5;
+  const img = getMascotMark(winning ? 'thinking' : 'lost');
+
+  // Fox hero, anchored bottom-right (same geometry as the position mascot card).
+  const SZ = 432;
+  const cx = 912;
+  const bottom = H - 58;
+  const quip = winning ? '+EV' : 'ITERATING…';
+  drawMascotFigure(ctx, img, { cx, bottom, sz: SZ, accent, quip, sans });
+
+  // Left data column — kept clear of the fox (left edge ≈ cx − SZ/2).
+  ctx.textAlign = 'left';
+  const colW = cx - SZ / 2 - 36 - P;
+
+  ctx.font = `500 13px ${sans}`;
+  ctx.fillStyle = c.text3;
+  ctx.fillText(spaced('WIN RATE'), P, 188);
+
+  const heroText = pct(d.winRate, 1);
+  const heroPx = fitSize(ctx, heroText, colW, 150, 700, mono);
+  const heroBaseline = 192 + heroPx * 0.8;
+  ctx.font = `700 ${heroPx}px ${mono}`;
+  ctx.fillStyle = accent;
+  ctx.shadowColor = withAlpha(accent, 0.4);
+  ctx.shadowBlur = 30;
+  ctx.fillText(heroText, P, heroBaseline);
+  ctx.shadowBlur = 0;
+
+  ctx.font = `500 22px ${mono}`;
+  ctx.fillStyle = c.text2;
+  ctx.fillText(recordLine(d), P, heroBaseline + 46);
+
+  drawStatStrip(s);
 }
 
 /* ===================== variant: spotlight ===================== */

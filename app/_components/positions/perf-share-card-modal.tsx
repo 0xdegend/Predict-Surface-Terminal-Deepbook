@@ -5,7 +5,7 @@ import { LuDownload, LuCopy, LuCheck } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { Modal } from '@/app/_components/ui/modal';
 import { signed, pct } from '@/lib/format';
-import { loadShareLogo } from './share-card-canvas';
+import { loadShareLogo, loadBrandMarks } from './share-card-canvas';
 import {
   drawPerfShareCard,
   PERF_SHARE_VARIANTS,
@@ -32,7 +32,7 @@ export function PerfShareCardModal({
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
-  const [variant, setVariant] = useState<PerfShareVariant>('record');
+  const [variant, setVariant] = useState<PerfShareVariant>('mascot');
   const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy'>(null);
 
   // Repaint the large preview whenever the dialog opens or the style changes.
@@ -40,7 +40,7 @@ export function PerfShareCardModal({
     if (!open || !data) return;
     let cancelled = false;
     (async () => {
-      await Promise.all([document.fonts.ready, loadShareLogo()]);
+      await Promise.all([document.fonts.ready, loadShareLogo(), loadBrandMarks()]);
       if (cancelled || !canvasRef.current) return;
       setStatus(null);
       drawPerfShareCard(canvasRef.current, data, { variant });
@@ -55,7 +55,7 @@ export function PerfShareCardModal({
     if (!open || !data) return;
     let cancelled = false;
     (async () => {
-      await Promise.all([document.fonts.ready, loadShareLogo()]);
+      await Promise.all([document.fonts.ready, loadShareLogo(), loadBrandMarks()]);
       if (cancelled) return;
       for (const v of PERF_SHARE_VARIANTS) {
         const el = thumbRefs.current[v.id];
