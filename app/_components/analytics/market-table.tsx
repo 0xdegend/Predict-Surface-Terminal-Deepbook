@@ -49,7 +49,7 @@ export function MarketTable({
           <span className="eyebrow">Money bet</span>
           <span className="eyebrow text-right">Open</span>
           <span className="eyebrow text-right">Swing</span>
-          <span className="eyebrow text-right">Mood</span>
+          <span className="eyebrow text-right">Sentiment</span>
         </div>
 
         <div className="rows-divided">

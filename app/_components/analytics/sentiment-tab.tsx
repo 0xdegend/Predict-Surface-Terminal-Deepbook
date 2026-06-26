@@ -41,7 +41,7 @@ export function SentimentTab() {
 
       <div className="glass-card overflow-hidden">
         <div className="head-divider px-4 py-3">
-          <div className="text-[13px] font-semibold tracking-tight text-text-1">Where the crowd agrees most</div>
+          <div className="text-[13px] font-semibold tracking-tight text-text-1">Where sentiment is strongest</div>
           <div className="eyebrow mt-0.5 text-text-3">markets most people are betting the same way · tap to bet</div>
         </div>
 
@@ -49,7 +49,7 @@ export function SentimentTab() {
           <SkeletonRows />
         ) : lopsided.length === 0 ? (
           <div className="px-4 py-12 text-center text-[12px] text-text-3">
-            No bets on live markets yet — the crowd hasn’t taken a side.
+            No bets on live markets yet — sentiment hasn’t taken a side.
           </div>
         ) : (
           <div className="rows-divided">

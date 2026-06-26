@@ -22,15 +22,15 @@ export function SentimentGauge({ sentiment, className = '' }: { sentiment: Senti
   const leanLabel = {
     balanced: 'No bets yet',
     split: 'Evenly split',
-    up: `Crowd leans UP · ${upPct}%`,
-    down: `Crowd leans DOWN · ${downPct}%`,
+    up: `Sentiment leans UP · ${upPct}%`,
+    down: `Sentiment leans DOWN · ${downPct}%`,
   }[lean];
 
   return (
     <div className={`glass-card flex flex-col justify-center p-4 ${className}`}>
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <div className="eyebrow text-text-3">Crowd mood · last hour</div>
+          <div className="eyebrow text-text-3">Sentiment · last hour</div>
           <div
             className={`mt-0.5 text-[15px] font-semibold tracking-tight ${
               lean === 'up' ? 'text-up' : lean === 'down' ? 'text-down' : 'text-text-1'

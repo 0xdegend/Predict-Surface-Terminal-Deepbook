@@ -47,7 +47,7 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
 // Secondary destinations behind the "More" sheet — the same grouping the desktop
 // header uses (Risk under the Vault group; Quests/Competitions under Rewards).
 const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean }[] = [
-  { href: '/analytics', label: 'Analytics', desc: 'Live flow & crowd sentiment', icon: LuChartNoAxesCombined },
+  { href: '/analytics', label: 'Analytics', desc: 'Live flow & sentiment', icon: LuChartNoAxesCombined },
   { href: '/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
   { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },

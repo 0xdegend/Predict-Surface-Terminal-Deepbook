@@ -30,7 +30,7 @@ export function AnalyticsPanel() {
           Analytics
         </h1>
         <p className="mt-1 text-[12px] text-text-3">
-          See what everyone’s betting on right now — live bets, the crowd’s mood, and how prices are
+          See what everyone’s betting on right now — live bets, market sentiment, and how prices are
           moving · {predictConfig.network}
         </p>
       </div>

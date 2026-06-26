@@ -23,7 +23,7 @@ export function KpiStrip({ kpis, loading }: { kpis: AnalyticsKpis; loading: bool
       <Kpi
         icon={LuScale}
         hue={leadUp ? 'var(--up)' : 'var(--down)'}
-        label="Crowd lean"
+        label="Sentiment"
         value={leadUp ? upPct : 100 - upPct}
         format={(n) => `${Math.round(n)}%`}
         unit={leadUp ? 'UP' : 'DOWN'}

@@ -22,7 +22,7 @@ const METRICS: { id: GridMetric; label: string }[] = [
   { id: 'volume', label: 'Money bet' },
   { id: 'oi', label: 'Open bets' },
   { id: 'iv', label: 'Price swing' },
-  { id: 'sentiment', label: 'Crowd mood' },
+  { id: 'sentiment', label: 'Sentiment' },
 ];
 
 type View = 'map' | 'table';
@@ -53,7 +53,7 @@ export function MarketHeatmap() {
         <div className="flex items-center gap-2">
           <LuGrid3X3 size={15} className="text-accent" />
           <span className="text-[13px] font-semibold tracking-tight text-text-1">Markets</span>
-          <span className="eyebrow text-text-3">size = {METRICS.find((m) => m.id === metric)?.label} · color = mood</span>
+          <span className="eyebrow text-text-3">size = {METRICS.find((m) => m.id === metric)?.label} · color = sentiment</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-1">
