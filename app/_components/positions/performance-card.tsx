@@ -189,7 +189,11 @@ function EquityChart({ points }: { points: EquityPoint[] }) {
   const effRange = counts[range] > 0 ? range : 'All';
   const rangeMs = RANGES.find((r) => r.key === effRange)!.ms;
 
-  // Windowed series with a leading anchor (the total entering the window).
+  // Windowed series, REBASED to the equity entering the window: the curve starts
+  // at 0 and shows the PnL earned *within* the selected period, so the headline
+  // matches what the 1D/1W/1M filter implies (not the all-time running total,
+  // which read as "you lost this much today" when it carried prior-period losses).
+  // 'All' has `anchor = 0`, so it stays the true all-time cumulative untouched.
   const { series, windowed, firstT, lastT } = useMemo(() => {
     const cutoff = rangeMs === Infinity ? -Infinity : now - rangeMs;
     const windowed = points.filter((p) => p.t >= cutoff);
@@ -197,7 +201,7 @@ function EquityChart({ points }: { points: EquityPoint[] }) {
     const anchor = before.length ? before[before.length - 1].cumulative : 0;
     return {
       windowed,
-      series: [anchor, ...windowed.map((p) => p.cumulative)],
+      series: [0, ...windowed.map((p) => p.cumulative - anchor)],
       firstT: windowed[0]?.t ?? now,
       lastT: windowed[windowed.length - 1]?.t ?? now,
     };
@@ -240,7 +244,9 @@ function EquityChart({ points }: { points: EquityPoint[] }) {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <IconChip icon={LuActivity} color={positive ? HUE.teal : HUE.coral} size={22} />
-            <span className="eyebrow">Cumulative PnL</span>
+            <span className="eyebrow">
+              {effRange === 'All' ? 'Cumulative PnL' : `PnL · ${effRange}`}
+            </span>
           </div>
           <span className={`font-mono text-[22px] leading-none tracking-tight tabular-nums ${positive ? 'text-up' : 'text-down'}`}>
             {signed(latest)}

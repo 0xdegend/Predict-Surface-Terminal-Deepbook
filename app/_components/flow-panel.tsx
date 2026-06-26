@@ -113,7 +113,6 @@ export function FlowPanel({
   const ticketMode = useSurfaceStore((s) => s.ticketMode);
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const select = useSurfaceStore((s) => s.select);
-  const selectionSource = useSurfaceStore((s) => s.selectionSource);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   // Active oracle = the selection for the current ticket mode, falling back to
@@ -177,9 +176,12 @@ export function FlowPanel({
     if (selKey && selKey !== appliedSel) {
       // A genuine external pick (surface / table / card) lands a strike+side the
       // ticket doesn't already show → apply it and skip ahead to the bet step.
-      // An internal echo of the ticket's own publish (default strike, +/- nudge)
-      // already matches local state → record it, but DON'T bounce the user
-      // forward or they'd jump to step 2 just by landing / nudging the strike.
+      // An internal echo of the ticket's own publish (default strike, +/- nudge,
+      // slider drag) already matches local state → record it, but DON'T bounce the
+      // user forward or they'd jump to step 2 just by landing / nudging the strike.
+      // For this to hold, every ticket-driven strike change must publish to the
+      // store synchronously (see `applyStrike` / `setDirection`) — a publish via a
+      // passive effect lags local state during a fast drag and looks "external".
       const isExternalPick =
         selection!.strikeScaled !== strike.toString() ||
         selection!.isUp !== isUp;
@@ -212,13 +214,36 @@ export function FlowPanel({
     }
   }
 
+  // Change the strike from inside the ticket (slider drag, +/- nudge). Publishes
+  // to the surface store SYNCHRONOUSLY — in the same handler that moves the strike,
+  // exactly like `setDirection` — and marks it applied. Doing the publish here
+  // (rather than only in the passive effect below) is what keeps the store in
+  // lockstep with local state during a fast drag: a passive effect runs after
+  // paint and lags, so the render-time sync would read a stale store selection,
+  // mistake the ticket's own echo for an external pick, and bounce the user to the
+  // bet step (snapping the strike back). Keeping it synchronous closes that race.
+  function applyStrike(next: bigint) {
+    setStrike(next);
+    if (oracle && next > 0n) {
+      select({
+        oracleId: oracle.oracle_id,
+        expiry: oracle.expiry,
+        strikeScaled: next.toString(),
+        strike: toFloat(Number(next)),
+        isUp,
+      });
+      setAppliedSel(`${next.toString()}:${isUp}`);
+    }
+  }
+
   // Publish the ticket's working market/strike/side to the surface store so the
-  // chart, surface, market table, and odds all highlight what the ticket shows —
-  // the DEFAULT market + strike on landing, and every strike nudge. Without this
-  // the ticket runs on local state only, leaving those views blank until the user
-  // makes an explicit pick. We omit `source` (so it stays an implicit echo: no
-  // "From surface" badge, no jump to the bet step) and mark it applied so the
-  // render-time read-back sync above treats it as an internal echo, not a re-pick.
+  // chart, surface, market table, and odds all highlight what the ticket shows.
+  // This now covers only the DEFAULT strike on landing (set during render, with no
+  // handler to publish from) — user-driven strike changes publish synchronously via
+  // `applyStrike` / `setDirection`, so this effect early-returns for them. Without
+  // it the ticket would run on local state only, leaving those views blank until an
+  // explicit pick. We omit `source` so it stays an implicit echo (no "From surface"
+  // badge). Landing isn't a drag, so there's no lag to mislead the read-back sync.
   useEffect(() => {
     if (!oracle || strike <= 0n || ticketMode !== "binary") return;
     const scaled = strike.toString();
@@ -438,14 +463,6 @@ export function FlowPanel({
     );
   }
 
-  // Source badge — where the current pick came from (surface/odds curve vs the
-  // market list), shown when that pick is on the active oracle.
-  const pickOnActive =
-    (!!selection && selection.oracleId === oracle.oracle_id) ||
-    (!!rangeSelection && rangeSelection.oracleId === oracle.oracle_id);
-  const showSourceBadge = !!selectionSource && pickOnActive;
-  const sourceLabel =
-    selectionSource === "market" ? "From market" : "From surface";
   const sym = predictConfig.quote.symbol;
 
   // Live step for the first-timer guide. Binary: 3 = reviewing in the modal,
@@ -542,12 +559,6 @@ export function FlowPanel({
                 {expired ? "expired" : `${countdown(oracle.expiry, now)} left`}
               </span>
             </span>
-            {showSourceBadge && (
-              <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--accent-soft) px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-accent">
-                <span className="h-1 w-1 rounded-full bg-accent" />
-                {sourceLabel}
-              </span>
-            )}
           </div>
 
           {/* Binary (up/down) vs vertical-range mode. */}
@@ -619,7 +630,7 @@ export function FlowPanel({
                     settlement={active!.settlement ?? null}
                     isUp={isUp}
                     strike={strike}
-                    onChange={setStrike}
+                    onChange={applyStrike}
                     disabled={expired}
                   />
 

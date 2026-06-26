@@ -224,11 +224,11 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[11px] leading-relaxed text-text-2">
-        You win if <span className="text-text-1">{oracle.underlying_asset}</span> settles{' '}
+        Win if <span className="text-text-1">{oracle.underlying_asset}</span> settles{' '}
         <span className="text-accent">
           between {price(band!.lower)} and {price(band!.higher)}
         </span>{' '}
-        at expiry. Otherwise your bet is lost.
+        at expiry.
       </p>
 
       {/* The band lives on the curve: drag either edge handle to adjust it (works

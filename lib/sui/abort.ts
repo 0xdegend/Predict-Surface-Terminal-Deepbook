@@ -27,8 +27,33 @@ const ABORT_MESSAGES: Record<string, string> = {
   'predict_manager:1': 'You don’t hold enough of this position to redeem that amount.',
 };
 
+/** Friendly, action-oriented copy for an expired Google / zkLogin sign-in. */
+export const SESSION_EXPIRED_MESSAGE =
+  'Your Google sign-in has expired. Click “Sign in with Google” again to refresh it, then retry your trade.';
+
+/**
+ * True when an error means the Enoki (Google / zkLogin) session has lapsed.
+ *
+ * A zkLogin session is time-boxed (it expires with its `maxEpoch`). Once it does,
+ * the Enoki wallet silently tries to re-authenticate via a popup on the next
+ * `signTransaction`, so the failure surfaces as one of these internal signing
+ * errors — never a clear "you're logged out". We match the unambiguous ones here;
+ * the ambiguous popup-closed/blocked case is disambiguated at the call site, where
+ * we know the wallet is gasless (see `runTx`).
+ */
+export function isSessionExpired(raw: unknown): boolean {
+  const msg = raw instanceof Error ? raw.message : String(raw ?? '');
+  return /Failed to retrieve an active session|Native signer not found in store|Start of sign-in flow could not be found|Missing ID Token/i.test(
+    msg,
+  );
+}
+
 export function humanizeError(raw: unknown): string {
   const msg = raw instanceof Error ? raw.message : String(raw ?? '');
+
+  // An expired Google / zkLogin session, before the generic popup/reject checks
+  // below would otherwise mis-label it as a wallet-window error.
+  if (isSessionExpired(raw)) return SESSION_EXPIRED_MESSAGE;
 
   // Wallet-level outcomes first.
   if (/incorrect password|wrong password|invalid password|locked/i.test(msg))

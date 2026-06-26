@@ -23,7 +23,7 @@ import {
   qk,
 } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
-import { humanizeError } from '@/lib/sui/abort';
+import { humanizeError, isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { isRedeemableStatus } from '@/lib/portfolio/history';
 import { toast } from '@/lib/store/toast-store';
 import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor';
@@ -174,6 +174,18 @@ export function usePredictAccount() {
       return digest;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // Gasless (Enoki / Google) wallets sign non-interactively — they NEVER open
+      // a popup mid-trade UNLESS their zkLogin session has expired, in which case
+      // the wallet silently tries to re-auth via a popup. So for a gasless wallet,
+      // a session OR popup error means "sign-in expired": say that plainly instead
+      // of a cryptic Enoki / "wallet window closed" message the user can't action.
+      if (gasless && (isSessionExpired(e) || /popup|window closed|Failed to open/i.test(msg))) {
+        setError(SESSION_EXPIRED_MESSAGE);
+        toast.error('Sign-in expired', {
+          desc: 'Sign in with Google again to keep trading.',
+        });
+        return null;
+      }
       // Slush WEB popup sometimes reports "closed" even after a successful
       // approval — best-effort refetch so state still surfaces.
       const lostPopup = /closed the wallet window|window closed|popup/i.test(msg);
