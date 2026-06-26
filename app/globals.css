@@ -873,6 +873,12 @@ select:focus-visible,
   0% { opacity: 0.55; transform: scale(0.6); }
   100% { opacity: 0; transform: scale(2.1); }
 }
+/* Mascot corner-peek — the fox slides in from the corner and settles with a
+   slight overshoot. Replays whenever the mood changes (see MascotPeek). */
+@keyframes mascotPeek {
+  0% { opacity: 0; transform: translate(10px, -12px) scale(0.9); }
+  100% { opacity: 0.9; transform: translate(0, 0) scale(1); }
+}
 
 /* Preloader (skew-loader) — CSS-driven so the bar + shimmer move even before
    hydration; GSAP layers the logo float/glow on top once mounted. Reduced-motion

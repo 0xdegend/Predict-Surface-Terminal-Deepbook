@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { LuInfo } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
 
@@ -41,6 +42,9 @@ export function MintConfirmModal({
   maxWin: string;
   confirmLabel?: string;
 }) {
+  // The fox deliberates with you (thinking), then backs your call (confident)
+  // the moment you reach for the mint button — or while the mint is in flight.
+  const [committing, setCommitting] = useState(false);
   const toneText = tone === 'up' ? 'text-up' : 'text-down';
   const confirmCls =
     tone === 'up'
@@ -55,8 +59,13 @@ export function MintConfirmModal({
       subtitle="Signed in with Google — mints instantly, no wallet pop-up"
       variant="glass"
       maxWidthClass="max-w-sm"
+      mascot={busy || committing ? 'confident' : 'thinking'}
       footer={
-        <>
+        // Full-width row so Cancel sits far-left and the commit CTA far-right —
+        // keeps "back out" clearly separated from "mint" rather than clustering
+        // them together (the Modal footer is justify-end; a w-full child overrides
+        // that for this dialog only).
+        <div className="flex w-full items-center justify-between">
           <button
             onClick={onClose}
             disabled={busy}
@@ -67,6 +76,10 @@ export function MintConfirmModal({
           <button
             onClick={onConfirm}
             disabled={busy}
+            onMouseEnter={() => setCommitting(true)}
+            onMouseLeave={() => setCommitting(false)}
+            onFocus={() => setCommitting(true)}
+            onBlur={() => setCommitting(false)}
             className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-[12px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${confirmCls}`}
           >
             {busy && (
@@ -74,7 +87,7 @@ export function MintConfirmModal({
             )}
             {busy ? 'Minting…' : confirmLabel}
           </button>
-        </>
+        </div>
       }
     >
       <div className="flex flex-col gap-3 font-mono tabular-nums">

@@ -53,6 +53,7 @@ export function SuccessModal({
       title={title}
       variant="glass"
       maxWidthClass="max-w-sm"
+      mascot="won"
       footer={
         <button
           onClick={onClose}
