@@ -662,7 +662,7 @@ export function FlowPanel({
                       }}
                     />
                     <span className="relative">
-                      {expired ? "Market expired" : "Continue · set your bet"}
+                      {expired ? "Market expired" : "Set Amount"}
                     </span>
                   </button>
                 </>
@@ -909,8 +909,9 @@ export function FlowPanel({
                                   </span>
                                 ) : walletNow === 0n ? (
                                   <span className="text-[10px] leading-relaxed text-text-3">
-                                    Fully covered by your trading account balance
-                                    — nothing new is pulled from your wallet.
+                                    Fully covered by your trading account
+                                    balance — nothing new is pulled from your
+                                    wallet.
                                   </span>
                                 ) : null}
                                 <div className="flex items-center justify-between">
@@ -962,7 +963,7 @@ export function FlowPanel({
                         : insufficientFunds
                           ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletOutflow))}`
                           : q
-                            ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}`
+                            ? `Review`
                             : "Review bet"}
                   </button>
 
