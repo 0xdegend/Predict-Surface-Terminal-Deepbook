@@ -100,7 +100,7 @@ export function SurfaceCanvas({
   // imported with ssr:false, so `window` exists (same pattern as SurfaceCaption).
   const [coachSeen, setCoachSeen] = useState(() => {
     try {
-      return localStorage.getItem('skew:surface-coach-seen') === '1';
+      return localStorage.getItem("skew:surface-coach-seen") === "1";
     } catch {
       return false;
     }
@@ -108,7 +108,7 @@ export function SurfaceCanvas({
   function markCoachSeen() {
     if (coachSeen) return;
     try {
-      localStorage.setItem('skew:surface-coach-seen', '1');
+      localStorage.setItem("skew:surface-coach-seen", "1");
     } catch {
       /* private mode — just hide for this session */
     }
@@ -166,7 +166,9 @@ export function SurfaceCanvas({
       const anchorRow =
         rangeAnchor &&
         surface.rows.find(
-          (rr) => rr.oracleId === rangeAnchor.oracleId && rr.expiry === rangeAnchor.expiry,
+          (rr) =>
+            rr.oracleId === rangeAnchor.oracleId &&
+            rr.expiry === rangeAnchor.expiry,
         );
       const targetRow = anchorRow || clickedRow;
       const targetOracle = oracleById.get(targetRow.oracleId);
@@ -183,13 +185,14 @@ export function SurfaceCanvas({
           strikeScaled: strikeScaled.toString(),
           strike,
         },
-        'surface',
+        "surface",
       );
       // Keep the surface clear while the band is still being drawn (first edge),
       // so the second click is never blocked by the centered card. Open the card
       // only once this click COMPLETES the band: an edge was already anchored on
       // the target oracle and the second edge is a different strike.
-      const completesBand = !!anchorRow && rangeAnchor!.strikeScaled !== strikeScaled.toString();
+      const completesBand =
+        !!anchorRow && rangeAnchor!.strikeScaled !== strikeScaled.toString();
       if (!completesBand) return;
       setPopover(true);
       setClickId((n) => n + 1);
@@ -199,7 +202,10 @@ export function SurfaceCanvas({
     // Binary: the clicked node is the strike directly.
     const oracle = oracleById.get(clickedRow.oracleId);
     if (!oracle) return;
-    const strikeScaled = snapStrikeToTick(BigInt(Math.round(clickedPrice * 1e9)), oracle);
+    const strikeScaled = snapStrikeToTick(
+      BigInt(Math.round(clickedPrice * 1e9)),
+      oracle,
+    );
     const strike = toFloat(Number(strikeScaled));
     select(
       {
@@ -209,7 +215,7 @@ export function SurfaceCanvas({
         strike,
         isUp: clickedCell.k <= 0, // below forward → UP is the natural side; user can flip
       },
-      'surface',
+      "surface",
     );
     // Desktop: open the quick-mint popover anchored over the surface.
     setPopover(true);
@@ -330,8 +336,8 @@ export function SurfaceCanvas({
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           {ticketMode === "range"
             ? rangeAnchor && !rangeSelection
-              ? "Tap the second price level to set your band"
-              : "Tap two price levels to set your band"
+              ? "Tap the second price level to set your range"
+              : "Tap two price levels to set your range"
             : "Tap a point on the surface to build a trade"}
         </span>
       </div>
@@ -589,10 +595,16 @@ function EdgeOrb({
   return (
     <group>
       <mesh position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
-        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+        <cylinderGeometry
+          args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]}
+        />
         <meshBasicMaterial color={RANGE_ACCENT} transparent opacity={0.35} />
       </mesh>
-      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+      <mesh
+        ref={orbRef}
+        position={[pos.x, pos.y + 0.12, pos.z]}
+        raycast={() => null}
+      >
         <sphereGeometry args={[0.075, 18, 18]} />
         <meshBasicMaterial color={RANGE_ACCENT} />
       </mesh>
@@ -640,7 +652,10 @@ function RangeBandMarker({
 
   // Mid-pick: only the first edge chosen so far.
   const anchorPos = useMemo(
-    () => (anchor && !band ? locate(mesh, surface, anchor.oracleId, anchor.strike) : null),
+    () =>
+      anchor && !band
+        ? locate(mesh, surface, anchor.oracleId, anchor.strike)
+        : null,
     [mesh, surface, anchor, band],
   );
 
@@ -667,13 +682,32 @@ function RangeBandMarker({
         raycast={() => null}
       >
         <planeGeometry args={[floorW, 0.5]} />
-        <meshBasicMaterial color={RANGE_ACCENT} transparent opacity={0.12} side={THREE.DoubleSide} />
+        <meshBasicMaterial
+          color={RANGE_ACCENT}
+          transparent
+          opacity={0.12}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
       {/* soft glow underlay + crisp overhead arc bridging the two strike orbs.
           raycast disabled so it never steals clicks from nodes under the band. */}
-      <Line points={arc} color={RANGE_ACCENT} lineWidth={7} transparent opacity={0.22} raycast={() => null} />
-      <Line points={arc} color={RANGE_ACCENT} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+      <Line
+        points={arc}
+        color={RANGE_ACCENT}
+        lineWidth={7}
+        transparent
+        opacity={0.22}
+        raycast={() => null}
+      />
+      <Line
+        points={arc}
+        color={RANGE_ACCENT}
+        lineWidth={3}
+        transparent
+        opacity={0.95}
+        raycast={() => null}
+      />
 
       <EdgeOrb pos={lo} orbRef={orbA} />
       <EdgeOrb pos={hi} orbRef={orbB} />
@@ -768,13 +802,14 @@ function FirstRunPulse({
 }) {
   const rippleRef = useRef<THREE.Mesh>(null);
   const orbRef = useRef<THREE.Mesh>(null);
-  const accent = '#4dd6b0';
+  const accent = "#4dd6b0";
 
   // The soonest-expiry row's at-the-money node (k≈0 → strike≈forward).
   const pos = useMemo(() => {
     if (!show) return null;
-    let front: Surface['rows'][number] | null = null;
-    for (const r of surface.rows) if (!front || r.expiry < front.expiry) front = r;
+    let front: Surface["rows"][number] | null = null;
+    for (const r of surface.rows)
+      if (!front || r.expiry < front.expiry) front = r;
     return front ? locate(mesh, surface, front.oracleId, front.forward) : null;
   }, [mesh, surface, show]);
 
@@ -807,7 +842,11 @@ function FirstRunPulse({
         <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} />
       </mesh>
       {/* The node itself — a steady glowing orb to tap. */}
-      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+      <mesh
+        ref={orbRef}
+        position={[pos.x, pos.y + 0.12, pos.z]}
+        raycast={() => null}
+      >
         <sphereGeometry args={[0.085, 18, 18]} />
         <meshBasicMaterial color={accent} transparent opacity={0.9} />
       </mesh>
@@ -837,7 +876,12 @@ function BinaryWinZone({
 
   const geom = useMemo(() => {
     if (!selection) return null;
-    const cell = locateCell(mesh, surface, selection.oracleId, selection.strike);
+    const cell = locateCell(
+      mesh,
+      surface,
+      selection.oracleId,
+      selection.strike,
+    );
     if (!cell) return null;
     // Win on the higher-price (right, larger col) side for UP, lower for DOWN.
     const edgeCol = up ? mesh.cols - 1 : 0;
@@ -849,7 +893,11 @@ function BinaryWinZone({
     const colors: [number, number, number][] = [];
     for (let c = from; c <= to; c++) {
       const idx = (cell.row * mesh.cols + c) * 3;
-      points.push([mesh.positions[idx], mesh.positions[idx + 1] + 0.05, mesh.positions[idx + 2]]);
+      points.push([
+        mesh.positions[idx],
+        mesh.positions[idx + 1] + 0.05,
+        mesh.positions[idx + 2],
+      ]);
       // Bright at the strike, fading to dark at the winning edge.
       const dist = Math.abs(c - cell.col) / span;
       const col = accent.clone().multiplyScalar(1 - 0.9 * dist);
@@ -874,13 +922,32 @@ function BinaryWinZone({
         raycast={() => null}
       >
         <planeGeometry args={[Math.max(Math.abs(edgeX - cell.x), 0.01), 0.6]} />
-        <meshBasicMaterial color={accentHex} transparent opacity={0.08} side={THREE.DoubleSide} />
+        <meshBasicMaterial
+          color={accentHex}
+          transparent
+          opacity={0.08}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
       {/* glow underlay + crisp ribbon sweeping the winning side of the smile,
           fading toward the edge (raycast off so it never steals node clicks) */}
-      <Line points={points} vertexColors={colors} lineWidth={6} transparent opacity={0.3} raycast={() => null} />
-      <Line points={points} vertexColors={colors} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+      <Line
+        points={points}
+        vertexColors={colors}
+        lineWidth={6}
+        transparent
+        opacity={0.3}
+        raycast={() => null}
+      />
+      <Line
+        points={points}
+        vertexColors={colors}
+        lineWidth={3}
+        transparent
+        opacity={0.95}
+        raycast={() => null}
+      />
 
       {/* direction arrow at the strike, pointing the way you win */}
       <mesh
@@ -1079,7 +1146,10 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
   // the expiry range stay anchored. The mesh + strike ticks are untouched.
   const isMobile = useMediaQuery("(max-width: 639px)");
   const maxExpiryLabels = isMobile ? 5 : 10;
-  const labelStep = Math.max(1, Math.ceil(mesh.rowMeta.length / maxExpiryLabels));
+  const labelStep = Math.max(
+    1,
+    Math.ceil(mesh.rowMeta.length / maxExpiryLabels),
+  );
   const lastRow = mesh.rowMeta.length - 1;
 
   const halfW = mesh.width / 2;
@@ -1151,9 +1221,16 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
         // axis never crowds. (Skip a near-last tick that would touch the pinned
         // last one.)
         const keep = r % labelStep === 0 || r === lastRow;
-        if (!keep || (r !== lastRow && lastRow - r < labelStep / 2)) return null;
+        if (!keep || (r !== lastRow && lastRow - r < labelStep / 2))
+          return null;
         return (
-          <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude zIndexRange={[10, 0]}>
+          <Html
+            key={`e${r}`}
+            position={[rightX + 0.5, y, rm.z]}
+            center
+            occlude
+            zIndexRange={[10, 0]}
+          >
             <span
               className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}
             >
@@ -1169,7 +1246,8 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
 
 /** The surface's cool→warm implied-vol ramp, as a flat swatch for the legend so
  *  the "Color" key matches the colors actually painted on the mesh. */
-const IV_RAMP = "linear-gradient(110deg, #6aa6e6, #4dd6b0 38%, #d9a94e 72%, #f0796b)";
+const IV_RAMP =
+  "linear-gradient(110deg, #6aa6e6, #4dd6b0 38%, #d9a94e 72%, #f0796b)";
 
 /** One legend row — an axis arrow (or the color swatch) + its plain meaning. */
 function LegendRow({
@@ -1186,7 +1264,11 @@ function LegendRow({
   return (
     <div className="flex items-center gap-2.5">
       {gradient ? (
-        <span aria-hidden className="h-5 w-5 flex-none rounded-md" style={{ background: IV_RAMP }} />
+        <span
+          aria-hidden
+          className="h-5 w-5 flex-none rounded-md"
+          style={{ background: IV_RAMP }}
+        />
       ) : (
         <span className="flex h-5 w-5 flex-none items-center justify-center rounded-md border border-line bg-white/[0.04] text-text-2">
           {Icon && <Icon size={12} />}
@@ -1237,11 +1319,17 @@ function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
         type="button"
         onClick={toggle}
         aria-expanded={expanded}
-        aria-label={expanded ? "Collapse the guide" : "How to read the surface — expand the guide"}
+        aria-label={
+          expanded
+            ? "Collapse the guide"
+            : "How to read the surface — expand the guide"
+        }
         className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03] sm:px-3.5 sm:py-2.5"
       >
         <LuBoxes size={13} className="shrink-0 text-accent" />
-        <span className="whitespace-nowrap text-[11px] font-medium text-text-1">How to read the surface</span>
+        <span className="whitespace-nowrap text-[11px] font-medium text-text-1">
+          How to read the surface
+        </span>
         <svg
           width="11"
           height="11"
@@ -1250,7 +1338,12 @@ function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
           aria-hidden
           className={`ml-auto shrink-0 text-text-3 transition-transform ${expanded ? "rotate-180" : ""}`}
         >
-          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+          <path
+            d="M2 3.5 5 6.5 8 3.5"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
         </svg>
       </button>
 
@@ -1261,25 +1354,45 @@ function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
         // accent-bar line rather than a boxed note.
         <div className="scroll-quiet flex max-h-[calc(100dvh-12rem)] flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3 sm:max-h-none sm:gap-2.5 sm:overflow-visible sm:px-3.5">
           <p className="hidden text-[11px] leading-relaxed text-text-2 sm:block">
-            The 3-D shape is a live map of every bet you can make. Here&apos;s what each part means:
+            The 3-D shape is a live map of every bet you can make. Here&apos;s
+            what each part means:
           </p>
 
           {/* Visual key — each axis/color tied to its plain meaning. The Color
               swatch reuses the real cool→warm ramp painted on the mesh. */}
           <div className="flex flex-col gap-1.5">
-            <LegendRow icon={LuMoveHorizontal} label="Left → right" desc="the price you bet on" />
-            <LegendRow icon={LuMoveDiagonal} label="Front → back" desc="time until it's decided" />
-            <LegendRow icon={LuMoveVertical} label="Height" desc="how big a move the market expects" />
-            <LegendRow gradient label="Color" desc="warmer means more uncertainty" />
+            <LegendRow
+              icon={LuMoveHorizontal}
+              label="Left → right"
+              desc="the price you bet on"
+            />
+            <LegendRow
+              icon={LuMoveDiagonal}
+              label="Front → back"
+              desc="time until it's decided"
+            />
+            <LegendRow
+              icon={LuMoveVertical}
+              label="Height"
+              desc="how big a move the market expects"
+            />
+            <LegendRow
+              gradient
+              label="Color"
+              desc="warmer means more uncertainty"
+            />
           </div>
 
           {/* The "aha" — a slim accent-bar note (no boxed inset), so it stays short. */}
           <div className="flex gap-2">
-            <span aria-hidden className="w-px shrink-0 self-stretch rounded bg-accent/45" />
+            <span
+              aria-hidden
+              className="w-px shrink-0 self-stretch rounded bg-accent/45"
+            />
             <p className="text-[10.5px] leading-relaxed text-text-3">
-              The <span className="text-text-2">dip</span> is today&apos;s price; the{" "}
-              <span className="text-text-2">wings</span> rising on either side mean the market is
-              bracing for a swing.
+              The <span className="text-text-2">dip</span> is today&apos;s
+              price; the <span className="text-text-2">wings</span> rising on
+              either side mean the market is bracing for a swing.
             </p>
           </div>
 
@@ -1293,9 +1406,9 @@ function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
           </p>
           {/* Mobile — the surface is for reading; trading is from the list below. */}
           <p className="text-[10px] leading-relaxed text-text-3 sm:hidden">
-            <span className="text-text-2">Tap</span> a point to inspect its odds ·{" "}
-            <span className="text-text-2">drag</span> the slider to rewind. Trade from
-            the markets list below.
+            <span className="text-text-2">Tap</span> a point to inspect its odds
+            · <span className="text-text-2">drag</span> the slider to rewind.
+            Trade from the markets list below.
           </p>
         </div>
       )}

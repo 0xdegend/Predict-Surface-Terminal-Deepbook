@@ -282,6 +282,7 @@ export function PriceChart({
   // Selected BINARY strike — same idea as bandRangeRef, so the dashed strike line
   // is always framed even when the user picks a level away from spot.
   const strikeRangeRef = useRef<number | null>(null);
+  const winZoneRef = useRef<WinZonePrimitive | null>(null);
   const lastTimeRef = useRef<number>(0);
   const fittedRef = useRef(false);
 
@@ -370,10 +371,14 @@ export function PriceChart({
     // Range-band highlight, attached once and driven by the range effect below.
     const band = new PriceBandPrimitive();
     series.attachPrimitive(band);
+    // Binary win-zone shade, attached once and driven by the strike effect below.
+    const winZone = new WinZonePrimitive();
+    series.attachPrimitive(winZone);
 
     chartRef.current = chart;
     seriesRef.current = series;
     bandRef.current = band;
+    winZoneRef.current = winZone;
     return () => {
       chart.remove();
       chartRef.current = null;
@@ -381,6 +386,7 @@ export function PriceChart({
       strikeLineRef.current = null;
       anchorLineRef.current = null;
       bandRef.current = null;
+      winZoneRef.current = null;
     };
   }, []);
 
@@ -438,8 +444,11 @@ export function PriceChart({
       });
       // Keep the strike line framed (autoscale provider reads this ref).
       strikeRangeRef.current = selection.strike;
+      // Shade the winning side (above for UP, below for DOWN).
+      winZoneRef.current?.setZone(selection.strike, selection.isUp);
     } else {
       strikeRangeRef.current = null;
+      winZoneRef.current?.setZone(null, true);
     }
     series.priceScale().setAutoScale(true);
   }, [selection, activeId, ticketMode]);
