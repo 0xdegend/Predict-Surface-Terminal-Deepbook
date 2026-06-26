@@ -15,7 +15,8 @@
  *   • sui       — Sui-branded: the droplet mark in glowing water ripples
  *   • deepbook  — DeepBook-branded: the D mark over an order-book depth chart
  *   • mascot    — the Skew fox as the hero, expression keyed to the outcome
- *                 (confident point on a win/live, facepalm on a loss) + a speech bubble
+ *                 (confident point on a win/live, facepalm on a loss) + a speech bubble.
+ *                 Wins also unlock two alternate poses (mascot-smart, mascot-thinking)
  *
  * 16:9 at 2× → 2400×1350 PNG, the size X renders an in-stream image at.
  */
@@ -57,7 +58,9 @@ export type ShareVariant =
   | 'celebrate'
   | 'sui'
   | 'deepbook'
-  | 'mascot';
+  | 'mascot'
+  | 'mascot-smart'
+  | 'mascot-thinking';
 
 export const SHARE_VARIANTS: { id: ShareVariant; label: string }[] = [
   { id: 'mascot', label: 'Mascot' },
@@ -82,9 +85,16 @@ export function shareVariants(
   result: ShareCardData['result'],
 ): { id: ShareVariant; label: string }[] {
   if (result !== 'won') return SHARE_VARIANTS;
-  // [mascot, celebrate, …rest] — mascot stays first, celebrate follows.
+  // Wins unlock the extra mascot expressions (confident smirk / big-brain) and the
+  // festive Celebrate card — all grouped right after the default Mascot card.
   const [mascot, ...rest] = SHARE_VARIANTS;
-  return [mascot, { id: 'celebrate', label: 'Celebrate' }, ...rest];
+  return [
+    mascot,
+    { id: 'mascot-smart', label: 'Confident' },
+    { id: 'mascot-thinking', label: 'Big brain' },
+    { id: 'celebrate', label: 'Celebrate' },
+    ...rest,
+  ];
 }
 
 const W = 1200;
@@ -156,9 +166,26 @@ export function getShareLogo(): HTMLImageElement | null {
  * the dark card and the brand color comes from the glow/motif around them. */
 const SUI_MARK_SRC = '/Logo_Sui_Droplet_White.png';
 const DEEPBOOK_MARK_SRC = '/DeepBook_Symbol_White.png';
-// The Skew fox mascot — one expression per outcome (confident point / facepalm).
+// The Skew fox mascot expressions. A loss always shows the facepalm; wins/live
+// default to the celebratory point, with two extra winning poses (a confident
+// smirk + a "big brain" chin-stroke) offered as alternate Mascot styles.
 const MASCOT_WON_SRC = '/skew-fox-won.png';
 const MASCOT_LOSS_SRC = '/skew-fox-loss.png';
+const MASCOT_SMART_SRC = '/smart-fox.png';
+const MASCOT_THINKING_SRC = '/skew-fox-thinking.png';
+
+/** Per-mascot-variant winning expression + its one-word reaction. The default
+ *  `mascot` keeps the original point; the alternates are offered only on a win. */
+const MASCOT_EXPR: Record<string, { src: string; wonQuip: string }> = {
+  mascot: { src: MASCOT_WON_SRC, wonQuip: 'CALLED IT' },
+  'mascot-smart': { src: MASCOT_SMART_SRC, wonQuip: 'TOO EASY' },
+  'mascot-thinking': { src: MASCOT_THINKING_SRC, wonQuip: 'BIG BRAIN' },
+};
+
+/** True for any mascot card (default or an alternate winning expression). */
+function isMascotVariant(v: ShareVariant): boolean {
+  return v === 'mascot' || v === 'mascot-smart' || v === 'mascot-thinking';
+}
 const imgCache = new Map<string, HTMLImageElement | null>();
 const imgPromises = new Map<string, Promise<HTMLImageElement | null>>();
 
@@ -192,6 +219,8 @@ export function loadBrandMarks(): Promise<unknown> {
     loadImage(DEEPBOOK_MARK_SRC),
     loadImage(MASCOT_WON_SRC),
     loadImage(MASCOT_LOSS_SRC),
+    loadImage(MASCOT_SMART_SRC),
+    loadImage(MASCOT_THINKING_SRC),
   ]);
 }
 
@@ -253,7 +282,7 @@ export function drawShareCard(
   else if (variant === 'celebrate') drawCelebrate(s, opts.confetti ?? true);
   else if (variant === 'sui') drawSui(s);
   else if (variant === 'deepbook') drawDeepBook(s);
-  else if (variant === 'mascot') drawMascot(s);
+  else if (isMascotVariant(variant)) drawMascot(s, variant);
   else drawSurface(s);
   drawHeader(s);
   drawFooter(s);
@@ -267,7 +296,7 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: ShareVariant) {
 
   // Accent glow — spotlight centers it; the brand/mascot cards bloom behind their
   // mark on the right; everything else hugs the top-right.
-  const brand = variant === 'sui' || variant === 'deepbook' || variant === 'mascot';
+  const brand = variant === 'sui' || variant === 'deepbook' || isMascotVariant(variant);
   const gx = variant === 'spotlight' ? W / 2 : brand ? W * 0.78 : W - 120;
   const gy = variant === 'spotlight' ? H / 2 : brand ? 250 : 120;
   const r = variant === 'spotlight' ? 520 : brand ? 520 : 620;
@@ -809,10 +838,12 @@ function drawDeepBook(s: Ctx) {
  * consistent. The semantic color (teal won/live, coral lost) carries the glow,
  * halo, and bubble, so the card's mood matches the result at a glance.
  */
-function drawMascot(s: Ctx) {
+function drawMascot(s: Ctx, variant: ShareVariant = 'mascot') {
   const { ctx, c, accent, sans, mono, d } = s;
   const loss = d.result === 'lost';
-  const img = getMark(loss ? MASCOT_LOSS_SRC : MASCOT_WON_SRC);
+  // A loss always facepalms; otherwise use this variant's winning expression.
+  const expr = MASCOT_EXPR[variant] ?? MASCOT_EXPR.mascot;
+  const img = getMark(loss ? MASCOT_LOSS_SRC : expr.src);
 
   // Character hero, anchored to the bottom-right so it reads as standing in-card.
   const SZ = 432;
@@ -852,8 +883,8 @@ function drawMascot(s: Ctx) {
     drawBrandMark(ctx, null, cx, haloY, 150, accent, 'droplet');
   }
 
-  // Speech bubble above the head — the mascot's reaction to the outcome.
-  const quip = loss ? 'OUCH…' : d.result === 'won' ? 'CALLED IT' : 'RIDING IT';
+  // Speech bubble above the head — the mascot's reaction, varied by expression.
+  const quip = loss ? 'OUCH…' : d.result === 'won' ? expr.wonQuip : 'RIDING IT';
   drawSpeechBubble(ctx, cx, headTopY + 34, quip, accent, sans);
 
   /* Left data column — kept clear of the fox (left edge ≈ cx − SZ/2). */
