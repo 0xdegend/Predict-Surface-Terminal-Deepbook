@@ -137,7 +137,7 @@ function PortfolioPreview() {
 
         <PreviewStat icon={LuTrendingUp} color={HUE.teal} label="Total PnL" value="+1,204.32" tone="up" />
         <PreviewStat icon={LuLayers} color={HUE.blue} label="Open exposure" value="$3,920.00" />
-        <PreviewStat icon={LuCoins} color={HUE.amber} label="Free balance" value="$4,560.18" />
+        <PreviewStat icon={LuCoins} color={HUE.amber} label="Trading account balance" value="$4,560.18" />
         <PreviewStat icon={LuWalletMinimal} color={HUE.violet} label="Wallet DUSDC" value="$2,000.00" />
 
         {/* Points — feature stat, mirrors PointsTile */}

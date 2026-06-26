@@ -35,7 +35,7 @@ export function WithdrawModal({
       onClose={onClose}
       variant="glass"
       maxWidthClass="max-w-sm"
-      title="Withdraw free balance"
+      title="Withdraw balance"
       subtitle="Move funds back to your wallet"
       footer={
         <>
@@ -58,8 +58,8 @@ export function WithdrawModal({
     >
       <div className="flex flex-col gap-4">
         <p className="text-[12px] leading-relaxed text-text-3">
-          This sends your entire free balance from your trading account back to your connected
-          wallet. Open positions are unaffected — only uncommitted funds move.
+          This sends your entire trading account balance back to your connected wallet. Open
+          positions are unaffected — only uncommitted funds move.
         </p>
 
         <div className="glass-inset relative overflow-hidden p-4">

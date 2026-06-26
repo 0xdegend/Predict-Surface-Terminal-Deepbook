@@ -18,6 +18,7 @@ import { isRedeemableStatus } from './position-metrics';
 import { quote as fmtQuote, signed, pct } from '@/lib/format';
 import { predictConfig } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
+import { InfoTip } from '../ui/info-tip';
 import { PositionCard } from './position-card';
 import { RangePositionCard } from './range-position-card';
 import { useRangePositions, type ValuedRangePosition } from '@/lib/hooks/use-range-positions';
@@ -241,7 +242,8 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         <SmallStat
           icon={LuCoins}
           color={HUE.amber}
-          label="Free balance"
+          label="Trading account balance"
+          info="Money in your trading account that isn’t tied up in open bets — free to place new bets or withdraw back to your wallet anytime."
           value={s ? fmtQuote(fromQuote(s.trading_balance)) : '…'}
           action={
             acct.tradingBalanceBase > 0n ? (
@@ -429,7 +431,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         title="Withdrawn to wallet"
         eyebrow="Withdrawn"
         amount={withdrawDone?.amount ?? 0}
-        sub="moved from your free balance to your wallet"
+        sub="moved from your trading account to your wallet"
         digest={withdrawDone?.digest}
       />
 
@@ -468,6 +470,7 @@ function SmallStat({
   value,
   tone,
   action,
+  info,
 }: {
   icon: IconType;
   color: string;
@@ -475,6 +478,8 @@ function SmallStat({
   value: string;
   tone?: 'up' | 'down';
   action?: React.ReactNode;
+  /** Optional plain-language explanation, shown via a "?" tip beside the label. */
+  info?: React.ReactNode;
 }) {
   const valueColor = tone === 'up' ? 'text-up' : tone === 'down' ? 'text-down' : 'text-text-1';
   return (
@@ -482,6 +487,7 @@ function SmallStat({
       <div className="flex items-center gap-2">
         <IconChip icon={icon} color={color} size={22} />
         <span className="eyebrow">{label}</span>
+        {info && <InfoTip label={label}>{info}</InfoTip>}
       </div>
       <span className={`text-[20px] leading-none tracking-tight ${valueColor}`}>{value}</span>
       {action}

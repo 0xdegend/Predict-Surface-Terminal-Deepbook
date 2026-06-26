@@ -114,7 +114,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
           </p>
 
           <div className="glass-inset flex flex-col gap-2 p-4 font-mono text-[12px] tabular-nums">
-            <Row label="Winnings (free balance)" value={`${fmtQuote(fromQuote(acct.tradingBalanceBase))} ${sym}`} />
+            <Row label="Trading account balance" value={`${fmtQuote(fromQuote(acct.tradingBalanceBase))} ${sym}`} />
             <Row label="Wallet" value={`${fmtQuote(fromQuote(walletBase))} ${sym}`} />
             <div className="hairline-fade my-1" />
             <Row label="Available to send" value={`${fmtQuote(available)} ${sym}`} strong />
@@ -158,7 +158,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
             </div>
             {overBalance && (
               <span className="flex items-center gap-1 text-[11px] text-down">
-                <LuTriangleAlert size={11} /> Exceeds available balance.
+                <LuTriangleAlert size={11} /> Exceeds available amount.
               </span>
             )}
           </label>

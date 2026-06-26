@@ -609,7 +609,7 @@ export function FlowPanel({
 
                   {/* Plain-language explainer so a first-time visitor understands the bet. */}
                   <p className="text-[12px] leading-relaxed text-text-2">
-                    You win if{" "}
+                    Win if{" "}
                     <span className="text-text-1">
                       {oracle.underlying_asset}
                     </span>{" "}
@@ -618,7 +618,7 @@ export function FlowPanel({
                       {isUp ? "above" : "below"}{" "}
                       {price(toFloat(Number(strike)))}
                     </span>{" "}
-                    at expiry. Otherwise your bet is lost.
+                    at expiry.
                   </p>
 
                   {/* Strike as a PAYOUT slider — bounded to the quotable band, centered on
@@ -905,12 +905,12 @@ export function FlowPanel({
                                     The rest of the {fmtQuote(cost)} {sym} cost
                                     is covered by your{" "}
                                     {fmtQuote(fromQuote(tradingBalanceBase))}{" "}
-                                    {sym} free balance in the manager.
+                                    {sym} trading account balance.
                                   </span>
                                 ) : walletNow === 0n ? (
                                   <span className="text-[10px] leading-relaxed text-text-3">
-                                    Fully covered by your free balance — nothing
-                                    new is pulled from your wallet.
+                                    Fully covered by your trading account balance
+                                    — nothing new is pulled from your wallet.
                                   </span>
                                 ) : null}
                                 <div className="flex items-center justify-between">
