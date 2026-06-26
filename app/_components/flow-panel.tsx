@@ -160,7 +160,10 @@ export function FlowPanel({
 
   const [strike, setStrike] = useState<bigint>(0n);
   const [isUp, setIsUp] = useState(true);
-  const [betInput, setBetInput] = useState(1); // DUSDC the user wants to bet (stake)
+  // Stake as a raw string so the field can be empty / mid-edit (a number-typed
+  // input coerces "" → 0, which makes a fresh digit read as "02"). Parsed to a
+  // number only where the math needs it (see `betAmount`).
+  const [betInput, setBetInput] = useState('1'); // DUSDC the user wants to bet (stake)
   // Two-step guided flow: 1 = side & level, 2 = bet (+ review modal). A fresh
   // surface/table/card pick jumps straight to step 2 (see the selection sync).
   const [step, setStep] = useState<1 | 2>(1);
@@ -292,7 +295,7 @@ export function FlowPanel({
   // fair gives a good seed so the solve is one probe + one secant step. Keying
   // the query on the stake (not the solved qty) keeps it stable — the qty the
   // solver returns can't feed back and re-trigger the query.
-  const betAmount = Math.max(0, betInput);
+  const betAmount = Math.max(0, Number(betInput) || 0);
   const stakeBase = toQuote(betAmount);
   const dirFair = clientUp == null ? null : isUp ? clientUp : 1 - clientUp;
   const unitPrice =
@@ -714,16 +717,16 @@ export function FlowPanel({
                     <Row label="Bet amount">
                       <div className="ctrl-soft inline-flex items-center gap-1 rounded-md px-2 py-1 focus-within:border-white/20">
                         <input
-                          type="number"
-                          min={0}
-                          step={1}
+                          type="text"
+                          inputMode="decimal"
                           value={betInput}
-                          onChange={(e) =>
-                            setBetInput(
-                              Math.max(0, Number(e.target.value) || 0),
-                            )
-                          }
-                          className="w-16 bg-transparent text-right text-text-1 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          placeholder="0"
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            // digits + a single optional decimal; empty allowed
+                            if (v === "" || /^\d*\.?\d*$/.test(v)) setBetInput(v);
+                          }}
+                          className="w-16 bg-transparent text-right text-text-1 outline-none"
                           aria-label={`Bet amount in ${sym}`}
                         />
                         <span className="text-[10px] text-text-3">{sym}</span>
@@ -733,9 +736,9 @@ export function FlowPanel({
                       {[1, 5, 10, 25].map((n) => (
                         <button
                           key={n}
-                          onClick={() => setBetInput(n)}
+                          onClick={() => setBetInput(String(n))}
                           className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-                            betInput === n
+                            Number(betInput) === n
                               ? "border border-up/40 bg-[var(--accent-soft)] text-accent"
                               : "ctrl-soft text-text-3"
                           }`}
@@ -765,7 +768,11 @@ export function FlowPanel({
                       // Only surface an error / loading state when we have NO quote to
                       // show. A transient devInspect failure during a background refetch
                       // keeps the last good quote on screen rather than flashing red.
-                      quoteQ.isError ? (
+                      // While a new quote is in flight (e.g. just changed strike / bet),
+                      // show "quoting…" even if the PREVIOUS attempt errored — React
+                      // Query holds the stale error until the refetch resolves, and a
+                      // flash of "failed to fetch" mid-load reads as a real failure.
+                      quoteQ.isError && !quoteQ.isFetching ? (
                         <span className="text-down">
                           {humanizeError(quoteQ.error)}
                         </span>

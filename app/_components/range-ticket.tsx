@@ -36,7 +36,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const band = useSurfaceStore((s) => s.rangeSelection);
   const anchor = useSurfaceStore((s) => s.rangeAnchor);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
-  const [betInput, setBetInput] = useState(1); // DUSDC the user wants to bet (stake)
+  // Stake as a raw string so the field can be empty / mid-edit (a number-typed
+  // input coerces "" → 0, which makes a fresh digit read as "02"). Parsed where
+  // the math needs it (see `betAmount`).
+  const [betInput, setBetInput] = useState('1'); // DUSDC the user wants to bet (stake)
 
   // Everyone reviews the trade in a modal before minting (the in-app preview
   // gasless Google/zkLogin accounts always needed, now shown for all wallets).
@@ -70,7 +73,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // whose chain cost equals the stake (cost is fixed, the *payout* floats). The
   // range-fair gives the seed; keying the query on the stake (not the solved qty)
   // keeps it stable. On-chain quantity == payout in dollars.
-  const betAmount = Math.max(0, betInput);
+  const betAmount = Math.max(0, Number(betInput) || 0);
   const stakeBase = toQuote(betAmount);
   const unitPrice = fair > 0 ? Math.min(0.99, Math.max(0.01, fair)) : 0.5;
   const qtyGuess = toQuote(betAmount / unitPrice);
@@ -242,11 +245,15 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           <span className="text-text-3">Bet amount</span>
           <div className="ctrl-soft inline-flex items-center gap-1 rounded-md px-2 py-1 focus-within:border-white/20">
             <input
-              type="number"
-              min={0}
-              step={1}
+              type="text"
+              inputMode="decimal"
               value={betInput}
-              onChange={(e) => setBetInput(Math.max(0, Number(e.target.value) || 0))}
+              placeholder="0"
+              onChange={(e) => {
+                const v = e.target.value;
+                // digits + a single optional decimal; empty allowed
+                if (v === '' || /^\d*\.?\d*$/.test(v)) setBetInput(v);
+              }}
               className="w-16 bg-transparent text-right text-text-1 outline-none"
               aria-label={`Bet amount in ${sym}`}
             />
@@ -257,9 +264,9 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           {[1, 5, 10, 25].map((n) => (
             <button
               key={n}
-              onClick={() => setBetInput(n)}
+              onClick={() => setBetInput(String(n))}
               className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-                betInput === n
+                Number(betInput) === n
                   ? 'border border-up/40 bg-[var(--accent-soft)] text-accent'
                   : 'ctrl-soft text-text-3'
               }`}
@@ -282,7 +289,10 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             {price(active.forward)} (only odds away from the 0%/100% extremes can be priced).
           </span>
         ) : !q ? (
-          quoteQ.isError ? (
+          // While a fresh quote is in flight (changed band / bet), show "quoting…"
+          // rather than the PREVIOUS attempt's error — React Query holds the stale
+          // error until the refetch resolves, and that flash reads as a real failure.
+          quoteQ.isError && !quoteQ.isFetching ? (
             <span className="text-down">{humanizeError(quoteQ.error)}</span>
           ) : (
             <span className="text-text-3">quoting…</span>
@@ -380,7 +390,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             : insufficient
               ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletNow))}`
               : q
-                ? `Review · pay ${fmtQuote(cost)} → win ${fmtQuote(maxPayout)}`
+                ? 'Review'
                 : 'Review bet'}
       </button>
 

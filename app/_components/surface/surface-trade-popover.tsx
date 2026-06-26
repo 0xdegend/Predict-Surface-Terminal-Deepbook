@@ -432,6 +432,7 @@ function BinaryBody({
             expired={expired}
             isUp={isUp}
             isError={quoteQ.isError}
+            isFetching={quoteQ.isFetching}
             error={quoteQ.error}
             tradingBalanceBase={acct.tradingBalanceBase}
             feeBps={feeBps}
@@ -447,7 +448,7 @@ function BinaryBody({
           <MintButton
             label={
               q
-                ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}`
+                ? "Review"
                 : "Review bet"
             }
             tone={accent}
@@ -702,6 +703,7 @@ function RangeBody({
             expired={expired}
             isUp
             isError={quoteQ.isError}
+            isFetching={quoteQ.isFetching}
             error={quoteQ.error}
             tradingBalanceBase={acct.tradingBalanceBase}
             feeBps={feeBps}
@@ -710,7 +712,7 @@ function RangeBody({
           <MintButton
             label={
               q
-                ? `Review · pay ${fmtQuote(fromQuote(q.mintCost))} → win ${fmtQuote(payoutDollars)}`
+                ? "Review"
                 : "Review bet"
             }
             tone="up"
@@ -834,6 +836,7 @@ function QuoteCard({
   expired,
   isUp,
   isError,
+  isFetching,
   error,
   tradingBalanceBase,
   feeBps,
@@ -843,6 +846,8 @@ function QuoteCard({
   expired: boolean;
   isUp: boolean;
   isError: boolean;
+  /** A quote request is in flight — show "quoting…" instead of a stale error. */
+  isFetching: boolean;
   error: unknown;
   tradingBalanceBase: bigint;
   feeBps: number;
@@ -869,7 +874,10 @@ function QuoteCard({
       </span>
     );
   } else if (!q) {
-    body = isError ? (
+    // While a fresh quote is in flight (changed strike / bet), show "quoting…"
+    // rather than the previous attempt's error — React Query holds the stale error
+    // until the refetch resolves, and that flash reads as a real failure.
+    body = isError && !isFetching ? (
       <span className="text-down">{humanizeError(error)}</span>
     ) : (
       <span className="text-text-3">quoting…</span>
