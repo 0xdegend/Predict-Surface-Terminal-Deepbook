@@ -103,12 +103,12 @@ export function WalletBar() {
           <NetworkBadge network={network} isTestnet={isTestnet} variant="segment" />
           <button
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex h-full items-center gap-1.5 border-[var(--line)] px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] sm:border-l"
+            className="inline-flex h-full shrink-0 items-center gap-1.5 whitespace-nowrap border-[var(--line)] px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] sm:border-l"
             aria-expanded={open}
             aria-label="Account menu"
           >
             <WalletGlyph wallet={conn.wallet} />
-            <span className="hidden md:inline">{shortId(conn.account.address)}</span>
+            <span className="hidden whitespace-nowrap md:inline">{shortId(conn.account.address)}</span>
             <LuChevronDown
               size={13}
               className={`text-text-3 transition-transform ${open ? 'rotate-180' : ''}`}

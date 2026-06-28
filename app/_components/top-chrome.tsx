@@ -3,8 +3,8 @@ import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
 import { DeploymentToggle } from "./deployment-toggle";
 import { BottomNav } from "./bottom-nav";
+import { NavVault } from "./nav-vault";
 import { NavMore } from "./nav-more";
-import { NavRewards } from "./nav-rewards";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
 import { TourButton } from "./tour/tour-button";
 import type { PriceEvent } from "@/lib/api/types";
@@ -56,19 +56,18 @@ export function TopChrome({
             label="Portfolio"
             active={active === "portfolio"}
           />
+          <NavLink href="/analytics" label="Analytics" active={active === "analytics"} />
           <NavLink
             href="/leaderboard"
             label="Leaderboard"
             active={active === "leaderboard"}
           />
-          <NavLink href="/analytics" label="Analytics" active={active === "analytics"} />
-          {/* Quests + Competitions (the gamification roadmap) grouped under one
-              dropdown, like the Vault group below. */}
-          <NavRewards />
-          {/* Hedge Vault + Vault Risk grouped under one dropdown to free header
-              space for the wallet (route-aware, self-highlighting). */}
+          {/* Hedge Vault + Vault Risk (+ Fee Admin for the cap owner) grouped under
+              one route-aware dropdown to free header space for the wallet. */}
+          <NavVault />
+          {/* The remaining secondary destinations — the Quests/Competitions roadmap
+              and the Docs manual — under one route-aware "More" dropdown. */}
           <NavMore />
-          <NavLink href="/docs" label="Docs" active={active === "docs"} />
         </nav>
       </div>
 

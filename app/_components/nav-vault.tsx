@@ -3,28 +3,37 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { LuChevronDown, LuTarget, LuSwords } from 'react-icons/lu';
+import { LuChevronDown, LuVault, LuShieldAlert, LuKeyRound } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { useAdminCap } from '@/lib/hooks/use-admin-cap';
 
 /**
- * Desktop nav "Rewards" group (§10.5) — the gamification roadmap. Quests (solo
- * milestones) and Competitions (seasonal races) collapse into one dropdown so
- * the top nav keeps just the primary destinations and leaves room for the
- * wallet. Each is a preview, so the menu carries a "Soon" tag. The trigger
- * adopts the active sub-page's label so the current location is never hidden.
- * Client-only (open state + route-derived active). Shown only at lg+.
+ * Desktop nav "Vault" group (§10.5). The two vault-facing screens — Hedge Vault
+ * (LP) and Vault Risk (exposure/stress) — collapse into one dropdown so the top
+ * nav keeps just the primary destinations (Trade · Portfolio · Analytics ·
+ * Leaderboard) and leaves room for the wallet. The trigger adopts the active
+ * sub-page's label so the current location is never hidden behind a generic
+ * word. Client-only (open state + route-derived active). Shown only at lg+;
+ * mobile uses BottomNav.
  */
 const ITEMS: { href: string; label: string; desc: string; icon: IconType }[] = [
-  { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget },
-  { href: '/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords },
+  { href: '/vault', label: 'Vault', desc: 'Add funds · earn a share of fees', icon: LuVault },
+  { href: '/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
 ];
 
-export function NavRewards() {
+export function NavVault() {
   const pathname = usePathname() ?? '/';
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const activeItem = ITEMS.find((i) => pathname.startsWith(i.href));
+  // The Fee Admin entry only exists for the wallet that owns the AdminCap — other
+  // users never see it (and the page itself is cap-gated regardless).
+  const { isAdmin } = useAdminCap();
+  const items = isAdmin
+    ? [...ITEMS, { href: '/admin', label: 'Fee Admin', desc: 'Builder fee · treasury', icon: LuKeyRound }]
+    : ITEMS;
+
+  const activeItem = items.find((i) => pathname.startsWith(i.href));
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +62,7 @@ export function NavRewards() {
             : 'text-text-2 hover:bg-white/[0.04] hover:text-text-1'
         }`}
       >
-        {activeItem ? activeItem.label : 'Rewards'}
+        {activeItem ? activeItem.label : 'Vault'}
         <LuChevronDown
           size={13}
           className={`text-text-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
@@ -66,7 +75,7 @@ export function NavRewards() {
           className="glass-menu popover-in absolute left-0 top-[calc(100%+10px)] z-50 w-64 overflow-hidden rounded-2xl p-2"
         >
           <div className="flex flex-col gap-1.5">
-            {ITEMS.map((item) => {
+            {items.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
@@ -80,16 +89,13 @@ export function NavRewards() {
                     active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
                   }`}
                 >
-                  <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
-                  <span className="flex flex-1 flex-col gap-1">
+                  <Icon
+                    size={16}
+                    className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`}
+                  />
+                  <span className="flex flex-col gap-1">
                     <span className="text-[13px] font-medium leading-none">{item.label}</span>
                     <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
-                  </span>
-                  <span
-                    className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
-                    style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
-                  >
-                    Soon
                   </span>
                 </Link>
               );
