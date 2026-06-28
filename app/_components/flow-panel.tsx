@@ -50,6 +50,8 @@ import { TicketEmpty } from "./ticket-empty";
 import { MintConfirmModal } from "./mint-confirm-modal";
 import { PayoutSlider } from "./ticket/payout-slider";
 import { SuccessModal } from "./ui/success-modal";
+import { MintSuccessModal } from "./mint-success-modal";
+import type { ConfirmRow } from "./mint-confirm-modal";
 import { isTradeableFair, type SmileInput } from "@/lib/svi/surface";
 
 const EXPLORER = (digest: string) => `https://suiscan.xyz/testnet/tx/${digest}`;
@@ -139,6 +141,16 @@ export function FlowPanel({
   // review the trade — so gate them behind an explicit in-app confirm (isEnoki is
   // declared above). Normal wallets skip it; their signing prompt is the review.
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Snapshot of the just-minted bet, driving the celebratory success modal that
+  // replaces the easy-to-miss toast. Cleared on close.
+  const [mintSuccess, setMintSuccess] = useState<{
+    headline: string;
+    tone: "up" | "down";
+    rows: ConfirmRow[];
+    staked: string;
+    maxWin: string;
+    digest: string;
+  } | null>(null);
 
   // Live Skew builder fee (bps). >0 → route the mint through the on-chain fee
   // router so the fee is taken atomically; 0 → plain mint, no fee.
@@ -443,17 +455,37 @@ export function FlowPanel({
               depositAmount: fundingSplit(fresh.mintCost, tradingBalanceBase)
                 .depositAmount,
             });
-      const digest = await runTx("mint", tx, [
-        ...managerKeys,
-        qk.dusdcBalance(owner ?? ""),
-      ]);
+      const digest = await runTx(
+        "mint",
+        tx,
+        [...managerKeys, qk.dusdcBalance(owner ?? "")],
+        // The success modal below is the celebration — skip the redundant toast.
+        { silentSuccess: true },
+      );
       setConfirmOpen(false);
-      if (digest)
+      if (digest) {
         pulseFill({
           oracleId: oracle.oracle_id,
           strike: toFloat(Number(strike)),
           isUp,
         });
+        // Snapshot the bet (authoritative re-quoted amounts) for the success modal.
+        setMintSuccess({
+          headline: `${oracle.underlying_asset} · ${isUp ? "UP" : "DOWN"}`,
+          tone: isUp ? "up" : "down",
+          rows: [
+            {
+              label: "Outcome",
+              value: isUp ? "Pays if price ends ABOVE" : "Pays if price ends BELOW",
+            },
+            { label: "Strike", value: price(strikeFloat, 0), emphasize: true },
+            { label: "Expiry", value: dateUTC(oracle.expiry) },
+          ],
+          staked: fmtQuote(fromQuote(fresh.mintCost)),
+          maxWin: fmtQuote(fromQuote(fresh.quantity)),
+          digest,
+        });
+      }
     } finally {
       setPreparing(false);
     }
@@ -1067,6 +1099,20 @@ export function FlowPanel({
         }
         digest={grant.success?.digest}
       />
+
+      {/* Celebratory confirmation that the bet landed (replaces the toast). */}
+      {mintSuccess && (
+        <MintSuccessModal
+          open={!!mintSuccess}
+          onClose={() => setMintSuccess(null)}
+          headline={mintSuccess.headline}
+          tone={mintSuccess.tone}
+          rows={mintSuccess.rows}
+          staked={mintSuccess.staked}
+          maxWin={mintSuccess.maxWin}
+          digest={mintSuccess.digest}
+        />
+      )}
     </div>
   );
 }

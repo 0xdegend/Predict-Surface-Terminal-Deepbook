@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { LuChartNoAxesCombined } from 'react-icons/lu';
 import { predictConfig } from '@/config/predict';
-import { AnalyticsRail, AnalyticsTabs, type AnalyticsTool } from './analytics-nav';
+import { AnalyticsToolbar, type AnalyticsTool } from './analytics-nav';
 import { PulseOverview } from './pulse/pulse-overview';
 import { MarketHeatmap } from './market-heatmap';
 import { SentimentTab } from './sentiment-tab';
@@ -24,7 +24,7 @@ export function AnalyticsPanel() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
       {/* Header */}
-      <div className="mb-5">
+      <div className="mb-4">
         <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">
           <LuChartNoAxesCombined size={18} className="text-accent" />
           Analytics
@@ -35,22 +35,19 @@ export function AnalyticsPanel() {
         </p>
       </div>
 
-      <div className="flex gap-5">
-        <AnalyticsRail active={tool} onSelect={setTool} />
+      {/* Full-width dashboard: the tool switcher is a horizontal toolbar on top
+          and each tool owns the whole content width below — no left gutter. */}
+      <AnalyticsToolbar active={tool} onSelect={setTool} />
 
-        <div className="min-w-0 flex-1">
-          <AnalyticsTabs active={tool} onSelect={setTool} />
-          {/* Keyed by tool so switching re-mounts the content with one restrained
-              rise (§10.6); reduced-motion clamps it. */}
-          <div key={tool} className="rise">
-            {tool === 'pulse' && <PulseOverview />}
-            {tool === 'markets' && <MarketHeatmap />}
-            {tool === 'sentiment' && <SentimentTab />}
-            {tool === 'vol' && <VolTab />}
-            {tool === 'styles' && <StylesTab />}
-            {tool === 'flow' && <FlowTape />}
-          </div>
-        </div>
+      {/* Keyed by tool so switching re-mounts the content with one restrained
+          rise (§10.6); reduced-motion clamps it. */}
+      <div key={tool} className="rise">
+        {tool === 'pulse' && <PulseOverview />}
+        {tool === 'markets' && <MarketHeatmap />}
+        {tool === 'sentiment' && <SentimentTab />}
+        {tool === 'vol' && <VolTab />}
+        {tool === 'styles' && <StylesTab />}
+        {tool === 'flow' && <FlowTape />}
       </div>
     </div>
   );

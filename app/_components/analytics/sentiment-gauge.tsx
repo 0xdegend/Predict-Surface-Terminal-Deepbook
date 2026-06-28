@@ -6,44 +6,64 @@
  * DUSDC staked UP vs DOWN over the rolling window, with the dollar totals and
  * bet counts on each side. Reuses the semantic up/down tokens; no new accent.
  */
-import { LuArrowUp, LuArrowDown } from 'react-icons/lu';
+import { useState } from 'react';
+import { LuArrowUp, LuArrowDown, LuShare2 } from 'react-icons/lu';
 import type { Sentiment } from '@/lib/analytics/flow';
 import { compact, num } from '@/lib/format';
+import { SentimentShareModal } from './sentiment-share-modal';
 
 export function SentimentGauge({ sentiment, className = '' }: { sentiment: Sentiment; className?: string }) {
   const { upCost, downCost, upCount, downCount, upShare, totalCost } = sentiment;
   const hasFlow = totalCost > 0;
+  const [shareOpen, setShareOpen] = useState(false);
   const upPct = Math.round(upShare * 100);
   const downPct = 100 - upPct;
 
   // Which side the crowd is leaning, for the headline read.
   const lean =
     !hasFlow ? 'balanced' : upPct > 55 ? 'up' : downPct > 55 ? 'down' : 'split';
+  // The eyebrow already says "Sentiment", so the headline drops the word to stay
+  // on one line in the narrow dashboard column.
   const leanLabel = {
     balanced: 'No bets yet',
     split: 'Evenly split',
-    up: `Sentiment leans UP · ${upPct}%`,
-    down: `Sentiment leans DOWN · ${downPct}%`,
+    up: `Leans UP · ${upPct}%`,
+    down: `Leans DOWN · ${downPct}%`,
   }[lean];
 
   return (
     <div className={`glass-card flex flex-col justify-center p-4 ${className}`}>
       <div className="mb-3 flex items-end justify-between gap-3">
-        <div>
-          <div className="eyebrow text-text-3">Sentiment · last hour</div>
+        <div className="min-w-0">
+          <div className="eyebrow whitespace-nowrap text-text-3">Sentiment · last hour</div>
           <div
-            className={`mt-0.5 text-[15px] font-semibold tracking-tight ${
+            className={`mt-0.5 whitespace-nowrap text-[15px] font-semibold tracking-tight ${
               lean === 'up' ? 'text-up' : lean === 'down' ? 'text-down' : 'text-text-1'
             }`}
           >
             {leanLabel}
           </div>
         </div>
-        <div className="text-right">
-          <div className="eyebrow text-text-3">Total bet</div>
-          <div className="font-mono text-[13px] tabular-nums text-text-2">
-            {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+        <div className="flex flex-none items-center gap-2.5">
+          <div className="text-right">
+            <div className="eyebrow whitespace-nowrap text-text-3">Total bet</div>
+            <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-text-2">
+              {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+            </div>
           </div>
+          {/* Share the sentiment read as a poster for X. Only meaningful once
+              there's flow to post about — hidden on an empty market. */}
+          {hasFlow && (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              aria-label="Share sentiment on X"
+              title="Share sentiment"
+              className="ctrl-soft flex h-8 w-8 flex-none items-center justify-center rounded-lg text-text-3 transition-colors hover:text-text-1"
+            >
+              <LuShare2 size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -75,6 +95,8 @@ export function SentimentGauge({ sentiment, className = '' }: { sentiment: Senti
           alignRight
         />
       </div>
+
+      <SentimentShareModal open={shareOpen} onClose={() => setShareOpen(false)} sentiment={sentiment} />
     </div>
   );
 }
@@ -105,7 +127,7 @@ function Side({
         <span className="text-[12px] font-semibold tracking-wide">{isUp ? 'UP' : 'DOWN'}</span>
         <span className="font-mono text-[13px] tabular-nums">{pct === null ? '—' : `${pct}%`}</span>
       </div>
-      <div className="mt-0.5 font-mono text-[11px] tabular-nums text-text-3">
+      <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] tabular-nums text-text-3">
         {num(dollars, 2)} DUSDC · {count} {count === 1 ? 'bet' : 'bets'}
       </div>
     </div>

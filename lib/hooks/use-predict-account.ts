@@ -135,7 +135,7 @@ export function usePredictAccount() {
     label: string,
     tx: Transaction,
     invalidate: readonly (readonly unknown[])[] = [],
-    opts?: { allowedAddresses?: string[] },
+    opts?: { allowedAddresses?: string[]; silentSuccess?: boolean },
   ) {
     if (!owner) return;
     setBusy(label);
@@ -167,10 +167,14 @@ export function usePredictAccount() {
       }
       await new Promise((r) => setTimeout(r, 1200));
       for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
-      toast.success(txSuccessTitle(label), {
-        desc: `${digest.slice(0, 14)}…`,
-        href: `https://suiscan.xyz/${predictConfig.network}/tx/${digest}`,
-      });
+      // Some flows replace the toast with a richer success modal (e.g. the trade
+      // ticket's mint celebration) — they pass silentSuccess to avoid a redundant
+      // double-notification.
+      if (!opts?.silentSuccess)
+        toast.success(txSuccessTitle(label), {
+          desc: `${digest.slice(0, 14)}…`,
+          href: `https://suiscan.xyz/${predictConfig.network}/tx/${digest}`,
+        });
       return digest;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
