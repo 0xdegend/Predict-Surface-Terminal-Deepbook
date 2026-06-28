@@ -175,6 +175,14 @@ export function FlowPanel({
       ? `${selection.strikeScaled}:${selection.isUp}`
       : null;
   const [appliedSel, setAppliedSel] = useState<string | null>(null);
+  // Whether the ticket has reconciled with the store at least once this mount.
+  // A selection already sitting in the store when we first mount is a leftover
+  // from a prior visit (the store is global and survives route changes), NOT a
+  // fresh pick — we seed the ticket from it but stay on step 1. Only picks made
+  // after we've hydrated advance to the bet step. (Keyed off oracle so a late-
+  // loading oracle still hydrates on the render where it first becomes available,
+  // not on a possibly oracle-less first render.)
+  const [hydrated, setHydrated] = useState(false);
   if (oracle) {
     if (selKey && selKey !== appliedSel) {
       // A genuine external pick (surface / table / card) lands a strike+side the
@@ -192,11 +200,13 @@ export function FlowPanel({
       setStrike(BigInt(selection!.strikeScaled));
       setIsUp(selection!.isUp);
       // Desktop: jump straight to the bet step. Mobile: stay on step 1 so the
-      // user sees the price chart + can adjust the strike before betting.
-      if (isExternalPick && !mobile) setStep(2);
+      // user sees the price chart + can adjust the strike before betting. Never
+      // on the first reconcile — that's a leftover selection, start at step 1.
+      if (isExternalPick && !mobile && hydrated) setStep(2);
     } else if (!selKey && strike === 0n) {
       setStrike(snapStrikeToTick(BigInt(Math.round(forward * 1e9)), oracle));
     }
+    if (!hydrated) setHydrated(true);
   }
 
   // Flip UP/DOWN. Mirror the choice into the surface store (not just local state)

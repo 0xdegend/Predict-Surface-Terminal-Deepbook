@@ -18,6 +18,7 @@ import type {
   V2Status,
   PythObservation,
   OracleBinding,
+  V2Position,
 } from './types';
 
 interface GetOptions {
@@ -53,6 +54,10 @@ export const getV2Markets = (limit = 100, o?: GetOptions) =>
 export const getV2MarketState = (marketId: string, o?: GetOptions) =>
   beta<V2MarketState>(`/markets/${marketId}/state`, o);
 
+/** Owner-scoped open positions (verified 200; empty on testnet, shape best-effort). */
+export const getAccountPositions = (owner: string, o?: GetOptions) =>
+  beta<V2Position[]>(`/accounts/${owner}/positions`, o);
+
 /* --------------------------- propbook indexer ---------------------------- */
 
 export const getPropbookStatus = (o?: GetOptions) => propbook<V2Status>('/status', o);
@@ -63,6 +68,10 @@ export const getOracleBindings = (o?: GetOptions) =>
 /** Latest raw Pyth spot observation for the underlying's pyth feed object id. */
 export const getPythLatest = (pythOracleId: string, o?: GetOptions) =>
   propbook<PythObservation | null>(`/oracles/${pythOracleId}/pyth/latest`, o);
+
+/** Recent Pyth spot observation history (for the price chart). */
+export const getPythHistory = (pythOracleId: string, limit = 300, o?: GetOptions) =>
+  propbook<PythObservation[]>(`/oracles/${pythOracleId}/pyth?limit=${limit}`, o);
 
 /** Decode a raw Pyth observation into a spot float (price · 10^±exp). */
 export function pythSpot(obs: PythObservation | null): number | null {
@@ -79,5 +88,7 @@ export const qkV2 = {
   markets: ['v2', 'markets'] as const,
   marketState: (id: string) => ['v2', 'market', id, 'state'] as const,
   pythLatest: ['v2', 'pyth', 'latest'] as const,
+  pythHistory: ['v2', 'pyth', 'history'] as const,
   pricer: (id: string) => ['v2', 'pricer', id] as const,
+  accountPositions: (owner: string) => ['v2', 'account', owner, 'positions'] as const,
 };

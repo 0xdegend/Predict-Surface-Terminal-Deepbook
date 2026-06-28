@@ -79,6 +79,30 @@ export interface PythObservation {
   checkpoint_timestamp_ms?: number;
 }
 
+/**
+ * A row from `/accounts/{owner}/positions` (owner-scoped, verified live 2026-06-28
+ * — returns 200, empty on testnet). Shape is permissive / best-effort because no
+ * populated sample exists yet; the positions panel reads fields defensively and
+ * mapping is confirmed once a real account holds positions.
+ */
+export interface V2Position {
+  expiry_market_id?: string;
+  market_id?: string;
+  order_id?: string | number;
+  lower_tick?: string | number;
+  higher_tick?: string | number;
+  open_quantity?: string | number;
+  quantity?: string | number;
+  cost?: string | number;
+  total_cost?: string | number;
+  mark_value?: string | number;
+  pnl?: string | number;
+  is_leveraged?: boolean;
+  status?: string;
+  expiry?: number;
+  [k: string]: unknown;
+}
+
 /** `/oracle-bindings` — maps an underlying to its feed object ids per oracle kind. */
 export interface OracleBinding {
   propbook_underlying_id: number;

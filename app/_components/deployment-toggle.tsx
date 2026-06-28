@@ -12,8 +12,8 @@
  * bar. Reads the persisted deployment store behind a mounted guard so SSR and
  * the first client paint agree.
  */
+import { usePathname, useRouter } from 'next/navigation';
 import { useDeploymentStore, v2Selectable } from '@/lib/store/deployment-store';
-import { useMounted } from '@/lib/hooks/use-mounted';
 import { useLegacyStatus } from '@/lib/hooks/use-legacy-status';
 import type { Deployment } from '@/config/predict';
 
@@ -23,23 +23,34 @@ const OPTIONS: { id: Deployment; label: string; hint: string }[] = [
 ];
 
 export function DeploymentToggle() {
-  const mounted = useMounted();
-  const stored = useDeploymentStore((s) => s.deployment);
+  const pathname = usePathname();
+  const router = useRouter();
   const setDeployment = useDeploymentStore((s) => s.setDeployment);
   const legacy = useLegacyStatus();
 
-  // Before mount, render the server default so hydration matches.
-  const active: Deployment = mounted ? stored : 'legacy';
+  // Which experience are we in? Routes are separate (/v2/* = Latest, else Legacy),
+  // and pathname is SSR-consistent so this needs no mounted guard.
+  const onV2Route = pathname?.startsWith('/v2') ?? false;
+  const active: Deployment = onV2Route ? 'v2' : 'legacy';
   const activeIndex = active === 'v2' ? 1 : 0;
 
   // Graceful sunset: once Latest is selectable, a dark legacy server means the
   // old oracles have wound down — flag Legacy "offline" and steer to Latest.
-  // Dormant until v2 is selectable (legacy is the only live option before then).
   const legacyOffline = v2Selectable && legacy.checked && !legacy.online;
+
+  /** Selecting a side: remember the preference and navigate to that experience. */
+  function choose(id: Deployment) {
+    if (id === active) return;
+    setDeployment(id);
+    router.push(id === 'v2' ? '/v2' : '/');
+  }
 
   /** Per-option availability + the little uppercase tag (Soon / Offline). */
   function optState(id: Deployment): { disabled: boolean; tag: string | null } {
-    if (id === 'v2') return { disabled: !v2Selectable, tag: v2Selectable ? null : 'Soon' };
+    if (id === 'v2') {
+      // Already on a v2 route ⇒ it's reachable even before the official launch flip.
+      return { disabled: !v2Selectable && !onV2Route, tag: v2Selectable ? null : 'Soon' };
+    }
     return { disabled: legacyOffline, tag: legacyOffline ? 'Offline' : null };
   }
 
@@ -82,7 +93,7 @@ export function DeploymentToggle() {
             aria-checked={isActive}
             disabled={disabled}
             title={tag ? `${opt.hint} (${tag.toLowerCase()})` : opt.hint}
-            onClick={() => !disabled && setDeployment(opt.id)}
+            onClick={() => !disabled && choose(opt.id)}
             className={`relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 font-mono text-[11px] tracking-tight transition-colors ${
               isActive ? 'text-text-1' : 'text-text-2 hover:text-text-1'
             } ${disabled ? 'cursor-not-allowed hover:text-text-2' : ''}`}
