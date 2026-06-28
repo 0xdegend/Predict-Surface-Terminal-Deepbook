@@ -125,3 +125,157 @@ export const moveTarget = (module: string, fn: string): `${string}::${string}::$
 
 export const eventType = (module: string, name: string): string =>
   `${predictConfig.packageId}::${module}::${name}`;
+
+/* ===================================================================== *
+ *  V2 DEPLOYMENT  (branch predict-testnet-6-24)
+ * ---------------------------------------------------------------------
+ *  A ground-up redesign, NOT a redeploy. Different custody (account pkg:
+ *  AccountWrapper + Auth), oracle (propbook + 4 block-scholes feeds), per-
+ *  expiry ExpiryMarket objects, native leverage/liquidation, async PLP, and
+ *  a new beta server. The LEGACY config above stays the source of truth for
+ *  the current (frozen) app; this block powers the new "Latest" deployment.
+ *
+ *  IDs are read verbatim from packages/predict/deployment/deployment.testnet.json
+ *  on branch predict-testnet-6-24 (dated 2026-06-25). Always re-check that JSON
+ *  on any redeploy — it's the upstream source of truth.
+ * ===================================================================== */
+
+export type Deployment = 'legacy' | 'v2';
+
+/**
+ * Flip to `true` once the v2 data + trade layers (migration Phases 1–2) are
+ * live. While `false`, the user-facing toggle shows "Latest" as a teaser but
+ * keeps it disabled, so switching can never drop users into a half-built path.
+ */
+export const V2_READY = false;
+
+export interface PredictV2Config {
+  network: SuiNetwork;
+  deployment: 'v2';
+  grpcUrl: string;
+  /** New beta indexer: /markets, /managers, /manager-orders, /supply-requests, … */
+  serverUrl: string;
+  /** Optional propbook oracle indexer (Pyth/Block-Scholes observation history). */
+  oracleServerUrl: string;
+  packages: {
+    predict: string;
+    account: string;
+    propbook: string;
+    blockScholesOracle: string;
+    fixedMath: string;
+  };
+  /** Shared objects passed into entry functions. */
+  shared: {
+    protocolConfig: string; // predict::protocol_config::ProtocolConfig
+    poolVault: string; // predict::plp::PoolVault
+    registry: string; // predict::registry::Registry
+    oracleRegistry: string; // propbook::registry::OracleRegistry
+    accountRegistry: string; // account::account_registry::AccountRegistry
+  };
+  /** Per-owner balances/accounting live behind a shared AccumulatorRoot. */
+  accumulatorRootId: string;
+  clockId: string;
+  quote: { coinType: string; currencyId: string; decimals: number; symbol: string };
+  plpCoinType: string;
+  /** DEEP staking is part of the new vault; coin type for stake/unstake flows. */
+  deepPackageId: string;
+  /** The tradeable underlying + its four oracle feed objects (for load_live_pricer). */
+  asset: {
+    name: string;
+    propbookUnderlyingId: number;
+    pythFeedId: string;
+    bsSpotFeedId: string;
+    bsForwardFeedId: string;
+    bsSviFeedId: string;
+  };
+  /** Rolling market cadences (markets are created on schedule; discover via /markets). */
+  cadences: {
+    id: number;
+    name: string;
+    tickSize: string;
+    admissionTickSize: string;
+    maxExpiryAllocation: string;
+    initialExpiryCash: string;
+    windowSize: string;
+  }[];
+  faucetUrl?: string;
+}
+
+const V2_TESTNET: PredictV2Config = {
+  network: 'testnet',
+  deployment: 'v2',
+  grpcUrl: 'https://fullnode.testnet.sui.io:443',
+  serverUrl: 'https://predict-server-beta.testnet.mystenlabs.com',
+  oracleServerUrl: 'https://propbook.api.testnet.mystenlabs.com',
+  packages: {
+    predict: '0xdb3ef5a5129920e59c9b2ae25a77eddb48acd0e1c6307b97073f0e076016446e',
+    account: '0xb9389eac8d59170ffd1427c1a66e5c8306263464fcc6615e825c1f5b3e15da3b',
+    propbook: '0x8eb2adde1c91f8b7c9ba5e9b0a32bfb804510c342939c5f77458fd8143f9755b',
+    blockScholesOracle: '0x8192932b70d5946217d0f09aad44f84ad5c27ee4c1ca31b09f46200fbd31d3de',
+    fixedMath: '0x6930d8eff504f15e45e7ceec3d504bfc1a6f1e1d4c02babe03c156f77b84523d',
+  },
+  shared: {
+    protocolConfig: '0x2325224629b4bd96d1f1d7ee937e07f8a06f861018a130bbb26db09cb0394cb6',
+    poolVault: '0xfde98c636eb8a7aba59c3a238cfee6b576b7118d1e5ffa2952876c4b270a3a2a',
+    registry: '0x54afbf245caf42466cedb5756ed7816f34f544afdfa13579a862eccf3afa21ca',
+    oracleRegistry: '0xf3deaff68cbd081a35ec21653af6f671d2ad5f012f3b4d817d81752843374136',
+    accountRegistry: '0x3c54d5b8b6bca376fc289121838ad02f8a5b3843242b9ad7e8f8245720e685a2',
+  },
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x6',
+  quote: {
+    coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
+    currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
+    decimals: 6,
+    symbol: 'DUSDC',
+  },
+  plpCoinType: '0xdb3ef5a5129920e59c9b2ae25a77eddb48acd0e1c6307b97073f0e076016446e::plp::PLP',
+  deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0xc78d7de16217d46d21b92ae475da799448be30b71a758dc6d7bb3ac2f1c35afb',
+    bsSpotFeedId: '0xcdc5fa7364e60fd2504aa96f65b707dc0734e507a919b1a7d7d63164fd67b745',
+    bsForwardFeedId: '0xe72c734ea8d8dcbc9183d9d8f96f51aaa1fb5034d5ed33ac60d67d261e15b48a',
+    bsSviFeedId: '0xdc2f8270676bd05fb28491e8d4a41a495722fda7a454926dd66dbba256a21c69',
+  },
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 2, name: '1h', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '3' },
+  ],
+  faucetUrl: 'https://tally.so/r/Xx102L',
+};
+
+// Mainnet v2 placeholders — fill on the eventual mainnet redeploy.
+const V2_MAINNET: PredictV2Config = {
+  ...V2_TESTNET,
+  network: 'mainnet',
+  grpcUrl: 'https://fullnode.mainnet.sui.io:443',
+  serverUrl: '',
+  oracleServerUrl: '',
+};
+
+const V2_CONFIGS: Record<SuiNetwork, PredictV2Config> = {
+  testnet: V2_TESTNET,
+  mainnet: V2_MAINNET,
+};
+
+export const predictV2Config: PredictV2Config = V2_CONFIGS[ACTIVE_NETWORK];
+
+export function getPredictV2Config(network: SuiNetwork = ACTIVE_NETWORK): PredictV2Config {
+  return V2_CONFIGS[network];
+}
+
+/** True when the active-network v2 deployment has a server wired (testnet does). */
+export const v2Deployed: boolean = !!predictV2Config.serverUrl;
+
+/** Fully-qualified type helpers for the v2 predict package. */
+export const v2Target = (
+  module: string,
+  fn: string,
+): `${string}::${string}::${string}` =>
+  `${predictV2Config.packages.predict}::${module}::${fn}` as const;
+
+export const v2EventType = (module: string, name: string): string =>
+  `${predictV2Config.packages.predict}::${module}::${name}`;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { WalletBar } from "./wallet-bar";
+import { DeploymentToggle } from "./deployment-toggle";
 import { BottomNav } from "./bottom-nav";
 import { NavMore } from "./nav-more";
 import { NavRewards } from "./nav-rewards";
@@ -88,6 +89,10 @@ export function TopChrome({
           segmented control by WalletBar), with the quiet tour "?" beside it.
           shrink-0 so it's always fully visible, even when the chip is wide. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+        {/* Legacy ↔ Latest deployment switch — placed with the network/account
+            cluster (it's an environment control, not route nav). Hidden below lg
+            where the header is tight; it'll get a home in the menu when v2 ships. */}
+        <DeploymentToggle />
         {/* Tour replay is secondary — hidden on phones to declutter the header.
             Only on the Trade/surface page: the tour spotlights elements that
             only exist there, so it would be a dead button on other routes. */}
