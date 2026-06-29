@@ -7,7 +7,7 @@
  * bet counts on each side. Reuses the semantic up/down tokens; no new accent.
  */
 import { useState } from 'react';
-import { LuArrowUp, LuArrowDown, LuShare2 } from 'react-icons/lu';
+import { LuArrowUp, LuArrowDown, LuShare } from 'react-icons/lu';
 import type { Sentiment } from '@/lib/analytics/flow';
 import { compact, num } from '@/lib/format';
 import { SentimentShareModal } from './sentiment-share-modal';
@@ -61,7 +61,7 @@ export function SentimentGauge({ sentiment, className = '' }: { sentiment: Senti
               title="Share sentiment"
               className="ctrl-soft flex h-8 w-8 flex-none items-center justify-center rounded-lg text-text-3 transition-colors hover:text-text-1"
             >
-              <LuShare2 size={15} />
+              <LuShare size={15} />
             </button>
           )}
         </div>

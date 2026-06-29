@@ -20,6 +20,35 @@ export function StylesTab() {
 
   return (
     <div className="space-y-4">
+      {/* What the styles mean — plain-language legend, up top so the archetypes
+          are explained before the distribution and roster reference them. */}
+      <div className="glass-card overflow-hidden">
+        <div className="head-divider px-4 py-3">
+          <div className="text-[13px] font-semibold tracking-tight text-text-1">What the styles mean</div>
+          <div className="eyebrow mt-0.5 text-text-3">worked out from each trader’s past bets</div>
+        </div>
+        <div className="grid gap-x-5 gap-y-3 p-4 sm:grid-cols-2">
+          {ALL_ARCHETYPES.map((a) => {
+            const vis = ARCH_VIS[a.id];
+            const Icon = vis.icon;
+            return (
+              <div key={a.id} className="flex items-start gap-2.5">
+                <span
+                  className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-md"
+                  style={{ color: vis.hue, background: `color-mix(in srgb, ${vis.hue} 14%, transparent)` }}
+                >
+                  <Icon size={13} />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[12.5px] font-medium text-text-1">{a.label}</div>
+                  <div className="text-[11.5px] leading-snug text-text-3">{a.blurb}.</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Distribution */}
       <div className="glass-card overflow-hidden">
         <div className="head-divider px-4 py-3">
@@ -95,34 +124,6 @@ export function StylesTab() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* What the styles mean — plain-language legend */}
-      <div className="glass-card overflow-hidden">
-        <div className="head-divider px-4 py-3">
-          <div className="text-[13px] font-semibold tracking-tight text-text-1">What the styles mean</div>
-          <div className="eyebrow mt-0.5 text-text-3">worked out from each trader’s past bets</div>
-        </div>
-        <div className="grid gap-x-5 gap-y-3 p-4 sm:grid-cols-2">
-          {ALL_ARCHETYPES.map((a) => {
-            const vis = ARCH_VIS[a.id];
-            const Icon = vis.icon;
-            return (
-              <div key={a.id} className="flex items-start gap-2.5">
-                <span
-                  className="mt-0.5 inline-flex h-6 w-6 flex-none items-center justify-center rounded-md"
-                  style={{ color: vis.hue, background: `color-mix(in srgb, ${vis.hue} 14%, transparent)` }}
-                >
-                  <Icon size={13} />
-                </span>
-                <div className="min-w-0">
-                  <div className="text-[12.5px] font-medium text-text-1">{a.label}</div>
-                  <div className="text-[11.5px] leading-snug text-text-3">{a.blurb}.</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
