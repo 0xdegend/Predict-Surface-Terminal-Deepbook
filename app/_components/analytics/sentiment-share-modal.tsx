@@ -43,8 +43,6 @@ export function SentimentShareModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState<"idle" | "ok" | "err">("idle");
   const [downloaded, setDownloaded] = useState(false);
-  // The brand mark, decoded once so the poster can draw it synchronously. Held in
-  // state (not a ref) so its arrival re-runs the draw effect.
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   useEffect(() => {
     const img = new Image();
@@ -373,7 +371,11 @@ function draw3DSolid(
   ctx.stroke();
 }
 
-function drawSentimentCard(canvas: HTMLCanvasElement, s: Sentiment, logo: HTMLImageElement | null) {
+function drawSentimentCard(
+  canvas: HTMLCanvasElement,
+  s: Sentiment,
+  logo: HTMLImageElement | null,
+) {
   const W = 1200;
   const H = 675;
   const SCALE = 2;
@@ -522,7 +524,11 @@ function drawSentimentCard(canvas: HTMLCanvasElement, s: Sentiment, logo: HTMLIm
     const labelW = g.measureText(label).width;
     g.font = `400 16px ${mono}`;
     g.fillStyle = C.t3;
-    g.fillText(`${num(cost, 2)} DUSDC · ${count} ${betWord(count)}`, P + labelW + 20, y);
+    g.fillText(
+      `${num(cost, 2)} DUSDC · ${count} ${betWord(count)}`,
+      P + labelW + 20,
+      y,
+    );
   };
   statLine(ctx, 384, "up", up, s.upCost, s.upCount);
   statLine(ctx, 424, "down", down, s.downCost, s.downCount);
