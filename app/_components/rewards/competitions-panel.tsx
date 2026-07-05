@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 /**
  * Competitions — a PREVIEW of Skew's seasonal trading races. Traders compete
@@ -18,18 +18,18 @@ import {
   LuLock,
   LuTarget,
   LuCalendarClock,
-} from 'react-icons/lu';
-import { num, compact } from '@/lib/format';
-import { useMounted } from '@/lib/hooks/use-mounted';
-import { WalletAvatar } from '../leaderboard/wallet-avatar';
-import { HUE } from '../ui/metric';
+} from "react-icons/lu";
+import { num, compact } from "@/lib/format";
+import { useMounted } from "@/lib/hooks/use-mounted";
+import { WalletAvatar } from "../leaderboard/wallet-avatar";
+import { HUE } from "../ui/metric";
 import {
   RewardsHeader,
   FundingNote,
   CrossLink,
   useNow,
   countdownParts,
-} from './shared';
+} from "./shared";
 
 const PRIZE_POOL = 2500; // illustrative DUSDC
 const ENTRANTS = 128;
@@ -38,7 +38,7 @@ const ENTRANTS = 128;
 // mid-August 2026. Fixed UTC anchor so the countdown lands on a real date.
 const SEASON_START_MS = Date.UTC(2026, 7, 15, 0, 0, 0); // 15 Aug 2026, 00:00 UTC
 
-const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
+const RANK_HUE = ["#e8c14e", "#c2cbd4", "#c08a5a"]; // gold / silver / bronze
 
 // Illustrative standings. Deterministic fake addresses feed the real
 // WalletAvatar so the podium looks like the live leaderboard's, not a mock.
@@ -49,19 +49,49 @@ interface Standing {
   prize: number;
 }
 const STANDINGS: Standing[] = [
-  { addr: '0x7a3f9c12bd4e8f6a1029384756abcdef0011223344556677889900aabbccddee', name: 'vol.sui', points: 48210, prize: 1000 },
-  { addr: '0x2b8e1d77aa90ffcc5511ee229f3a4b5c00112233445566778899aabbccddeeff', name: 'skewmaster', points: 41980, prize: 625 },
-  { addr: '0x5fc0a9e377112233445566778899aabbccddeeff00112233445566778899aabb', name: 'theta.gang', points: 37640, prize: 375 },
-  { addr: '0x9d12ee4488bb33cc77aa5566bb99001122334455667788990a1b2c3d4e5f6a7b', name: '0xnocturne', points: 29110, prize: 100 },
-  { addr: '0x44aa77cc1199ee22dd8833005566778899aabbccddeeff00112233445566aa11', name: 'gammahunter', points: 24870, prize: 100 },
-  { addr: '0x118822aa44ff66cc99dd5577aabb001122334455667788990a1b2c3d4e5f8899', name: 'pico.sol', points: 19330, prize: 100 },
+  {
+    addr: "0x7a3f9c12bd4e8f6a1029384756abcdef0011223344556677889900aabbccddee",
+    name: "vol.sui",
+    points: 48210,
+    prize: 1000,
+  },
+  {
+    addr: "0x2b8e1d77aa90ffcc5511ee229f3a4b5c00112233445566778899aabbccddeeff",
+    name: "skewmaster",
+    points: 41980,
+    prize: 625,
+  },
+  {
+    addr: "0x5fc0a9e377112233445566778899aabbccddeeff00112233445566778899aabb",
+    name: "theta.gang",
+    points: 37640,
+    prize: 375,
+  },
+  {
+    addr: "0x9d12ee4488bb33cc77aa5566bb99001122334455667788990a1b2c3d4e5f6a7b",
+    name: "0xnocturne",
+    points: 29110,
+    prize: 100,
+  },
+  {
+    addr: "0x44aa77cc1199ee22dd8833005566778899aabbccddeeff00112233445566aa11",
+    name: "gammahunter",
+    points: 24870,
+    prize: 100,
+  },
+  {
+    addr: "0x118822aa44ff66cc99dd5577aabb001122334455667788990a1b2c3d4e5f8899",
+    name: "pico.sol",
+    points: 19330,
+    prize: 100,
+  },
 ];
 
 const PRIZE_SPLIT = [
-  { place: '1st', pct: 40 },
-  { place: '2nd', pct: 25 },
-  { place: '3rd', pct: 15 },
-  { place: '4th–10th', pct: 20 },
+  { place: "1st", pct: 40 },
+  { place: "2nd", pct: 25 },
+  { place: "3rd", pct: 15 },
+  { place: "4th–10th", pct: 20 },
 ];
 
 export function CompetitionsPanel() {
@@ -82,7 +112,10 @@ export function CompetitionsPanel() {
       />
 
       {/* Season hero */}
-      <div className="podium-card rise relative overflow-hidden rounded-2xl p-5 sm:p-6" style={{ ['--rank-hue' as string]: HUE.amber }}>
+      <div
+        className="podium-card rise relative overflow-hidden rounded-2xl p-5 sm:p-6"
+        style={{ ["--rank-hue" as string]: HUE.amber }}
+      >
         <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           {/* left: identity + pool */}
           <div className="flex flex-col gap-3">
@@ -90,16 +123,22 @@ export function CompetitionsPanel() {
               <span className="eyebrow">Season 01</span>
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
+                style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
               >
                 <LuFlame size={11} /> Genesis
               </span>
             </div>
             <h2 className="text-[26px] font-semibold leading-none tracking-tight text-text-1">
-              The Genesis Cup
+              Degen Arena
             </h2>
             <div className="flex items-end gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: HUE.amber, background: `color-mix(in srgb, ${HUE.amber} 14%, transparent)` }}>
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-xl"
+                style={{
+                  color: HUE.amber,
+                  background: `color-mix(in srgb, ${HUE.amber} 14%, transparent)`,
+                }}
+              >
                 <LuCoins size={20} />
               </span>
               <div>
@@ -126,13 +165,13 @@ export function CompetitionsPanel() {
               <LuCalendarClock size={12} /> Season starts in
             </span>
             <div className="flex items-center gap-2 font-mono tabular-nums">
-              <TimeBlock value={mounted ? parts.d : '--'} unit="days" />
+              <TimeBlock value={mounted ? parts.d : "--"} unit="days" />
               <Colon />
-              <TimeBlock value={mounted ? parts.h : '--'} unit="hrs" />
+              <TimeBlock value={mounted ? parts.h : "--"} unit="hrs" />
               <Colon />
-              <TimeBlock value={mounted ? parts.m : '--'} unit="min" />
+              <TimeBlock value={mounted ? parts.m : "--"} unit="min" />
               <Colon />
-              <TimeBlock value={mounted ? parts.s : '--'} unit="sec" />
+              <TimeBlock value={mounted ? parts.s : "--"} unit="sec" />
             </div>
             <span className="text-[11px] text-text-3 lg:text-right">
               Opens after the DeepBook Predict mainnet launch · mid-August 2026
@@ -144,7 +183,10 @@ export function CompetitionsPanel() {
       {/* Prize split */}
       <div className="glass-card mt-3 grid grid-cols-2 gap-2.5 p-2.5 font-mono tabular-nums sm:grid-cols-4">
         {PRIZE_SPLIT.map((p) => (
-          <div key={p.place} className="glass-inset flex flex-col gap-1 px-3 py-2.5">
+          <div
+            key={p.place}
+            className="glass-inset flex flex-col gap-1 px-3 py-2.5"
+          >
             <span className="eyebrow">{p.place}</span>
             <span className="text-[15px] leading-none text-text-1">
               {num((PRIZE_POOL * p.pct) / 100, 0)}
@@ -157,8 +199,13 @@ export function CompetitionsPanel() {
 
       {/* Podium preview */}
       <div className="mt-6 mb-3 flex items-center gap-2">
-        <h3 className="text-[14px] font-semibold tracking-tight text-text-1">Projected podium</h3>
-        <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest" style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}>
+        <h3 className="text-[14px] font-semibold tracking-tight text-text-1">
+          Projected podium
+        </h3>
+        <span
+          className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
+          style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
+        >
           Preview
         </span>
       </div>
@@ -182,12 +229,20 @@ export function CompetitionsPanel() {
               key={s.addr}
               className="grid grid-cols-[2rem_1fr_5rem_5rem] items-center gap-2 px-4 py-3.5 font-mono text-[12px] tabular-nums sm:grid-cols-[2.5rem_1fr_7rem_6rem]"
             >
-              <span className="text-right font-semibold text-text-3">{idx + 4}</span>
+              <span className="text-right font-semibold text-text-3">
+                {idx + 4}
+              </span>
               <span className="flex min-w-0 items-center gap-2.5">
-                <WalletAvatar addr={s.addr} size={22} ring="rgba(255,255,255,0.08)" />
+                <WalletAvatar
+                  addr={s.addr}
+                  size={22}
+                  ring="rgba(255,255,255,0.08)"
+                />
                 <span className="truncate text-text-1">{s.name}</span>
               </span>
-              <span className="text-right font-semibold text-[var(--accent)]">{num(s.points, 0)}</span>
+              <span className="text-right font-semibold text-[var(--accent)]">
+                {num(s.points, 0)}
+              </span>
               <span className="text-right text-text-2">+{num(s.prize, 0)}</span>
             </div>
           ))}
@@ -216,11 +271,18 @@ function PodiumCard({ s, rank }: { s: Standing; rank: number }) {
   const hue = RANK_HUE[rank];
   return (
     <div
-      className={`podium-card rise relative flex flex-col items-center gap-3 rounded-2xl p-5 ${rank === 0 ? 'champion sm:-mt-2' : ''}`}
-      style={{ ['--rank-hue' as string]: hue, animationDelay: `${rank * 60}ms` }}
+      className={`podium-card rise relative flex flex-col items-center gap-3 rounded-2xl p-5 ${rank === 0 ? "champion sm:-mt-2" : ""}`}
+      style={{
+        ["--rank-hue" as string]: hue,
+        animationDelay: `${rank * 60}ms`,
+      }}
     >
       <div className="relative">
-        <WalletAvatar addr={s.addr} size={rank === 0 ? 56 : 48} ring={`color-mix(in srgb, ${hue} 60%, transparent)`} />
+        <WalletAvatar
+          addr={s.addr}
+          size={rank === 0 ? 56 : 48}
+          ring={`color-mix(in srgb, ${hue} 60%, transparent)`}
+        />
         {rank === 0 && (
           <LuCrown
             size={18}
@@ -230,16 +292,23 @@ function PodiumCard({ s, rank }: { s: Standing; rank: number }) {
         )}
       </div>
       <div className="flex flex-col items-center gap-0.5">
-        <span className="font-mono text-[11px] font-semibold uppercase tracking-widest" style={{ color: hue }}>
+        <span
+          className="font-mono text-[11px] font-semibold uppercase tracking-widest"
+          style={{ color: hue }}
+        >
           {rank + 1}
-          {rank === 0 ? 'st' : rank === 1 ? 'nd' : 'rd'}
+          {rank === 0 ? "st" : rank === 1 ? "nd" : "rd"}
         </span>
-        <span className="max-w-full truncate text-[14px] font-semibold tracking-tight text-text-1">{s.name}</span>
+        <span className="max-w-full truncate text-[14px] font-semibold tracking-tight text-text-1">
+          {s.name}
+        </span>
       </div>
       <div className="flex w-full flex-col gap-1.5 font-mono tabular-nums">
         <div className="flex items-center justify-between text-[11px]">
           <span className="text-text-3">Points</span>
-          <span className="font-semibold text-[var(--accent)]">{compact(s.points)}</span>
+          <span className="font-semibold text-[var(--accent)]">
+            {compact(s.points)}
+          </span>
         </div>
         <div className="hairline-fade" />
         <div className="flex items-center justify-between text-[12px]">
@@ -260,7 +329,9 @@ function TimeBlock({ value, unit }: { value: string; unit: string }) {
       <span className="glass-inset flex h-11 min-w-11 items-center justify-center rounded-lg px-2 text-[22px] leading-none text-text-1">
         {value}
       </span>
-      <span className="text-[9px] uppercase tracking-[0.14em] text-text-3">{unit}</span>
+      <span className="text-[9px] uppercase tracking-[0.14em] text-text-3">
+        {unit}
+      </span>
     </div>
   );
 }
