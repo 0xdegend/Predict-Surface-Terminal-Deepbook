@@ -9,6 +9,7 @@
  * positions, confirm the field mapping here. Clean empty state until then.
  */
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { useV2Positions } from '@/lib/hooks/use-v2-positions';
 import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
 import { fromQuote } from '@/config/scale';
@@ -16,13 +17,16 @@ import type { V2Position } from '@/lib/api/v2/types';
 
 export function V2PositionsPanel() {
   const acct = usePredictAccountV2();
+  // SSR has no wallet but the client restores one synchronously — branch on
+  // owner only after mount so the server and first client paint match.
+  const mounted = useMounted();
   const { positions, isLoading } = useV2Positions(acct.owner);
 
   return (
     <div className="panel flex flex-col gap-3 p-4">
       <h3 className="text-[14px] font-medium tracking-tight text-text-1">Open positions</h3>
 
-      {!acct.owner ? (
+      {!mounted || !acct.owner ? (
         <p className="text-[12px] text-text-3">Connect your wallet to see your positions.</p>
       ) : isLoading ? (
         <p className="text-[12px] text-text-3">Loading positions…</p>

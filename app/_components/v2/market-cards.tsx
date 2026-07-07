@@ -43,6 +43,7 @@ export function V2MarketCards({
   const isUp = useV2TradeStore((s) => s.isUp);
   const select = useV2TradeStore((s) => s.selectMarket);
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
+  const markPicked = useV2TradeStore((s) => s.markPicked);
 
   const visible = markets.filter((m) => m.expiry > now);
   const grouped = groupByCadence(visible);
@@ -54,6 +55,9 @@ export function V2MarketCards({
   function pick(m: V2Market, up: boolean) {
     select(m.expiry_market_id);
     setIsUp(up);
+    // A card pick chooses market + side in one tap — advance the ticket to
+    // its bet step (legacy parity).
+    markPicked();
   }
 
   if (visible.length === 0) {

@@ -4,18 +4,20 @@
  * V2SmileChart — the interactive "chance BTC ends higher" curve for the selected
  * market (legacy SmileStrip's role, rebuilt on the v2 store + admission grid).
  *
- * Hover anywhere to read the fair UP/DOWN odds at that price. Click or drag to
- * set your strike — it maps the pointed price onto the admission grid and writes
- * `strikeOffset`, staying in sync with the ticket's payout slider (both read/
- * write the same store). A crosshair marks the current strike; the dashed level
- * line shows the picked side's chance. Butterfly violations (odds ticking back
- * up as price rises — a free-money gap) are flagged; on live data they're rare.
+ * Hover anywhere to read the fair UP/DOWN odds at that price.
+ *  - Binary mode: click or drag to set your strike — maps the pointed price onto
+ *    the admission grid and writes `strikeOffset`, synced with the ticket's
+ *    payout slider (both read/write the same store). A crosshair marks the
+ *    strike; the dashed level line shows the picked side's chance.
+ *  - Range mode: a shaded band spans your lower/higher edges; drag either edge to
+ *    resize it. The dashed level shows the band's fair chance of landing inside.
  *
- * Pure viz math from lib/svi (mirrors the on-chain pricing); it never quotes a
- * trade price — the ticket + on-chain guards own that.
+ * Butterfly violations (odds ticking back up as price rises — a free-money gap)
+ * are flagged; on live data they're rare. Pure viz math from lib/svi (mirrors
+ * the on-chain pricing); it never quotes a trade price.
  */
-import { useRef, useState } from 'react';
-import { upFair } from '@/lib/svi/svi';
+import { useState } from 'react';
+import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { price, pct } from '@/lib/format';
@@ -27,26 +29,35 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 const W = 320;
 const H = 120;
 const PAD = { l: 8, r: 8, t: 10, b: 16 };
-
-// Sampling window (fraction of forward) and resolution. Cropped to the readable
-// odds band below; the tails carry no decision and squash the live S-curve.
 const SPAN = 0.12;
 const SAMPLES = 121;
 const PMIN = 0.02;
 const PMAX = 0.98;
+const GRAB_PX = 16; // how near (viewBox x) the pointer must be to grab a band edge
 
 export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: LivePricer }) {
+  const mode = useV2TradeStore((s) => s.mode);
   const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
   const isUp = useV2TradeStore((s) => s.isUp);
   const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
+  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
+  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
+  const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
 
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
-  const dragging = useRef(false);
+  // Which handle is being dragged (state, not a ref, so the active edge's
+  // highlight can render). null = not dragging.
+  const [drag, setDrag] = useState<'strike' | 'lower' | 'higher' | null>(null);
 
   const { forward, svi } = pricer;
   const step = toFloat(market.admission_tick_size) || 1;
   const atm = toFloat(snapStrikeToAdmission(fromFloat(forward), BigInt(market.admission_tick_size)));
+  const rangeMode = mode === 'range';
+  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
+
   const selStrike = atm + strikeOffset * step;
+  const lowerStrike = bandSet ? atm + rangeLowerOffset * step : null;
+  const higherStrike = bandSet ? atm + rangeHigherOffset * step : null;
 
   // Sample the UP curve linearly in price across a generous window.
   const all: { strike: number; up: number }[] = [];
@@ -55,8 +66,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     all.push({ strike, up: upFair(strike, forward, svi) });
   }
 
-  // Butterfly / no-arb check over the full curve: UP must be monotone
-  // non-increasing in strike. A tick back up = an internally inconsistent price.
+  // Butterfly / no-arb check: UP must be monotone non-increasing in strike.
   let hasButterfly = false;
   const butterflies: { strike: number; up: number }[] = [];
   for (let i = 1; i < all.length; i++) {
@@ -94,8 +104,11 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   const fwdX = cx(forward);
   const atmUp = upFair(atm, forward, svi);
 
+  // The level shown on the 0–100% axis: binary = picked side's chance; range =
+  // the band's chance of landing inside (lower, higher].
   const selUp = upFair(selStrike, forward, svi);
-  const selChance = isUp ? selUp : 1 - selUp;
+  const bandChance = lowerStrike != null && higherStrike != null ? rangeFair(lowerStrike, higherStrike, forward, svi) : null;
+  const levelChance = rangeMode ? bandChance : isUp ? selUp : 1 - selUp;
 
   const hUp = hoverPrice != null ? upFair(hoverPrice, forward, svi) : null;
 
@@ -105,31 +118,59 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     const t = (vx - PAD.l) / plotW;
     return xMin + Math.max(0, Math.min(1, t)) * xSpan;
   }
-
-  function setStrikeAt(p: number) {
-    setStrikeOffset(Math.round((p - atm) / step));
+  function vxOf(e: React.PointerEvent<SVGSVGElement>): number {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return ((e.clientX - rect.left) / rect.width) * W;
+  }
+  function offsetAt(p: number) {
+    return Math.round((p - atm) / step);
+  }
+  /** The band edge nearest the pointer, if within GRAB_PX — else null. */
+  function edgeNear(vx: number): 'lower' | 'higher' | null {
+    if (lowerStrike == null || higherStrike == null) return null;
+    const dLo = Math.abs(vx - cx(lowerStrike));
+    const dHi = Math.abs(vx - cx(higherStrike));
+    if (Math.min(dLo, dHi) > GRAB_PX) return null;
+    return dLo <= dHi ? 'lower' : 'higher';
+  }
+  function applyEdge(edge: 'lower' | 'higher', p: number) {
+    if (rangeLowerOffset == null || rangeHigherOffset == null) return;
+    const o = offsetAt(p);
+    if (edge === 'lower') setRangeBand(Math.min(o, rangeHigherOffset - 1), rangeHigherOffset);
+    else setRangeBand(rangeLowerOffset, Math.max(o, rangeLowerOffset + 1));
   }
 
   function onDown(e: React.PointerEvent<SVGSVGElement>) {
-    dragging.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = priceAt(e);
     setHoverPrice(p);
-    setStrikeAt(p);
+    if (rangeMode) {
+      const edge = edgeNear(vxOf(e));
+      if (edge) {
+        setDrag(edge);
+        applyEdge(edge, p);
+      }
+    } else {
+      setDrag('strike');
+      setStrikeOffset(offsetAt(p));
+    }
   }
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
     const p = priceAt(e);
     setHoverPrice(p);
-    if (dragging.current) setStrikeAt(p);
+    if (drag === 'strike') setStrikeOffset(offsetAt(p));
+    else if (drag === 'lower' || drag === 'higher') applyEdge(drag, p);
   }
   function onUp(e: React.PointerEvent<SVGSVGElement>) {
-    dragging.current = false;
+    setDrag(null);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
       /* capture may already be released */
     }
   }
+
+  const overEdge = rangeMode && hoverPrice != null && edgeNear(cx(hoverPrice)) != null;
 
   return (
     <div className="flex flex-col gap-1">
@@ -164,7 +205,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
         <svg
           width="100%"
           viewBox={`0 0 ${W} ${H}`}
-          className="card block cursor-crosshair touch-none"
+          className={`card block touch-none ${overEdge ? 'cursor-ew-resize' : 'cursor-crosshair'}`}
           onPointerDown={onDown}
           onPointerMove={onMove}
           onPointerUp={onUp}
@@ -190,36 +231,53 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
           {/* forward marker */}
           <line x1={fwdX} y1={PAD.t} x2={fwdX} y2={H - PAD.b} stroke="rgba(255,255,255,0.12)" />
 
-          {/* selected strike crosshair */}
-          <line
-            x1={cx(selStrike)}
-            y1={PAD.t}
-            x2={cx(selStrike)}
-            y2={H - PAD.b}
-            stroke="var(--accent)"
-            strokeWidth={1}
-            opacity={0.45}
-          />
+          {/* range band — shaded region + draggable edges */}
+          {rangeMode && lowerStrike != null && higherStrike != null && (
+            <>
+              <rect
+                x={cx(lowerStrike)}
+                y={PAD.t}
+                width={Math.max(0, cx(higherStrike) - cx(lowerStrike))}
+                height={plotH}
+                fill="var(--up)"
+                opacity={0.14}
+              />
+              {(['lower', 'higher'] as const).map((edge) => {
+                const x = cx(edge === 'lower' ? lowerStrike : higherStrike);
+                const active = drag === edge;
+                const pillH = 22;
+                const pillY = PAD.t + plotH / 2 - pillH / 2;
+                return (
+                  <g key={edge}>
+                    <line x1={x} y1={PAD.t} x2={x} y2={H - PAD.b} stroke="var(--up)" strokeWidth={active ? 1.75 : 1} opacity={active ? 1 : 0.75} />
+                    <rect x={x - 4} y={pillY} width={8} height={pillH} rx={4} fill="var(--up)" stroke="rgba(0,0,0,0.5)" strokeWidth={0.75} opacity={active ? 1 : 0.95} />
+                    <line x1={x - 1.5} y1={pillY + 6} x2={x - 1.5} y2={pillY + pillH - 6} stroke="rgba(0,0,0,0.45)" strokeWidth={0.75} />
+                    <line x1={x + 1.5} y1={pillY + 6} x2={x + 1.5} y2={pillY + pillH - 6} stroke="rgba(0,0,0,0.45)" strokeWidth={0.75} />
+                  </g>
+                );
+              })}
+            </>
+          )}
+
+          {/* binary selection crosshair */}
+          {!rangeMode && (
+            <line x1={cx(selStrike)} y1={PAD.t} x2={cx(selStrike)} y2={H - PAD.b} stroke="var(--accent)" strokeWidth={1} opacity={0.45} />
+          )}
 
           <path d={path} fill="none" stroke="var(--up)" strokeWidth={1.5} />
           {butterflies.map((p) => (
             <circle key={p.strike} cx={sx(p.strike)} cy={sy(p.up)} r={2.5} fill="var(--down)" />
           ))}
 
-          {/* picked side's chance — a level on the 0–100% axis */}
-          <line
-            x1={PAD.l}
-            y1={sy(selChance)}
-            x2={W - PAD.r}
-            y2={sy(selChance)}
-            stroke="var(--accent)"
-            strokeWidth={1}
-            strokeDasharray="4 3"
-            opacity={0.85}
-          />
-          <text x={W - PAD.r - 1} y={sy(selChance) - 3} fill="var(--accent)" fontSize={9} fontFamily="monospace" textAnchor="end">
-            {pct(selChance, 0)} chance
-          </text>
+          {/* chance level line (binary side chance / range band chance) */}
+          {levelChance != null && (
+            <>
+              <line x1={PAD.l} y1={sy(levelChance)} x2={W - PAD.r} y2={sy(levelChance)} stroke="var(--accent)" strokeWidth={1} strokeDasharray="4 3" opacity={0.85} />
+              <text x={W - PAD.r - 1} y={sy(levelChance) - 3} fill="var(--accent)" fontSize={9} fontFamily="monospace" textAnchor="end">
+                {pct(levelChance, 0)} chance
+              </text>
+            </>
+          )}
 
           {/* hover guide + dot */}
           {hoverPrice != null && hUp != null && (
@@ -238,6 +296,14 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
             {price(xMax, 0)}
           </text>
         </svg>
+
+        {/* range band summary */}
+        {rangeMode && lowerStrike != null && higherStrike != null && (
+          <div className="glass pointer-events-none absolute left-1.5 top-1.5 z-10 whitespace-nowrap rounded-md px-2 py-1 font-mono text-[10px] leading-none tabular-nums text-up">
+            {price(lowerStrike, 0)}–{price(higherStrike, 0)}
+            {bandChance != null && <span className="text-text-3"> · {pct(bandChance, 0)} chance · drag edges</span>}
+          </div>
+        )}
 
         {/* hover readout — odds at the exact pointed price */}
         {hoverPrice != null && hUp != null && (

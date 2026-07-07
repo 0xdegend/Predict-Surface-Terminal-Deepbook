@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LuBoxes, LuChartArea } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
@@ -30,7 +31,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 type HeroView = 'surface' | 'chart';
 
 export function V2TradeScreen({
-  markets,
+  markets: initialMarkets,
   pricerSeeds,
   serverNow,
 }: {
@@ -38,14 +39,22 @@ export function V2TradeScreen({
   pricerSeeds: Record<string, LivePricer>;
   serverNow: number;
 }) {
+  // Live market discovery — the server snapshot goes stale fast (a new
+  // 1-minute market opens every minute), so poll and let fresh markets flow
+  // into the picker/table/ticket without a reload.
+  const markets = useV2Markets(initialMarkets);
   const marketId = useV2TradeStore((s) => s.marketId);
   const selectMarket = useV2TradeStore((s) => s.selectMarket);
 
   // Default to the soonest market; re-select if the current one expired off-list.
+  // Prefer the soonest NOT-yet-expired market — the list is soonest-first and its
+  // head can have expired between polls, so a naive markets[0] would land the
+  // ticket on a dead market (same guard as legacy's active-oracle fallback).
   useEffect(() => {
     if (markets.length === 0) return;
     if (!marketId || !markets.some((m) => m.expiry_market_id === marketId)) {
-      selectMarket(markets[0].expiry_market_id);
+      const next = markets.find((m) => m.expiry > Date.now()) ?? markets[0];
+      selectMarket(next.expiry_market_id);
     }
   }, [marketId, markets, selectMarket]);
 
@@ -85,7 +94,14 @@ export function V2TradeScreen({
 
       {/* right rail */}
       <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-        <V2TradeTicket market={selected} pricer={pricer} serverNow={serverNow} />
+        <div className="flex flex-col gap-4">
+          {/* Rail ticket heading — mirrors legacy's TicketTitle chrome. */}
+          <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+            <span className="h-3 w-px bg-accent/70" />
+            Trade ticket · click surface → mint
+          </h2>
+          <V2TradeTicket market={selected} pricer={pricer} serverNow={serverNow} />
+        </div>
         {selected && (
           <div className="lg:border-t lg:border-line lg:pt-5">
             <V2OddsPanel market={selected} pricer={pricer} />
@@ -137,7 +153,7 @@ function Hero({
         </div>
       </div>
 
-      <div className="h-[44vh] min-h-75 w-full">
+      <div className="h-[48vh] min-h-90 w-full md:h-[56vh] lg:h-[64vh] lg:min-h-130">
         {view === 'surface' ? <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} /> : <V2PriceChart />}
       </div>
     </div>

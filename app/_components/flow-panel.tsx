@@ -49,6 +49,10 @@ import { TicketGuide } from "./ticket-guide";
 import { TicketEmpty } from "./ticket-empty";
 import { MintConfirmModal } from "./mint-confirm-modal";
 import { PayoutSlider } from "./ticket/payout-slider";
+import { StepBar } from "./ticket/step-bar";
+import { DirectionToggle } from "./ticket/direction-toggle";
+import { GlassCta } from "./ticket/glass-cta";
+import { ReviewButton } from "./ticket/review-button";
 import { SuccessModal } from "./ui/success-modal";
 import { MintSuccessModal } from "./mint-success-modal";
 import type { ConfirmRow } from "./mint-confirm-modal";
@@ -637,20 +641,22 @@ export function FlowPanel({
               before betting. */}
                   {chart}
                   <div className="flex gap-2">
-                    <Toggle
+                    <DirectionToggle
                       active={isUp}
                       onClick={() => setDirection(true)}
                       tone="up"
+                      sub={clientUp != null ? pct(clientUp, 1) : undefined}
                     >
                       UP
-                    </Toggle>
-                    <Toggle
+                    </DirectionToggle>
+                    <DirectionToggle
                       active={!isUp}
                       onClick={() => setDirection(false)}
                       tone="down"
+                      sub={clientUp != null ? pct(1 - clientUp, 1) : undefined}
                     >
                       DOWN
-                    </Toggle>
+                    </DirectionToggle>
                   </div>
 
                   {/* Plain-language explainer so a first-time visitor understands the bet. */}
@@ -688,29 +694,12 @@ export function FlowPanel({
                     </p>
                   )}
 
-                  <button
+                  <GlassCta
                     onClick={() => setStep(2)}
                     disabled={expired || !tradeable}
-                    className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-xl border border-white/10 bg-white/4 px-3 py-3.5 text-[13px] font-semibold text-text-1 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.07),0_10px_30px_-14px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-all duration-200 hover:border-(--accent-line) hover:text-up hover:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1),0_0_30px_-8px_var(--accent-glow)] disabled:cursor-not-allowed disabled:border-line disabled:bg-white/2 disabled:text-text-3 disabled:shadow-none disabled:backdrop-blur-none"
                   >
-                    {/* top-edge sheen — the glass highlight */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-x-6 top-0 h-px bg-linear-to-r from-transparent via-white/20 to-transparent transition-opacity group-hover:via-white/30 group-disabled:opacity-0"
-                    />
-                    {/* accent wash bloom on hover */}
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-disabled:opacity-0"
-                      style={{
-                        background:
-                          "radial-gradient(120% 120% at 50% 0%, var(--accent-soft), transparent 62%)",
-                      }}
-                    />
-                    <span className="relative">
-                      {expired ? "Market expired" : "Set Amount"}
-                    </span>
-                  </button>
+                    {expired ? "Market expired" : "Set Amount"}
+                  </GlassCta>
                 </>
               ) : (
                 <>
@@ -990,7 +979,8 @@ export function FlowPanel({
                     </div>
                   )}
 
-                  <button
+                  <ReviewButton
+                    tone={isUp ? "up" : "down"}
                     onClick={openReview}
                     disabled={
                       !q ||
@@ -1000,11 +990,6 @@ export function FlowPanel({
                       busy === "mint" ||
                       preparing
                     }
-                    className={`group relative flex items-center justify-center gap-2 overflow-hidden rounded-lg border bg-linear-to-b px-3 py-3 text-[13px] font-semibold transition-all disabled:cursor-not-allowed disabled:border-line disabled:from-transparent disabled:to-transparent disabled:text-text-3 disabled:shadow-none ${
-                      isUp
-                        ? "border-up/50 from-up/25 to-up/10 text-up shadow-[0_0_24px_-6px_var(--accent-glow)] hover:from-up/35 hover:to-up/15 hover:shadow-[0_0_30px_-4px_var(--accent-glow)]"
-                        : "border-down/50 from-down/25 to-down/10 text-down shadow-[0_0_24px_-6px_rgba(240,121,107,0.3)] hover:from-down/35 hover:to-down/15 hover:shadow-[0_0_30px_-4px_rgba(240,121,107,0.34)]"
-                    }`}
                   >
                     {expired
                       ? "Market expired"
@@ -1015,7 +1000,7 @@ export function FlowPanel({
                           : q
                             ? `Review`
                             : "Review bet"}
-                  </button>
+                  </ReviewButton>
 
                   <p className="text-[10px] leading-relaxed text-text-3">
                     You’ll preview the trade next; the final price is confirmed
@@ -1135,111 +1120,3 @@ function Row({
   );
 }
 
-/** Compact two-step progress for the guided binary flow. Each segment is a
- *  back-nav target: step 1 is always reachable, step 2 only once you've advanced. */
-function StepBar({
-  step,
-  onStep,
-}: {
-  step: 1 | 2;
-  onStep: (s: 1 | 2) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <StepSeg
-        n={1}
-        label="Side & level"
-        active={step === 1}
-        done={step > 1}
-        onClick={() => onStep(1)}
-        clickable
-      />
-      <span
-        className={`h-px flex-1 transition-colors ${step > 1 ? "bg-accent/40" : "bg-line"}`}
-      />
-      <StepSeg
-        n={2}
-        label="Your bet"
-        active={step === 2}
-        done={false}
-        onClick={() => onStep(2)}
-        clickable={step >= 2}
-      />
-    </div>
-  );
-}
-
-function StepSeg({
-  n,
-  label,
-  active,
-  done,
-  onClick,
-  clickable,
-}: {
-  n: number;
-  label: string;
-  active: boolean;
-  done: boolean;
-  onClick: () => void;
-  clickable: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!clickable}
-      aria-current={active ? "step" : undefined}
-      className={`flex items-center gap-1.5 text-[10px] uppercase tracking-wider transition-colors disabled:cursor-default ${
-        active
-          ? "text-text-1"
-          : clickable
-            ? "text-text-3 hover:text-text-2"
-            : "text-text-3"
-      }`}
-    >
-      <span
-        className={`flex h-5 w-5 items-center justify-center rounded-full border text-[10px] tabular-nums ${
-          active
-            ? "border-accent/60 bg-[var(--accent-soft)] text-accent"
-            : done
-              ? "border-accent/40 text-accent"
-              : "border-line text-text-3"
-        }`}
-      >
-        {done ? "✓" : n}
-      </span>
-      {label}
-    </button>
-  );
-}
-
-function Toggle({
-  active,
-  onClick,
-  tone,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  tone: "up" | "down";
-  children: React.ReactNode;
-}) {
-  const glyph = tone === "up" ? "▲" : "▼";
-  const activeCls =
-    tone === "up"
-      ? "border border-up/50 bg-[var(--accent-soft)] text-up shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_22px_-8px_var(--accent-glow)]"
-      : "border border-down/50 bg-[var(--down-soft)] text-down shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_0_22px_-8px_rgba(240,121,107,0.3)]";
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold tracking-wide transition-all ${
-        active ? activeCls : "ctrl-soft text-text-3"
-      }`}
-    >
-      <span className="text-[9px]">{glyph}</span>
-      {children}
-    </button>
-  );
-}
