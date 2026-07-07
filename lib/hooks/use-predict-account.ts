@@ -281,38 +281,46 @@ export function usePredictAccount() {
   }
 
   /** Mint a vertical-range position. Strikes are 1e9-scaled, quantity @6dec. */
-  async function mintRange(p: {
-    oracleId: string;
-    expiry: number | bigint;
-    lowerStrike: bigint;
-    higherStrike: bigint;
-    quantity: bigint;
-    depositAmount?: bigint;
-  }) {
+  async function mintRange(
+    p: {
+      oracleId: string;
+      expiry: number | bigint;
+      lowerStrike: bigint;
+      higherStrike: bigint;
+      quantity: bigint;
+      depositAmount?: bigint;
+    },
+    opts?: { silentSuccess?: boolean },
+  ) {
     if (!managerId || !owner) return null;
-    return runTx('mint-range', buildMintRangeTx({ managerId, ...p }), [
-      ...managerKeys,
-      qk.managerRanges(managerId),
-      qk.dusdcBalance(owner),
-    ]);
+    return runTx(
+      'mint-range',
+      buildMintRangeTx({ managerId, ...p }),
+      [...managerKeys, qk.managerRanges(managerId), qk.dusdcBalance(owner)],
+      opts,
+    );
   }
 
   /** Mint a vertical-range position THROUGH the skew_fee router (builder fee taken
    *  on-chain). `paymentAmount` = fee + deposit (size with `feeRouterPayment`). */
-  async function mintRangeWithFee(p: {
-    oracleId: string;
-    expiry: number | bigint;
-    lowerStrike: bigint;
-    higherStrike: bigint;
-    quantity: bigint;
-    paymentAmount: bigint;
-  }) {
+  async function mintRangeWithFee(
+    p: {
+      oracleId: string;
+      expiry: number | bigint;
+      lowerStrike: bigint;
+      higherStrike: bigint;
+      quantity: bigint;
+      paymentAmount: bigint;
+    },
+    opts?: { silentSuccess?: boolean },
+  ) {
     if (!managerId || !owner) return null;
-    return runTx('mint-range', buildMintRangeWithFeeTx({ managerId, ...p }), [
-      ...managerKeys,
-      qk.managerRanges(managerId),
-      qk.dusdcBalance(owner),
-    ]);
+    return runTx(
+      'mint-range',
+      buildMintRangeWithFeeTx({ managerId, ...p }),
+      [...managerKeys, qk.managerRanges(managerId), qk.dusdcBalance(owner)],
+      opts,
+    );
   }
 
   /** Redeem (close, or claim if settled) a vertical-range position. */

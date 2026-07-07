@@ -23,7 +23,8 @@ import { useSkewFee } from '@/lib/hooks/use-skew-fee';
 import { humanizeError } from '@/lib/sui/abort';
 import { rangeFair } from '@/lib/svi/svi';
 import { isTradeableFair, type SmileInput } from '@/lib/svi/surface';
-import { MintConfirmModal } from './mint-confirm-modal';
+import { MintConfirmModal, type ConfirmRow } from './mint-confirm-modal';
+import { MintSuccessModal } from './mint-success-modal';
 import { SmileStrip } from './smile-strip';
 import { dateUTC, countdown } from '@/lib/format';
 
@@ -44,6 +45,16 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // Everyone reviews the trade in a modal before minting (the in-app preview
   // gasless Google/zkLogin accounts always needed, now shown for all wallets).
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Snapshot of the just-minted range bet, driving the celebratory success modal
+  // that replaces the easy-to-miss toast (mirrors the binary flow). Cleared on close.
+  const [mintSuccess, setMintSuccess] = useState<{
+    headline: string;
+    rows: ConfirmRow[];
+    staked: string;
+    maxWin: string;
+    digest: string;
+  } | null>(null);
 
   // Live Skew builder fee (bps); >0 routes through the on-chain fee router.
   const { feeBps } = useSkewFee();
@@ -160,25 +171,48 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
       }
       const digest =
         feeBps > 0
-          ? await acct.mintRangeWithFee({
-              oracleId: oracle.oracle_id,
-              expiry: oracle.expiry,
-              lowerStrike: BigInt(band.lowerScaled),
-              higherStrike: BigInt(band.higherScaled),
-              quantity: fresh.quantity,
-              paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
-            })
-          : await acct.mintRange({
-              oracleId: oracle.oracle_id,
-              expiry: oracle.expiry,
-              lowerStrike: BigInt(band.lowerScaled),
-              higherStrike: BigInt(band.higherScaled),
-              quantity: fresh.quantity,
-              depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
-            });
+          ? await acct.mintRangeWithFee(
+              {
+                oracleId: oracle.oracle_id,
+                expiry: oracle.expiry,
+                lowerStrike: BigInt(band.lowerScaled),
+                higherStrike: BigInt(band.higherScaled),
+                quantity: fresh.quantity,
+                paymentAmount: feeRouterPayment(fresh.mintCost, acct.tradingBalanceBase, feeBps).paymentAmount,
+              },
+              // The success modal below is the celebration — skip the redundant toast.
+              { silentSuccess: true },
+            )
+          : await acct.mintRange(
+              {
+                oracleId: oracle.oracle_id,
+                expiry: oracle.expiry,
+                lowerStrike: BigInt(band.lowerScaled),
+                higherStrike: BigInt(band.higherScaled),
+                quantity: fresh.quantity,
+                depositAmount: fundingSplit(fresh.mintCost, acct.tradingBalanceBase).depositAmount,
+              },
+              { silentSuccess: true },
+            );
       setConfirmOpen(false);
       if (digest) {
         pulseFill({ oracleId: oracle.oracle_id, strike: (band.lower + band.higher) / 2, isUp: true });
+        // Snapshot the range bet (authoritative re-quoted amounts) for the success modal.
+        setMintSuccess({
+          headline: `${oracle.underlying_asset} · Range`,
+          rows: [
+            { label: 'Outcome', value: 'Pays if price ends in band' },
+            {
+              label: 'Band',
+              value: `${price(band.lower)} – ${price(band.higher)}`,
+              emphasize: true,
+            },
+            { label: 'Expiry', value: dateUTC(oracle.expiry) },
+          ],
+          staked: fmtQuote(fromQuote(fresh.mintCost)),
+          maxWin: fmtQuote(fromQuote(fresh.quantity)),
+          digest,
+        });
       }
     } finally {
       setPreparing(false);
@@ -411,6 +445,20 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           cost={fmtQuote(cost)}
           maxWin={fmtQuote(maxPayout)}
           confirmLabel="Mint range"
+        />
+      )}
+
+      {/* Celebratory confirmation that the range bet landed (replaces the toast). */}
+      {mintSuccess && (
+        <MintSuccessModal
+          open={!!mintSuccess}
+          onClose={() => setMintSuccess(null)}
+          headline={mintSuccess.headline}
+          tone="up"
+          rows={mintSuccess.rows}
+          staked={mintSuccess.staked}
+          maxWin={mintSuccess.maxWin}
+          digest={mintSuccess.digest}
         />
       )}
     </div>
