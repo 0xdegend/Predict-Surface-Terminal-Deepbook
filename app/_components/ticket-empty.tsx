@@ -7,18 +7,18 @@
  * legible at a glance, (b) lays out the two onboarding steps, and (c) offers a
  * view-aware tip toward the other hero view (Surface ↔ Chart).
  *
- * Everything is `heroView`-aware (same store the TicketTitle reads) so the
- * guidance always matches what's actually clickable on the hero, and the tip
- * points at the real top-left view toggle with its matching icon. Pure
- * presentational + the store read; no wallet logic (the top-nav WalletBar owns
- * connection).
+ * Optionally `heroView`-aware (pass the active surface/chart toggle state, if
+ * the caller has one, via a global store) so the guidance matches what's
+ * actually clickable on the hero and the tip points at the real top-left view
+ * toggle with its matching icon. When omitted, the tip line is skipped rather
+ * than assuming a hero toggle exists — callers whose hero-view state is local
+ * component state (not a shared store) aren't forced to lift it just for this.
+ * Pure presentational; no wallet logic (the top-nav WalletBar owns connection).
  */
 import type { IconType } from 'react-icons';
 import { LuWallet, LuMousePointerClick, LuList, LuChartArea, LuBoxes } from 'react-icons/lu';
-import { useSurfaceStore } from '@/lib/store/surface-store';
 
-export function TicketEmpty() {
-  const heroView = useSurfaceStore((s) => s.heroView);
+export function TicketEmpty({ heroView }: { heroView?: 'surface' | 'chart' | null }) {
   const isChart = heroView === 'chart';
 
   // Step 2 — how to pick a market, adapted to the active hero view. The odds
@@ -29,6 +29,7 @@ export function TicketEmpty() {
   const PickIcon = isChart ? LuList : LuMousePointerClick;
 
   // Tip — point at the OTHER hero view (the real top-left toggle + its icon).
+  // Only shown when the caller actually passed a hero view to point at.
   const tipTitle = isChart ? 'Want the 3-D surface back?' : 'Prefer reading charts?';
   const tipHint = isChart ? 'Switch to Surface (top-left)' : 'Switch to Chart (top-left)';
   const TipIcon = isChart ? LuBoxes : LuChartArea;

@@ -23,6 +23,7 @@ import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { toast } from '@/lib/store/toast-store';
 import { readWrapper, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
+import { qkV2 } from '@/lib/api/v2/client';
 import {
   buildRequestSupplyTx,
   buildRequestWithdrawTx,
@@ -77,7 +78,12 @@ export function usePredictAccountV2() {
   });
   const plpBalanceBase = plpQ.data ?? 0n;
 
-  async function runTx(label: string, tx: Transaction, invalidate: readonly (readonly unknown[])[] = []) {
+  async function runTx(
+    label: string,
+    tx: Transaction,
+    invalidate: readonly (readonly unknown[])[] = [],
+    opts?: { silentSuccess?: boolean },
+  ) {
     if (!owner) return null;
     setBusy(label);
     setError(null);
@@ -99,7 +105,9 @@ export function usePredictAccountV2() {
       await new Promise((r) => setTimeout(r, 1200));
       for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
       await queryClient.invalidateQueries({ queryKey: qkV2Account.wrapper(owner) });
-      toast.success('Done', { desc: `${digest.slice(0, 14)}…`, href: `https://suiscan.xyz/${predictV2Config.network}/tx/${digest}` });
+      if (!opts?.silentSuccess) {
+        toast.success('Done', { desc: `${digest.slice(0, 14)}…`, href: `https://suiscan.xyz/${predictV2Config.network}/tx/${digest}` });
+      }
       return digest;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -123,6 +131,9 @@ export function usePredictAccountV2() {
     plpBalanceBase,
     busy,
     error,
+    /** True for gasless Enoki (Google) accounts — they sign with no wallet
+     *  pop-up, so callers can show honest, wallet-aware copy. */
+    gasless,
     isLoading: wrapperQ.isLoading,
     /** Create + share the AccountWrapper (standalone tx — required before first deposit/mint). */
     createAccount: () => runTx('create', buildCreateAccountTx(), []),
@@ -130,8 +141,10 @@ export function usePredictAccountV2() {
       wrapperId ? runTx('deposit', buildDepositTx(wrapperId, amount)) : Promise.resolve(null),
     withdraw: (amount: bigint) =>
       wrapperId && owner ? runTx('withdraw', buildWithdrawTx(wrapperId, amount, owner)) : Promise.resolve(null),
-    mint: (p: Omit<MintParams, 'wrapperId'>) =>
-      wrapperId ? runTx('mint', buildMintTx({ ...p, wrapperId })) : Promise.resolve(null),
+    mint: (p: Omit<MintParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
+      wrapperId
+        ? runTx('mint', buildMintTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
+        : Promise.resolve(null),
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>) =>
       wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId })) : Promise.resolve(null),
     redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>) =>

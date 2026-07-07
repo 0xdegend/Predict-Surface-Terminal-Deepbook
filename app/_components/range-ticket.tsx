@@ -459,6 +459,8 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           staked={mintSuccess.staked}
           maxWin={mintSuccess.maxWin}
           digest={mintSuccess.digest}
+          network={predictConfig.network}
+          positionsHref="/portfolio"
         />
       )}
     </div>

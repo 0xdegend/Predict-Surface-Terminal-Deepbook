@@ -116,6 +116,7 @@ export function FlowPanel({
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const select = useSurfaceStore((s) => s.select);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
+  const heroView = useSurfaceStore((s) => s.heroView);
 
   // Active oracle = the selection for the current ticket mode, falling back to
   // the other mode's selection. With no selection, default to the soonest expiry
@@ -498,7 +499,7 @@ export function FlowPanel({
     return <div className="text-[12px] text-text-3">Loading trade ticket…</div>;
   }
   if (!owner) {
-    return <TicketEmpty />;
+    return <TicketEmpty heroView={heroView} />;
   }
   if (!oracle || !grid) {
     return (
@@ -1111,6 +1112,8 @@ export function FlowPanel({
           staked={mintSuccess.staked}
           maxWin={mintSuccess.maxWin}
           digest={mintSuccess.digest}
+          network={predictConfig.network}
+          positionsHref="/portfolio"
         />
       )}
     </div>

@@ -6,8 +6,8 @@
  * odds + positions. A shared store (v2-trade-store) bridges picker ↔ ticket ↔
  * odds; the selected market's live Pricer drives the smile, odds, and quote.
  *
- * Mobile stacks the rail under the markets (the legacy slide-up sheet is a UI-6
- * polish item). Positions are a placeholder until UI-3.
+ * Mobile stacks the rail under the markets (the legacy slide-up sheet is a
+ * follow-up item).
  */
 import { useEffect, useMemo, useState } from 'react';
 import { LuBoxes, LuChartArea } from 'react-icons/lu';
@@ -20,6 +20,7 @@ import { V2MarketPicker } from './market-picker';
 import { V2TradeTicket } from './trade-ticket';
 import { V2OddsPanel } from './odds-panel';
 import { V2PriceChart } from './price-chart';
+import { V2PositionsPanel } from './positions-panel';
 import { SurfaceMountV2 } from './surface/surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -78,21 +79,20 @@ export function V2TradeScreen({
           )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
-          <V2MarketPicker markets={markets} serverNow={serverNow} />
+          <V2MarketPicker markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
         </div>
       </section>
 
       {/* right rail */}
       <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-        <V2TradeTicket market={selected} pricer={pricer} />
+        <V2TradeTicket market={selected} pricer={pricer} serverNow={serverNow} />
         {selected && (
           <div className="lg:border-t lg:border-line lg:pt-5">
             <V2OddsPanel market={selected} pricer={pricer} />
           </div>
         )}
         <div className="lg:border-t lg:border-line lg:pt-5">
-          <h3 className="mb-1 text-[13px] font-medium tracking-tight text-text-1">Your positions</h3>
-          <p className="text-[11px] leading-relaxed text-text-3">Open a position and it’ll show here. (Full portfolio coming next.)</p>
+          <V2PositionsPanel />
         </div>
       </aside>
     </main>

@@ -38,11 +38,25 @@ const GUIDE: Record<'binary' | 'range', { steps: string[]; tip: string }> = {
   },
 };
 
-export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 'range' }) {
+export function TicketGuide({
+  step,
+  mode,
+  storageKey = GUIDE_KEY,
+  copy,
+}: {
+  step: 1 | 2 | 3;
+  mode: 'binary' | 'range';
+  /** Dismiss-state localStorage key — override so a second ticket (e.g. v2's
+   *  deployment) doesn't share dismiss state with this one via the same origin. */
+  storageKey?: string;
+  /** Override the built-in binary/range copy (e.g. for a caller whose form
+   *  doesn't match either shape) instead of growing the `mode` union. */
+  copy?: { steps: string[]; tip: string };
+}) {
   const [dismissed, setDismissed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try {
-      return localStorage.getItem(GUIDE_KEY) === '1';
+      return localStorage.getItem(storageKey) === '1';
     } catch {
       return false;
     }
@@ -50,7 +64,7 @@ export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 
 
   function dismiss() {
     try {
-      localStorage.setItem(GUIDE_KEY, '1');
+      localStorage.setItem(storageKey, '1');
     } catch {
       /* private mode / storage disabled — just hide for this session */
     }
@@ -59,12 +73,14 @@ export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 
 
   function reopen() {
     try {
-      localStorage.removeItem(GUIDE_KEY);
+      localStorage.removeItem(storageKey);
     } catch {
       /* ignore */
     }
     setDismissed(false);
   }
+
+  const active = copy ?? GUIDE[mode];
 
   if (dismissed) {
     // Clear, always-available reopen affordance — a chip with a help icon, so a
@@ -96,7 +112,7 @@ export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 
       </div>
 
       <ol className="flex flex-col gap-1.5">
-        {GUIDE[mode].steps.map((label, i) => {
+        {active.steps.map((label, i) => {
           const n = i + 1;
           const active = n === step;
           const done = n < step;
@@ -125,7 +141,7 @@ export function TicketGuide({ step, mode }: { step: 1 | 2 | 3; mode: 'binary' | 
         })}
       </ol>
 
-      <p className="text-[11px] leading-relaxed text-text-2">{GUIDE[mode].tip}</p>
+      <p className="text-[11px] leading-relaxed text-text-2">{active.tip}</p>
     </div>
   );
 }

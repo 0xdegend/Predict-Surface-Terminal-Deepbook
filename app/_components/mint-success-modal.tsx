@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { LuExternalLink, LuArrowUpRight } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
 import type { ConfirmRow } from './mint-confirm-modal';
-import { predictConfig } from '@/config/predict';
+import type { SuiNetwork } from '@/config/predict';
 
 /**
  * MintSuccessModal — the celebratory "your bet is in" confirmation shown after a
@@ -26,6 +26,8 @@ export function MintSuccessModal({
   staked,
   maxWin,
   digest,
+  network,
+  positionsHref,
 }: {
   open: boolean;
   onClose: () => void;
@@ -39,9 +41,13 @@ export function MintSuccessModal({
   maxWin: string;
   /** Executed tx digest → renders a "View on explorer" link. */
   digest?: string;
+  /** Which network's explorer to link to (differs by deployment). */
+  network: SuiNetwork;
+  /** Where "View positions" should send the trader (differs by deployment). */
+  positionsHref: string;
 }) {
   const toneText = tone === 'up' ? 'text-up' : 'text-down';
-  const explorer = digest ? `https://suiscan.xyz/${predictConfig.network}/tx/${digest}` : null;
+  const explorer = digest ? `https://suiscan.xyz/${network}/tx/${digest}` : null;
 
   return (
     <Modal
@@ -61,7 +67,7 @@ export function MintSuccessModal({
             Done
           </button>
           <Link
-            href="/portfolio"
+            href={positionsHref}
             onClick={onClose}
             className="inline-flex items-center gap-1.5 rounded-lg border border-(--accent-line) bg-(--accent-soft) px-4 py-2 text-[12px] font-semibold text-up transition-shadow hover:shadow-[0_0_22px_-8px_var(--accent-glow)]"
           >

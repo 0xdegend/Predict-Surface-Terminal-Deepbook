@@ -1,71 +1,109 @@
 'use client';
 
 /**
- * V2MarketPicker — the clickable market grid (legacy MarketPicker's role).
- * Active markets grouped by cadence; picking one drives the shared trade store,
- * which the hero smile, odds panel, and ticket all read. Live countdowns.
+ * V2MarketPicker — wraps the two equivalent market views (beginner-friendly
+ * cards vs the dense table) behind a segmented toggle, mirroring the legacy
+ * MarketPicker. Both read the same markets + pricer seeds and drive the same
+ * shared trade store, so switching is purely presentational. The choice is
+ * remembered locally (own key, distinct from legacy's).
+ *
+ * Table is the default — traders land on the dense grid (IV / price / leverage /
+ * ids at a glance); Cards stays one click away for the decision-led view.
  */
-import { useNow } from '@/lib/hooks/use-now';
-import { useV2TradeStore } from '@/lib/store/v2-trade-store';
-import { groupByCadence, CADENCE_ORDER, CADENCE_LABEL, maxLeverageX } from '@/lib/markets/v2-discovery';
+import { useState } from 'react';
+import { LuLayoutGrid, LuTable2 } from 'react-icons/lu';
+import type { IconType } from 'react-icons';
+import { useMounted } from '@/lib/hooks/use-mounted';
+import { V2MarketCards } from './market-cards';
+import { V2MarketTable } from './market-table';
 import type { V2Market } from '@/lib/api/v2/types';
+import type { LivePricer } from '@/lib/sui/v2/pricer';
 
-export function V2MarketPicker({ markets, serverNow }: { markets: V2Market[]; serverNow: number }) {
-  const now = useNow(serverNow);
-  const marketId = useV2TradeStore((s) => s.marketId);
-  const select = useV2TradeStore((s) => s.selectMarket);
-  const grouped = groupByCadence(markets);
+type View = 'cards' | 'table';
+const STORAGE_KEY = 'predict.v2.marketView';
+
+function readSaved(): View | null {
+  try {
+    const v = window.localStorage.getItem(STORAGE_KEY);
+    return v === 'cards' || v === 'table' ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function V2MarketPicker({
+  markets,
+  pricerSeeds,
+  serverNow,
+}: {
+  markets: V2Market[];
+  pricerSeeds: Record<string, LivePricer>;
+  serverNow: number;
+}) {
+  // Server + first client paint render the default; the saved preference only
+  // applies once mounted, so SSR and hydration agree. An explicit choice wins.
+  const mounted = useMounted();
+  const [override, setOverride] = useState<View | null>(null);
+  const view: View = override ?? (mounted ? (readSaved() ?? 'table') : null) ?? 'table';
+
+  function choose(next: View) {
+    setOverride(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* private mode / storage disabled — non-fatal */
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-5">
-      {CADENCE_ORDER.map((c) =>
-        grouped[c].length ? (
-          <section key={c}>
-            <div className="mb-2 flex items-baseline justify-between">
-              <h3 className="text-[13px] font-medium tracking-tight text-text-1">{CADENCE_LABEL[c]} markets</h3>
-              <span className="font-mono text-[11px] text-text-3">{grouped[c].length} live</span>
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
-              {grouped[c].map((m) => (
-                <Card
-                  key={m.expiry_market_id}
-                  market={m}
-                  now={now}
-                  selected={m.expiry_market_id === marketId}
-                  onSelect={() => select(m.expiry_market_id)}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null,
-      )}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-3 flex justify-end">
+        <div className="segmented" role="tablist" aria-label="Market view">
+          <span
+            aria-hidden
+            className="segmented-thumb"
+            style={{ transform: view === 'table' ? 'translateX(100%)' : 'translateX(0)' }}
+          />
+          <ToggleButton icon={LuLayoutGrid} label="Cards" active={view === 'cards'} onClick={() => choose('cards')} />
+          <ToggleButton icon={LuTable2} label="Table" active={view === 'table'} onClick={() => choose('table')} />
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        {view === 'cards' ? (
+          <V2MarketCards markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
+        ) : (
+          <V2MarketTable markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
+        )}
+      </div>
     </div>
   );
 }
 
-function Card({
-  market,
-  now,
-  selected,
-  onSelect,
+function ToggleButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
 }: {
-  market: V2Market;
-  now: number;
-  selected: boolean;
-  onSelect: () => void;
+  icon: IconType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const secs = Math.max(0, Math.round((market.expiry - now) / 1000));
-  const cd = secs < 3600 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-  const closing = secs < 60;
   return (
     <button
-      onClick={onSelect}
-      className={`flex flex-col items-start gap-1 rounded-lg p-3 text-left transition-colors ${
-        selected ? 'bg-(--accent-soft) text-text-1' : 'bg-white/2 text-text-2 hover:bg-white/4 hover:text-text-1'
-      }`}
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={[
+        'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        active ? 'text-text-1' : 'text-text-3 hover:text-text-2',
+      ].join(' ')}
     >
-      <span className={`font-mono text-[13px] tabular-nums ${closing ? 'text-warn' : ''}`}>{cd}</span>
-      <span className="text-[10px] text-text-3">up to {maxLeverageX(market)}x</span>
+      <Icon size={13} className={active ? 'text-accent' : ''} />
+      {label}
     </button>
   );
 }

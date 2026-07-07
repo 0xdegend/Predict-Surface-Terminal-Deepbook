@@ -27,6 +27,7 @@ export function MintConfirmModal({
   cost,
   maxWin,
   confirmLabel = 'Confirm mint',
+  subtitle = 'Signed in with Google — mints instantly, no wallet pop-up',
 }: {
   open: boolean;
   onClose: () => void;
@@ -41,6 +42,9 @@ export function MintConfirmModal({
   /** Formatted max payout (what they win if it settles in their favor). */
   maxWin: string;
   confirmLabel?: string;
+  /** Dialog subtitle. Defaults to the gasless-Enoki copy; pass an accurate
+   *  line for callers shown to wallet users who WILL get a signing pop-up. */
+  subtitle?: string;
 }) {
   // The fox deliberates with you (thinking), then backs your call (confident)
   // the moment you reach for the mint button — or while the mint is in flight.
@@ -56,7 +60,7 @@ export function MintConfirmModal({
       open={open}
       onClose={onClose}
       title="Confirm your trade"
-      subtitle="Signed in with Google — mints instantly, no wallet pop-up"
+      subtitle={subtitle}
       variant="glass"
       maxWidthClass="max-w-sm"
       mascot={busy || committing ? 'confident' : 'thinking'}

@@ -74,3 +74,29 @@ export function strikeGrid(forward: number, admissionTickScaled: string, half = 
 export function maxLeverageX(m: V2Market): number {
   return toFloat(m.max_admission_leverage);
 }
+
+/**
+ * Near-expiry warning thresholds, in seconds before `expiry`. Keyed by
+ * cadence, NOT a fraction of `(expiry - checkpoint_timestamp_ms)` — that tenor
+ * is `windowSize` (3) cadence periods, not one (see the file header), so a
+ * duration-fraction formula would be off by ~3x. `closingSoon` shows a
+ * caution; `tooCloseToExpiry` blocks minting outright (a tx can't land in
+ * time).
+ */
+const EXPIRY_THRESHOLDS: Record<V2Cadence, { closingSoonSecs: number; tooCloseSecs: number }> = {
+  '1m': { closingSoonSecs: 15, tooCloseSecs: 4 },
+  '5m': { closingSoonSecs: 30, tooCloseSecs: 5 },
+  '1h': { closingSoonSecs: 120, tooCloseSecs: 5 },
+};
+
+/** True once the market is inside its cadence's "closing soon" caution window. */
+export function isClosingSoon(m: V2Market, now: number): boolean {
+  const secsLeft = (m.expiry - now) / 1000;
+  return secsLeft <= EXPIRY_THRESHOLDS[cadenceOf(m)].closingSoonSecs;
+}
+
+/** True once a mint can no longer safely land before expiry. */
+export function isTooCloseToExpiry(m: V2Market, now: number): boolean {
+  const secsLeft = (m.expiry - now) / 1000;
+  return secsLeft <= EXPIRY_THRESHOLDS[cadenceOf(m)].tooCloseSecs;
+}

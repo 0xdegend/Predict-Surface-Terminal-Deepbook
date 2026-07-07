@@ -5,6 +5,8 @@ import {
   groupByCadence,
   strikeGrid,
   maxLeverageX,
+  isClosingSoon,
+  isTooCloseToExpiry,
 } from './v2-discovery';
 import type { V2Market } from '@/lib/api/v2/types';
 
@@ -91,5 +93,39 @@ describe('strikeGrid', () => {
 describe('maxLeverageX', () => {
   it('reads max leverage as a human multiple', () => {
     expect(maxLeverageX(mkt({ expiry_market_id: 'x', checkpoint_timestamp_ms: 0, expiry: MIN }))).toBe(3);
+  });
+});
+
+describe('isClosingSoon / isTooCloseToExpiry (cadence-keyed, not tenor-fraction)', () => {
+  // A 1m market's raw tenor (expiry - checkpoint_timestamp_ms) is ~3min (windowSize),
+  // so thresholds must key off cadenceOf(), not a fraction of that tenor.
+  const base = 1_000_000_000;
+  const oneMin = mkt({ expiry_market_id: '1m', checkpoint_timestamp_ms: base, expiry: base + 3 * MIN });
+  const fiveMin = mkt({ expiry_market_id: '5m', checkpoint_timestamp_ms: base, expiry: base + 15 * MIN });
+  const hourly = mkt({
+    expiry_market_id: '1h',
+    checkpoint_timestamp_ms: base,
+    expiry: base + 180 * MIN,
+    max_expiry_allocation: '250000000000',
+  });
+
+  it('1m market: closing-soon/too-close fire in the last ~15s/4s, not ~3min', () => {
+    const expiry = oneMin.expiry;
+    expect(isClosingSoon(oneMin, expiry - 20_000)).toBe(false);
+    expect(isClosingSoon(oneMin, expiry - 10_000)).toBe(true);
+    expect(isTooCloseToExpiry(oneMin, expiry - 10_000)).toBe(false);
+    expect(isTooCloseToExpiry(oneMin, expiry - 2_000)).toBe(true);
+  });
+
+  it('5m and 1h markets use their own, larger windows', () => {
+    expect(isClosingSoon(fiveMin, fiveMin.expiry - 45_000)).toBe(false);
+    expect(isClosingSoon(fiveMin, fiveMin.expiry - 20_000)).toBe(true);
+    expect(isClosingSoon(hourly, hourly.expiry - 150_000)).toBe(false);
+    expect(isClosingSoon(hourly, hourly.expiry - 60_000)).toBe(true);
+  });
+
+  it('is false well before expiry', () => {
+    expect(isClosingSoon(oneMin, base)).toBe(false);
+    expect(isTooCloseToExpiry(oneMin, base)).toBe(false);
   });
 });

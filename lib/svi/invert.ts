@@ -12,14 +12,18 @@ import { fromFloat } from '@/config/scale';
 import { snapStrikeToTick } from '@/lib/keys';
 import type { Oracle } from '@/lib/api/types';
 
-/** Strike (1e9-scaled, snapped to grid) whose UP fair price ≈ `targetUp`. */
-export function strikeForUpFair(
+/**
+ * Bisect for the (unsnapped) strike whose UP fair price ≈ `targetUp`. Shared
+ * core for both the legacy oracle grid and v2's admission-tick grid — each
+ * deployment snaps this float to its own grid (see lib/sui/v2/invert.ts for
+ * the v2 counterpart, mirroring the lib/sui/abort.ts split).
+ */
+export function bisectUpFairStrike(
   targetUp: number,
   forward: number,
   svi: SviFloat,
-  oracle: Oracle,
   settlement: number | null = null,
-): bigint {
+): number {
   const target = Math.min(0.999, Math.max(0.001, targetUp));
   // Bracket: deep ITM (≈1) … deep OTM (≈0) around the forward.
   let lo = forward * 0.5;
@@ -30,7 +34,18 @@ export function strikeForUpFair(
     if (f > target) lo = mid; // still too likely → raise the strike
     else hi = mid;
   }
-  return snapStrikeToTick(fromFloat((lo + hi) / 2), oracle);
+  return (lo + hi) / 2;
+}
+
+/** Strike (1e9-scaled, snapped to grid) whose UP fair price ≈ `targetUp`. */
+export function strikeForUpFair(
+  targetUp: number,
+  forward: number,
+  svi: SviFloat,
+  oracle: Oracle,
+  settlement: number | null = null,
+): bigint {
+  return snapStrikeToTick(fromFloat(bisectUpFairStrike(targetUp, forward, svi, settlement)), oracle);
 }
 
 /** The chosen direction's fair probability for a strike. */
