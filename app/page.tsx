@@ -111,7 +111,7 @@ export default async function Page() {
       {error ? (
         // The legacy backend has been wound down — a failed snapshot now means
         // "the app moved", not "try again". Point the trader at /v2.
-        <MigrationNotice message={error} detail={predictConfig.serverUrl} />
+        <MigrationNotice />
       ) : snapshot ? (
         <>
           <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">

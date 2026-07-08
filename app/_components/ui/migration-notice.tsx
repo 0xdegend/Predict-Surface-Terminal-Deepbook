@@ -2,22 +2,13 @@
  * MigrationNotice — shown on the legacy surface when the legacy Predict server
  * can't be reached. The legacy testnet backend has been wound down, so instead
  * of a dead-end "server error" we tell the trader the app has moved and hand
- * them a one-click path to the new release. A quiet Retry stays for the case
- * where the old server briefly comes back.
+ * them a one-click path to the new release. Deliberately no retry and no raw
+ * error text — the old server isn't coming back, so the only action is moving on.
  */
 import Link from 'next/link';
 import { LuArrowRightLeft, LuArrowRight } from 'react-icons/lu';
-import { RetryButton } from '../retry-button';
 
-export function MigrationNotice({
-  message,
-  detail,
-}: {
-  /** Raw fetch error — kept as the de-emphasized technical footer. */
-  message: string;
-  /** e.g. the legacy server URL. */
-  detail?: string;
-}) {
+export function MigrationNotice() {
   return (
     <div className="flex min-h-[60vh] flex-1 items-center justify-center p-6">
       <div className="glass relative w-full max-w-md overflow-hidden rounded-2xl p-7 text-center shadow-[0_24px_70px_-24px_rgba(0,0,0,0.8)]">
@@ -55,15 +46,6 @@ export function MigrationNotice({
               className="transition-transform duration-200 group-hover:translate-x-0.5"
             />
           </Link>
-
-          {/* quiet recovery path in case the legacy server comes back */}
-          <RetryButton />
-
-          {/* technical detail — de-emphasized, for support/debugging */}
-          <p className="break-words font-mono text-[10px] leading-relaxed text-text-3">
-            {message}
-            {detail ? ` · ${detail}` : ''}
-          </p>
         </div>
       </div>
     </div>
