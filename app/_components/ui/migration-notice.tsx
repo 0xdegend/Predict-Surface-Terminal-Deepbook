@@ -5,8 +5,8 @@
  * them a one-click path to the new release. Deliberately no retry and no raw
  * error text — the old server isn't coming back, so the only action is moving on.
  */
-import Link from 'next/link';
-import { LuArrowRightLeft, LuArrowRight } from 'react-icons/lu';
+import Link from "next/link";
+import { LuArrowRightLeft, LuArrowRight } from "react-icons/lu";
 
 export function MigrationNotice() {
   return (
@@ -17,7 +17,8 @@ export function MigrationNotice() {
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-0 h-24"
           style={{
-            background: 'radial-gradient(80% 100% at 50% 0%, var(--accent-soft), transparent 70%)',
+            background:
+              "radial-gradient(80% 100% at 50% 0%, var(--accent-soft), transparent 70%)",
           }}
         />
 
@@ -31,8 +32,9 @@ export function MigrationNotice() {
               Migration notice
             </h2>
             <p className="text-[12px] leading-relaxed text-text-2">
-              The legacy testnet server is no longer responding, so this version can&apos;t load
-              market data. Trading continues on the new release — same wallet, same DUSDC.
+              The legacy testnet server is no longer responding, so this version
+              can&apos;t load market data. Trading continues on the new release
+              — same wallet, same DUSDC.
             </p>
           </div>
 
@@ -41,10 +43,6 @@ export function MigrationNotice() {
             className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)]"
           >
             Navigate to V2
-            <LuArrowRight
-              size={15}
-              className="transition-transform duration-200 group-hover:translate-x-0.5"
-            />
           </Link>
         </div>
       </div>
