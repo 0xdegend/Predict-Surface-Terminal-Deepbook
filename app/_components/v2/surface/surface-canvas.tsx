@@ -59,6 +59,11 @@ function nearestCell(mesh: SurfaceMesh, p: THREE.Vector3): { row: number; col: n
   };
 }
 
+/** The ticket's current pick resolved to absolute strikes on a surface row. */
+type SurfaceSelection =
+  | { kind: 'binary'; oracleId: string; strike: number; isUp: boolean }
+  | { kind: 'range'; oracleId: string; lower: number; higher: number };
+
 export function SurfaceCanvasV2({
   inputs,
   markets,
@@ -70,6 +75,17 @@ export function SurfaceCanvasV2({
 }) {
   const [stress, setStress] = useState(false);
   const [hover, setHover] = useState<HoverInfo | null>(null);
+
+  // Ticket selection (strike offset / range band, in admission steps from ATM)
+  // resolved to absolute strikes against the selected market's surface row, so
+  // the pick renders ON the surface and tracks slider/odds-curve drags live —
+  // legacy parity (SelectedMarker / BinaryWinZone / RangeBandMarker).
+  const marketId = useV2TradeStore((s) => s.marketId);
+  const mode = useV2TradeStore((s) => s.mode);
+  const isUp = useV2TradeStore((s) => s.isUp);
+  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
+  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
+  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
 
   // Stress perturbs the SVI (adds slope/skew) so the no-arb checker visibly
   // fires — the credibility flex. Live data is normally clean.
@@ -83,6 +99,25 @@ export function SurfaceCanvasV2({
     [shownInputs, serverNow],
   );
   const mesh = useMemo(() => buildSurfaceMesh(surface), [surface]);
+
+  const selection = useMemo<SurfaceSelection | null>(() => {
+    if (!marketId) return null;
+    const market = markets.find((m) => m.expiry_market_id === marketId);
+    const row = surface.rows.find((r) => r.oracleId === marketId);
+    if (!market || !row) return null; // selected market isn't on the surface (no seed row)
+    const admStep = toFloat(market.admission_tick_size) || 1;
+    const atm = toFloat(snapStrikeToAdmission(fromFloat(row.forward), BigInt(market.admission_tick_size)));
+    if (mode === 'range') {
+      if (rangeLowerOffset == null || rangeHigherOffset == null) return null;
+      return {
+        kind: 'range',
+        oracleId: marketId,
+        lower: atm + rangeLowerOffset * admStep,
+        higher: atm + rangeHigherOffset * admStep,
+      };
+    }
+    return { kind: 'binary', oracleId: marketId, strike: atm + strikeOffset * admStep, isUp };
+  }, [marketId, markets, surface, mode, isUp, strikeOffset, rangeLowerOffset, rangeHigherOffset]);
 
   const hasButterfly = surface.rows.some((r) => r.cells.some((c) => c.butterfly));
   const hasCalendar = surface.rows.some((r) => r.cells.some((c) => c.calendar));
@@ -106,6 +141,13 @@ export function SurfaceCanvasV2({
         <group position={[0, -1.4, 0]}>
           <SurfaceMesh surface={surface} mesh={mesh} markets={markets} onHover={setHover} />
           <SurfaceAxes mesh={mesh} />
+          {selection?.kind === 'binary' && (
+            <>
+              <BinaryWinZone mesh={mesh} surface={surface} sel={selection} />
+              <SelectedMarker mesh={mesh} surface={surface} sel={selection} />
+            </>
+          )}
+          {selection?.kind === 'range' && <RangeBandMarker mesh={mesh} surface={surface} sel={selection} />}
           {(hasButterfly || hasCalendar) && <ArbMarkers surface={surface} mesh={mesh} />}
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
@@ -228,6 +270,269 @@ function SurfaceMesh({
       <mesh geometry={geometry} raycast={() => null}>
         <meshBasicMaterial wireframe transparent opacity={0.1} color="#ffffff" />
       </mesh>
+    </group>
+  );
+}
+
+/** Map an (oracle, strike) to its nearest grid cell — world xyz + row/col so
+ *  callers can sample neighbouring columns (the win-zone ribbon needs the span). */
+function locateCell(
+  mesh: SurfaceMesh,
+  surface: Surface,
+  oracleId: string,
+  strike: number,
+): { x: number; y: number; z: number; row: number; col: number } | null {
+  const row = surface.rows.findIndex((r) => r.oracleId === oracleId);
+  if (row < 0) return null;
+  const r = surface.rows[row];
+  const k = Math.log(strike / r.forward);
+  let col = 0;
+  let best = Infinity;
+  for (let c = 0; c < surface.kGrid.length; c++) {
+    const d = Math.abs(surface.kGrid[c] - k);
+    if (d < best) {
+      best = d;
+      col = c;
+    }
+  }
+  const idx = (row * mesh.cols + col) * 3;
+  return { x: mesh.positions[idx], y: mesh.positions[idx + 1], z: mesh.positions[idx + 2], row, col };
+}
+
+/**
+ * World position for an (oracle, strike), INTERPOLATED continuously along the
+ * strike axis rather than snapped to the nearest grid column — as the trader
+ * nudges the strike on the ticket the marker glides across the surface
+ * (matching the chart's strike line) instead of jumping cell-to-cell.
+ */
+function locate(
+  mesh: SurfaceMesh,
+  surface: Surface,
+  oracleId: string,
+  strike: number,
+): { x: number; y: number; z: number } | null {
+  const row = surface.rows.findIndex((r) => r.oracleId === oracleId);
+  if (row < 0) return null;
+  const r = surface.rows[row];
+  const k = Math.log(strike / r.forward);
+  const grid = surface.kGrid; // ascending log-moneyness, one entry per column
+  // Bracket k between columns c0..c1, then take the fraction t in between.
+  let c1 = grid.findIndex((g) => g >= k);
+  if (c1 < 0) c1 = grid.length - 1; // k past the last column → clamp to the edge
+  const c0 = Math.max(0, c1 - 1);
+  const span = grid[c1] - grid[c0];
+  const t = span !== 0 ? Math.max(0, Math.min(1, (k - grid[c0]) / span)) : 0;
+  const i0 = (row * mesh.cols + c0) * 3;
+  const i1 = (row * mesh.cols + c1) * 3;
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  return {
+    x: lerp(mesh.positions[i0], mesh.positions[i1]),
+    y: lerp(mesh.positions[i0 + 1], mesh.positions[i1 + 1]),
+    z: lerp(mesh.positions[i0 + 2], mesh.positions[i1 + 2]),
+  };
+}
+
+const UP_ACCENT = '#4dd6b0';
+const DOWN_ACCENT = '#f0796b';
+
+/** The selected strike: white orb + pulsing accent ring + drop-line (legacy port). */
+function SelectedMarker({
+  mesh,
+  surface,
+  sel,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  sel: Extract<SurfaceSelection, { kind: 'binary' }>;
+}) {
+  const ref = useRef<THREE.Mesh>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const accent = sel.isUp ? UP_ACCENT : DOWN_ACCENT;
+  const pos = useMemo(() => locate(mesh, surface, sel.oracleId, sel.strike), [mesh, surface, sel]);
+  useFrame((state) => {
+    if (reduced) return;
+    const t = state.clock.elapsedTime;
+    if (ref.current) ref.current.scale.setScalar(1 + 0.16 * Math.sin(t * 4));
+    if (ringRef.current) {
+      const s = 1 + 0.22 * Math.sin(t * 2.6);
+      ringRef.current.scale.set(s, s, s);
+      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.5 + 0.3 * Math.sin(t * 2.6);
+    }
+  });
+  if (!pos) return null;
+  return (
+    <group>
+      {/* Drop-line to the floor — anchors the selection in 3-D space. */}
+      <mesh position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.35} />
+      </mesh>
+      {/* Pulsing accent ring under the node. */}
+      <mesh ref={ringRef} position={[pos.x, pos.y + 0.02, pos.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.16, 0.21, 40]} />
+        <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} />
+      </mesh>
+      {/* The node itself. */}
+      <mesh ref={ref} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.1, 20, 20]} />
+        <meshBasicMaterial color="#f4f6f8" />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * BinaryWinZone — the side of the strike you win on lights up (legacy port):
+ * a glowing ribbon sweeps along the winning half of the smile (fading toward
+ * the edge), a subtle floor wash marks the price region, and an arrow points
+ * the direction. UP → teal to higher prices (right); DOWN → coral to lower.
+ */
+function BinaryWinZone({
+  mesh,
+  surface,
+  sel,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  sel: Extract<SurfaceSelection, { kind: 'binary' }>;
+}) {
+  const accentHex = sel.isUp ? UP_ACCENT : DOWN_ACCENT;
+
+  const geom = useMemo(() => {
+    const cell = locateCell(mesh, surface, sel.oracleId, sel.strike);
+    if (!cell) return null;
+    // Win on the higher-price (right, larger col) side for UP, lower for DOWN.
+    const edgeCol = sel.isUp ? mesh.cols - 1 : 0;
+    const from = Math.min(cell.col, edgeCol);
+    const to = Math.max(cell.col, edgeCol);
+    const span = Math.max(to - from, 1);
+    const accent = new THREE.Color(accentHex);
+    const points: [number, number, number][] = [];
+    const colors: [number, number, number][] = [];
+    for (let c = from; c <= to; c++) {
+      const idx = (cell.row * mesh.cols + c) * 3;
+      points.push([mesh.positions[idx], mesh.positions[idx + 1] + 0.05, mesh.positions[idx + 2]]);
+      // Bright at the strike, fading to dark at the winning edge.
+      const dist = Math.abs(c - cell.col) / span;
+      const col = accent.clone().multiplyScalar(1 - 0.9 * dist);
+      colors.push([col.r, col.g, col.b]);
+    }
+    const edgeX = mesh.positions[(cell.row * mesh.cols + edgeCol) * 3];
+    return { cell, points, colors, edgeX };
+  }, [mesh, surface, sel, accentHex]);
+
+  if (!geom || geom.points.length < 2) return null;
+
+  const { cell, points, colors, edgeX } = geom;
+  const dir = sel.isUp ? 1 : -1;
+
+  return (
+    <group>
+      {/* subtle floor wash over the winning price region */}
+      <mesh position={[(cell.x + edgeX) / 2, 0.012, cell.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <planeGeometry args={[Math.max(Math.abs(edgeX - cell.x), 0.01), 0.6]} />
+        <meshBasicMaterial color={accentHex} transparent opacity={0.08} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* glow underlay + crisp ribbon sweeping the winning side of the smile,
+          fading toward the edge (raycast off so it never steals node clicks) */}
+      <Line points={points} vertexColors={colors} lineWidth={6} transparent opacity={0.3} raycast={() => null} />
+      <Line points={points} vertexColors={colors} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+
+      {/* direction arrow at the strike, pointing the way you win */}
+      <mesh
+        position={[cell.x + dir * 0.34, cell.y + 0.13, cell.z]}
+        rotation={[0, 0, dir > 0 ? -Math.PI / 2 : Math.PI / 2]}
+        raycast={() => null}
+      >
+        <coneGeometry args={[0.06, 0.16, 14]} />
+        <meshBasicMaterial color={accentHex} />
+      </mesh>
+    </group>
+  );
+}
+
+/** A single band edge: a faint drop-line to the floor + an accent orb. */
+function EdgeOrb({ pos, orbRef }: { pos: { x: number; y: number; z: number }; orbRef?: React.Ref<THREE.Mesh> }) {
+  return (
+    <group>
+      <mesh position={[pos.x, (pos.y + 0.12) / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.006, 0.006, Math.max(pos.y + 0.12, 0.01), 6]} />
+        <meshBasicMaterial color={UP_ACCENT} transparent opacity={0.35} />
+      </mesh>
+      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.075, 18, 18]} />
+        <meshBasicMaterial color={UP_ACCENT} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * RangeBandMarker — the vertical-range band on the surface (legacy port): an
+ * accent orb at each strike, an overhead arc bridging them, and a shaded
+ * "payout zone" on the floor. A range is one market = one expiry = one row.
+ * (v2 bands always have both edges — no mid-pick anchor state like legacy.)
+ */
+function RangeBandMarker({
+  mesh,
+  surface,
+  sel,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  sel: Extract<SurfaceSelection, { kind: 'range' }>;
+}) {
+  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const orbA = useRef<THREE.Mesh>(null);
+  const orbB = useRef<THREE.Mesh>(null);
+
+  const geom = useMemo(() => {
+    const lo = locate(mesh, surface, sel.oracleId, sel.lower);
+    const hi = locate(mesh, surface, sel.oracleId, sel.higher);
+    if (!lo || !hi) return null;
+    // An overhead arc bridging the two strike orbs — a quadratic bezier with a
+    // lifted midpoint, so the band reads as a connected span even where the
+    // smile is flat. Wider bands arch a little higher.
+    const a = new THREE.Vector3(lo.x, lo.y + 0.12, lo.z);
+    const b = new THREE.Vector3(hi.x, hi.y + 0.12, hi.z);
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    mid.y += Math.min(Math.max(a.distanceTo(b) * 0.5, 0.4), 1.2);
+    const arc = new THREE.QuadraticBezierCurve3(a, mid, b)
+      .getPoints(48)
+      .map((p) => [p.x, p.y, p.z] as [number, number, number]);
+    return { lo, hi, arc };
+  }, [mesh, surface, sel]);
+
+  useFrame((state) => {
+    if (reduced) return;
+    const s = 1 + 0.16 * Math.sin(state.clock.elapsedTime * 3.4);
+    orbA.current?.scale.setScalar(s);
+    orbB.current?.scale.setScalar(s);
+  });
+
+  if (!geom) return null;
+
+  const { lo, hi, arc } = geom;
+  const floorMidX = (lo.x + hi.x) / 2;
+  const floorW = Math.max(Math.abs(hi.x - lo.x), 0.01);
+
+  return (
+    <group>
+      {/* shaded payout zone on the floor — settlement lands here → the range wins */}
+      <mesh position={[floorMidX, 0.012, lo.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <planeGeometry args={[floorW, 0.5]} />
+        <meshBasicMaterial color={UP_ACCENT} transparent opacity={0.12} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* soft glow underlay + crisp overhead arc bridging the two strike orbs.
+          raycast disabled so it never steals clicks from nodes under the band. */}
+      <Line points={arc} color={UP_ACCENT} lineWidth={7} transparent opacity={0.22} raycast={() => null} />
+      <Line points={arc} color={UP_ACCENT} lineWidth={3} transparent opacity={0.95} raycast={() => null} />
+
+      <EdgeOrb pos={lo} orbRef={orbA} />
+      <EdgeOrb pos={hi} orbRef={orbB} />
     </group>
   );
 }

@@ -14,9 +14,7 @@ import { LuBoxes, LuChartArea } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
-import { useNow } from '@/lib/hooks/use-now';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
-import { cadenceOf, CADENCE_LABEL } from '@/lib/markets/v2-discovery';
 import { V2MarketPicker } from './market-picker';
 import { V2TradeTicket } from './trade-ticket';
 import { V2OddsPanel } from './odds-panel';
@@ -80,9 +78,10 @@ export function V2TradeScreen({
 
   return (
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
-      {/* left — hero + picker */}
+      {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
+          by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
       <section className="flex min-w-0 flex-col gap-px bg-white/6">
-        <div className="bg-bg-0 p-4 sm:p-5">
+        <div className="h-[48vh] min-h-90 bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-130">
           {selected && (
             <Hero market={selected} pricer={pricer} serverNow={serverNow} surfaceInputs={surfaceInputs} markets={markets} />
           )}
@@ -128,7 +127,6 @@ function Hero({
   surfaceInputs: SmileInput[];
   markets: V2Market[];
 }) {
-  const now = useNow(serverNow);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
   const canSurface = surfaceInputs.length >= 2;
   const [override, setOverride] = useState<HeroView | null>(null);
@@ -136,62 +134,60 @@ function Hero({
   const wanted: HeroView = override ?? (canSurface && isDesktop ? 'surface' : 'chart');
   const view: HeroView = wanted === 'surface' && !canSurface ? 'chart' : wanted;
 
-  const secs = Math.max(0, Math.round((market.expiry - now) / 1000));
-  const cd = secs < 3600 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${Math.floor(secs / 3600)}h ${Math.floor((secs % 3600) / 60)}m`;
-
   return (
-    <div className="panel overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 p-3">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-          <Field label="Market" value={CADENCE_LABEL[cadenceOf(market)]} />
-          <Field label="Settles in" value={cd} mono />
-          <Field label="Forward" value={pricer ? `$${pricer.forward.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'} mono />
-        </div>
-        <div className="flex items-center gap-0.5 rounded-lg bg-white/2 p-0.5">
-          <ViewBtn active={view === 'surface'} onClick={() => setOverride('surface')} Icon={LuBoxes} label="Surface" disabled={!canSurface} />
-          <ViewBtn active={view === 'chart'} onClick={() => setOverride('chart')} Icon={LuChartArea} label="Chart" />
+    <div className="relative h-full w-full">
+      {/* Floating segmented view toggle over the canvas — mirrors legacy's
+          MarketView (gliding-thumb, top-left) so both deployments feel identical.
+          Market / settles-in / forward aren't repeated here: the countdown is in
+          the ticket beside it, the forward on the surface + nav tape. */}
+      <div className="pointer-events-auto absolute left-3 top-3 z-20">
+        <div className="segmented" role="tablist" aria-label="Market view">
+          <span
+            aria-hidden
+            className="segmented-thumb"
+            style={{ transform: view === 'chart' ? 'translateX(100%)' : 'translateX(0)' }}
+          />
+          <ViewTab Icon={LuBoxes} label="Surface" active={view === 'surface'} onClick={() => setOverride('surface')} disabled={!canSurface} />
+          <ViewTab Icon={LuChartArea} label="Chart" active={view === 'chart'} onClick={() => setOverride('chart')} />
         </div>
       </div>
 
-      <div className="h-[48vh] min-h-90 w-full md:h-[56vh] lg:h-[64vh] lg:min-h-130">
-        {view === 'surface' ? <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} /> : <V2PriceChart />}
-      </div>
+      {view === 'surface' ? (
+        <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
+      ) : (
+        <V2PriceChart market={market} pricer={pricer} />
+      )}
     </div>
   );
 }
 
-function ViewBtn({
-  active,
-  onClick,
+function ViewTab({
   Icon,
   label,
+  active,
+  onClick,
   disabled,
 }: {
-  active: boolean;
-  onClick: () => void;
   Icon: typeof LuBoxes;
   label: string;
+  active: boolean;
+  onClick: () => void;
   disabled?: boolean;
 }) {
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-40 ${
-        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-1'
+      className={`relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40 ${
+        active ? 'text-text-1' : 'text-text-3 hover:text-text-2'
       }`}
     >
-      <Icon size={13} />
+      <Icon size={13} className={active ? 'text-accent' : ''} />
       {label}
     </button>
   );
 }
 
-function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <span className="eyebrow mr-2">{label}</span>
-      <span className={`text-[13px] text-text-1 ${mono ? 'font-mono tabular-nums' : ''}`}>{value}</span>
-    </div>
-  );
-}

@@ -9,14 +9,17 @@
  *    the admission grid and writes `strikeOffset`, synced with the ticket's
  *    payout slider (both read/write the same store). A crosshair marks the
  *    strike; the dashed level line shows the picked side's chance.
- *  - Range mode: a shaded band spans your lower/higher edges; drag either edge to
- *    resize it. The dashed level shows the band's fair chance of landing inside.
+ *  - Range mode (legacy SmileStrip parity): tap two price levels to set the band
+ *    — the first tap anchors, a live preview shades to the pointer, the second
+ *    tap closes it. Then drag either edge handle to resize, tap elsewhere to
+ *    re-pick, or Reset. The dashed level shows the band's fair chance of landing
+ *    inside.
  *
  * Butterfly violations (odds ticking back up as price rises — a free-money gap)
  * are flagged; on live data they're rare. Pure viz math from lib/svi (mirrors
  * the on-chain pricing); it never quotes a trade price.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
@@ -42,12 +45,18 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
   const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
   const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
+  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
   const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
+  const pickRangeOffset = useV2TradeStore((s) => s.pickRangeOffset);
+  const clearRange = useV2TradeStore((s) => s.clearRange);
 
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   // Which handle is being dragged (state, not a ref, so the active edge's
   // highlight can render). null = not dragging.
   const [drag, setDrag] = useState<'strike' | 'lower' | 'higher' | null>(null);
+  // True from the moment an edge drag started until the next pick — swallows the
+  // synthetic click that follows pointerup so a drag never re-anchors the band.
+  const draggedRef = useRef(false);
 
   const { forward, svi } = pricer;
   const step = toFloat(market.admission_tick_size) || 1;
@@ -58,6 +67,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   const selStrike = atm + strikeOffset * step;
   const lowerStrike = bandSet ? atm + rangeLowerOffset * step : null;
   const higherStrike = bandSet ? atm + rangeHigherOffset * step : null;
+  const anchorStrike = rangeAnchorOffset != null ? atm + rangeAnchorOffset * step : null;
 
   // Sample the UP curve linearly in price across a generous window.
   const all: { strike: number; up: number }[] = [];
@@ -147,6 +157,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     if (rangeMode) {
       const edge = edgeNear(vxOf(e));
       if (edge) {
+        draggedRef.current = true;
         setDrag(edge);
         applyEdge(edge, p);
       }
@@ -170,7 +181,25 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     }
   }
 
+  /** In range mode, a tap sets a band bound at the pointed price (snapped to the
+   *  admission grid): first tap anchors, second closes the band (legacy parity). */
+  function onPick(e: React.PointerEvent<SVGSVGElement>) {
+    if (!rangeMode) return;
+    // Swallow the click that trails a band-edge drag so it doesn't re-anchor.
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
+    pickRangeOffset(offsetAt(priceAt(e)));
+  }
+
   const overEdge = rangeMode && hoverPrice != null && edgeNear(cx(hoverPrice)) != null;
+  // While placing the second bound, the live chance of the band so far — drag
+  // until it reads the odds you want (legacy parity).
+  const liveRangeChance =
+    rangeMode && anchorStrike != null && !bandSet && hoverPrice != null
+      ? rangeFair(Math.min(anchorStrike, hoverPrice), Math.max(anchorStrike, hoverPrice), forward, svi)
+      : null;
 
   return (
     <div className="flex flex-col gap-1">
@@ -210,6 +239,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
           onPointerMove={onMove}
           onPointerUp={onUp}
           onPointerLeave={() => setHoverPrice(null)}
+          onClick={onPick}
         >
           {/* 0 / 50 / 100% gridlines + labels */}
           {[0, 0.5, 1].map((p) => (
@@ -259,6 +289,23 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
             </>
           )}
 
+          {/* range anchor — first bound set, preview to the pointed price */}
+          {rangeMode && !bandSet && anchorStrike != null && (
+            <>
+              {hoverPrice != null && (
+                <rect
+                  x={Math.min(cx(anchorStrike), cx(hoverPrice))}
+                  y={PAD.t}
+                  width={Math.abs(cx(hoverPrice) - cx(anchorStrike))}
+                  height={plotH}
+                  fill="var(--up)"
+                  opacity={0.08}
+                />
+              )}
+              <line x1={cx(anchorStrike)} y1={PAD.t} x2={cx(anchorStrike)} y2={H - PAD.b} stroke="var(--up)" strokeWidth={1} opacity={0.7} strokeDasharray="3 2" />
+            </>
+          )}
+
           {/* binary selection crosshair */}
           {!rangeMode && (
             <line x1={cx(selStrike)} y1={PAD.t} x2={cx(selStrike)} y2={H - PAD.b} stroke="var(--accent)" strokeWidth={1} opacity={0.45} />
@@ -297,11 +344,36 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
           </text>
         </svg>
 
-        {/* range band summary */}
-        {rangeMode && lowerStrike != null && higherStrike != null && (
-          <div className="glass pointer-events-none absolute left-1.5 top-1.5 z-10 whitespace-nowrap rounded-md px-2 py-1 font-mono text-[10px] leading-none tabular-nums text-up">
-            {price(lowerStrike, 0)}–{price(higherStrike, 0)}
-            {bandChance != null && <span className="text-text-3"> · {pct(bandChance, 0)} chance · drag edges</span>}
+        {/* range mode — band summary / pick instruction + reset (legacy parity) */}
+        {rangeMode && (
+          <div className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1.5">
+            <div className="glass pointer-events-none whitespace-nowrap rounded-md px-2 py-1 font-mono text-[10px] leading-none tabular-nums">
+              {lowerStrike != null && higherStrike != null ? (
+                <span className="text-up">
+                  {price(lowerStrike, 0)}–{price(higherStrike, 0)}
+                  {bandChance != null && <span className="text-text-3"> · {pct(bandChance, 0)} chance</span>}
+                  <span className="text-text-3"> · drag edges</span>
+                </span>
+              ) : anchorStrike != null ? (
+                <span className="text-text-2">
+                  tap upper price
+                  {liveRangeChance != null && (
+                    <span className="text-up"> · {pct(liveRangeChance, 0)} chance</span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-text-2">tap two prices to set a range</span>
+              )}
+            </div>
+            {(bandSet || anchorStrike != null) && (
+              <button
+                type="button"
+                onClick={clearRange}
+                className="glass pointer-events-auto rounded-md px-2 py-1 font-mono text-[10px] leading-none text-text-3 transition-colors hover:text-text-1"
+              >
+                Reset
+              </button>
+            )}
           </div>
         )}
 

@@ -645,7 +645,6 @@ export function FlowPanel({
                       active={isUp}
                       onClick={() => setDirection(true)}
                       tone="up"
-                      sub={clientUp != null ? pct(clientUp, 1) : undefined}
                     >
                       UP
                     </DirectionToggle>
@@ -653,7 +652,6 @@ export function FlowPanel({
                       active={!isUp}
                       onClick={() => setDirection(false)}
                       tone="down"
-                      sub={clientUp != null ? pct(1 - clientUp, 1) : undefined}
                     >
                       DOWN
                     </DirectionToggle>

@@ -8,10 +8,9 @@
  * across markets (reset on market switch). The ticket resolves them to actual
  * strikes against the live pricer.
  *
- * Range band offsets start null (uninitialized): a good default band width
- * depends on the market's IV/tenor (σ ≈ forward·IV·√T), so the ticket derives it
- * from the live pricer the first time range mode is used (see defaultRangeBand),
- * then the user adjusts it.
+ * Range band offsets start null (no band): the user taps two price levels on
+ * the odds curve (legacy parity — pickRangeOffset anchors on the first tap and
+ * closes the band on the second), then drags the band edges to adjust.
  */
 import { create } from 'zustand';
 
@@ -23,9 +22,11 @@ interface V2TradeState {
   isUp: boolean;
   /** Strike steps from ATM (admission ticks); 0 = at-the-money. Binary. */
   strikeOffset: number;
-  /** Range band edges, in admission-tick steps from ATM (null = uninitialized). */
+  /** Range band edges, in admission-tick steps from ATM (null = no band yet). */
   rangeLowerOffset: number | null;
   rangeHigherOffset: number | null;
+  /** First tapped range level while building a band (null once the band is set). */
+  rangeAnchorOffset: number | null;
   /** Amount the trader wants to pay (DUSDC). */
   stake: number;
   /** Leverage multiple (1 = none). */
@@ -42,7 +43,10 @@ interface V2TradeState {
   nudgeStrike: (delta: number) => void;
   setStrikeOffset: (o: number) => void;
   setRangeBand: (lower: number, higher: number) => void;
-  nudgeRangeEdge: (edge: 'lower' | 'higher', delta: number) => void;
+  /** Tap-two-prices band building (legacy parity): the first pick anchors, the
+   *  second closes the band (sorted); a pick with a band already set re-anchors. */
+  pickRangeOffset: (offset: number) => void;
+  clearRange: () => void;
   setStake: (s: number) => void;
   setLeverage: (l: number) => void;
   /** Mark the current selection as an external pick (see pickSeq). */
@@ -56,27 +60,42 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   strikeOffset: 0,
   rangeLowerOffset: null,
   rangeHigherOffset: null,
+  rangeAnchorOffset: null,
   stake: 10,
   leverage: 1,
   pickSeq: 0,
 
-  // Switching markets resets strikes to ATM / a fresh band (offsets don't carry
-  // across grids; the band re-derives from the new market's pricer).
-  selectMarket: (marketId) => set({ marketId, strikeOffset: 0, rangeLowerOffset: null, rangeHigherOffset: null }),
-  setMode: (mode) => set({ mode }),
+  // Switching markets resets strikes to ATM and drops any band/anchor (offsets
+  // don't carry across grids — the user re-picks on the new market's curve).
+  selectMarket: (marketId) =>
+    set({ marketId, strikeOffset: 0, rangeLowerOffset: null, rangeHigherOffset: null, rangeAnchorOffset: null }),
+  // Leaving range mode abandons a half-built band (legacy setTicketMode parity).
+  setMode: (mode) => set(mode === 'binary' ? { mode, rangeAnchorOffset: null } : { mode }),
   setIsUp: (isUp) => set({ isUp }),
   nudgeStrike: (delta) => set((s) => ({ strikeOffset: s.strikeOffset + delta })),
   setStrikeOffset: (strikeOffset) => set({ strikeOffset }),
   // Keep lower < higher by at least one step.
   setRangeBand: (lower, higher) =>
-    set(lower < higher ? { rangeLowerOffset: lower, rangeHigherOffset: higher } : { rangeLowerOffset: higher, rangeHigherOffset: lower }),
-  nudgeRangeEdge: (edge, delta) =>
+    set(
+      lower < higher
+        ? { rangeLowerOffset: lower, rangeHigherOffset: higher, rangeAnchorOffset: null }
+        : { rangeLowerOffset: higher, rangeHigherOffset: lower, rangeAnchorOffset: null },
+    ),
+  pickRangeOffset: (offset) =>
     set((s) => {
-      const lo = s.rangeLowerOffset ?? 0;
-      const hi = s.rangeHigherOffset ?? 0;
-      if (edge === 'lower') return { rangeLowerOffset: Math.min(lo + delta, hi - 1) };
-      return { rangeHigherOffset: Math.max(hi + delta, lo + 1) };
+      // No pick in progress (fresh start, or a tap away from an existing band's
+      // edges) → anchor here and clear any previous band.
+      if (s.rangeAnchorOffset == null) {
+        return { rangeAnchorOffset: offset, rangeLowerOffset: null, rangeHigherOffset: null };
+      }
+      if (offset === s.rangeAnchorOffset) return {}; // same level — ignore
+      return {
+        rangeAnchorOffset: null,
+        rangeLowerOffset: Math.min(s.rangeAnchorOffset, offset),
+        rangeHigherOffset: Math.max(s.rangeAnchorOffset, offset),
+      };
     }),
+  clearRange: () => set({ rangeAnchorOffset: null, rangeLowerOffset: null, rangeHigherOffset: null }),
   setStake: (stake) => set({ stake: Math.max(0, stake) }),
   setLeverage: (leverage) => set({ leverage: Math.max(1, leverage) }),
   markPicked: () => set((s) => ({ pickSeq: s.pickSeq + 1 })),

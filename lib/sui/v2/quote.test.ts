@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { quantityForStake, defaultRangeBandOffsets } from './quote';
-import { rangeFair, type SviFloat } from '@/lib/svi/svi';
+import { quantityForStake, knockoutProbability, priceMoveToKnockout } from './quote';
+import { upFair, type SviFloat } from '@/lib/svi/svi';
 
 const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
 const FORWARD = 63_000;
-const STEP = 1; // $1 admission tick (float)
 
 describe('quantityForStake', () => {
   it('at 1x, cost ≈ stake (quantity = stake / prob)', () => {
@@ -19,33 +18,54 @@ describe('quantityForStake', () => {
   });
 });
 
-describe('defaultRangeBandOffsets', () => {
-  const nowMs = 1_000_000_000;
-  const expiryMs = nowMs + 60 * 60_000; // 1h out
+describe('knockoutProbability', () => {
+  const LTV = 0.85;
+  it('has no barrier at 1x (returns null)', () => {
+    expect(knockoutProbability(0.5, 1, LTV)).toBeNull();
+  });
+  it('matches p·(1 − 1/L)/ltv', () => {
+    // 2x @ entry 50%: 0.5 · 0.5 / 0.85 ≈ 0.2941
+    expect(knockoutProbability(0.5, 2, LTV)!).toBeCloseTo((0.5 * 0.5) / 0.85, 6);
+    // 3x @ entry 50%: 0.5 · (2/3) / 0.85 ≈ 0.3922
+    expect(knockoutProbability(0.5, 3, LTV)!).toBeCloseTo((0.5 * (2 / 3)) / 0.85, 6);
+  });
+  it('higher leverage raises the barrier (knocks out at a higher chance = sooner)', () => {
+    expect(knockoutProbability(0.5, 3, LTV)!).toBeGreaterThan(knockoutProbability(0.5, 2, LTV)!);
+  });
+});
 
-  it('produces a non-degenerate band straddling ATM', () => {
-    const { lower, higher } = defaultRangeBandOffsets(FORWARD, FORWARD, SVI, expiryMs, nowMs, STEP);
-    expect(higher).toBeGreaterThan(lower);
-    expect(lower).toBeLessThan(0);
-    expect(higher).toBeGreaterThan(0);
+describe('priceMoveToKnockout', () => {
+  const LTV = 0.85;
+  // An UP strike a touch below the forward → entry chance well inside (0,1).
+  const STRIKE = 62_500;
+
+  it('is null at 1x (no barrier)', () => {
+    expect(priceMoveToKnockout(STRIKE, FORWARD, SVI, true, 1, LTV)).toBeNull();
   });
 
-  it('the default band is a plausible, quotable chance (not ~0% or ~100%)', () => {
-    const { lower, higher } = defaultRangeBandOffsets(FORWARD, FORWARD, SVI, expiryMs, nowMs, STEP);
-    const chance = rangeFair(FORWARD + lower * STEP, FORWARD + higher * STEP, FORWARD, SVI);
-    expect(chance).toBeGreaterThan(0.1);
-    expect(chance).toBeLessThan(0.9);
+  it('higher leverage → smaller adverse-move buffer (less room before knockout)', () => {
+    const b2 = priceMoveToKnockout(STRIKE, FORWARD, SVI, true, 2, LTV)!;
+    const b3 = priceMoveToKnockout(STRIKE, FORWARD, SVI, true, 3, LTV)!;
+    expect(b2).toBeGreaterThan(0);
+    expect(b3).toBeGreaterThan(0);
+    expect(b3).toBeLessThan(b2);
   });
 
-  it('a higher-variance SVI gives a wider band (width tracks √w, not √T)', () => {
-    const calm = defaultRangeBandOffsets(FORWARD, FORWARD, SVI, expiryMs, nowMs, STEP);
-    const wild = defaultRangeBandOffsets(FORWARD, FORWARD, { ...SVI, a: SVI.a * 4, b: SVI.b * 4 }, expiryMs, nowMs, STEP);
-    expect(wild.higher - wild.lower).toBeGreaterThan(calm.higher - calm.lower);
+  it('the solved forward actually prices at the knockout barrier (round-trip)', () => {
+    const move = priceMoveToKnockout(STRIKE, FORWARD, SVI, true, 2, LTV)!;
+    const entryProb = upFair(STRIKE, FORWARD, SVI);
+    const koProb = knockoutProbability(entryProb, 2, LTV)!;
+    // UP → adverse move is a price fall.
+    const fKo = FORWARD * (1 - move);
+    expect(upFair(STRIKE, fKo, SVI)).toBeCloseTo(koProb, 3);
   });
 
-  it('holding SVI constant, band width is tenor-invariant (σ = forward·√w — √T cancels)', () => {
-    const shortB = defaultRangeBandOffsets(FORWARD, FORWARD, SVI, nowMs + 5 * 60_000, nowMs, STEP);
-    const longB = defaultRangeBandOffsets(FORWARD, FORWARD, SVI, nowMs + 120 * 60_000, nowMs, STEP);
-    expect(longB.higher - longB.lower).toBe(shortB.higher - shortB.lower);
+  it('DOWN bet: adverse move is a price RISE that prices at the barrier', () => {
+    const downStrike = 63_500; // above the forward → a real DOWN chance
+    const move = priceMoveToKnockout(downStrike, FORWARD, SVI, false, 2, LTV)!;
+    const entryProb = 1 - upFair(downStrike, FORWARD, SVI);
+    const koProb = knockoutProbability(entryProb, 2, LTV)!;
+    const fKo = FORWARD * (1 + move); // price rose
+    expect(1 - upFair(downStrike, fKo, SVI)).toBeCloseTo(koProb, 3);
   });
 });

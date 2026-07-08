@@ -15,16 +15,19 @@
  * a one-click signed tx (auto-depositing any shortfall).
  *
  * Two modes (like legacy): Up/Down binary, and Range — a band (lower, higher]
- * that pays if BTC settles inside it. Both size a position by a dollar stake;
- * leverage multiplies the max payout for the same stake. Cost is an estimate
- * (no public cost view in v2) — the wallet shows the exact figure and the
- * on-chain max_cost guard caps it.
+ * that pays if BTC settles inside it. Range mirrors legacy's RangeTicket flow:
+ * tap two price levels on the embedded odds curve to set the band (first tap
+ * anchors, second closes it), then drag the edge handles to adjust — the curve
+ * is the only band control, no steppers. Both size a position by a dollar
+ * stake; leverage multiplies the max payout for the same stake. Cost is an
+ * estimate (no public cost view in v2) — the wallet shows the exact figure and
+ * the on-chain max_cost guard caps it.
  *
  * Mint goes through a review step (MintConfirmModal) then a celebratory success
  * modal (MintSuccessModal), reusing both deployment-agnostic components. No async
  * re-quote step: v2 pricing is synchronous off the live Pricer every render.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useNow } from '@/lib/hooks/use-now';
@@ -42,14 +45,16 @@ import {
   maxProbabilityWithSlippage,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, defaultRangeBandOffsets } from '@/lib/sui/v2/quote';
+import { quantityForStake, knockoutProbability, priceMoveToKnockout } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './ticket/payout-slider';
+import { V2SmileChart } from './smile-chart';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { DirectionToggle } from '@/app/_components/ticket/direction-toggle';
 import { GlassCta } from '@/app/_components/ticket/glass-cta';
 import { ReviewButton } from '@/app/_components/ticket/review-button';
 import { TicketGuide } from '@/app/_components/ticket-guide';
 import { TicketEmpty } from '@/app/_components/ticket-empty';
+import { InfoTip } from '@/app/_components/ui/info-tip';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -79,8 +84,7 @@ export function V2TradeTicket({
   const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
   const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
   const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
-  const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
-  const nudgeRangeEdge = useV2TradeStore((s) => s.nudgeRangeEdge);
+  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
   const stake = useV2TradeStore((s) => s.stake);
   const setStake = useV2TradeStore((s) => s.setStake);
   const leverage = useV2TradeStore((s) => s.leverage);
@@ -117,17 +121,6 @@ export function V2TradeTicket({
     if (mode === 'binary') setStep(2);
   }
 
-  // Seed a sensible default band the first time range mode is used on this
-  // market (band width scales with the market's IV/tenor — see the helper).
-  useEffect(() => {
-    if (mode !== 'range' || !market || !pricer) return;
-    if (rangeLowerOffset != null && rangeHigherOffset != null) return;
-    const step = toFloat(market.admission_tick_size) || 1;
-    const atm = toFloat(snapStrikeToAdmission(fromFloat(pricer.forward), BigInt(market.admission_tick_size)));
-    const { lower, higher } = defaultRangeBandOffsets(pricer.forward, atm, pricer.svi, market.expiry, Date.now(), step);
-    setRangeBand(lower, higher);
-  }, [mode, market, pricer, rangeLowerOffset, rangeHigherOffset, setRangeBand]);
-
   // Until mounted, the connected account is unknown (SSR has no wallet, but the
   // client restores it synchronously) — render a stable placeholder so the
   // server and first client paint match (no hydration mismatch); the real
@@ -155,6 +148,7 @@ export function V2TradeTicket({
   const strike = atm + strikeOffset * admStep;
   const lowerStrike = bandSet ? atm + rangeLowerOffset * admStep : atm - admStep;
   const higherStrike = bandSet ? atm + rangeHigherOffset * admStep : atm + admStep;
+  const anchorStrike = rangeAnchorOffset != null ? atm + rangeAnchorOffset * admStep : null;
 
   const upProb = upFair(strike, pricer.forward, svi);
   const binaryProb = isUp ? upProb : 1 - upProb;
@@ -166,14 +160,22 @@ export function V2TradeTicket({
   const maxLev = Math.max(1, Math.floor(toFloat(market.max_admission_leverage)));
   const lev = Math.min(leverage, maxLev);
 
-  // Knockout barrier (verified from source, predict-testnet-6-24:
-  // strike_exposure_config::assert_mint_admission sets floor F = p·qty·(1−1/L);
-  // strike_exposure::liquidate_order_if_under_floor closes when qty·P ≤ F/ltv).
-  // So the position is knocked out when the side's live chance P falls to
-  // p_entry·(1−1/L)/ltv. 1× has F = 0 → never liquidated. Liquidated orders
-  // pay $0 ("tombstones clear with zero payout").
+  // Leverage risk (verified from source, predict-testnet-6-24 — see
+  // knockoutProbability/priceMoveToKnockout). The dollar loss is the SAME at any
+  // leverage — a knocked-out order pays $0, so you always risk your whole stake;
+  // what leverage changes is the safety margin. `knockoutProb` = the live chance
+  // at which the position closes early; `knockoutMove` = how far the price can
+  // move against you first (binary only — a range has no single adverse side).
   const liqLtv = toFloat(market.liquidation_ltv);
-  const knockoutProb = lev > 1 && liqLtv > 0 ? (entryProb * (1 - 1 / lev)) / liqLtv : null;
+  const knockoutProb = knockoutProbability(entryProb, lev, liqLtv);
+  const knockoutMove = rangeMode ? null : priceMoveToKnockout(strike, pricer.forward, svi, isUp, lev, liqLtv);
+  // Present the buffer as a DOLLAR move first — it's always tangible and never
+  // rounds to a broken-looking "0.0%" the way a percent does on short-tenor
+  // markets (where the buffer is genuinely a few basis points). Percent rides
+  // alongside with enough precision to stay non-zero.
+  const knockoutMoveUsd = knockoutMove != null ? pricer.forward * knockoutMove : null;
+  const knockoutMovePct =
+    knockoutMove != null ? `${(knockoutMove * 100).toFixed(knockoutMove >= 0.001 ? 1 : 2)}%` : null;
 
   const stakeBase = toQuote(stake);
   const quantity = quantityForStake(stakeBase, entryProb, lev); // max payout base units
@@ -204,13 +206,22 @@ export function V2TradeTicket({
   const sym = predictV2Config.quote.symbol;
   const headline = `BTC · ${rangeMode ? 'RANGE' : isUp ? 'UP' : 'DOWN'}`;
   const tone: 'up' | 'down' = rangeMode || isUp ? 'up' : 'down';
-  const detailsOpen = showCostDetails || shortfall > 0n;
+  // Collapsed by default (legacy parity — keeps the card short). A shortfall is
+  // NOT a blocker in v2: the wallet auto-deposits it in the same transaction and
+  // the action button already says "Review deposit & mint", so unlike legacy's
+  // insufficient-funds case there's nothing here that must never be hidden.
+  const detailsOpen = showCostDetails;
 
   // Risk → reward (the money answer): what you pay now vs. the max win.
-  const payDollars = fromQuote(estCostBase);
+  // "You pay" headlines the STAKE the user picked ($10 stays $10 — user
+  // feedback: the fee-inflated figure read as "I'm betting 10.40"); the
+  // protocol fee itemizes in the cost breakdown instead. Net profit and the
+  // payout multiple stay ALL-IN (stake + fee) so the money math never lies.
+  const payDollars = fromQuote(stakeBase);
+  const allInDollars = fromQuote(estCostBase);
   const winDollars = fromQuote(quantity);
-  const mult = payDollars > 0 ? winDollars / payDollars : 0;
-  const profit = winDollars - payDollars;
+  const mult = allInDollars > 0 ? winDollars / allInDollars : 0;
+  const profit = winDollars - allInDollars;
 
   const outcomeRow: ConfirmRow = rangeMode
     ? { label: 'Outcome', value: 'Pays if price ends in the band' }
@@ -260,8 +271,9 @@ export function V2TradeTicket({
           levelRow,
           { label: 'Expiry', value: dateUTC(market!.expiry) },
           ...(lev > 1 ? [{ label: 'Leverage', value: `${lev}×` }] : []),
+          ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ],
-        staked: `$${fromQuote(estCostBase).toFixed(2)} ${sym}`,
+        staked: `$${fromQuote(stakeBase).toFixed(2)} ${sym}`,
         maxWin: `$${fromQuote(quantity).toFixed(2)} ${sym}`,
         digest,
       });
@@ -325,24 +337,29 @@ export function V2TradeTicket({
         ))}
       </div>
       {lev > 1 && knockoutProb != null && (
-        <div className="glass-inset flex flex-col gap-2 rounded-lg p-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-text-3">Max loss</span>
-            <span className="text-[11px] tabular-nums text-down">
-              ${payDollars.toFixed(2)} <span className="text-text-3">(all you pay)</span>
+        <Row
+          label={
+            <span className="flex items-center gap-1.5">
+              Max loss
+              <InfoTip label="max loss with leverage">
+                You can never lose more than your ${payDollars.toFixed(2)} — a losing leveraged bet
+                closes early and pays $0. Leverage just shrinks your buffer:{' '}
+                {knockoutMoveUsd != null && knockoutMoveUsd >= 1 ? (
+                  <>
+                    at {lev}×, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
+                    {isUp ? 'down' : 'up'} knocks you out.
+                  </>
+                ) : knockoutMove != null ? (
+                  <>at {lev}×, even a tiny move in BTC {isUp ? 'down' : 'up'} knocks you out.</>
+                ) : (
+                  <>at {lev}×, it closes once your chance falls to about {pct(knockoutProb, 0)}.</>
+                )}
+              </InfoTip>
             </span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] text-text-3">Knocked out at</span>
-            <span className="text-[11px] tabular-nums text-text-1">≈ {pct(knockoutProb, 1)} chance</span>
-          </div>
-          <span className="text-[10px] leading-relaxed text-text-3">
-            {lev}× the payout for the same stake — you can never lose more than you pay. The
-            trade-off: if your side&rsquo;s live chance drops from {pct(entryProb, 1)} to about{' '}
-            {pct(knockoutProb, 1)}, the position is closed early and pays $0 — even if the price
-            recovers before expiry.
-          </span>
-        </div>
+          }
+        >
+          <span className="text-[11px] tabular-nums text-down">${payDollars.toFixed(2)}</span>
+        </Row>
       )}
     </div>
   );
@@ -413,10 +430,18 @@ export function V2TradeTicket({
                 <span className="text-[11px] tabular-nums text-text-1">${fromQuote(stakeBase).toFixed(2)}</span>
               </div>
               {feeBase > 0n && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-text-3">Protocol fee</span>
-                  <span className="text-[11px] tabular-nums text-text-1">+${fromQuote(feeBase).toFixed(2)}</span>
-                </div>
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-text-3">Protocol fee</span>
+                    <span className="text-[11px] tabular-nums text-text-1">+${fromQuote(feeBase).toFixed(2)}</span>
+                  </div>
+                  {/* The all-in figure — reconciles the stake headline above with
+                      what the wallet actually withdraws. */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-text-3">Total cost</span>
+                    <span className="text-[11px] tabular-nums text-text-1">≈ ${allInDollars.toFixed(2)}</span>
+                  </div>
+                </>
               )}
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-text-3">Cost cap (slippage)</span>
@@ -493,7 +518,7 @@ export function V2TradeTicket({
             'Review and confirm your trade',
           ],
           tip: rangeMode
-            ? 'Tip: drag the band edges on the odds curve below to resize.'
+            ? 'Tip: tap two price levels on the odds curve to set your band, then drag its edges to resize.'
             : 'Tip: click the surface or a market in the list to load it here.',
         }}
       />
@@ -525,20 +550,50 @@ export function V2TradeTicket({
         </div>
 
         {rangeMode ? (
-          <>
-            <p className="text-[12px] leading-relaxed text-text-2">
-              Win if <span className="text-text-1">BTC</span> settles{' '}
-              <span className="text-up">between {usd(lowerStrike)} and {usd(higherStrike)}</span> at expiry.
-            </p>
-            <RangeEdge label="Lower price" value={usd(lowerStrike)} onDown={() => nudgeRangeEdge('lower', -1)} onUp={() => nudgeRangeEdge('lower', 1)} />
-            <RangeEdge label="Higher price" value={usd(higherStrike)} onDown={() => nudgeRangeEdge('higher', -1)} onUp={() => nudgeRangeEdge('higher', 1)} />
-            <p className="text-[11px] leading-relaxed text-text-3">Drag the band edges on the odds curve below to resize.</p>
+          !bandSet ? (
+            // No band yet → tap two levels on the embedded odds curve (legacy
+            // RangeTicket parity — self-contained, so it works wherever the rail
+            // curve is out of reach).
+            <>
+              {/* Prominent instruction callout (accent bar + bright text) so it's
+                  obvious how to build a range — not a faint grey line. */}
+              <div className="flex items-start gap-2.5 rounded-lg border border-up/30 bg-(--accent-soft) p-2.5">
+                <span aria-hidden className="mt-0.5 h-3.5 w-px shrink-0 bg-accent" />
+                <p className="text-[12px] leading-relaxed text-text-1">
+                  {anchorStrike != null ? (
+                    <>
+                      Lower level set at{' '}
+                      <span className="tabular-nums text-accent">{usd(anchorStrike)}</span> — now tap
+                      the <span className="text-accent">upper</span> price on the curve.
+                    </>
+                  ) : (
+                    <>
+                      Tap <span className="text-accent">two price levels</span> on the curve to bet
+                      BTC settles between them.
+                    </>
+                  )}
+                </p>
+              </div>
+              <V2SmileChart market={market} pricer={pricer} />
+            </>
+          ) : (
+            <>
+              <p className="text-[12px] leading-relaxed text-text-2">
+                Win if <span className="text-text-1">BTC</span> settles{' '}
+                <span className="text-up">between {usd(lowerStrike)} and {usd(higherStrike)}</span> at expiry.
+              </p>
 
-            {betSection}
-            {leverageSection}
-            {quoteCard}
-            {betFooter}
-          </>
+              {/* The band lives on the curve: drag either edge handle to adjust it
+                  (works on touch too), tap elsewhere to re-pick, or Reset on the
+                  chart. This is the only band control — no separate steppers. */}
+              <V2SmileChart market={market} pricer={pricer} />
+
+              {betSection}
+              {leverageSection}
+              {quoteCard}
+              {betFooter}
+            </>
+          )
         ) : (
           <>
             <StepBar step={step} onStep={setStep} />
@@ -546,10 +601,10 @@ export function V2TradeTicket({
             {step === 1 ? (
               <>
                 <div className="flex gap-2">
-                  <DirectionToggle active={isUp} tone="up" onClick={() => setIsUp(true)} sub={pct(upProb, 1)}>
+                  <DirectionToggle active={isUp} tone="up" onClick={() => setIsUp(true)}>
                     UP
                   </DirectionToggle>
-                  <DirectionToggle active={!isUp} tone="down" onClick={() => setIsUp(false)} sub={pct(1 - upProb, 1)}>
+                  <DirectionToggle active={!isUp} tone="down" onClick={() => setIsUp(false)}>
                     DOWN
                   </DirectionToggle>
                 </div>
@@ -650,7 +705,7 @@ export function V2TradeTicket({
           ...(lev > 1 ? [{ label: 'Leverage', value: `${lev}×` }] : []),
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ]}
-        cost={`$${fromQuote(estCostBase).toFixed(2)} ${sym}`}
+        cost={`$${fromQuote(stakeBase).toFixed(2)} ${sym}`}
         maxWin={`$${fromQuote(quantity).toFixed(2)} ${sym}`}
         confirmLabel={`Mint ${rangeMode ? 'Range' : isUp ? 'UP' : 'DOWN'}`}
         subtitle={
@@ -714,23 +769,7 @@ function ActionButton({
   );
 }
 
-function RangeEdge({ label, value, onDown, onUp }: { label: string; value: string; onDown: () => void; onUp: () => void }) {
-  return (
-    <Row label={label}>
-      <div className="flex items-center gap-1">
-        <button onClick={onDown} className="ctrl-soft h-6 w-6 rounded-md text-[13px] text-text-2 transition-colors hover:text-text-1">
-          −
-        </button>
-        <span className="min-w-20 text-center font-mono text-[13px] tabular-nums text-text-1">{value}</span>
-        <button onClick={onUp} className="ctrl-soft h-6 w-6 rounded-md text-[13px] text-text-2 transition-colors hover:text-text-1">
-          +
-        </button>
-      </div>
-    </Row>
-  );
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+function Row({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-text-3">{label}</span>
