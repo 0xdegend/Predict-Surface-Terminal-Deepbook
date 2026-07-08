@@ -6,7 +6,6 @@ import { BottomNav } from "./bottom-nav";
 import { NavVault } from "./nav-vault";
 import { NavMore } from "./nav-more";
 import { MarketChip, type MarketDiagnostics } from "./market-chip";
-import { TourButton } from "./tour/tour-button";
 import type { PriceEvent } from "@/lib/api/types";
 
 /**
@@ -85,21 +84,15 @@ export function TopChrome({
       </div>
 
       {/* Zone 3 — the account cluster (balance · network · wallet fused into one
-          segmented control by WalletBar), with the quiet tour "?" beside it.
+          segmented control by WalletBar).
           shrink-0 so it's always fully visible, even when the chip is wide. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         {/* Legacy ↔ Latest deployment switch — placed with the network/account
             cluster (it's an environment control, not route nav). Hidden below lg
             where the header is tight; it'll get a home in the menu when v2 ships. */}
         <DeploymentToggle />
-        {/* Tour replay is secondary — hidden on phones to declutter the header.
-            Only on the Trade/surface page: the tour spotlights elements that
-            only exist there, so it would be a dead button on other routes. */}
-        {active === "surface" && (
-          <span className="hidden sm:inline-flex">
-            <TourButton />
-          </span>
-        )}
+        {/* The tour "?" used to live here — removed with the guided tour (the
+            legacy trade screen it walked is now the migration notice). */}
         <WalletBar />
       </div>
     </header>
