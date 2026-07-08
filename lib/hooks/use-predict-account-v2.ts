@@ -35,6 +35,7 @@ const qkV2Account = {
   wrapper: (owner: string) => ['v2', 'wrapper', owner] as const,
   balance: (wrapperId: string) => ['v2', 'balance', wrapperId] as const,
   plpBalance: (wrapperId: string) => ['v2', 'plp-balance', wrapperId] as const,
+  walletDusdc: (owner: string) => ['v2', 'wallet-dusdc', owner] as const,
 };
 
 export function usePredictAccountV2() {
@@ -77,6 +78,17 @@ export function usePredictAccountV2() {
     refetchInterval: 10_000,
   });
   const plpBalanceBase = plpQ.data ?? 0n;
+
+  // DUSDC still in the connected wallet (outside the trading account).
+  const walletDusdcQ = useQuery({
+    queryKey: qkV2Account.walletDusdc(owner ?? ''),
+    queryFn: async () => {
+      const r = await client.core.getBalance({ owner: owner!, coinType: predictV2Config.quote.coinType });
+      return BigInt(r.balance.balance);
+    },
+    enabled: !!owner,
+    refetchInterval: 10_000,
+  });
 
   async function runTx(
     label: string,
@@ -129,6 +141,8 @@ export function usePredictAccountV2() {
     wrapperExists,
     balanceBase,
     plpBalanceBase,
+    /** Wallet-held DUSDC (base units) — undefined while the first read is in flight. */
+    walletDusdcBase: walletDusdcQ.data,
     busy,
     error,
     /** True for gasless Enoki (Google) accounts — they sign with no wallet
@@ -138,9 +152,19 @@ export function usePredictAccountV2() {
     /** Create + share the AccountWrapper (standalone tx — required before first deposit/mint). */
     createAccount: () => runTx('create', buildCreateAccountTx(), []),
     deposit: (amount: bigint) =>
-      wrapperId ? runTx('deposit', buildDepositTx(wrapperId, amount)) : Promise.resolve(null),
+      wrapperId
+        ? runTx('deposit', buildDepositTx(wrapperId, amount), [
+            qkV2Account.balance(wrapperId),
+            qkV2Account.walletDusdc(owner ?? ''),
+          ])
+        : Promise.resolve(null),
     withdraw: (amount: bigint) =>
-      wrapperId && owner ? runTx('withdraw', buildWithdrawTx(wrapperId, amount, owner)) : Promise.resolve(null),
+      wrapperId && owner
+        ? runTx('withdraw', buildWithdrawTx(wrapperId, amount, owner), [
+            qkV2Account.balance(wrapperId),
+            qkV2Account.walletDusdc(owner),
+          ])
+        : Promise.resolve(null),
     mint: (p: Omit<MintParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
       wrapperId
         ? runTx('mint', buildMintTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)

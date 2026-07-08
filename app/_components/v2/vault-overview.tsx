@@ -1,25 +1,40 @@
 'use client';
 
 /**
- * V2VaultOverview — the read side of the vault (legacy vault/risk role): real
- * on-chain metrics, a liquidity-composition meter, queue status, and the trader's
- * own shares. Deliberately shows only honest, directly-readable figures — v2 has
- * no read-only NAV / utilization / share-price view (those settle at the keeper
- * flush), so no fabricated gauges. Glass; plain copy.
+ * V2VaultOverview — the read side of the vault (legacy vault/risk role). Blends
+ * two honest sources: on-chain views (idle balance, PLP supply, queue counts,
+ * reserves) and the indexer's `/vaults/:id/state` (shipped ~2026-07), which
+ * finally exposes the full pool NAV — `pool_value` including capital deployed
+ * to open markets — so the share price (pool value / total shares) and the
+ * trader's position value are real figures now, not fabrications. Glass; plain
+ * copy.
  */
 import { useVaultV2 } from '@/lib/hooks/use-vault-v2';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useNow } from '@/lib/hooks/use-now';
 import { fromQuote } from '@/config/scale';
+import { ago } from '@/lib/format';
 
 export function V2VaultOverview() {
-  const { vault } = useVaultV2();
+  const { vault, nav } = useVaultV2();
   const acct = usePredictAccountV2();
+  const now = useNow(0);
 
-  const idle = vault ? fromQuote(vault.idleBalance) : 0;
+  const cur = nav?.current ?? null;
+  const flush = nav?.latest_flush ?? null;
+
+  const poolValue = cur ? fromQuote(cur.pool_value) : null;
+  const deployed = cur ? fromQuote(cur.active_market_nav) : 0;
+  const sharePrice =
+    cur && Number(cur.total_supply) > 0 ? Number(cur.pool_value) / Number(cur.total_supply) : null;
+
+  const idle = vault ? fromQuote(vault.idleBalance) : cur ? fromQuote(cur.idle_balance_after) : 0;
   const reserve = vault ? fromQuote(vault.protocolReserve) : 0;
   const feeInc = vault ? fromQuote(vault.feeIncentiveReserve) : 0;
-  const total = idle + reserve + feeInc;
+  const poolTotal = idle + deployed;
+
   const yourShares = fromQuote(acct.plpBalanceBase);
+  const yourValue = sharePrice != null ? yourShares * sharePrice : null;
 
   return (
     <div className="panel flex flex-col gap-5 p-4">
@@ -33,9 +48,23 @@ export function V2VaultOverview() {
 
       {/* headline metrics */}
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md">
-        <Stat label="Total liquidity" value={vault ? `$${fmt(idle)}` : '—'} sub="idle DUSDC" />
+        <Stat
+          label="Pool value"
+          value={poolValue != null ? `$${fmt(poolValue)}` : '—'}
+          sub="backs all positions"
+        />
+        <Stat
+          label="Share price"
+          value={sharePrice != null ? `$${sharePrice.toFixed(4)}` : '—'}
+          sub="per PLP"
+        />
         <Stat label="Total shares" value={vault ? fmt(fromQuote(vault.plpTotalSupply)) : '—'} sub="PLP" />
-        <Stat label="Your shares" value={acct.wrapperExists ? fmt(yourShares) : '—'} sub="PLP" />
+        <Stat
+          label="Your position"
+          value={acct.wrapperExists ? (yourValue != null ? `$${fmt(yourValue)}` : '—') : '—'}
+          sub={acct.wrapperExists ? `${fmt(yourShares)} PLP` : 'PLP'}
+        />
+        <Stat label="Idle liquidity" value={vault || cur ? `$${fmt(idle)}` : '—'} sub="DUSDC on hand" />
         <Stat
           label="In the queue"
           value={vault ? `${vault.supplyPending} / ${vault.withdrawPending}` : '—'}
@@ -43,23 +72,37 @@ export function V2VaultOverview() {
         />
       </div>
 
-      {/* liquidity composition — real proportions of the vault's DUSDC holdings */}
+      {/* pool composition — idle DUSDC vs capital deployed to open markets */}
       <div>
         <div className="mb-1.5 flex items-baseline justify-between">
-          <span className="eyebrow">Liquidity composition</span>
-          <span className="font-mono text-[11px] text-text-3">${fmt(total)}</span>
+          <span className="eyebrow">Pool composition</span>
+          <span className="font-mono text-[11px] text-text-3">${fmt(poolTotal)}</span>
         </div>
         <div className="flex h-2 overflow-hidden rounded-full bg-white/5">
-          <Seg value={idle} total={total} className="bg-[var(--accent)]" />
-          <Seg value={reserve} total={total} className="bg-text-3" />
-          <Seg value={feeInc} total={total} className="bg-text-3/50" />
+          <Seg value={idle} total={poolTotal} className="bg-accent" />
+          <Seg value={deployed} total={poolTotal} className="bg-text-2" />
         </div>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-text-3">
-          <Legend dot="bg-[var(--accent)]" label="Idle" value={`$${fmt(idle)}`} />
-          <Legend dot="bg-text-3" label="Protocol reserve" value={`$${fmt(reserve)}`} />
-          <Legend dot="bg-text-3/50" label="Fee incentives" value={`$${fmt(feeInc)}`} />
+          <Legend dot="bg-accent" label="Idle" value={`$${fmt(idle)}`} />
+          <Legend dot="bg-text-2" label="Backing open markets" value={`$${fmt(deployed)}`} />
         </div>
+        {(reserve > 0 || feeInc > 0) && (
+          <p className="mt-2 font-mono text-[10px] text-text-3">
+            Protocol-owned, outside the pool: reserve ${fmt(reserve)} · fee incentives ${fmt(feeInc)}
+          </p>
+        )}
       </div>
+
+      {/* last keeper flush — when the queue actually filled / pool was re-valued */}
+      {flush && (
+        <p className="text-[11px] leading-relaxed text-text-3">
+          Last vault update {ago(flush.checkpoint_timestamp_ms, now)} — {flush.market_count} markets
+          valued
+          {flush.requests_processed > 0
+            ? `, ${flush.supplies_filled} deposits and ${flush.withdrawals_filled} withdrawals filled.`
+            : '.'}
+        </p>
+      )}
     </div>
   );
 }

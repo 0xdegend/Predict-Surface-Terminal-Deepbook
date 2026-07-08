@@ -24,6 +24,7 @@ import { buildSurface, stressSvi, type SmileInput, type Surface } from '@/lib/sv
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
+import { useNow } from '@/lib/hooks/use-now';
 import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { price, pct, dateUTC, ttl } from '@/lib/format';
@@ -75,6 +76,13 @@ export function SurfaceCanvasV2({
 }) {
   const [stress, setStress] = useState(false);
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+
+  // Live wall-clock for tenor (legacy parity — the old frozen `serverNow` left
+  // tYears at their page-load values forever). Quantized to 10s so the clock
+  // alone rebuilds the mesh at most every 10s; pricer refreshes drive the rest.
+  const now = useNow(serverNow);
+  const nowMs = now - (now % 10_000);
 
   // Ticket selection (strike offset / range band, in admission steps from ATM)
   // resolved to absolute strikes against the selected market's surface row, so
@@ -93,10 +101,21 @@ export function SurfaceCanvasV2({
     () => (stress ? inputs.map((i) => ({ ...i, svi: stressSvi(i.svi) })) : inputs),
     [inputs, stress],
   );
-  // Finer k-grid (49 cols) + the legacy ±0.12 window → a smoother, legible ridge.
+  // Drop rows at/past expiry: their w is frozen while T clamps to ~0, so
+  // IV = √(w/T) explodes and the height/colour normalization pancakes every
+  // other row until the market poll prunes the dead market.
+  const liveInputs = useMemo(
+    () => shownInputs.filter((i) => i.oracle.expiry > nowMs + 5_000),
+    [shownInputs, nowMs],
+  );
+  // Finer k-grid (49 cols) over ±0.06 log-moneyness — half legacy's ±0.12
+  // window, sized to v2's short tenors (≤8h): the tradeable band of even the
+  // longest row only spans |k| ≲ 0.035, so at ±0.12 three quarters of every row
+  // was dead zone (washed slate) and the surface read as two pale slabs. At
+  // ±0.06 the glowing ridge fills the canvas the way legacy's does.
   const surface = useMemo(
-    () => buildSurface(shownInputs, { nowMs: serverNow, kMin: -0.12, kMax: 0.12, kSteps: 49 }),
-    [shownInputs, serverNow],
+    () => buildSurface(liveInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49 }),
+    [liveInputs, nowMs],
   );
   const mesh = useMemo(() => buildSurfaceMesh(surface), [surface]);
 
@@ -121,6 +140,18 @@ export function SurfaceCanvasV2({
 
   const hasButterfly = surface.rows.some((r) => r.cells.some((c) => c.butterfly));
   const hasCalendar = surface.rows.some((r) => r.cells.some((c) => c.calendar));
+
+  // A surface needs ≥2 live expiries; between market rolls the filter can
+  // briefly leave fewer — hold a quiet placeholder rather than a broken mesh.
+  if (surface.rows.length < 2) {
+    return (
+      <div className="flex h-full w-full items-center justify-center">
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-3">
+          waiting for live markets…
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full">
@@ -165,7 +196,7 @@ export function SurfaceCanvasV2({
         <OrbitControls
           enablePan={false}
           enableZoom
-          autoRotate={!hover}
+          autoRotate={!hover && !reduced}
           autoRotateSpeed={0.1}
           minDistance={8}
           maxDistance={22}
@@ -241,7 +272,9 @@ function SurfaceMesh({
   function pick(e: ThreeEvent<MouseEvent>) {
     e.stopPropagation();
     const c = cellAt(e);
-    if (!c) return;
+    // Dead-zone nodes (fair UP outside the mintable band) are dimmed and not
+    // mintable — ignore the click rather than load a doomed ticket (legacy parity).
+    if (!c || !c.cell.tradeable) return;
     const market = markets.find((m) => m.expiry_market_id === c.sRow.oracleId);
     if (!market) return;
     const step = toFloat(market.admission_tick_size) || 1;

@@ -111,3 +111,84 @@ export interface OracleBinding {
   source_id: number;
   propbook_oracle_id: string;
 }
+
+/* ----- server vault/analytics endpoints (shipped ~2026-07; live-verified 2026-07-08) -----
+ * Server convention: Postgres NUMERIC values (amounts, quantities, shares) are
+ * JSON STRINGS in 6-dec base units; counts/timestamps are JSON numbers.
+ */
+
+/** `current` component of `/vaults/:id/state` — newest per-field vault figures. */
+export interface V2VaultCurrent {
+  idle_balance_after: string;
+  total_supply: string;
+  /** Full pool NAV (idle + capital deployed to open markets). Share price = pool_value / total_supply. */
+  pool_value: string;
+  /** Capital currently backing open markets (pool_value − idle, roughly). */
+  active_market_nav: string;
+  protocol_reserve_balance_after: string;
+  pending_protocol_profit_after: string;
+  profit_basis_after: string;
+  fee_incentive_reserve_after: string | null;
+}
+
+/** The keeper flush that last re-valued the pool (fills execute in the same tx). */
+export interface V2VaultFlush {
+  checkpoint_timestamp_ms: number;
+  epoch: number;
+  pool_value: string;
+  total_supply: string;
+  active_market_nav: string;
+  market_count: number;
+  supplies_filled: number;
+  withdrawals_filled: number;
+  requests_processed: number;
+  [k: string]: unknown;
+}
+
+/** `/vaults/:id/state` — composed latest-by-event reads over the vault tables. */
+export interface V2VaultServerState {
+  pool_vault_id: string;
+  current: V2VaultCurrent | null;
+  latest_flush: V2VaultFlush | null;
+  [k: string]: unknown;
+}
+
+/** `/markets/:id/open-interest` — sums over the market's open order_state rows. */
+export interface V2OpenInterest {
+  expiry_market_id: string;
+  open_order_count: number;
+  /** Max payout at risk across open orders (6-dec base units). */
+  open_quantity: string;
+  open_floor_shares: string;
+}
+
+/** One hourly bucket of `/markets/:id/activity` (market_activity_1h MV, 60s refresh). */
+export interface V2ActivityBucket {
+  expiry_market_id: string;
+  bucket_ms: number;
+  mint_count: number;
+  mint_quantity: string;
+  /** Net premium staked by minters in the bucket (6-dec base units). */
+  mint_premium: string;
+  mint_fees: string;
+  unique_minters: number;
+  live_redeem_count: number;
+  live_redeem_quantity: string;
+  live_redeem_amount: string;
+  live_redeem_fees: string;
+  settled_redeem_count: number;
+  settled_redeem_quantity: string;
+  settled_redeem_payout: string;
+}
+
+/** One hourly bucket of `/markets/:id/liquidation-stats` (liquidation_stats_1h MV). */
+export interface V2LiquidationBucket {
+  expiry_market_id: string;
+  bucket_ms: number;
+  liquidated_count: number;
+  liquidated_quantity: string;
+  gross_value: string;
+  floor_amount: string;
+  surplus: string;
+  gap: string;
+}

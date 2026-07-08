@@ -1,26 +1,23 @@
-/**
- * /v2/portfolio — the trader's account + open positions on the new deployment.
- * Server shell; the panels are client leaves (wallet/owner-driven).
- */
-import { V2AccountPanel } from '@/app/_components/v2/account-panel';
-import { V2PositionsPanel } from '@/app/_components/v2/positions-panel';
+import type { Metadata } from 'next';
+import { V2PortfolioPanel } from '@/app/_components/v2/portfolio-panel';
 
+export const metadata: Metadata = {
+  title: 'Portfolio',
+  description:
+    'Your account and open positions on the new Predict release — live balances, PnL, and one-click claim for settled bets.',
+};
+
+// Wallet-specific account view. The data is client-only (needs the connected
+// wallet), so this server route just renders the client panel under the shared
+// /v2 chrome from the layout.
 export const dynamic = 'force-dynamic';
 
 export default function V2PortfolioPage() {
+  // eslint-disable-next-line react-hooks/purity
+  const serverNow = Date.now();
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <header className="mb-6">
-        <p className="eyebrow mb-1">Latest</p>
-        <h1 className="text-[22px] font-semibold tracking-tight text-text-1">Portfolio</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-text-2">
-          Your account balance and open positions on the new Predict release.
-        </p>
-      </header>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <V2AccountPanel />
-        <V2PositionsPanel />
-      </div>
+    <main className="flex flex-1 flex-col">
+      <V2PortfolioPanel serverNow={serverNow} />
     </main>
   );
 }

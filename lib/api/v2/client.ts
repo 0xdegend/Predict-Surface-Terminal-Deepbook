@@ -19,6 +19,10 @@ import type {
   PythObservation,
   OracleBinding,
   V2Position,
+  V2VaultServerState,
+  V2OpenInterest,
+  V2ActivityBucket,
+  V2LiquidationBucket,
 } from './types';
 
 interface GetOptions {
@@ -58,6 +62,23 @@ export const getV2MarketState = (marketId: string, o?: GetOptions) =>
 export const getAccountPositions = (owner: string, o?: GetOptions) =>
   beta<V2Position[]>(`/accounts/${owner}/positions`, o);
 
+/** Vault NAV + latest flush/fill events — pool_value/total_supply give the live
+ *  share price (endpoint shipped ~2026-07, verified live 2026-07-08). */
+export const getVaultState = (vaultId: string, o?: GetOptions) =>
+  beta<V2VaultServerState>(`/vaults/${vaultId}/state`, o);
+
+/** Open positions + max payout at risk for one market. */
+export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
+  beta<V2OpenInterest>(`/markets/${marketId}/open-interest`, o);
+
+/** Hourly mint/redeem activity buckets for one market (30-day MV, 60s refresh). */
+export const getMarketActivity = (marketId: string, limit = 50, o?: GetOptions) =>
+  beta<V2ActivityBucket[]>(`/markets/${marketId}/activity?limit=${limit}`, o);
+
+/** Hourly liquidation buckets for one market (30-day MV, 60s refresh). */
+export const getMarketLiquidationStats = (marketId: string, limit = 50, o?: GetOptions) =>
+  beta<V2LiquidationBucket[]>(`/markets/${marketId}/liquidation-stats?limit=${limit}`, o);
+
 /* --------------------------- propbook indexer ---------------------------- */
 
 export const getPropbookStatus = (o?: GetOptions) => propbook<V2Status>('/status', o);
@@ -91,4 +112,5 @@ export const qkV2 = {
   pythHistory: ['v2', 'pyth', 'history'] as const,
   pricer: (id: string) => ['v2', 'pricer', id] as const,
   accountPositions: (owner: string) => ['v2', 'account', owner, 'positions'] as const,
+  vaultServerState: ['v2', 'vault', 'server-state'] as const,
 };

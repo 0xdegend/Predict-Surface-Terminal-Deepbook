@@ -14,6 +14,7 @@ import { LuBoxes, LuChartArea } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
+import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { V2MarketPicker } from './market-picker';
 import { V2TradeTicket } from './trade-ticket';
@@ -59,17 +60,26 @@ export function V2TradeScreen({
   const selected = markets.find((m) => m.expiry_market_id === marketId) ?? markets[0] ?? null;
   const { data: pricer } = useV2Pricer(selected?.expiry_market_id ?? null, selected ? pricerSeeds[selected.expiry_market_id] : undefined);
 
-  // Surface inputs from the seeded markets (≥2 expiries needed to form a surface).
+  // LIVE pricers for every active market (bounded: ~3 per cadence), seeded from
+  // the server snapshot and shared with the picker's cache. The surface must NOT
+  // be built off the static `pricerSeeds`: markets roll every minute, so a
+  // page-load snapshot decays (rows vanish as seeds expire, new markets never
+  // join, and each surviving row's SVI/forward stays frozen) — the "live"
+  // surface was neither live nor whole after a few minutes.
+  const marketIds = useMemo(() => markets.map((m) => m.expiry_market_id), [markets]);
+  const pricers = useV2Pricers(marketIds, pricerSeeds);
+
+  // Surface inputs from the live pricers (≥2 expiries needed to form a surface).
   // buildSurface only reads oracle_id/expiry/underlying_asset, so a minimal cast is safe.
   const surfaceInputs = useMemo<SmileInput[]>(
     () =>
       markets.flatMap((m) => {
-        const p = pricerSeeds[m.expiry_market_id];
+        const p = pricers[m.expiry_market_id];
         return p
           ? [{ oracle: { oracle_id: m.expiry_market_id, expiry: m.expiry, underlying_asset: 'BTC' } as unknown as Oracle, svi: p.svi, forward: p.forward }]
           : [];
       }),
-    [markets, pricerSeeds],
+    [markets, pricers],
   );
 
   if (markets.length === 0) {
