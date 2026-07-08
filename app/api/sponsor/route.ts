@@ -15,7 +15,7 @@
  */
 import { NextResponse } from 'next/server';
 import { EnokiClient, type EnokiNetwork } from '@mysten/enoki';
-import { predictConfig } from '@/config/predict';
+import { predictConfig, predictV2Config } from '@/config/predict';
 
 const enoki = process.env.ENOKI_PRIVATE_API_KEY
   ? new EnokiClient({ apiKey: process.env.ENOKI_PRIVATE_API_KEY })
@@ -49,6 +49,32 @@ function allowedMoveCallTargets(): string[] {
     targets.push(
       `${predictConfig.skewFeePackageId}::fee_router::mint_with_fee`,
       `${predictConfig.skewFeePackageId}::fee_router::mint_range_with_fee`,
+    );
+  }
+  // NEW (v2) deployment — account custody, expiry-market trading, async vault.
+  // Every moveCall in a sponsored v2 PTB must be here (generate_auth and
+  // load_live_pricer run inline in most flows), or Enoki rejects the create
+  // phase with a 4xx regardless of the portal settings.
+  const v2 = predictV2Config.packages;
+  if (v2.account) {
+    targets.push(
+      `${v2.account}::account::generate_auth`,
+      `${v2.account}::account::share`,
+      `${v2.account}::account::deposit_funds`,
+      `${v2.account}::account::withdraw_funds`,
+      `${v2.account}::account_registry::new`,
+    );
+  }
+  if (v2.predict) {
+    targets.push(
+      `${v2.predict}::expiry_market::load_live_pricer`,
+      `${v2.predict}::expiry_market::mint_exact_quantity`,
+      `${v2.predict}::expiry_market::redeem_live`,
+      `${v2.predict}::expiry_market::redeem_settled`,
+      `${v2.predict}::plp::request_supply`,
+      `${v2.predict}::plp::request_withdraw`,
+      `${v2.predict}::plp::cancel_supply_request`,
+      `${v2.predict}::plp::cancel_withdraw_request`,
     );
   }
   return targets;
@@ -98,7 +124,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   } catch (e) {
+    const phase = body.digest ? 'execute' : 'create';
     const msg = e instanceof Error ? e.message : 'Sponsor request failed';
-    return NextResponse.json({ error: msg }, { status: 502 });
+    // Full detail in the server terminal — Enoki's raw text says WHY (allowlist,
+    // expired reservation, bad signature…) while the client toast stays humanized.
+    console.error(`[sponsor:${phase}]`, msg, e instanceof Error && e.cause ? e.cause : '');
+    return NextResponse.json({ error: `${phase} phase: ${msg}` }, { status: 502 });
   }
 }

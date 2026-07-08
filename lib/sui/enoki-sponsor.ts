@@ -60,8 +60,35 @@ async function sponsorSignExecute(kindB64: string, sender: string, allowedAddres
     transaction: Transaction.from(created.bytes),
   });
   // 3) execute (server, private key).
-  const executed = await postSponsor<{ digest: string }>({ digest: created.digest, signature });
-  return executed.digest;
+  try {
+    const executed = await postSponsor<{ digest: string }>({ digest: created.digest, signature });
+    return executed.digest;
+  } catch (e) {
+    // An execute-phase 5xx is ambiguous — Enoki may have submitted before its
+    // response was lost (seen live 2026-07-08: their testnet execute endpoint
+    // 502'd during the JSON-RPC shutdown). The final digest is fixed by the
+    // sponsored bytes, so we can safely CHECK the chain instead of guessing:
+    // if the tx landed, this attempt succeeded.
+    if (/status: 5\d\d/.test(e instanceof Error ? e.message : '')) {
+      const landed = await txLanded(created.digest);
+      if (landed) return created.digest;
+    }
+    throw e;
+  }
+}
+
+/** Bounded on-chain lookup of a digest (a few seconds), false if not found. */
+async function txLanded(digest: string): Promise<boolean> {
+  try {
+    const found = dAppKit
+      .getClient()
+      .core.waitForTransaction({ digest })
+      .then(() => true);
+    const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), 8_000));
+    return await Promise.race([found, timeout]);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -92,6 +119,9 @@ export async function executeSponsored(
       return await sponsorSignExecute(kindB64, sender, allowedAddresses);
     } catch (e) {
       lastErr = e;
+      // Raw failure in the browser console — the toast is humanized, but
+      // debugging needs the phase + Enoki's exact words.
+      console.error(`[enoki-sponsor] attempt ${attempt}/${MAX_ATTEMPTS} failed (sender ${sender}):`, e);
       if (attempt < MAX_ATTEMPTS && enokiRejectedPreChain(e)) continue;
       throw e;
     }

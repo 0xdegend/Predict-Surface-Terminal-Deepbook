@@ -65,8 +65,18 @@ export function humanizeError(raw: unknown): string {
     return 'Not enough SUI for gas. Add a little testnet SUI to this wallet.';
   if (/getaddrinfo|fetch failed|ENOTFOUND|network/i.test(msg))
     return 'Network hiccup reaching the chain. Check your connection and retry.';
-  if (/Enoki API failed|sponsor failed|sponsorship/i.test(msg))
+  if (/Enoki API failed|sponsor failed|sponsorship/i.test(msg)) {
+    // A rejected move-call target is a CONFIGURATION problem (the sponsor's
+    // allowlist in /api/sponsor and the Enoki portal must include every call in
+    // the PTB) — retrying will never clear it, so don't pretend it will.
+    if (/disallow|not allowed|allowlist|allowed.*(target|move)|(target|move).*allow/i.test(msg))
+      return 'The gasless service refused to sponsor this action — one of its contract calls isn’t on the sponsor allowlist. This is a configuration issue (not a passing glitch); retrying won’t help.';
+    // A 5xx from Enoki is THEIR infrastructure failing (seen live 2026-07-08
+    // when their testnet execute endpoint 502'd) — not the user's setup.
+    if (/status: 5\d\d/.test(msg))
+      return 'The gasless service is having an outage on its side right now — your setup and wallet are fine. Try again in a few minutes, or connect a regular wallet (it pays its own gas and skips the gasless service entirely).';
     return 'The gasless service briefly rejected the request (it can expire while signing). Please try again — this almost always clears on a retry.';
+  }
 
   // Move aborts: pull module + code out of the standard message format.
   if (/MoveAbort|abort code/i.test(msg)) {

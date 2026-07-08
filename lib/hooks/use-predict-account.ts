@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useCurrentAccount, useCurrentClient, useCurrentWallet, useDAppKit } from '@mysten/dapp-kit-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Transaction } from '@mysten/sui/transactions';
+import { fromBase64 } from '@mysten/sui/utils';
 import { isEnokiWallet } from '@mysten/enoki';
 import {
   getManagersByOwner,
@@ -146,7 +147,16 @@ export function usePredictAccount() {
         // Enoki sponsors the gas (server route, private key); the wallet signs.
         digest = await executeSponsored(tx, owner, opts?.allowedAddresses);
       } else {
-        const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+        // Sign with the wallet, execute via our own gRPC client. dapp-kit's
+        // combined signAndExecuteTransaction re-parses the wallet's raw response
+        // and can crash ("undefined 'txSignatures'") AFTER the tx already landed
+        // (seen live with Slush 2026-07-08). Sign-only returns a plain
+        // { bytes, signature }; execution then stays fully under our control.
+        const { bytes, signature } = await dAppKit.signTransaction({ transaction: tx });
+        const result = await client.core.executeTransaction({
+          transaction: fromBase64(bytes),
+          signatures: [signature],
+        });
         if (result.$kind === 'FailedTransaction') {
           throw new Error(result.FailedTransaction.status?.error?.message ?? 'Transaction failed on-chain');
         }
