@@ -1,115 +1,240 @@
 'use client';
 
 /**
- * V2VaultPanel — the ACTION side of the vault: queue a deposit (DUSDC → PLP) or a
- * withdrawal (PLP → DUSDC). Async by design — requests fill at the next vault
- * update (flush, NAV-priced), not instantly; shares/payout land in your account.
- * Read-side metrics live in V2VaultOverview. Glass; plain copy; no orbs/borders.
+ * V2VaultPanel — the ACTION side of the vault, in the legacy glass language:
+ * segmented Add/Remove, a frosted amount field with quick picks + Max, and the
+ * single glowing accent CTA. Async by design — requests queue and fill at the
+ * next vault update (NAV-priced), not instantly; shares/payout land in the
+ * trading account. Read-side metrics live in V2VaultOverview.
  */
 import { useState } from 'react';
+import type { IconType } from 'react-icons';
+import { LuDroplets, LuUpload, LuDownload } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote, toQuote } from '@/config/scale';
+import { quote as fmtQuote } from '@/lib/format';
+import { predictV2Config } from '@/config/predict';
+import { HUE, IconChip } from '../ui/metric';
 
 type Mode = 'add' | 'remove';
 
+const QUICK = [10, 25, 50];
+
 export function V2VaultPanel() {
   const acct = usePredictAccountV2();
+  const mounted = useMounted();
   const [mode, setMode] = useState<Mode>('add');
-  const [amount, setAmount] = useState(10);
+  const [amountStr, setAmountStr] = useState('10');
 
+  const sym = predictV2Config.quote.symbol;
   const plpBalance = fromQuote(acct.plpBalanceBase);
-  const dusdcBalance = fromQuote(acct.balanceBase);
+  const accountBalance = fromQuote(acct.balanceBase);
+  const walletBalance = acct.walletDusdcBase !== undefined ? fromQuote(acct.walletDusdcBase) : 0;
+
+  const amount = parseFloat(amountStr) || 0;
+  const busy = acct.busy === 'supply' || acct.busy === 'withdraw-lp';
+  // Adding can top up from the wallet in the same transaction, so the ceiling
+  // is account + wallet; removing is capped by the shares you hold.
+  const addCeiling = accountBalance + walletBalance;
+  const over = mode === 'add' ? amount > addCeiling + 1e-6 : amount > plpBalance + 1e-6;
+
+  const reason = !mounted
+    ? null
+    : !acct.owner
+      ? 'connect'
+      : !acct.wrapperExists
+        ? 'create'
+        : amount <= 0
+          ? 'enter'
+          : over
+            ? 'over'
+            : 'ready';
 
   async function submit() {
+    if (reason !== 'ready') return;
     if (mode === 'add') {
       const amt = toQuote(amount);
+      // Short on account balance → top up the difference from the wallet in the same tx.
       const shortfall = amt > acct.balanceBase ? amt - acct.balanceBase : 0n;
       await acct.requestSupply(amt, shortfall > 0n ? shortfall : undefined);
     } else {
       await acct.requestWithdraw(toQuote(amount));
     }
+    setAmountStr('10');
   }
 
-  const busy = acct.busy === 'supply' || acct.busy === 'withdraw-lp';
-  const overWithdraw = mode === 'remove' && toQuote(amount) > acct.plpBalanceBase;
-
   return (
-    <div className="panel flex flex-col gap-4 p-4">
-      <h3 className="text-[14px] font-medium tracking-tight text-text-1">Provide liquidity</h3>
-      <p className="text-[11px] leading-relaxed text-text-2">
-        Deposits and withdrawals join a queue and fill at the next vault update — not instantly.
-      </p>
-
-      <div className="grid grid-cols-2 gap-2">
-        <ModeBtn active={mode === 'add'} label="Add" onClick={() => setMode('add')} />
-        <ModeBtn active={mode === 'remove'} label="Remove" onClick={() => setMode('remove')} />
+    <div className="glass-card flex flex-col gap-4 p-4">
+      {/* title */}
+      <div className="flex items-center gap-2.5">
+        <IconChip icon={LuDroplets} color={HUE.teal} size={26} />
+        <div className="flex flex-col">
+          <h3 className="text-[14px] font-semibold tracking-tight text-text-1">Provide liquidity</h3>
+          <span className="text-[10px] text-text-3">queued · fills at the next vault update</span>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <span className="text-[12px] text-text-2">{mode === 'add' ? 'DUSDC to add' : 'Shares to remove'}</span>
-        <input
-          type="number"
-          min={0}
-          value={amount}
-          onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
-          className="w-28 rounded-md bg-white/5 px-2 py-1 text-right font-mono text-[13px] tabular-nums text-text-1 outline-none focus:bg-white/7"
+      {/* Add / Remove — the same segmented control as the portfolio tabs */}
+      <div className="segmented w-full" role="tablist" aria-label="Vault action">
+        <span
+          aria-hidden
+          className="segmented-thumb"
+          style={{ transform: mode === 'remove' ? 'translateX(100%)' : 'translateX(0)' }}
         />
-      </div>
-      <div className="flex justify-between font-mono text-[10px] text-text-3">
-        <span>{mode === 'add' ? `account: $${fmt(dusdcBalance)}` : `your shares: ${fmt(plpBalance)}`}</span>
-        {mode === 'remove' && (
-          <button className="text-text-2 hover:text-text-1" onClick={() => setAmount(plpBalance)}>
-            max
-          </button>
-        )}
+        <SegTab icon={LuUpload} label="Add" active={mode === 'add'} onClick={() => setMode('add')} />
+        <SegTab icon={LuDownload} label="Remove" active={mode === 'remove'} onClick={() => setMode('remove')} />
       </div>
 
-      <VaultAction acct={acct} mode={mode} busy={busy} over={overWithdraw} onSubmit={submit} />
-      {acct.error && <p className="text-[11px] leading-relaxed text-down">{acct.error}</p>}
+      {/* amount */}
+      <label className="flex flex-col gap-1.5 font-mono tabular-nums">
+        <span className="eyebrow">{mode === 'add' ? `${sym} to add` : 'Shares to remove'}</span>
+        <div className="glass-inset flex items-center gap-2 px-3 py-2.5">
+          <input
+            inputMode="decimal"
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value.replace(/[^0-9.]/g, ''))}
+            className="w-full bg-transparent text-[16px] text-text-1 outline-none"
+            placeholder="0.0"
+          />
+          <button
+            onClick={() =>
+              setAmountStr(String(Math.floor((mode === 'add' ? addCeiling : plpBalance) * 1e6) / 1e6))
+            }
+            className="ctrl-soft shrink-0 rounded-md px-2 py-1 text-[10px] uppercase tracking-wider text-text-2"
+          >
+            Max
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {QUICK.map((v) => (
+            <button
+              key={v}
+              onClick={() => setAmountStr(String(v))}
+              className="glass-inset px-2.5 py-1 text-[11px] text-text-2 transition-colors hover:text-text-1"
+            >
+              {v}
+            </button>
+          ))}
+          <span className="ml-auto text-[10px] text-text-3">
+            {mode === 'add'
+              ? `account ${fmtQuote(accountBalance)} · wallet ${fmtQuote(walletBalance)}`
+              : `your shares ${fmtQuote(plpBalance)}`}
+          </span>
+        </div>
+      </label>
+
+      {acct.error && (
+        <div className="rounded-lg border border-down/40 bg-down/10 p-2 font-mono text-[12px] text-down">
+          {acct.error}
+        </div>
+      )}
+
+      <ActionButton
+        reason={reason}
+        mode={mode}
+        busy={busy}
+        creating={acct.busy === 'create'}
+        onSubmit={submit}
+        onCreate={() => acct.createAccount()}
+      />
+
+      <p className="text-[10px] leading-relaxed text-text-3">
+        {mode === 'add'
+          ? `Your deposit joins the queue and converts to PLP shares at the next vault update, at the live share price. If your trading account is short, the difference tops up from your wallet in the same transaction.`
+          : `Removing converts your shares back to ${sym} at the share price when the queue fills. That value rises and falls with the pool, so it isn't guaranteed.`}
+      </p>
     </div>
   );
 }
 
-function VaultAction({
-  acct,
-  mode,
-  busy,
-  over,
-  onSubmit,
+function SegTab({
+  icon: Icon,
+  label,
+  active,
+  onClick,
 }: {
-  acct: ReturnType<typeof usePredictAccountV2>;
-  mode: Mode;
-  busy: boolean;
-  over: boolean;
-  onSubmit: () => void;
+  icon: IconType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const base = 'w-full rounded-lg px-4 py-2.5 text-[13px] font-semibold tracking-tight transition-colors disabled:opacity-50';
-  if (!acct.owner) return <button disabled className={`${base} bg-white/5 text-text-3`}>Connect your wallet</button>;
-  if (!acct.wrapperExists)
-    return (
-      <button onClick={() => acct.createAccount()} disabled={!!acct.busy} className={`${base} bg-(--accent-soft) text-up`}>
-        {acct.busy === 'create' ? 'Creating account…' : 'Create trading account'}
-      </button>
-    );
-  if (over) return <button disabled className={`${base} bg-white/5 text-text-3`}>More than your shares</button>;
-  return (
-    <button onClick={onSubmit} disabled={busy} className={`${base} bg-(--accent-soft) text-up`}>
-      {busy ? 'Queuing…' : mode === 'add' ? 'Queue deposit' : 'Queue withdrawal'}
-    </button>
-  );
-}
-
-function ModeBtn({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
     <button
+      type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
-      className={`rounded-lg py-2 text-[13px] font-medium transition-colors ${active ? 'bg-white/5 text-text-1' : 'text-text-2 hover:bg-white/3'}`}
+      className={[
+        'relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
+        active ? 'text-text-1' : 'text-text-3 hover:text-text-2',
+      ].join(' ')}
     >
+      <Icon size={13} className={active ? 'text-accent' : ''} />
       {label}
     </button>
   );
 }
 
-function fmt(n: number): string {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+function ActionButton({
+  reason,
+  mode,
+  busy,
+  creating,
+  onSubmit,
+  onCreate,
+}: {
+  reason: string | null;
+  mode: Mode;
+  busy: boolean;
+  creating: boolean;
+  onSubmit: () => void;
+  onCreate: () => void;
+}) {
+  if (reason === null) {
+    return <div className="h-11 animate-pulse rounded-lg bg-white/4" />;
+  }
+  if (reason === 'connect') {
+    return (
+      <button disabled className="h-11 rounded-lg border border-line text-[13px] font-semibold text-text-3 opacity-60">
+        Connect your wallet
+      </button>
+    );
+  }
+  if (reason === 'create') {
+    return (
+      <button
+        onClick={onCreate}
+        disabled={creating}
+        className="h-11 rounded-lg border border-(--accent-line) bg-(--accent-soft) text-[13px] font-semibold text-up shadow-[0_0_22px_-8px_var(--accent-glow)] transition-all hover:bg-up/15 disabled:opacity-60"
+      >
+        {creating ? 'Creating account…' : 'Create trading account'}
+      </button>
+    );
+  }
+  const ready = reason === 'ready';
+  const label = !ready
+    ? reason === 'enter'
+      ? 'Enter an amount'
+      : mode === 'add'
+        ? 'More than your balance'
+        : 'More than your shares'
+    : busy
+      ? 'Queuing…'
+      : mode === 'add'
+        ? 'Queue deposit'
+        : 'Queue withdrawal';
+  return (
+    <button
+      onClick={onSubmit}
+      disabled={!ready || busy}
+      className={`h-11 rounded-lg text-[13px] font-semibold transition-all ${
+        ready
+          ? 'border border-(--accent-line) bg-(--accent-soft) text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/15'
+          : 'border border-line text-text-3'
+      } disabled:opacity-60`}
+    >
+      {label}
+    </button>
+  );
 }

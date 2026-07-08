@@ -1,25 +1,31 @@
-/**
- * /v2/vault — Vault & Risk for the new deployment. Two columns: the read-side
- * overview (real metrics + liquidity composition + queue) and the async-LP
- * action panel. Server shell; both panels are client leaves.
- */
+import type { Metadata } from 'next';
+import { LuLandmark } from 'react-icons/lu';
 import { V2VaultOverview } from '@/app/_components/v2/vault-overview';
 import { V2VaultPanel } from '@/app/_components/v2/vault-panel';
+
+export const metadata: Metadata = {
+  title: 'Vault',
+  description:
+    'Back the new Predict release and earn its trading edge — deposits and withdrawals queue and fill at each vault update.',
+};
 
 export const dynamic = 'force-dynamic';
 
 export default function V2VaultPage() {
   return (
-    <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      <header className="mb-6">
-        <p className="eyebrow mb-1">Latest</p>
-        <h1 className="text-[22px] font-semibold tracking-tight text-text-1">Liquidity vault</h1>
-        <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-text-2">
-          Back the protocol and earn its trading edge. Liquidity moves through a queue and fills
-          at each vault update.
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5">
+      <header className="mb-5">
+        <p className="eyebrow mb-1">Latest · Vault</p>
+        <h1 className="flex items-center gap-2 text-[20px] font-semibold tracking-tight text-text-1">
+          <LuLandmark size={18} className="text-accent" />
+          Liquidity vault
+        </h1>
+        <p className="mt-1 max-w-2xl text-[12px] text-text-3">
+          Back the protocol and earn its trading edge. Money moves through a queue and fills at
+          each vault update.
         </p>
       </header>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <V2VaultOverview />
         <V2VaultPanel />
       </div>
