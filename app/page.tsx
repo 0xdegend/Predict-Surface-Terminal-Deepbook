@@ -14,7 +14,7 @@ import { MarketView } from "./_components/surface/market-view";
 import { LiveSviPanel } from "./_components/live-svi-panel";
 import { OpenPositions } from "./_components/positions/open-positions";
 import { MarketPicker } from "./_components/market-picker";
-import { ErrorState } from "./_components/ui/error-state";
+import { MigrationNotice } from "./_components/ui/migration-notice";
 import type { Oracle } from "@/lib/api/types";
 
 // Phase 0 verification screen. Server Component: fetches the live snapshot so the
@@ -109,12 +109,9 @@ export default async function Page() {
       />
 
       {error ? (
-        <ErrorState
-          title="Failed to reach Predict server"
-          message={error}
-          detail={predictConfig.serverUrl}
-          note="This is usually a transient local network/DNS hiccup — the server is reachable."
-        />
+        // The legacy backend has been wound down — a failed snapshot now means
+        // "the app moved", not "try again". Point the trader at /v2.
+        <MigrationNotice message={error} detail={predictConfig.serverUrl} />
       ) : snapshot ? (
         <>
           <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">
