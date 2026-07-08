@@ -135,7 +135,15 @@ export function usePredictAccount() {
   // rebuild the summary from the surviving positions feed + the authoritative
   // ON-CHAIN trading balance (predict_manager::balance via simulate), so the
   // account header keeps showing real figures instead of "…" forever.
-  const summaryDown = summaryQ.isError;
+  //
+  // LATCHED, not `isError`: whenever another consumer of this query mounts
+  // (wallet menu, etc.), TanStack's retryOnMount refetch flips the shared state
+  // to pending/isError=false for the ~1s retry window before erroring again —
+  // gating on the transient flag made the four summary tiles blink at 1Hz.
+  // `errorUpdateCount` only ever grows, so "has failed and still has no data"
+  // holds steady through those dips; a real success flips us back via `.data`.
+  const summaryDown =
+    summaryQ.data === undefined && (summaryQ.isError || summaryQ.errorUpdateCount > 0);
   const chainBalanceQ = useQuery({
     queryKey: qk.managerChainBalance(managerId ?? ''),
     queryFn: () => readManagerTradingBalance(client.core, managerId!),
@@ -148,7 +156,8 @@ export function usePredictAccount() {
     if (!summaryDown || !positions || !managerId) return undefined;
     // Wait for the chain balance unless that read itself failed (then show the
     // positions-derived figures with a zero balance rather than nothing).
-    if (chainBalanceQ.data === undefined && !chainBalanceQ.isError) return undefined;
+    // Same latch as summaryDown — the transient isError dips on remount refetch.
+    if (chainBalanceQ.data === undefined && chainBalanceQ.errorUpdateCount === 0) return undefined;
     const bal = Number(chainBalanceQ.data ?? 0n);
 
     // Same split the portfolio renders: settled-claimable vs still-open.
@@ -174,7 +183,7 @@ export function usePredictAccount() {
       open_positions: open.length,
       awaiting_settlement_positions: positions.filter((p) => p.status === 'awaiting_settlement').length,
     };
-  }, [summaryDown, positionsQ.data, managerId, owner, chainBalanceQ.data, chainBalanceQ.isError]);
+  }, [summaryDown, positionsQ.data, managerId, owner, chainBalanceQ.data, chainBalanceQ.errorUpdateCount]);
 
   const summary = summaryQ.data ?? fallbackSummary;
 
