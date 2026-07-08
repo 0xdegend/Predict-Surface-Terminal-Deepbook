@@ -50,8 +50,6 @@ export function SentimentShareModal({
     img.onload = () => setLogo(img);
   }, []);
 
-  // Draw (and redraw once the web fonts resolve, so the poster isn't rendered in
-  // a fallback face on first open).
   useEffect(() => {
     if (!open) return;
     const canvas = canvasRef.current;
