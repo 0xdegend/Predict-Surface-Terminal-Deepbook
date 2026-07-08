@@ -173,6 +173,7 @@ export const qk = {
   vaultSummary: ['vault', 'summary'] as const,
   managers: (owner: string) => ['managers', owner] as const,
   managerSummary: (id: string) => ['manager', id, 'summary'] as const,
+  managerChainBalance: (id: string) => ['manager', id, 'chain-balance'] as const,
   managerPositions: (id: string) => ['manager', id, 'positions'] as const,
   managerRanges: (id: string) => ['manager', id, 'ranges'] as const,
   managerPnl: (id: string) => ['manager', id, 'pnl'] as const,

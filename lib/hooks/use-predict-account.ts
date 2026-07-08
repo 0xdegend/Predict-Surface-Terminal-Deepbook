@@ -10,7 +10,7 @@
  * base units (@6dec). We expose them already de-scaled to human floats, and a
  * single `tradingBalanceBase` bigint for tx math — so callers never re-scale.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCurrentAccount, useCurrentClient, useCurrentWallet, useDAppKit } from '@mysten/dapp-kit-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Transaction } from '@mysten/sui/transactions';
@@ -26,6 +26,7 @@ import {
 import { predictConfig } from '@/config/predict';
 import { humanizeError, isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { isRedeemableStatus } from '@/lib/portfolio/history';
+import { readManagerTradingBalance } from '@/lib/sui/manager-balance';
 import { toast } from '@/lib/store/toast-store';
 import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor';
 import { enokiEnabled } from '@/config/enoki';
@@ -40,7 +41,7 @@ import {
   buildRedeemRangeTx,
   buildCashOutTx,
 } from '@/lib/sui/predict-tx';
-import type { PositionSummary } from '@/lib/api/types';
+import type { ManagerSummary, PositionSummary } from '@/lib/api/types';
 
 /** Friendly label for a runTx action (label may be "redeem-<oracle>-..."). */
 function txLabel(label: string): string {
@@ -129,8 +130,56 @@ export function usePredictAccount() {
     refetchInterval: 10_000,
   });
 
+  // The legacy server's /summary endpoint died with its chain ingestion
+  // (2026-07-08) while /positions and /ranges still serve. When it errors,
+  // rebuild the summary from the surviving positions feed + the authoritative
+  // ON-CHAIN trading balance (predict_manager::balance via simulate), so the
+  // account header keeps showing real figures instead of "…" forever.
+  const summaryDown = summaryQ.isError;
+  const chainBalanceQ = useQuery({
+    queryKey: qk.managerChainBalance(managerId ?? ''),
+    queryFn: () => readManagerTradingBalance(client.core, managerId!),
+    enabled: !!managerId && summaryDown,
+    refetchInterval: 15_000,
+  });
+
+  const fallbackSummary = useMemo<ManagerSummary | undefined>(() => {
+    const positions = positionsQ.data;
+    if (!summaryDown || !positions || !managerId) return undefined;
+    // Wait for the chain balance unless that read itself failed (then show the
+    // positions-derived figures with a zero balance rather than nothing).
+    if (chainBalanceQ.data === undefined && !chainBalanceQ.isError) return undefined;
+    const bal = Number(chainBalanceQ.data ?? 0n);
+
+    // Same split the portfolio renders: settled-claimable vs still-open.
+    const held = positions.filter((p) => p.open_quantity > 0);
+    const open = held.filter((p) => !isRedeemableStatus(p.status));
+    const redeemable = held.filter((p) => isRedeemableStatus(p.status));
+    const closed = positions.filter((p) => p.status === 'redeemed' || p.status === 'lost');
+
+    const openValue = open.reduce((s, p) => s + (p.mark_value ?? 0), 0);
+    const redeemableValue = redeemable.reduce((s, p) => s + (p.mark_value ?? 0), 0);
+    // NOTE: open vertical ranges aren't folded in (separate endpoint) — a rare
+    // holding on the frozen legacy deployment; binaries cover the header.
+    return {
+      manager_id: managerId,
+      owner: owner ?? '',
+      balances: [],
+      trading_balance: bal,
+      open_exposure: open.reduce((s, p) => s + (p.open_cost_basis || p.total_cost || 0), 0),
+      redeemable_value: redeemableValue,
+      realized_pnl: closed.reduce((s, p) => s + ((p.total_payout ?? 0) - (p.total_cost ?? 0)), 0),
+      unrealized_pnl: open.reduce((s, p) => s + (p.unrealized_pnl ?? 0), 0),
+      account_value: bal + openValue + redeemableValue,
+      open_positions: open.length,
+      awaiting_settlement_positions: positions.filter((p) => p.status === 'awaiting_settlement').length,
+    };
+  }, [summaryDown, positionsQ.data, managerId, owner, chainBalanceQ.data, chainBalanceQ.isError]);
+
+  const summary = summaryQ.data ?? fallbackSummary;
+
   // trading_balance is base units (@6dec) — keep a bigint for tx math.
-  const tradingBalanceBase = BigInt(Math.round(summaryQ.data?.trading_balance ?? 0));
+  const tradingBalanceBase = BigInt(Math.round(summary?.trading_balance ?? 0));
 
   async function runTx(
     label: string,
@@ -379,7 +428,7 @@ export function usePredictAccount() {
     owner,
     managerId,
     managersLoading: managersQ.isLoading,
-    summary: summaryQ.data,
+    summary,
     positions: positionsQ.data ?? [],
     positionsLoading: positionsQ.isLoading,
     pnl: pnlQ.data,
