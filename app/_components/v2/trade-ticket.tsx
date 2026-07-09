@@ -90,6 +90,7 @@ export function V2TradeTicket({
   const leverage = useV2TradeStore((s) => s.leverage);
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const pickSeq = useV2TradeStore((s) => s.pickSeq);
+  const pulseFill = useV2TradeStore((s) => s.pulseFill);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [showCostDetails, setShowCostDetails] = useState(false);
@@ -263,6 +264,12 @@ export function V2TradeTicket({
     );
     setConfirmOpen(false);
     if (digest) {
+      // Ripple the fill on the surface (it reads the store's `fill`).
+      pulseFill({
+        marketId: market!.expiry_market_id,
+        strike: rangeMode ? (lowerStrike + higherStrike) / 2 : strike,
+        isUp: rangeMode ? true : isUp,
+      });
       setMintSuccess({
         headline,
         tone,

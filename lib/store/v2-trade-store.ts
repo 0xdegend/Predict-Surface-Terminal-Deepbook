@@ -36,6 +36,9 @@ interface V2TradeState {
    *  table/card pick jumps straight to step 2". Ticket-internal changes (slider
    *  drag, ± nudge, odds-curve drag) must NOT bump it. */
   pickSeq: number;
+  /** Last successful mint (legacy surface-store parity) — the surface pulses a
+   *  ripple at this spot. `ts` distinguishes repeat fills at the same node. */
+  fill: { marketId: string; strike: number; isUp: boolean; ts: number } | null;
 
   selectMarket: (id: string) => void;
   setMode: (m: V2TradeMode) => void;
@@ -51,6 +54,8 @@ interface V2TradeState {
   setLeverage: (l: number) => void;
   /** Mark the current selection as an external pick (see pickSeq). */
   markPicked: () => void;
+  /** Announce a successful mint so the surface can ripple at the fill. */
+  pulseFill: (f: { marketId: string; strike: number; isUp: boolean }) => void;
 }
 
 export const useV2TradeStore = create<V2TradeState>((set) => ({
@@ -64,6 +69,7 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   stake: 10,
   leverage: 1,
   pickSeq: 0,
+  fill: null,
 
   // Switching markets resets strikes to ATM and drops any band/anchor (offsets
   // don't carry across grids — the user re-picks on the new market's curve).
@@ -99,4 +105,5 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   setStake: (stake) => set({ stake: Math.max(0, stake) }),
   setLeverage: (leverage) => set({ leverage: Math.max(1, leverage) }),
   markPicked: () => set((s) => ({ pickSeq: s.pickSeq + 1 })),
+  pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
 }));

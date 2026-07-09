@@ -14,7 +14,7 @@ import { MarketView } from "./_components/surface/market-view";
 import { LiveSviPanel } from "./_components/live-svi-panel";
 import { OpenPositions } from "./_components/positions/open-positions";
 import { MarketPicker } from "./_components/market-picker";
-import { MigrationNotice } from "./_components/ui/migration-notice";
+import { TradeBodySkeleton } from "./_components/trade-skeleton";
 import type { Oracle } from "@/lib/api/types";
 
 // Phase 0 verification screen. Server Component: fetches the live snapshot so the
@@ -109,9 +109,25 @@ export default async function Page() {
       />
 
       {error ? (
-        // The legacy backend has been wound down — a failed snapshot now means
-        // "the app moved", not "try again". Point the trader at /v2.
-        <MigrationNotice />
+        // The legacy backend has been wound down — market data won't come back.
+        // Keep the familiar terminal shape visible but INERT (blurred, no
+        // pointer events) under the live chrome, so the nav keeps working:
+        // traders can still open Portfolio to claim legacy positions or flip
+        // the toggle to the Latest release. Deliberately not an interstitial —
+        // a full-page "site moved, click here" card is a phishing-shaped
+        // pattern that Safe Browsing flags.
+        <div className="relative flex flex-1 flex-col overflow-hidden">
+          <div
+            aria-hidden
+            className="pointer-events-none flex flex-1 select-none flex-col opacity-55 blur-[5px]"
+          >
+            <TradeBodySkeleton />
+          </div>
+          {/* One quiet caption, not a card: why the terminal is frozen. */}
+          <p className="pointer-events-none absolute inset-x-0 top-[38%] mx-auto w-fit max-w-[calc(100%-2rem)] rounded-lg bg-black/50 px-4 py-2.5 text-center text-[13px] leading-relaxed text-text-2 backdrop-blur-sm">
+            Legacy market is offline.
+          </p>
+        </div>
       ) : snapshot ? (
         <>
           <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/[0.06] lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]">

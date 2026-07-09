@@ -1,25 +1,31 @@
 'use client';
 
 /**
- * SurfaceCanvasV2 — the live SVI vol surface for the new deployment, now a
- * readable instrument rather than a bare mesh: hover tooltip (strike / IV /
- * UP-DOWN / expiry), IV colour legend, meta chip with the live no-arb status,
- * in-canvas axis guide (strike ticks, expiry labels, forward meridian), and a
- * Stress toggle that perturbs the SVI to make the arb checker visibly fire.
+ * SurfaceCanvasV2 — the live SVI vol surface for the new deployment, at legacy
+ * parity as a full trading instrument (X = log-moneyness, Z = expiry depth,
+ * Y/colour = IV; pure math shared via buildSurface + buildSurfaceMesh):
  *
- * Reuses the proven pure math (buildSurface + buildSurfaceMesh + ivColor) and is
- * v2-wired (no legacy surface-store): clicking selects a market + strike into
- * the v2 trade store (the rail ticket + smile handle the trade — no in-canvas
- * popover by design). X = log-moneyness, Z = expiry depth, Y/colour = IV.
+ *  - MORPH: one persistent geometry eases toward each new target every frame,
+ *    so data refreshes, the Stress bend and the Arb Check repaint all animate
+ *    instead of snapping, and the surface assembles upward on load (§10.6).
+ *  - TRADE: hover a node for odds (pointer/not-allowed cursor feedback + dead-
+ *    zone note in the tooltip); click opens the quick-mint popover (glance →
+ *    ticket → mint) pre-filled through the shared v2 trade store, and range
+ *    mode builds a band from two clicks. Below lg the surface is VIEW-ONLY —
+ *    trading happens from the rail/list (a 3-D tap on a phone is imprecise).
+ *  - OVERLAYS: Arb Check paints butterfly/calendar-violating cells red on the
+ *    mesh (plus the status pill), Stress perturbs the SVI so the checker
+ *    visibly fires; the popover always prices off the UNSTRESSED live inputs.
+ *  - Legacy extras: first-run coach pulse, mode-aware tap hint, and a fill
+ *    ripple on every successful mint (popover or rail ticket).
  *
  * Not yet ported: LIVE/time-travel scrub (needs a per-market SVI history the v2
  * data path doesn't expose today).
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import { LuActivity } from 'react-icons/lu';
 import { buildSurface, stressSvi, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -29,6 +35,7 @@ import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { price, pct, dateUTC, ttl } from '@/lib/format';
 import { InfoTip } from '@/app/_components/ui/info-tip';
+import { SurfaceTradePopoverV2 } from './surface-trade-popover';
 import type { V2Market } from '@/lib/api/v2/types';
 
 interface HoverInfo {
@@ -38,6 +45,7 @@ interface HoverInfo {
   expiry: number;
   iv: number;
   up: number;
+  tradeable: boolean;
 }
 
 /** Nearest (row, col) grid node to a picked/hovered 3-D point. */
@@ -75,8 +83,37 @@ export function SurfaceCanvasV2({
   serverNow: number;
 }) {
   const [stress, setStress] = useState(false);
+  const [showNoArb, setShowNoArb] = useState(false);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  // Below lg the surface is VIEW-ONLY — trading happens from the rail/list
+  // (legacy parity: a 3-D tap on a phone is imprecise).
+  const isMobile = useMediaQuery('(max-width: 1023px)');
+
+  // Click-to-mint popover centered over the surface (desktop only). `clickId`
+  // remounts it on each new pick so its internal glance/ticket state resets.
+  const [popover, setPopover] = useState(false);
+  const [clickId, setClickId] = useState(0);
+
+  // First-run coach mark — same key as legacy (the "tap the surface to trade"
+  // lesson is identical across deployments). localStorage is safe at init: this
+  // canvas is dynamically imported ssr:false, so `window` exists.
+  const [coachSeen, setCoachSeen] = useState(() => {
+    try {
+      return localStorage.getItem('skew:surface-coach-seen') === '1';
+    } catch {
+      return false;
+    }
+  });
+  function markCoachSeen() {
+    if (coachSeen) return;
+    try {
+      localStorage.setItem('skew:surface-coach-seen', '1');
+    } catch {
+      /* private mode — just hide for this session */
+    }
+    setCoachSeen(true);
+  }
 
   // Live wall-clock for tenor (legacy parity — the old frozen `serverNow` left
   // tYears at their page-load values forever). Quantized to 10s so the clock
@@ -94,19 +131,26 @@ export function SurfaceCanvasV2({
   const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
   const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
   const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
+  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
+  const pickSeq = useV2TradeStore((s) => s.pickSeq);
+  const selectMarket = useV2TradeStore((s) => s.selectMarket);
+  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
+  const markPicked = useV2TradeStore((s) => s.markPicked);
+  const pickRangeOffset = useV2TradeStore((s) => s.pickRangeOffset);
 
-  // Stress perturbs the SVI (adds slope/skew) so the no-arb checker visibly
-  // fires — the credibility flex. Live data is normally clean.
-  const shownInputs = useMemo(
-    () => (stress ? inputs.map((i) => ({ ...i, svi: stressSvi(i.svi) })) : inputs),
-    [inputs, stress],
-  );
   // Drop rows at/past expiry: their w is frozen while T clamps to ~0, so
   // IV = √(w/T) explodes and the height/colour normalization pancakes every
   // other row until the market poll prunes the dead market.
   const liveInputs = useMemo(
-    () => shownInputs.filter((i) => i.oracle.expiry > nowMs + 5_000),
-    [shownInputs, nowMs],
+    () => inputs.filter((i) => i.oracle.expiry > nowMs + 5_000),
+    [inputs, nowMs],
+  );
+  // Stress perturbs the SVI (adds slope/skew) so the no-arb checker visibly
+  // fires — the credibility flex. DISPLAY-ONLY: the trade popover prices off
+  // the unstressed `liveInputs`. Live data is normally clean.
+  const shownInputs = useMemo(
+    () => (stress ? liveInputs.map((i) => ({ ...i, svi: stressSvi(i.svi) })) : liveInputs),
+    [liveInputs, stress],
   );
   // Finer k-grid (49 cols) over ±0.06 log-moneyness — half legacy's ±0.12
   // window, sized to v2's short tenors (≤8h): the tradeable band of even the
@@ -114,8 +158,8 @@ export function SurfaceCanvasV2({
   // was dead zone (washed slate) and the surface read as two pale slabs. At
   // ±0.06 the glowing ridge fills the canvas the way legacy's does.
   const surface = useMemo(
-    () => buildSurface(liveInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49 }),
-    [liveInputs, nowMs],
+    () => buildSurface(shownInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49 }),
+    [shownInputs, nowMs],
   );
   const mesh = useMemo(() => buildSurfaceMesh(surface), [surface]);
 
@@ -138,8 +182,80 @@ export function SurfaceCanvasV2({
     return { kind: 'binary', oracleId: marketId, strike: atm + strikeOffset * admStep, isUp };
   }, [marketId, markets, surface, mode, isUp, strikeOffset, rangeLowerOffset, rangeHigherOffset]);
 
-  const hasButterfly = surface.rows.some((r) => r.cells.some((c) => c.butterfly));
-  const hasCalendar = surface.rows.some((r) => r.cells.some((c) => c.calendar));
+  const { hasButterfly, hasCalendar } = surface;
+  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
+
+  // The market/input the popover trades — the store's selected market, priced
+  // off the UNSTRESSED live inputs (the mint guards must see real odds).
+  const activeMarket = useMemo(
+    () => (marketId ? (markets.find((m) => m.expiry_market_id === marketId) ?? null) : null),
+    [markets, marketId],
+  );
+  const activeInput = useMemo(
+    () => (marketId ? (liveInputs.find((i) => i.oracle.oracle_id === marketId) ?? null) : null),
+    [liveInputs, marketId],
+  );
+
+  function pick(row: number, col: number) {
+    // Surface is view-only below lg — trade from the rail/list instead.
+    if (isMobile) return;
+    const sRow = surface.rows[row];
+    const cell = sRow?.cells[col];
+    // Dead-zone nodes (fair UP outside the mintable band) are dimmed and not
+    // mintable — ignore the click rather than load a doomed ticket.
+    if (!sRow || !cell || !cell.tradeable) return;
+    const clickedMarket = markets.find((m) => m.expiry_market_id === sRow.oracleId);
+    if (!clickedMarket) return;
+    markCoachSeen(); // first real interaction — retire the coach mark for good
+    // The actual price the user pointed at (this node's strike).
+    const clickedPrice = sRow.forward * Math.exp(cell.k);
+
+    if (mode === 'range') {
+      // A range lives on ONE market (one expiry = one row): once a first edge is
+      // anchored we KEEP the band on the anchor's market and treat this click as
+      // just the PRICE of the second edge (legacy parity — two 3-D picks almost
+      // never land on the same row).
+      const st = useV2TradeStore.getState();
+      let targetMarket = clickedMarket;
+      let targetRow: Surface['rows'][number] = sRow;
+      if (st.rangeAnchorOffset != null && st.marketId) {
+        const aRow = surface.rows.find((r) => r.oracleId === st.marketId);
+        const aMarket = markets.find((m) => m.expiry_market_id === st.marketId);
+        if (aRow && aMarket) {
+          targetMarket = aMarket;
+          targetRow = aRow;
+        }
+      } else if (st.marketId !== clickedMarket.expiry_market_id) {
+        selectMarket(clickedMarket.expiry_market_id); // fresh band on the clicked market
+      }
+      const step = toFloat(targetMarket.admission_tick_size) || 1;
+      const atm = toFloat(
+        snapStrikeToAdmission(fromFloat(targetRow.forward), BigInt(targetMarket.admission_tick_size)),
+      );
+      pickRangeOffset(Math.round((clickedPrice - atm) / step));
+      // Open the card only once this click COMPLETES the band — keep the surface
+      // clear for the second pick (legacy parity).
+      const after = useV2TradeStore.getState();
+      if (after.rangeLowerOffset != null && after.rangeHigherOffset != null) {
+        setPopover(true);
+        setClickId((n) => n + 1);
+      }
+      return;
+    }
+
+    // Binary: the clicked node is the strike directly.
+    const step = toFloat(clickedMarket.admission_tick_size) || 1;
+    const atm = toFloat(
+      snapStrikeToAdmission(fromFloat(sRow.forward), BigInt(clickedMarket.admission_tick_size)),
+    );
+    selectMarket(clickedMarket.expiry_market_id);
+    setStrikeOffset(Math.round((clickedPrice - atm) / step));
+    // A surface pick is a full side-&-level choice — advance the rail ticket to
+    // its bet step (legacy parity).
+    markPicked();
+    setPopover(true);
+    setClickId((n) => n + 1); // remount so glance/size reset on each new pick
+  }
 
   // A surface needs ≥2 live expiries; between market rolls the filter can
   // briefly leave fewer — hold a quiet placeholder rather than a broken mesh.
@@ -159,7 +275,6 @@ export function SurfaceCanvasV2({
         camera={{ position: [8, 7.5, 12.5], fov: 38 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        className="cursor-grab active:cursor-grabbing"
       >
         <color attach="background" args={['#0A0B0D']} />
         {/* Brighter than legacy's exact values — v2's short-tenor data is flatter,
@@ -170,7 +285,14 @@ export function SurfaceCanvasV2({
         <directionalLight position={[6, 12, 8]} intensity={1.5} />
         <directionalLight position={[-8, 5, -6]} intensity={0.5} color="#6fb7ff" />
         <group position={[0, -1.4, 0]}>
-          <SurfaceMesh surface={surface} mesh={mesh} markets={markets} onHover={setHover} />
+          <MorphSurface
+            surface={surface}
+            mesh={mesh}
+            showNoArb={showNoArb}
+            reduced={reduced}
+            onHover={setHover}
+            onPick={pick}
+          />
           <SurfaceAxes mesh={mesh} />
           {selection?.kind === 'binary' && (
             <>
@@ -179,7 +301,13 @@ export function SurfaceCanvasV2({
             </>
           )}
           {selection?.kind === 'range' && <RangeBandMarker mesh={mesh} surface={surface} sel={selection} />}
-          {(hasButterfly || hasCalendar) && <ArbMarkers surface={surface} mesh={mesh} />}
+          <FillRipple mesh={mesh} surface={surface} />
+          <FirstRunPulse
+            mesh={mesh}
+            surface={surface}
+            reduced={reduced}
+            show={!isMobile && !coachSeen && pickSeq === 0 && !popover}
+          />
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
             cellSize={0.5}
@@ -196,7 +324,7 @@ export function SurfaceCanvasV2({
         <OrbitControls
           enablePan={false}
           enableZoom
-          autoRotate={!hover && !reduced}
+          autoRotate={!hover && !reduced && !popover && rangeAnchorOffset == null}
           autoRotateSpeed={0.1}
           minDistance={8}
           maxDistance={22}
@@ -205,90 +333,181 @@ export function SurfaceCanvasV2({
         />
       </Canvas>
 
-      {hover && <SurfaceTooltip hover={hover} />}
+      {hover && !popover && <SurfaceTooltip hover={hover} />}
+
+      {/* While a range band is still being drawn (no finalized band yet), never
+          mount the card — it would cover the surface and block the second pick;
+          the bottom hint guides until both edges are set (legacy parity). */}
+      {popover && !(mode === 'range' && !bandSet) && (
+        <SurfaceTradePopoverV2
+          key={clickId}
+          market={activeMarket}
+          input={activeInput}
+          now={now}
+          onClose={() => setPopover(false)}
+        />
+      )}
       <SurfaceLegend ivMin={mesh.ivMin} ivMax={mesh.ivMax} />
-      <SurfaceMeta expiries={surface.rows.length} hasButterfly={hasButterfly} hasCalendar={hasCalendar} />
-      <SurfaceControls stress={stress} onStress={setStress} />
+      <SurfaceMeta
+        expiries={surface.rows.length}
+        hasButterfly={hasButterfly}
+        hasCalendar={hasCalendar}
+        showNoArb={showNoArb}
+      />
+      <SurfaceControls
+        showNoArb={showNoArb}
+        onNoArb={() => setShowNoArb((v) => !v)}
+        stress={stress}
+        onStress={setStress}
+      />
+
+      {/* Tap-to-trade hint — desktop only (the surface is view-only below lg).
+          Mode-aware, fading out once the relevant pick is made (legacy parity). */}
+      <div
+        className={`pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
+          (mode === 'range' ? bandSet : pickSeq > 0) ? 'translate-y-1 opacity-0' : 'opacity-100'
+        }`}
+      >
+        <span className="chip h-7 px-3 text-[11px] text-text-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          {mode === 'range'
+            ? rangeAnchorOffset != null && !bandSet
+              ? 'Tap the second price level to set your range'
+              : 'Tap two price levels to set your range'
+            : 'Tap a point on the surface to build a trade'}
+        </span>
+      </div>
     </div>
   );
 }
 
-function SurfaceMesh({
+/**
+ * MorphSurface — persistent geometry that eases toward the target mesh each
+ * frame (legacy port): live data refreshes, the Stress bend and the Arb Check
+ * repaint all ANIMATE instead of snapping, and on first mount (or when the
+ * market roster changes topology) the surface assembles upward from the floor.
+ */
+function MorphSurface({
   surface,
   mesh,
-  markets,
+  showNoArb,
+  reduced,
   onHover,
+  onPick,
 }: {
   surface: Surface;
   mesh: SurfaceMesh;
-  markets: V2Market[];
+  showNoArb: boolean;
+  reduced: boolean;
   onHover: (h: HoverInfo | null) => void;
+  onPick: (row: number, col: number) => void;
 }) {
-  const selectMarket = useV2TradeStore((s) => s.selectMarket);
-  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
-  const markPicked = useV2TradeStore((s) => s.markPicked);
-  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
 
-  const geometry = useMemo(() => {
+  // Arb overlay (legacy parity): with Arb Check on, butterfly/calendar-violating
+  // cells paint red on the mesh itself rather than as separate markers — and the
+  // repaint rides the same per-frame color lerp as everything else.
+  const targetColors = useMemo(() => {
+    if (!showNoArb || mesh.violations.length === 0) return mesh.colors;
+    const c = mesh.colors.slice();
+    for (const v of mesh.violations) {
+      const idx = (v.row * mesh.cols + v.col) * 3;
+      c[idx] = 0.95;
+      c[idx + 1] = 0.22;
+      c[idx + 2] = 0.19;
+    }
+    return c;
+  }, [mesh, showNoArb]);
+
+  const topoKey = `${mesh.rows}x${mesh.cols}`;
+  const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
-    g.setAttribute('color', new THREE.BufferAttribute(mesh.colors, 3));
+    // Start flat (y=0) so the surface ASSEMBLES upward on first frames — the
+    // load choreography (§10.6). Under reduced motion, start at full height.
+    const init = mesh.positions.slice();
+    if (!reduced) {
+      for (let i = 1; i < init.length; i += 3) init[i] = 0;
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(init, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(targetColors.slice(), 3));
     g.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     g.computeVertexNormals();
     return g;
-  }, [mesh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topoKey]);
 
-  // The surface is the only element that glows (design brief) — a slow emissive
-  // breath, off under prefers-reduced-motion.
-  useFrame((state) => {
-    if (!reduced && matRef.current) {
+  useEffect(() => () => geom.dispose(), [geom]);
+
+  const target = useRef({ positions: mesh.positions, colors: targetColors });
+  useEffect(() => {
+    target.current = { positions: mesh.positions, colors: targetColors };
+  }, [mesh, targetColors]);
+
+  useFrame((state, delta) => {
+    const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
+    const colAttr = geom.getAttribute('color') as THREE.BufferAttribute;
+    const pos = posAttr.array as Float32Array;
+    const col = colAttr.array as Float32Array;
+    const tp = target.current.positions;
+    const tc = target.current.colors;
+    if (pos.length !== tp.length) return;
+    const a = reduced ? 1 : 1 - Math.pow(0.0008, delta);
+    let moved = false;
+    for (let i = 0; i < pos.length; i++) {
+      const dp = tp[i] - pos[i];
+      if (Math.abs(dp) > 1e-5) {
+        pos[i] += dp * a;
+        moved = true;
+      }
+      col[i] += (tc[i] - col[i]) * a;
+    }
+    posAttr.needsUpdate = true;
+    colAttr.needsUpdate = true;
+    if (moved) geom.computeVertexNormals();
+    // The surface is the only element that glows (design brief) — a slow
+    // emissive breath, off under prefers-reduced-motion.
+    if (matRef.current && !reduced) {
       matRef.current.emissiveIntensity = 0.18 + 0.05 * Math.sin(state.clock.elapsedTime * 0.8);
     }
   });
 
-  function cellAt(e: ThreeEvent<PointerEvent | MouseEvent>) {
+  function handleMove(e: ThreeEvent<PointerEvent>) {
+    e.stopPropagation();
     const { row, col } = nearestCell(mesh, e.point);
     const sRow = surface.rows[row];
     const cell = sRow?.cells[col];
-    if (!sRow || !cell) return null;
-    return { sRow, cell, strike: sRow.forward * Math.exp(cell.k) };
-  }
-
-  function handleMove(e: ThreeEvent<PointerEvent>) {
-    e.stopPropagation();
-    const c = cellAt(e);
-    if (!c) return;
+    if (!sRow || !cell) return;
+    // Pointer over a mintable node, not-allowed over the dead zone (legacy
+    // parity) — the cursor is the first "you can trade this" signal.
+    if (typeof document !== 'undefined') {
+      document.body.style.cursor = cell.tradeable ? 'pointer' : 'not-allowed';
+    }
     onHover({
       x: e.nativeEvent.offsetX,
       y: e.nativeEvent.offsetY,
-      strike: c.strike,
-      expiry: c.sRow.expiry,
-      iv: c.cell.iv,
-      up: c.cell.up,
+      strike: sRow.forward * Math.exp(cell.k),
+      expiry: sRow.expiry,
+      iv: cell.iv,
+      up: cell.up,
+      tradeable: cell.tradeable,
     });
-  }
-
-  function pick(e: ThreeEvent<MouseEvent>) {
-    e.stopPropagation();
-    const c = cellAt(e);
-    // Dead-zone nodes (fair UP outside the mintable band) are dimmed and not
-    // mintable — ignore the click rather than load a doomed ticket (legacy parity).
-    if (!c || !c.cell.tradeable) return;
-    const market = markets.find((m) => m.expiry_market_id === c.sRow.oracleId);
-    if (!market) return;
-    const step = toFloat(market.admission_tick_size) || 1;
-    const atm = toFloat(snapStrikeToAdmission(fromFloat(c.sRow.forward), BigInt(market.admission_tick_size)));
-    selectMarket(market.expiry_market_id);
-    setStrikeOffset(Math.round((c.strike - atm) / step));
-    // A surface pick is a full side-&-level choice — advance the ticket to
-    // its bet step (legacy parity).
-    markPicked();
   }
 
   return (
     <group>
-      <mesh geometry={geometry} onClick={pick} onPointerMove={handleMove} onPointerOut={() => onHover(null)}>
+      <mesh
+        geometry={geom}
+        onPointerMove={handleMove}
+        onPointerOut={() => {
+          if (typeof document !== 'undefined') document.body.style.cursor = '';
+          onHover(null);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          const { row, col } = nearestCell(mesh, e.point);
+          onPick(row, col);
+        }}
+      >
         <meshStandardMaterial
           ref={matRef}
           vertexColors
@@ -300,7 +519,7 @@ function SurfaceMesh({
         />
       </mesh>
       {/* faint wireframe overlay — the fine grid lines on the ridge */}
-      <mesh geometry={geometry} raycast={() => null}>
+      <mesh geometry={geom} raycast={() => null}>
         <meshBasicMaterial wireframe transparent opacity={0.1} color="#ffffff" />
       </mesh>
     </group>
@@ -570,29 +789,106 @@ function RangeBandMarker({
   );
 }
 
-/** Small red spheres at butterfly/calendar-violating cells (arb overlay). */
-function ArbMarkers({ surface, mesh }: { surface: Surface; mesh: SurfaceMesh }) {
-  const cols = surface.kGrid.length;
-  const marks = useMemo(() => {
-    const out: [number, number, number][] = [];
-    surface.rows.forEach((r, ri) => {
-      r.cells.forEach((c, ci) => {
-        if (!c.butterfly && !c.calendar) return;
-        const y = mesh.positions[(ri * cols + ci) * 3 + 1];
-        out.push([mesh.colMeta[ci].x, y, mesh.rowMeta[ri].z]);
-      });
-    });
-    return out;
-  }, [surface, mesh, cols]);
+/**
+ * FillRipple — an expanding ring at the fill's node after a successful mint
+ * (legacy port, fed by the v2 trade store's `pulseFill` — the popover and the
+ * rail ticket both announce their mints there).
+ */
+function FillRipple({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) {
+  const fill = useV2TradeStore((s) => s.fill);
+  const ref = useRef<THREE.Mesh>(null);
+  const start = useRef(0);
+  const pos = useMemo(
+    () => (fill ? locate(mesh, surface, fill.marketId, fill.strike) : null),
+    [mesh, surface, fill],
+  );
+  useEffect(() => {
+    start.current = performance.now();
+  }, [fill?.ts]);
+  useFrame(() => {
+    if (!ref.current) return;
+    const t = Math.min((performance.now() - start.current) / 1100, 1);
+    const s = 0.1 + t * 2.4;
+    ref.current.scale.set(s, s, s);
+    const mat = ref.current.material as THREE.MeshBasicMaterial;
+    mat.opacity = (1 - t) * 0.8;
+    ref.current.visible = t < 1;
+  });
+  if (!pos || !fill) return null;
+  return (
+    <mesh
+      ref={ref}
+      position={[pos.x, pos.y + 0.05, pos.z]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      raycast={() => null}
+    >
+      <ringGeometry args={[0.25, 0.34, 32]} />
+      <meshBasicMaterial color={fill.isUp ? UP_ACCENT : DOWN_ACCENT} transparent side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
 
+/**
+ * FirstRunPulse — a one-time coach mark for newcomers (legacy port): a teal orb
+ * with an outward-rippling ring on the near-the-money node of the soonest
+ * expiry, so "tap the surface to trade" is unmistakable. `show` is gated to
+ * first-timers (and cleared on the first pick) by the parent; this just draws
+ * the marker. Honors reduced-motion by holding the ripple static.
+ */
+function FirstRunPulse({
+  mesh,
+  surface,
+  show,
+  reduced,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  show: boolean;
+  reduced: boolean;
+}) {
+  const rippleRef = useRef<THREE.Mesh>(null);
+  const orbRef = useRef<THREE.Mesh>(null);
+
+  // The soonest-expiry row's at-the-money node (k≈0 → strike≈forward).
+  const pos = useMemo(() => {
+    if (!show) return null;
+    let front: Surface['rows'][number] | null = null;
+    for (const r of surface.rows) if (!front || r.expiry < front.expiry) front = r;
+    return front ? locate(mesh, surface, front.oracleId, front.forward) : null;
+  }, [mesh, surface, show]);
+
+  useFrame((state) => {
+    if (!pos) return;
+    const t = state.clock.elapsedTime;
+    if (rippleRef.current) {
+      const phase = reduced ? 0.35 : (t % 1.6) / 1.6; // expanding 0→1 loop
+      const s = 0.6 + phase * 1.9;
+      rippleRef.current.scale.set(s, s, s);
+      (rippleRef.current.material as THREE.MeshBasicMaterial).opacity = 0.55 * (1 - phase);
+    }
+    if (orbRef.current && !reduced) {
+      orbRef.current.scale.setScalar(1 + 0.12 * Math.sin(t * 4));
+    }
+  });
+
+  if (!pos) return null;
   return (
     <group>
-      {marks.map((p, i) => (
-        <mesh key={i} position={p}>
-          <sphereGeometry args={[0.06, 10, 10]} />
-          <meshBasicMaterial color="#f0796b" />
-        </mesh>
-      ))}
+      {/* Outward-rippling ring — the "tap here" pulse. */}
+      <mesh
+        ref={rippleRef}
+        position={[pos.x, pos.y + 0.02, pos.z]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={() => null}
+      >
+        <ringGeometry args={[0.13, 0.2, 40]} />
+        <meshBasicMaterial color={UP_ACCENT} transparent side={THREE.DoubleSide} />
+      </mesh>
+      {/* The node itself — a steady glowing orb to tap. */}
+      <mesh ref={orbRef} position={[pos.x, pos.y + 0.12, pos.z]} raycast={() => null}>
+        <sphereGeometry args={[0.085, 18, 18]} />
+        <meshBasicMaterial color={UP_ACCENT} transparent opacity={0.9} />
+      </mesh>
     </group>
   );
 }
@@ -680,6 +976,11 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
       <div className="mt-2 font-mono text-[10px] tabular-nums text-text-3">
         {dateUTC(hover.expiry)} · {ttl(hover.expiry)}
       </div>
+      {!hover.tradeable && (
+        <div className="mt-2 border-t border-line-soft pt-2 font-mono text-[10px] leading-snug text-text-3">
+          too far from spot to mint — pick a node nearer the colored ridge
+        </div>
+      )}
     </div>
   );
 }
@@ -712,10 +1013,12 @@ function SurfaceMeta({
   expiries,
   hasButterfly,
   hasCalendar,
+  showNoArb,
 }: {
   expiries: number;
   hasButterfly: boolean;
   hasCalendar: boolean;
+  showNoArb: boolean;
 }) {
   const arb = hasButterfly || hasCalendar;
   return (
@@ -725,37 +1028,93 @@ function SurfaceMeta({
         <span className="font-mono text-[10px] uppercase tracking-wider text-text-3">SVI surface · live</span>
       </div>
       <span className="font-mono text-[10px] tabular-nums text-text-3">{expiries} expiries</span>
-      <span
-        className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
-          arb ? 'bg-(--down-soft) text-down' : 'bg-(--accent-soft) text-accent'
-        }`}
-      >
-        {arb
-          ? `${[hasButterfly && 'butterfly', hasCalendar && 'calendar'].filter(Boolean).join(' · ')} arb`
-          : 'no-arb'}
-      </span>
+      {showNoArb && (
+        <span
+          className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-mono text-[10px] uppercase tracking-wider ${
+            arb ? 'bg-(--down-soft) text-down' : 'bg-(--accent-soft) text-accent'
+          }`}
+        >
+          {arb ? (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-down" />
+              {[hasButterfly && 'butterfly', hasCalendar && 'calendar'].filter(Boolean).join(' · ')} arb
+            </>
+          ) : (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              no-arb
+            </>
+          )}
+        </span>
+      )}
     </div>
   );
 }
 
-function SurfaceControls({ stress, onStress }: { stress: boolean; onStress: (v: boolean) => void }) {
+/**
+ * Floating glass control bar — the legacy segmented overlay group (Arb Check /
+ * Stress) without the LIVE/time-travel scrub (no per-market SVI history in the
+ * v2 data path yet; the scrub joins this bar when it ships).
+ */
+function SurfaceControls({
+  showNoArb,
+  onNoArb,
+  stress,
+  onStress,
+}: {
+  showNoArb: boolean;
+  onNoArb: () => void;
+  stress: boolean;
+  onStress: (v: boolean) => void;
+}) {
   return (
-    <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-lg bg-white/2 p-0.5 backdrop-blur-xl">
-      <button
-        onClick={() => onStress(!stress)}
-        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors ${
-          stress ? 'bg-(--down-soft) text-down' : 'text-text-3 hover:text-text-1'
-        }`}
-      >
-        <LuActivity size={12} />
-        Stress
-      </button>
-      <span className="pr-1.5">
-        <InfoTip label="stress test">
-          Perturbs the pricing model to show what an inconsistent (arbitrage-able) surface would look
-          like — the checker flags it in red. Live prices are normally clean.
-        </InfoTip>
-      </span>
+    <div className="pointer-events-auto absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass sm:bottom-5">
+      <div className="flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
+        <SegToggle active={showNoArb} onClick={onNoArb} tone="accent">
+          Arb Check
+        </SegToggle>
+        <SegToggle active={stress} onClick={() => onStress(!stress)} tone="down">
+          Stress
+        </SegToggle>
+      </div>
+      <InfoTip label="the surface overlays" size={13}>
+        <span className="block">
+          <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
+          that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
+          any bad spots light up; if every price is fair, nothing shows.
+        </span>
+        <span className="mt-2 block">
+          <span className="font-medium text-down">Stress</span> — bends the surface out of shape on
+          purpose, so Arb Check has something to flag. Turn both on to watch it catch the problem,
+          then off to go back to live prices.
+        </span>
+      </InfoTip>
     </div>
+  );
+}
+
+function SegToggle({
+  active,
+  onClick,
+  tone,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  tone: 'accent' | 'down';
+  children: React.ReactNode;
+}) {
+  const activeCls =
+    tone === 'down' ? 'bg-(--down-soft) text-down' : 'bg-(--accent-soft) text-accent';
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`h-7 whitespace-nowrap rounded-md px-2.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+        active ? activeCls : 'text-text-3 hover:text-text-2'
+      }`}
+    >
+      {children}
+    </button>
   );
 }

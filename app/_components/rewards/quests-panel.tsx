@@ -144,7 +144,9 @@ const FILTERS: { key: "all" | Category; label: string }[] = [
   { key: "markets", label: "Markets" },
 ];
 
-export function QuestsPanel() {
+/** `competitionsHref` keeps the cross-link inside the caller's shell — legacy
+ *  routes link `/competitions` (default), the v2 route passes `/v2/competitions`. */
+export function QuestsPanel({ competitionsHref = "/competitions" }: { competitionsHref?: string } = {}) {
   const [filter, setFilter] = useState<"all" | Category>("all");
 
   const visible = useMemo(
@@ -227,7 +229,7 @@ export function QuestsPanel() {
       />
 
       <CrossLink
-        href="/competitions"
+        href={competitionsHref}
         icon={LuSwords}
         eyebrow="Also coming"
         title="Compete in seasonal trading competitions"

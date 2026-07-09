@@ -13,12 +13,23 @@ export function TradeSkeleton() {
     <div className="flex min-h-screen flex-col" role="status" aria-busy="true">
       <span className="sr-only">Loading the trade terminal…</span>
       <ChromeSkeleton />
+      <TradeBodySkeleton />
+    </div>
+  );
+}
 
-      {/* Main grid — same columns/hairlines as the live page. */}
-      <main
-        aria-hidden
-        className="grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]"
-      >
+/**
+ * The terminal body (surface hero + picker rows + right rail) without the
+ * chrome. Shared by the loading skeleton above and by the trade page's
+ * legacy-offline state, which shows it inert + blurred under the LIVE chrome
+ * so the nav (Portfolio, the Latest toggle) keeps working.
+ */
+export function TradeBodySkeleton() {
+  return (
+    <main
+      aria-hidden
+      className="grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_420px]"
+    >
         <section className="flex min-w-0 flex-col gap-px bg-white/6">
           {/* Surface hero — the horizon-glow stand-in matches SurfaceSkeleton. */}
           <div className="relative h-[48vh] min-h-90 overflow-hidden bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-130">
@@ -70,6 +81,5 @@ export function TradeSkeleton() {
           </div>
         </aside>
       </main>
-    </div>
   );
 }

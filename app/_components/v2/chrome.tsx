@@ -5,29 +5,50 @@
  *
  * A parallel of TopChrome (frozen for legacy) with nav pointing at /v2/* routes,
  * the live BTC chip, the Legacy↔Latest toggle, and the wallet. Same glass three-
- * zone layout. Desktop nav keeps primary destinations inline and folds the rest
- * into a "More" dropdown so it never overflows at lg (mobile uses V2BottomNav).
+ * zone layout AND the same nav arrangement as legacy: Trade · Portfolio ·
+ * Analytics · Leaderboard inline, then a rich "Vault" dropdown and a rich "More"
+ * dropdown (Quests / Competitions / Docs) whose triggers adopt the active
+ * sub-page's label. Mobile uses V2BottomNav.
  */
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { LuChevronDown } from 'react-icons/lu';
+import {
+  LuChevronDown,
+  LuVault,
+  LuTarget,
+  LuSwords,
+  LuBookOpen,
+} from 'react-icons/lu';
+import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
 import { DeploymentToggle } from '../deployment-toggle';
 import { V2SpotTape } from './spot-tape';
 
 type NavItem = { href: string; label: string; exact?: boolean };
+type MenuItem = { href: string; label: string; desc: string; icon: IconType; soon?: boolean };
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
   { href: '/v2/portfolio', label: 'Portfolio' },
+  { href: '/v2/analytics', label: 'Analytics' },
   { href: '/v2/leaderboard', label: 'Leaderboard' },
 ];
-const MORE: NavItem[] = [
-  { href: '/v2/analytics', label: 'Analytics' },
-  { href: '/v2/vault', label: 'Vault' },
-  { href: '/docs', label: 'Docs' },
+
+/** Vault group — mirrors legacy NavVault (a Risk entry joins it when the v2
+ *  risk screen ships). */
+const VAULT_ITEMS: MenuItem[] = [
+  { href: '/v2/vault', label: 'Vault', desc: 'Add liquidity · earn the trading edge', icon: LuVault },
+];
+
+/** Secondary destinations — same set as the legacy "More" menu. Quests /
+ *  Competitions render the shared showcase panels under the v2 shell; Docs
+ *  stays deployment-agnostic. */
+const MORE_ITEMS: MenuItem[] = [
+  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
+  { href: '/v2/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },
+  { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
@@ -54,7 +75,8 @@ export function V2Chrome() {
           {PRIMARY.map((n) => (
             <NavLink key={n.href} href={n.href} label={n.label} active={matches(pathname, n)} />
           ))}
-          <NavMore items={MORE} active={MORE.some((n) => matches(pathname, n))} pathname={pathname} />
+          <NavMenu fallbackLabel="Vault" items={VAULT_ITEMS} pathname={pathname} />
+          <NavMenu fallbackLabel="More" items={MORE_ITEMS} pathname={pathname} />
         </nav>
       </div>
 
@@ -87,9 +109,24 @@ function NavLink({ href, label, active }: { href: string; label: string; active:
   );
 }
 
-function NavMore({ items, active, pathname }: { items: NavItem[]; active: boolean; pathname: string }) {
+/**
+ * Route-aware dropdown in the legacy nav language: the trigger adopts the
+ * active sub-page's label, and the menu is rich rows (icon · label · plain-copy
+ * description, optional "Soon" chip) on the frosted glass-menu surface.
+ */
+function NavMenu({
+  fallbackLabel,
+  items,
+  pathname,
+}: {
+  fallbackLabel: string;
+  items: MenuItem[];
+  pathname: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const activeItem = items.find((i) => pathname.startsWith(i.href));
+
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -107,29 +144,58 @@ function NavMore({ items, active, pathname }: { items: NavItem[]; active: boolea
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
-          active ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
-        }`}
         aria-expanded={open}
+        aria-haspopup="menu"
+        className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
+          activeItem ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
+        }`}
       >
-        More
-        <LuChevronDown size={13} className={`text-text-3 transition-transform ${open ? 'rotate-180' : ''}`} />
+        {activeItem ? activeItem.label : fallbackLabel}
+        <LuChevronDown
+          size={13}
+          className={`text-text-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+        />
       </button>
+
       {open && (
-        <div className="glass-menu popover-in absolute left-0 top-[calc(100%+8px)] z-50 w-44 overflow-hidden rounded-xl p-1.5">
-          {items.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              onClick={() => setOpen(false)}
-              className={`block rounded-lg px-3 py-2 text-[12px] transition-colors ${
-                matches(pathname, n) ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
-              }`}
-            >
-              {n.label}
-            </Link>
-          ))}
+        <div
+          role="menu"
+          className="glass-menu popover-in absolute left-0 top-[calc(100%+10px)] z-50 w-64 overflow-hidden rounded-2xl p-2"
+        >
+          <div className="flex flex-col gap-1.5">
+            {items.map((item) => {
+              const active = pathname.startsWith(item.href);
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
+                    active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
+                  }`}
+                >
+                  <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+                  <span className="flex flex-1 flex-col gap-1">
+                    <span className="text-[13px] font-medium leading-none">{item.label}</span>
+                    <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
+                  </span>
+                  {item.soon && (
+                    <span
+                      className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
+                      style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
+                    >
+                      Soon
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

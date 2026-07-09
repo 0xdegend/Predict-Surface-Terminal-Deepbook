@@ -94,7 +94,9 @@ const PRIZE_SPLIT = [
   { place: "4th–10th", pct: 20 },
 ];
 
-export function CompetitionsPanel() {
+/** `questsHref` keeps the cross-link inside the caller's shell — legacy routes
+ *  link `/quests` (default), the v2 route passes `/v2/quests`. */
+export function CompetitionsPanel({ questsHref = "/quests" }: { questsHref?: string } = {}) {
   const mounted = useMounted();
   const now = useNow(1000);
   // Count down to the fixed mid-August season start (post-mainnet-launch).
@@ -258,7 +260,7 @@ export function CompetitionsPanel() {
       <FundingNote />
 
       <CrossLink
-        href="/quests"
+        href={questsHref}
         icon={LuTarget}
         eyebrow="Also coming"
         title="Earn rewards from solo trading quests"
