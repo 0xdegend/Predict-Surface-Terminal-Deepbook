@@ -154,7 +154,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
             </button>
 
             <Link
-              href="/"
+              href="/legacy"
               className="text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
             >
               ← back to the surface
@@ -327,7 +327,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
             description="Pick a market on the surface to mint an UP / DOWN contract, or set a range on the odds curve."
             action={
               <Link
-                href="/"
+                href="/legacy"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15"
               >
                 Open the surface

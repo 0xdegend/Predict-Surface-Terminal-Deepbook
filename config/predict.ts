@@ -143,11 +143,12 @@ export const eventType = (module: string, name: string): string =>
 export type Deployment = 'legacy' | 'v2';
 
 /**
- * Flip to `true` once the v2 data + trade layers (migration Phases 1–2) are
- * live. While `false`, the user-facing toggle shows "Latest" as a teaser but
- * keeps it disabled, so switching can never drop users into a half-built path.
+ * Whether the v2 (Latest) release is user-selectable. Now `true`: the v2 data +
+ * trade layers are live, so the toggle enables "Latest" (tagged Beta) and root
+ * (/) lands there. While it was `false`, "Latest" showed as a disabled "Soon"
+ * teaser so switching could never drop users into a half-built path.
  */
-export const V2_READY = false;
+export const V2_READY = true;
 
 export interface PredictV2Config {
   network: SuiNetwork;

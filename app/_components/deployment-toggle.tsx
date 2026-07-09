@@ -3,10 +3,11 @@
 /**
  * DeploymentToggle — the Legacy ↔ Latest switch.
  *
- * A two-segment control with a sliding glass thumb. "Legacy" = the current,
- * frozen deployment (kept fully working). "Latest" = the new Predict redesign.
- * Until the v2 layer ships (V2_READY), "Latest" is a disabled teaser tagged
- * "Soon" so users see what's coming but can never land in a half-built path.
+ * A two-segment control with a sliding glass thumb. "Latest" (tagged Beta) is
+ * the live Predict redesign and the default — root (/) lands there. "Legacy" is
+ * the original, now-frozen deployment: its market data is offline, but it stays
+ * reachable at /legacy so traders can still open Portfolio to claim old
+ * positions. (Before V2_READY, "Latest" was a disabled "Soon" teaser.)
  *
  * Copy is deliberately plain (no protocol jargon) — see the migration quality
  * bar. Reads the persisted deployment store behind a mounted guard so SSR and
@@ -18,8 +19,8 @@ import { useLegacyStatus } from '@/lib/hooks/use-legacy-status';
 import type { Deployment } from '@/config/predict';
 
 const OPTIONS: { id: Deployment; label: string; hint: string }[] = [
-  { id: 'legacy', label: 'Legacy', hint: 'The original Skew — keep trading and claiming here until it winds down.' },
-  { id: 'v2', label: 'Latest', hint: 'The new Predict release — faster markets, leverage, and more.' },
+  { id: 'legacy', label: 'Legacy', hint: 'The original Skew — trading has wound down; open it to claim any old positions.' },
+  { id: 'v2', label: 'Latest', hint: 'The new Predict release — faster markets, leverage, and more. Now live.' },
 ];
 
 export function DeploymentToggle() {
@@ -35,23 +36,30 @@ export function DeploymentToggle() {
   const activeIndex = active === 'v2' ? 1 : 0;
 
   // Graceful sunset: once Latest is selectable, a dark legacy server means the
-  // old oracles have wound down — flag Legacy "offline" and steer to Latest.
+  // old oracles have wound down — mark Legacy "offline" as honest info. It stays
+  // CLICKABLE, though: traders still need to reach /legacy → Portfolio to claim
+  // old positions, so "offline" is a label, never a lock.
   const legacyOffline = v2Selectable && legacy.checked && !legacy.online;
 
-  /** Selecting a side: remember the preference and navigate to that experience. */
+  /** Selecting a side: remember the preference and navigate to that experience.
+   *  Legacy lives at /legacy now (root redirects to /v2), so the two sides never
+   *  bounce through the redirect. */
   function choose(id: Deployment) {
     if (id === active) return;
     setDeployment(id);
-    router.push(id === 'v2' ? '/v2' : '/');
+    router.push(id === 'v2' ? '/v2' : '/legacy');
   }
 
-  /** Per-option availability + the little uppercase tag (Soon / Offline). */
+  /** Per-option availability + the little uppercase tag (Beta / Soon / Offline). */
   function optState(id: Deployment): { disabled: boolean; tag: string | null } {
     if (id === 'v2') {
-      // Already on a v2 route ⇒ it's reachable even before the official launch flip.
-      return { disabled: !v2Selectable && !onV2Route, tag: v2Selectable ? null : 'Soon' };
+      // Live now → selectable, tagged "Beta". (Pre-launch it was a disabled "Soon"
+      // teaser, still reachable when already on a /v2 route.)
+      return { disabled: !v2Selectable && !onV2Route, tag: v2Selectable ? 'Beta' : 'Soon' };
     }
-    return { disabled: legacyOffline, tag: legacyOffline ? 'Offline' : null };
+    // Legacy is never disabled — claiming still lives there; "Offline" is just a
+    // label once its market data goes dark.
+    return { disabled: false, tag: legacyOffline ? 'Offline' : null };
   }
 
   return (

@@ -31,7 +31,7 @@ import { useSurfaceStore } from '@/lib/store/surface-store';
  * (with its Rewards / Vault dropdowns) takes over.
  */
 const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string) => boolean }[] = [
-  { href: '/', label: 'Trade', icon: LuActivity, match: (p) => p === '/' },
+  { href: '/legacy', label: 'Trade', icon: LuActivity, match: (p) => p === '/legacy' },
   { href: '/portfolio', label: 'Portfolio', icon: LuWallet, match: (p) => p.startsWith('/portfolio') },
   { href: '/vault', label: 'Vault', icon: LuVault, match: (p) => p.startsWith('/vault') },
   {

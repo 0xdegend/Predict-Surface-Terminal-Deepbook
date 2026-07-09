@@ -6,7 +6,7 @@
  *
  * The trade ticket (flow-panel) reads its market from the Zustand surface-store,
  * which is a module singleton that survives client navigation — so we set the
- * selection here and `router.push('/')`, and the ticket on `/` picks it up. The
+ * selection here and `router.push('/legacy')`, and the legacy ticket picks it up. The
  * surface page never auto-overwrites selection on mount, so the copy survives.
  *
  * This copies the MARKET only (oracle / expiry / strike / direction), not size
@@ -51,7 +51,7 @@ export function useCopyTrade() {
       strike: p.strike,
       isUp: p.isUp,
     });
-    router.push('/#trade-ticket');
+    router.push('/legacy#trade-ticket');
   }
 
   function copyRange(p: CopyRange) {
@@ -60,7 +60,7 @@ export function useCopyTrade() {
     // Two picks on the same oracle/expiry form the band (sorted internally).
     pickRangeStrike({ oracleId: p.oracleId, expiry: p.expiry, strikeScaled: p.lowerScaled, strike: p.lower });
     pickRangeStrike({ oracleId: p.oracleId, expiry: p.expiry, strikeScaled: p.higherScaled, strike: p.higher });
-    router.push('/#trade-ticket');
+    router.push('/legacy#trade-ticket');
   }
 
   return { copyBinary, copyRange };
