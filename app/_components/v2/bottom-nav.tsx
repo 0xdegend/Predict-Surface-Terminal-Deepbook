@@ -25,6 +25,8 @@ import {
   LuBookOpen,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
+import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { DeploymentToggle } from '../deployment-toggle';
 
 const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string) => boolean }[] = [
   { href: '/v2', label: 'Trade', icon: LuActivity, match: (p) => p === '/v2' },
@@ -43,6 +45,9 @@ const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: 
 export function V2BottomNav() {
   const pathname = usePathname() ?? '';
   const [open, setOpen] = useState(false);
+  // The mobile trade sheet slides up over this dock — tuck the dock away while
+  // it's open so it doesn't float on top of the ticket (legacy BottomNav parity).
+  const ticketSheetOpen = useV2TradeStore((s) => s.ticketSheetOpen);
 
   const primaryIndex = PRIMARY.findIndex((t) => t.match(pathname));
   const moreActive = MORE.some((m) => pathname.startsWith(m.href));
@@ -60,7 +65,10 @@ export function V2BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] lg:hidden"
+      aria-hidden={ticketSheetOpen}
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
+        ticketSheetOpen ? 'translate-y-[130%]' : 'translate-y-0'
+      }`}
     >
       {/* Backdrop — dims the page behind the sheet; tap to dismiss. */}
       {open && (
@@ -80,6 +88,11 @@ export function V2BottomNav() {
           className="glass-dock sheet-in pointer-events-auto mb-2.5 w-full max-w-md overflow-hidden rounded-[22px] p-2"
         >
           <div className="flex flex-col gap-1.5">
+            {/* Legacy ↔ Latest switch — the desktop header toggle's mobile home,
+                so users can move between deployments on phones too. */}
+            <span className="px-1.5 pt-1 text-[11px] font-medium text-text-3">Version</span>
+            <DeploymentToggle variant="sheet" onSelect={() => setOpen(false)} />
+            <div className="my-1 h-px bg-line" />
             {MORE.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;

@@ -35,6 +35,8 @@ import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { price, pct, dateUTC, ttl } from '@/lib/format';
 import { InfoTip } from '@/app/_components/ui/info-tip';
+import { LuBoxes, LuMoveHorizontal, LuMoveDiagonal, LuMoveVertical } from 'react-icons/lu';
+import type { IconType } from 'react-icons';
 import { SurfaceTradePopoverV2 } from './surface-trade-popover';
 import type { V2Market } from '@/lib/api/v2/types';
 
@@ -355,6 +357,10 @@ export function SurfaceCanvasV2({
         stress={stress}
         onStress={setStress}
       />
+
+      {/* Plain-English "how to read the surface" guide. Kept mounted but suppressed
+          while the trade popover is open, so its collapse state survives. */}
+      <SurfaceCaption suppressed={popover} />
 
       {/* Tap-to-trade hint — desktop only (the surface is view-only below lg).
           Mode-aware, fading out once the relevant pick is made (legacy parity). */}
@@ -1111,5 +1117,134 @@ function SegToggle({
     >
       {children}
     </button>
+  );
+}
+
+/** The surface's cool→warm implied-vol ramp, as a flat swatch for the legend so
+ *  the "Color" key matches the colors actually painted on the mesh. */
+const IV_RAMP = 'linear-gradient(110deg, #6aa6e6, #4dd6b0 38%, #d9a94e 72%, #f0796b)';
+
+/** One legend row — an axis arrow (or the color swatch) + its plain meaning. */
+function LegendRow({
+  icon: Icon,
+  gradient,
+  label,
+  desc,
+}: {
+  icon?: IconType;
+  gradient?: boolean;
+  label: string;
+  desc: string;
+}) {
+  return (
+    <div className="flex items-center gap-2.5">
+      {gradient ? (
+        <span aria-hidden className="h-5 w-5 flex-none rounded-md" style={{ background: IV_RAMP }} />
+      ) : (
+        <span className="flex h-5 w-5 flex-none items-center justify-center rounded-md border border-line bg-white/[0.04] text-text-2">
+          {Icon && <Icon size={12} />}
+        </span>
+      )}
+      <span className="text-[10.5px] leading-snug text-text-3">
+        <span className="font-medium text-text-1">{label}</span> — {desc}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Plain-English "how to read the surface" guide (legacy parity) — orients a
+ * non-quant in one read. COLLAPSIBLE, never dismissable: the header pill always
+ * stays on the hero, so a confused user can reopen the full guide at any time.
+ * The open/collapsed choice is remembered in localStorage; defaults to open on
+ * desktop and collapsed on mobile (keeps the hero clear + the blur box off LCP on
+ * phones). `suppressed` (trade popover open) hides it without unmounting, so the
+ * collapse state survives and it reliably reappears on close.
+ */
+function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
+  const isDesktop = useMediaQuery('(min-width: 640px)');
+  const [pref, setPref] = useState<'open' | 'collapsed' | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const v = localStorage.getItem('predict.surfaceGuide');
+    return v === 'open' || v === 'collapsed' ? v : null;
+  });
+  if (suppressed) return null;
+
+  // No explicit choice yet → open on desktop, collapsed on mobile.
+  const expanded = pref ? pref === 'open' : isDesktop;
+  function toggle() {
+    const next = expanded ? 'collapsed' : 'open';
+    setPref(next);
+    localStorage.setItem('predict.surfaceGuide', next);
+  }
+
+  return (
+    <div className="glass pointer-events-auto absolute left-1/2 top-14 z-10 flex max-w-[min(22rem,calc(100vw-1.5rem))] -translate-x-1/2 flex-col overflow-hidden rounded-xl sm:top-6">
+      {/* Header IS the toggle — the whole pill expands/collapses the guide, so a
+          confused user can always reopen it. No dismiss; it never disappears. */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse the guide' : 'How to read the surface — expand the guide'}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03] sm:px-3.5 sm:py-2.5"
+      >
+        <LuBoxes size={13} className="shrink-0 text-accent" />
+        <span className="whitespace-nowrap text-[11px] font-medium text-text-1">
+          How to read the surface
+        </span>
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden
+          className={`ml-auto shrink-0 text-text-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        >
+          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="scroll-quiet flex max-h-[calc(100dvh-12rem)] flex-col gap-2 overflow-y-auto overscroll-contain px-3 pb-3 sm:max-h-none sm:gap-2.5 sm:overflow-visible sm:px-3.5">
+          <p className="hidden text-[11px] leading-relaxed text-text-2 sm:block">
+            The 3-D shape is a live map of every bet you can make. Here&apos;s what each part means:
+          </p>
+
+          {/* Visual key — each axis/color tied to its plain meaning. The Color
+              swatch reuses the real cool→warm ramp painted on the mesh. */}
+          <div className="flex flex-col gap-1.5">
+            <LegendRow icon={LuMoveHorizontal} label="Left → right" desc="the price you bet on" />
+            <LegendRow icon={LuMoveDiagonal} label="Front → back" desc="time until it's decided" />
+            <LegendRow icon={LuMoveVertical} label="Height" desc="how big a move the market expects" />
+            <LegendRow gradient label="Color" desc="warmer means more uncertainty" />
+          </div>
+
+          {/* The "aha" — a slim accent-bar note (no boxed inset), so it stays short. */}
+          <div className="flex gap-2">
+            <span aria-hidden className="w-px shrink-0 self-stretch rounded bg-accent/45" />
+            <p className="text-[10.5px] leading-relaxed text-text-3">
+              The <span className="text-text-2">dip</span> is today&apos;s price; the{' '}
+              <span className="text-text-2">wings</span> rising on either side mean the market is
+              bracing for a swing.
+            </p>
+          </div>
+
+          <div className="hairline-fade" />
+          {/* Desktop interactions — the surface is view-only below lg. (v2 has no
+              time-travel scrub yet, so no "drag to rewind".) */}
+          <p className="hidden text-[10px] leading-relaxed text-text-3 sm:block">
+            <span className="text-text-2">Hover</span> for odds ·{' '}
+            <span className="text-text-2">click</span> to trade ·{' '}
+            <span className="text-down">Stress</span> tests the checker.
+          </p>
+          {/* Mobile — the surface is for reading; trading is from the list below. */}
+          <p className="text-[10px] leading-relaxed text-text-3 sm:hidden">
+            <span className="text-text-2">Tap</span> a point to inspect its odds. Trade from the
+            markets list below.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

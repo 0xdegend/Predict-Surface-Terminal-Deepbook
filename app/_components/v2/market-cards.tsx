@@ -44,6 +44,7 @@ export function V2MarketCards({
   const select = useV2TradeStore((s) => s.selectMarket);
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
   const markPicked = useV2TradeStore((s) => s.markPicked);
+  const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
 
   const visible = markets.filter((m) => m.expiry > now);
   const grouped = groupByCadence(visible);
@@ -58,6 +59,8 @@ export function V2MarketCards({
     // A card pick chooses market + side in one tap — advance the ticket to
     // its bet step (legacy parity).
     markPicked();
+    // Bring the ticket to the user on mobile (desktop ignores it).
+    openTicketSheet();
   }
 
   if (visible.length === 0) {

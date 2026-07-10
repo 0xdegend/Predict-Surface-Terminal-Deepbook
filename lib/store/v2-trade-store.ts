@@ -42,6 +42,11 @@ interface V2TradeState {
    *  ripple at this spot. `ts` distinguishes repeat fills at the same node. */
   fill: { marketId: string; strike: number; isUp: boolean; ts: number } | null;
 
+  /** Mobile only: whether the slide-up trade-ticket sheet is open. Picking any
+   *  market (table row / card side) opens it; desktop ignores it (the ticket
+   *  lives in the always-visible right rail there). Mirrors surface-store. */
+  ticketSheetOpen: boolean;
+
   selectMarket: (id: string) => void;
   setMode: (m: V2TradeMode) => void;
   setIsUp: (v: boolean) => void;
@@ -60,6 +65,9 @@ interface V2TradeState {
   markPicked: () => void;
   /** Announce a successful mint so the surface can ripple at the fill. */
   pulseFill: (f: { marketId: string; strike: number; isUp: boolean }) => void;
+  /** Mobile: open / close the slide-up trade-ticket sheet. */
+  openTicketSheet: () => void;
+  closeTicketSheet: () => void;
 }
 
 export const useV2TradeStore = create<V2TradeState>((set) => ({
@@ -74,6 +82,7 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   leverage: 1,
   pickSeq: 0,
   fill: null,
+  ticketSheetOpen: false,
 
   // Switching markets drops the pinned strike/band (a $63k strike is meaningless
   // on a different expiry's grid); the new market defaults to its own ATM until
@@ -110,4 +119,6 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   setLeverage: (leverage) => set({ leverage: Math.max(1, leverage) }),
   markPicked: () => set((s) => ({ pickSeq: s.pickSeq + 1 })),
   pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
+  openTicketSheet: () => set({ ticketSheetOpen: true }),
+  closeTicketSheet: () => set({ ticketSheetOpen: false }),
 }));

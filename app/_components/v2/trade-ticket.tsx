@@ -28,14 +28,16 @@
  * re-quote step: v2 pricing is synchronous off the live Pricer every render.
  */
 import { useState } from 'react';
-import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
+import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
-import { dateUTC, countdown, pct, signed } from '@/lib/format';
+import { dateUTC, countdown, pct, signed, quote as fmtQuote } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
+import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { isClosingSoon, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import {
   snapStrikeToAdmission,
@@ -56,6 +58,7 @@ import { TicketEmpty } from '@/app/_components/ticket-empty';
 import { InfoTip } from '@/app/_components/ui/info-tip';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
+import { SuccessModal } from '@/app/_components/ui/success-modal';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -90,6 +93,16 @@ export function V2TradeTicket({
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const pickSeq = useV2TradeStore((s) => s.pickSeq);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
+
+  // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
+  // gas SUI). One tap drips a starter grant from the app treasury — the SAME
+  // route/treasury as legacy (DUSDC is the same coin on both deployments), just
+  // pointed at v2's wallet-balance query so the CTA below clears itself. Google/
+  // Enoki accounts are gasless → DUSDC only; external wallets also get gas SUI.
+  const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
+    invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
+    symbol: predictV2Config.quote.symbol,
+  });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [showCostDetails, setShowCostDetails] = useState(false);
@@ -511,8 +524,40 @@ export function V2TradeTicket({
     </>
   );
 
+  // First-run funding CTA — legacy parity: a one-click app grant when enabled,
+  // else the faucet link. Rendered at the top of the ticket (step-independent) so
+  // a low-balance user sees it right away, in binary OR range, on either step.
+  // Hidden the instant a grant succeeds this session so a freshly-funded user
+  // can't re-tap it before the async balance refetch lands.
+  const grantCta =
+    acct.walletDusdcBase !== undefined &&
+    acct.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING &&
+    !grant.success ? (
+      starterGrant.enabled && !grant.failed ? (
+        <button
+          onClick={grant.claim}
+          disabled={grant.busy}
+          className="glass-card px-3 py-2 text-left text-[11px] text-accent underline-offset-2 hover:underline disabled:opacity-50"
+        >
+          {grant.busy
+            ? 'Funding your account…'
+            : `New here? Get ${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym} to start trading →`}
+        </button>
+      ) : predictV2Config.faucetUrl ? (
+        <a
+          href={predictV2Config.faucetUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="glass-card px-3 py-2 text-[11px] text-accent underline-offset-2 hover:underline"
+        >
+          Low balance — get testnet {sym} →
+        </a>
+      ) : null
+    ) : null;
+
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
+      {grantCta}
       {/* Back to step 1 to change the strike (read-only on the bet step). Sits at
           the very top, above the guide, so it's the first thing on the bet step. */}
       {!rangeMode && step === 2 && (
@@ -751,6 +796,19 @@ export function V2TradeTicket({
           positionsHref="/v2/portfolio"
         />
       )}
+
+      {/* Starter-grant confirmation — a gasless, popup-less drip is easy to miss
+          on a toast alone (mirrors legacy). */}
+      <SuccessModal
+        open={!!grant.success}
+        onClose={grant.clearSuccess}
+        title="Account funded"
+        eyebrow="Received"
+        amount={grant.success?.amount ?? 0}
+        sub="added to your wallet — you’re ready to trade"
+        gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
+        digest={grant.success?.digest}
+      />
     </div>
   );
 }

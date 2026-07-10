@@ -46,6 +46,9 @@ export function V2MarketTable({
 }) {
   const marketId = useV2TradeStore((s) => s.marketId);
   const select = useV2TradeStore((s) => s.selectMarket);
+  // Opening the mobile ticket sheet on pick (desktop ignores it — the rail
+  // ticket is always visible there). Mirrors legacy's pick → openTicketSheet.
+  const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
   const now = useNow(serverNow);
 
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -156,6 +159,7 @@ export function V2MarketTable({
                       onClick={(e) => {
                         flashRow(e.currentTarget);
                         select(m.expiry_market_id);
+                        openTicketSheet();
                       }}
                       tabIndex={0}
                       onKeyDown={(e) => {
@@ -163,6 +167,7 @@ export function V2MarketTable({
                           e.preventDefault();
                           flashRow(e.currentTarget);
                           select(m.expiry_market_id);
+                          openTicketSheet();
                         }
                       }}
                       aria-selected={selected}

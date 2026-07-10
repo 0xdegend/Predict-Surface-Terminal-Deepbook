@@ -6,6 +6,8 @@ import { useState } from 'react';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { Toaster } from './_components/toaster';
 import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
+import { TourLauncher } from './_components/tour/tour-launcher';
+import { TourOverlay } from './_components/tour/tour-overlay';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // One QueryClient per app lifetime. useState avoids re-creating on re-render
@@ -30,9 +32,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <RegisterEnokiWallets />
         {children}
         <Toaster />
-        {/* The guided tour is intentionally NOT mounted: it walked the legacy
-            trade screen, which now shows the migration notice. Reintroduce it
-            (TourLauncher + TourOverlay, gated to /v2) once the v2 tour exists. */}
+        {/* Guided tour for the Latest (v2) Trade screen. TourLauncher auto-opens
+            it once per browser on first landing at /v2 (it self-gates by route);
+            TourOverlay renders nothing until the tour is active, so mounting both
+            globally here is safe. Replay is the "?" TourButton in the v2 chrome. */}
+        <TourLauncher />
+        <TourOverlay />
       </DAppKitProvider>
     </QueryClientProvider>
   );

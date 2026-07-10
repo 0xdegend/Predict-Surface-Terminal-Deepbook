@@ -24,6 +24,7 @@ import {
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
 import { DeploymentToggle } from '../deployment-toggle';
+import { TourButton } from '../tour/tour-button';
 import { V2SpotTape } from './spot-tape';
 
 type NavItem = { href: string; label: string; exact?: boolean };
@@ -81,7 +82,7 @@ export function V2Chrome() {
       </div>
 
       {/* live chip */}
-      <div className="flex min-w-0 justify-center">
+      <div data-tour="chip" className="flex min-w-0 justify-center">
         <div className="hidden sm:block">
           <V2SpotTape />
         </div>
@@ -89,6 +90,7 @@ export function V2Chrome() {
 
       {/* toggle + wallet */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+        <TourButton />
         <DeploymentToggle />
         <WalletBar />
       </div>

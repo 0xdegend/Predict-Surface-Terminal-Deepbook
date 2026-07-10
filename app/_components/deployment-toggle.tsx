@@ -3,54 +3,120 @@
 /**
  * DeploymentToggle — the Legacy ↔ Latest switch.
  *
- * A two-segment control with a sliding glass thumb. "Latest" (tagged Beta) is
- * the live Predict redesign and the default — root (/) lands there. "Legacy" is
- * the original, now-frozen deployment: its market data is offline, but it stays
- * reachable at /legacy so traders can still open Portfolio to claim old
- * positions. (Before V2_READY, "Latest" was a disabled "Soon" teaser.)
+ * A compact segmented control: two labelled sides ("Legacy", "Latest") flanking
+ * a central glass swap-circle (the one sanctioned off-canvas accent glow). The
+ * active side lights up with the accent glass fill; the other stays quiet. Each
+ * side carries a small lowercase status line — "offline" for the wound-down
+ * Legacy backend, "beta" for the live Latest release.
+ *
+ * Two variants, one source of truth for all the availability logic:
+ *   • "bar"   (default) — the desktop chrome control. Inline, compact, shown xl+
+ *              only (at lg the centered chip + wallet already fill the header row).
+ *   • "sheet" — the mobile home. Full-width, touch-sized; lives in the BottomNav
+ *              "More" sheet so the switch is reachable on phones too (the desktop
+ *              header nav is hidden there).
+ *
+ * "Latest" (v2) is the live Predict redesign and the default — root (/) lands
+ * there. "Legacy" is the original, now-frozen deployment: its market data is
+ * offline, but it stays reachable at /legacy so traders can still open Portfolio
+ * to claim old positions. (Before V2_READY, "Latest" was a disabled "Soon"
+ * teaser.)
  *
  * Copy is deliberately plain (no protocol jargon) — see the migration quality
- * bar. Reads the persisted deployment store behind a mounted guard so SSR and
- * the first client paint agree.
+ * bar. Routes are separate (/v2/* = Latest, else Legacy) and pathname is
+ * SSR-consistent, so no mounted guard is needed.
  */
 import { usePathname, useRouter } from 'next/navigation';
+import { LuArchive, LuActivity, LuArrowLeftRight } from 'react-icons/lu';
 import { useDeploymentStore, v2Selectable } from '@/lib/store/deployment-store';
 import { useLegacyStatus } from '@/lib/hooks/use-legacy-status';
 import type { Deployment } from '@/config/predict';
+import type { IconType } from 'react-icons';
 
-const OPTIONS: { id: Deployment; label: string; hint: string }[] = [
-  { id: 'legacy', label: 'Legacy', hint: 'The original Skew — trading has wound down; open it to claim any old positions.' },
-  { id: 'v2', label: 'Latest', hint: 'The new Predict release — faster markets, leverage, and more. Now live.' },
+type Variant = 'bar' | 'sheet';
+
+const OPTIONS: { id: Deployment; label: string; Icon: IconType; hint: string }[] = [
+  { id: 'legacy', label: 'Legacy', Icon: LuArchive, hint: 'The original Skew — trading has wound down; open it to claim any old positions.' },
+  { id: 'v2', label: 'Latest', Icon: LuActivity, hint: 'The new Predict release — faster markets, leverage, and more. Now live.' },
 ];
 
-export function DeploymentToggle() {
+// Per-variant sizing. The markup (two segments + centre swap-circle) is shared;
+// only the dimensions and the responsive visibility differ.
+const SIZES = {
+  bar: {
+    track: 'hidden h-9 shrink-0 rounded-full xl:inline-flex',
+    icon: 14,
+    label: 'text-[11px]',
+    status: 'text-[8px]',
+    padL: 'pl-3 pr-6',
+    padR: 'pl-6 pr-3',
+    circle: 'h-7 w-7',
+    circleIcon: 12,
+  },
+  sheet: {
+    track: 'flex h-12 w-full rounded-2xl',
+    icon: 16,
+    label: 'text-[13px]',
+    status: 'text-[9px]',
+    padL: 'pl-4 pr-9',
+    padR: 'pl-9 pr-4',
+    circle: 'h-9 w-9',
+    circleIcon: 14,
+  },
+} satisfies Record<Variant, Record<string, unknown>>;
+
+/**
+ * Status line under each label — plain lowercase text. "beta" reads as live
+ * (accent), "offline"/"soon" stay dormant (muted). When a side has no status
+ * yet, an empty span reserves the height so both labels stay vertically aligned.
+ */
+function StatusLine({ tag, textClass }: { tag: string | null; textClass: string }) {
+  if (!tag) return <span aria-hidden className="block h-[9px]" />;
+  const live = tag === 'Beta';
+  return (
+    <span
+      className={`inline-flex items-center leading-none tracking-[0.14em] ${textClass} font-medium lowercase ${
+        live ? 'text-accent' : 'text-text-3'
+      }`}
+    >
+      {tag}
+    </span>
+  );
+}
+
+export function DeploymentToggle({
+  variant = 'bar',
+  onSelect,
+}: {
+  variant?: Variant;
+  /** Fired after a real (cross-deployment) switch — lets the mobile sheet close. */
+  onSelect?: () => void;
+} = {}) {
   const pathname = usePathname();
   const router = useRouter();
   const setDeployment = useDeploymentStore((s) => s.setDeployment);
   const legacy = useLegacyStatus();
+  const sz = SIZES[variant];
 
-  // Which experience are we in? Routes are separate (/v2/* = Latest, else Legacy),
-  // and pathname is SSR-consistent so this needs no mounted guard.
+  // Which experience are we in? Routes are separate (/v2/* = Latest, else Legacy).
   const onV2Route = pathname?.startsWith('/v2') ?? false;
   const active: Deployment = onV2Route ? 'v2' : 'legacy';
-  const activeIndex = active === 'v2' ? 1 : 0;
 
   // Graceful sunset: once Latest is selectable, a dark legacy server means the
   // old oracles have wound down — mark Legacy "offline" as honest info. It stays
-  // CLICKABLE, though: traders still need to reach /legacy → Portfolio to claim
-  // old positions, so "offline" is a label, never a lock.
+  // CLICKABLE, though: traders still need /legacy → Portfolio to claim old
+  // positions, so "offline" is a label, never a lock.
   const legacyOffline = v2Selectable && legacy.checked && !legacy.online;
 
-  /** Selecting a side: remember the preference and navigate to that experience.
-   *  Legacy lives at /legacy now (root redirects to /v2), so the two sides never
-   *  bounce through the redirect. */
+  /** Selecting a side: remember the preference and navigate to that experience. */
   function choose(id: Deployment) {
     if (id === active) return;
     setDeployment(id);
     router.push(id === 'v2' ? '/v2' : '/legacy');
+    onSelect?.();
   }
 
-  /** Per-option availability + the little uppercase tag (Beta / Soon / Offline). */
+  /** Per-option availability + the little status word (Beta / Soon / Offline). */
   function optState(id: Deployment): { disabled: boolean; tag: string | null } {
     if (id === 'v2') {
       // Live now → selectable, tagged "Beta". (Pre-launch it was a disabled "Soon"
@@ -62,37 +128,29 @@ export function DeploymentToggle() {
     return { disabled: false, tag: legacyOffline ? 'Offline' : null };
   }
 
+  // The centre swap-circle flips to the opposite side (when that side is live).
+  const other: Deployment = active === 'v2' ? 'legacy' : 'v2';
+  const swapBlocked = optState(other).disabled;
+  const otherLabel = OPTIONS.find((o) => o.id === other)!.label;
+
   return (
     <div
       role="radiogroup"
       aria-label="Protocol version"
-      // Lives in the right-hand cluster beside network/wallet. Shown xl+ only:
-      // at lg the centered market chip + wallet already fill the row (the wallet
-      // address even wraps), so anything extra overflows. Below xl it'll get a
-      // home in the menu when v2 ships. shrink-0 so it never crushes neighbours.
-      className="relative hidden h-8 shrink-0 select-none grid-cols-2 items-center rounded-lg p-0.5 backdrop-blur-md backdrop-saturate-150 xl:inline-grid"
+      // shrink-0 so it never crushes header neighbours (bar variant).
+      className={`relative select-none items-stretch backdrop-blur-md backdrop-saturate-150 ${sz.track}`}
       style={{
-        // Recessed frosted track — translucent fill + soft inner shadow for
-        // depth, no hard border (matches the .glass language).
+        // Recessed frosted track — translucent fill + soft inner shadow for depth,
+        // no hard border (matches the .glass language).
         background: 'color-mix(in srgb, var(--bg-2) 55%, transparent)',
         boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.28)',
       }}
     >
-      {/* Sliding thumb — a frosted glass pill that floats over the track. Half-
-          width, eased translate. No white ring; depth from a faint top sheen. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(50%-2px)] rounded-md backdrop-blur-sm transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-        style={{
-          transform: `translateX(${activeIndex * 100}%)`,
-          background:
-            'linear-gradient(180deg, color-mix(in srgb, var(--accent) 18%, transparent), var(--accent-soft))',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
-        }}
-      />
-      {OPTIONS.map((opt) => {
+      {OPTIONS.map((opt, i) => {
         const isActive = active === opt.id;
         const { disabled, tag } = optState(opt.id);
+        const isLeft = i === 0;
+        const { Icon } = opt;
         return (
           <button
             key={opt.id}
@@ -102,19 +160,60 @@ export function DeploymentToggle() {
             disabled={disabled}
             title={tag ? `${opt.hint} (${tag.toLowerCase()})` : opt.hint}
             onClick={() => !disabled && choose(opt.id)}
-            className={`relative z-10 flex h-7 items-center justify-center gap-1.5 rounded-md px-2.5 font-mono text-[11px] tracking-tight transition-colors ${
-              isActive ? 'text-text-1' : 'text-text-2 hover:text-text-1'
-            } ${disabled ? 'cursor-not-allowed hover:text-text-2' : ''}`}
+            className={`group relative z-0 flex flex-1 items-center gap-2 transition-colors ${
+              isLeft ? `justify-start rounded-l-full rounded-r-lg ${sz.padL}` : `justify-end rounded-r-full rounded-l-lg ${sz.padR}`
+            } ${disabled ? 'cursor-not-allowed' : ''}`}
+            style={
+              isActive
+                ? {
+                    // Accent glass fill for the live side + a faint accent glow.
+                    background:
+                      'linear-gradient(180deg, color-mix(in srgb, var(--accent) 16%, transparent), var(--accent-soft))',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 0 16px -6px var(--accent-glow)',
+                  }
+                : undefined
+            }
           >
-            <span className={disabled ? 'opacity-55' : undefined}>{opt.label}</span>
-            {tag && (
-              <span className="rounded-[3px] bg-white/5 px-1 py-0.5 text-[8px] font-medium uppercase leading-none tracking-[0.12em] text-text-3">
-                {tag}
+            <Icon
+              size={sz.icon}
+              className={`shrink-0 transition-colors ${
+                isActive ? 'text-accent' : `text-text-3 ${disabled ? '' : 'group-hover:text-text-2'}`
+              }`}
+            />
+            <span className="flex flex-col gap-px leading-none">
+              <span
+                className={`font-mono ${sz.label} tracking-tight transition-colors ${
+                  isActive ? 'text-text-1' : `text-text-2 ${disabled ? 'opacity-55' : 'group-hover:text-text-1'}`
+                }`}
+              >
+                {opt.label}
               </span>
-            )}
+              <StatusLine tag={tag} textClass={sz.status} />
+            </span>
           </button>
         );
       })}
+
+      {/* Centre swap-circle — floats over the seam, flips to the opposite side.
+          Frosted accent glass + the one sanctioned off-canvas glow. */}
+      <button
+        type="button"
+        aria-label={`Switch to ${otherLabel}`}
+        disabled={swapBlocked}
+        title={swapBlocked ? undefined : `Switch to ${otherLabel}`}
+        onClick={() => !swapBlocked && choose(other)}
+        className={`absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full backdrop-blur-sm transition-transform ${sz.circle} ${
+          swapBlocked ? 'cursor-not-allowed opacity-40' : 'hover:scale-105 active:scale-95'
+        }`}
+        style={{
+          background:
+            'linear-gradient(180deg, color-mix(in srgb, var(--accent) 22%, transparent), color-mix(in srgb, var(--accent) 6%, transparent))',
+          border: '1px solid var(--accent-line)',
+          boxShadow: '0 0 14px -4px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,0.12)',
+        }}
+      >
+        <LuArrowLeftRight size={sz.circleIcon} className="text-accent" />
+      </button>
     </div>
   );
 }

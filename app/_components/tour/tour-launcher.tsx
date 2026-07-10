@@ -3,8 +3,8 @@
 /**
  * First-visit trigger for the guided tour. Renders nothing — it just auto-opens
  * the tour once per browser (localStorage flag) when a new user lands on the
- * home route. Gated to "/" so the tour, which targets the trade screen's
- * sections, never fires on portfolio/leaderboard/etc. Works on mobile too now:
+ * Trade screen. Gated to "/v2" (the live Trade route) so the tour, which targets
+ * that screen's sections, never fires on portfolio/leaderboard/etc. Works on mobile too now:
  * the redesigned tour is a fixed bottom card (static on phones — no moving
  * spotlight/scroll), so the flow that made it awkward on mobile is gone. A short
  * delay lets the shell hydrate and the surface container settle.
@@ -19,7 +19,7 @@ export function TourLauncher() {
   const start = useTourStore((s) => s.start);
 
   useEffect(() => {
-    if (pathname !== '/') return;
+    if (pathname !== '/v2') return;
     let seen = true;
     try {
       seen = window.localStorage.getItem(TOUR_SEEN_KEY) === 'done';

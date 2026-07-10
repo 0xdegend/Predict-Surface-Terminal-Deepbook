@@ -29,12 +29,23 @@ export interface GrantSuccess {
   digest: string;
 }
 
+export interface StarterGrantOptions {
+  /** Wallet-balance query keys to refetch on success so the low-balance CTA
+   *  clears itself. Defaults to the legacy wallet-DUSDC key; the v2 deployment
+   *  passes its own (`qkV2Account.walletDusdc`). */
+  invalidateKeys?: readonly (readonly unknown[])[];
+  /** Quote-asset symbol for the toast copy (defaults to the legacy config). */
+  symbol?: string;
+}
+
 /**
  * `includeSui` should be true only for EXTERNAL wallets — Google/zkLogin accounts
  * are gasless via Enoki, so they never need gas SUI. The server still gates the
- * SUI drip on the recipient's actual balance.
+ * SUI drip on the recipient's actual balance. `opts` lets a second deployment
+ * (v2) point the balance refetch + symbol at its own config while sharing the one
+ * treasury/route (DUSDC is the same coin on both).
  */
-export function useStarterGrant(owner: string | null, includeSui: boolean) {
+export function useStarterGrant(owner: string | null, includeSui: boolean, opts?: StarterGrantOptions) {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -51,9 +62,10 @@ export function useStarterGrant(owner: string | null, includeSui: boolean) {
       const sui = Number(BigInt(suiAmount)) / SUI_DECIMALS;
       // Let the fullnode index the transfer, then refetch wallet DUSDC.
       await new Promise((r) => setTimeout(r, 1500));
-      await queryClient.invalidateQueries({ queryKey: qk.dusdcBalance(owner) });
+      const keys = opts?.invalidateKeys ?? [qk.dusdcBalance(owner)];
+      for (const key of keys) await queryClient.invalidateQueries({ queryKey: key });
       setSuccess({ amount: fromQuote(BigInt(amount)), sui, digest });
-      const sym = predictConfig.quote.symbol;
+      const sym = opts?.symbol ?? predictConfig.quote.symbol;
       const desc = sui > 0
         ? `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} + ${sui} SUI for gas added`
         : `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} added — you're ready to trade`;

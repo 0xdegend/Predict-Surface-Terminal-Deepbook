@@ -32,7 +32,7 @@ import {
   buildCancelWithdrawTx,
 } from '@/lib/sui/v2/plp';
 
-const qkV2Account = {
+export const qkV2Account = {
   wrapper: (owner: string) => ['v2', 'wrapper', owner] as const,
   accountId: (wrapperId: string) => ['v2', 'account-id', wrapperId] as const,
   balance: (wrapperId: string) => ['v2', 'balance', wrapperId] as const,

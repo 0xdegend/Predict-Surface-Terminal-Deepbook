@@ -17,6 +17,7 @@ import {
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useSurfaceStore } from '@/lib/store/surface-store';
+import { DeploymentToggle } from './deployment-toggle';
 
 /**
  * Mobile bottom tab bar (§10.5, Phase 6 mobile). On small screens the top-chrome
@@ -106,6 +107,11 @@ export function BottomNav() {
           className="glass-dock sheet-in pointer-events-auto mb-2.5 w-full max-w-md overflow-hidden rounded-[22px] p-2"
         >
           <div className="flex flex-col gap-1.5">
+            {/* Legacy ↔ Latest switch — the desktop header toggle's mobile home,
+                so users can move between deployments on phones too. */}
+            <span className="px-1.5 pt-1 text-[11px] font-medium text-text-3">Version</span>
+            <DeploymentToggle variant="sheet" onSelect={() => setOpen(false)} />
+            <div className="my-1 h-px bg-line" />
             {MORE.map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;

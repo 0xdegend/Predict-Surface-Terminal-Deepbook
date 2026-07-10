@@ -6,8 +6,10 @@
  * odds + positions. A shared store (v2-trade-store) bridges picker ↔ ticket ↔
  * odds; the selected market's live Pricer drives the smile, odds, and quote.
  *
- * Mobile stacks the rail under the markets (the legacy slide-up sheet is a
- * follow-up item).
+ * Responsive ticket (legacy parity): desktop shows the ticket in the right rail
+ * (V2TicketRail); mobile moves it into a slide-up bottom sheet (V2TradeSheet)
+ * that opens on any market pick, so it isn't buried under a long scroll. Both
+ * are useMediaQuery-gated, so exactly one ticket mounts per breakpoint.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { LuBoxes, LuChartArea } from 'react-icons/lu';
@@ -17,7 +19,7 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { V2MarketPicker } from './market-picker';
-import { V2TradeTicket } from './trade-ticket';
+import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2OddsPanel } from './odds-panel';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
@@ -87,32 +89,35 @@ export function V2TradeScreen({
   }
 
   return (
+    <>
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
       <section className="flex min-w-0 flex-col gap-px bg-white/6">
-        <div className="h-[48vh] min-h-90 bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-130">
+        <div data-tour="surface" className="h-[48vh] min-h-90 bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-130">
           {selected && (
             <Hero market={selected} pricer={pricer} serverNow={serverNow} surfaceInputs={surfaceInputs} markets={markets} />
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
+        <div data-tour="picker" className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
           <V2MarketPicker markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
         </div>
       </section>
 
-      {/* right rail */}
+      {/* right rail. Desktop: trade ticket on top, market odds + positions
+          underneath. On mobile the ticket lives in the slide-up V2TradeSheet, so
+          the rail is just odds + positions (the ticket block hides at <lg). */}
       <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-        <div className="flex flex-col gap-4">
+        <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
           {/* Rail ticket heading — mirrors legacy's TicketTitle chrome. */}
           <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
             <span className="h-3 w-px bg-accent/70" />
             Trade ticket · click surface → mint
           </h2>
-          <V2TradeTicket market={selected} pricer={pricer} serverNow={serverNow} />
+          <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
         </div>
         {selected && (
-          <div className="lg:border-t lg:border-line lg:pt-5">
+          <div data-tour="svi" className="lg:border-t lg:border-line lg:pt-5">
             <V2OddsPanel market={selected} pricer={pricer} />
           </div>
         )}
@@ -121,6 +126,11 @@ export function V2TradeScreen({
         </div>
       </aside>
     </main>
+
+    {/* Mobile trade ticket — slides up over the page when a market is picked.
+        Renders nothing on desktop (the rail ticket takes over). */}
+    <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />
+    </>
   );
 }
 
