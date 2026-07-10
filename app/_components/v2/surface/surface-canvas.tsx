@@ -128,15 +128,15 @@ export function SurfaceCanvasV2({
   const marketId = useV2TradeStore((s) => s.marketId);
   const mode = useV2TradeStore((s) => s.mode);
   const isUp = useV2TradeStore((s) => s.isUp);
-  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
-  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
-  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
-  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
+  const strikePrice = useV2TradeStore((s) => s.strikePrice);
+  const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
+  const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
+  const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
   const pickSeq = useV2TradeStore((s) => s.pickSeq);
   const selectMarket = useV2TradeStore((s) => s.selectMarket);
-  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
+  const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
   const markPicked = useV2TradeStore((s) => s.markPicked);
-  const pickRangeOffset = useV2TradeStore((s) => s.pickRangeOffset);
+  const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
 
   // Drop rows at/past expiry: their w is frozen while T clamps to ~0, so
   // IV = √(w/T) explodes and the height/colour normalization pancakes every
@@ -168,22 +168,17 @@ export function SurfaceCanvasV2({
     const market = markets.find((m) => m.expiry_market_id === marketId);
     const row = surface.rows.find((r) => r.oracleId === marketId);
     if (!market || !row) return null; // selected market isn't on the surface (no seed row)
-    const admStep = toFloat(market.admission_tick_size) || 1;
     const atm = toFloat(snapStrikeToAdmission(fromFloat(row.forward), BigInt(market.admission_tick_size)));
     if (mode === 'range') {
-      if (rangeLowerOffset == null || rangeHigherOffset == null) return null;
-      return {
-        kind: 'range',
-        oracleId: marketId,
-        lower: atm + rangeLowerOffset * admStep,
-        higher: atm + rangeHigherOffset * admStep,
-      };
+      if (rangeLowerPrice == null || rangeHigherPrice == null) return null;
+      return { kind: 'range', oracleId: marketId, lower: rangeLowerPrice, higher: rangeHigherPrice };
     }
-    return { kind: 'binary', oracleId: marketId, strike: atm + strikeOffset * admStep, isUp };
-  }, [marketId, markets, surface, mode, isUp, strikeOffset, rangeLowerOffset, rangeHigherOffset]);
+    // Absolute strike (pinned); default to ATM until picked.
+    return { kind: 'binary', oracleId: marketId, strike: strikePrice ?? atm, isUp };
+  }, [marketId, markets, surface, mode, isUp, strikePrice, rangeLowerPrice, rangeHigherPrice]);
 
   const { hasButterfly, hasCalendar } = surface;
-  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
+  const bandSet = rangeLowerPrice != null && rangeHigherPrice != null;
 
   // The market/input the popover trades — the store's selected market, priced
   // off the UNSTRESSED live inputs (the mint guards must see real odds).
@@ -218,7 +213,7 @@ export function SurfaceCanvasV2({
       const st = useV2TradeStore.getState();
       let targetMarket = clickedMarket;
       let targetRow: Surface['rows'][number] = sRow;
-      if (st.rangeAnchorOffset != null && st.marketId) {
+      if (st.rangeAnchorPrice != null && st.marketId) {
         const aRow = surface.rows.find((r) => r.oracleId === st.marketId);
         const aMarket = markets.find((m) => m.expiry_market_id === st.marketId);
         if (aRow && aMarket) {
@@ -232,11 +227,11 @@ export function SurfaceCanvasV2({
       const atm = toFloat(
         snapStrikeToAdmission(fromFloat(targetRow.forward), BigInt(targetMarket.admission_tick_size)),
       );
-      pickRangeOffset(Math.round((clickedPrice - atm) / step));
+      pickRangeLevel(atm + Math.round((clickedPrice - atm) / step) * step);
       // Open the card only once this click COMPLETES the band — keep the surface
       // clear for the second pick (legacy parity).
       const after = useV2TradeStore.getState();
-      if (after.rangeLowerOffset != null && after.rangeHigherOffset != null) {
+      if (after.rangeLowerPrice != null && after.rangeHigherPrice != null) {
         setPopover(true);
         setClickId((n) => n + 1);
       }
@@ -249,7 +244,7 @@ export function SurfaceCanvasV2({
       snapStrikeToAdmission(fromFloat(sRow.forward), BigInt(clickedMarket.admission_tick_size)),
     );
     selectMarket(clickedMarket.expiry_market_id);
-    setStrikeOffset(Math.round((clickedPrice - atm) / step));
+    setStrikePrice(atm + Math.round((clickedPrice - atm) / step) * step);
     // A surface pick is a full side-&-level choice — advance the rail ticket to
     // its bet step (legacy parity).
     markPicked();
@@ -324,7 +319,7 @@ export function SurfaceCanvasV2({
         <OrbitControls
           enablePan={false}
           enableZoom
-          autoRotate={!hover && !reduced && !popover && rangeAnchorOffset == null}
+          autoRotate={!hover && !reduced && !popover && rangeAnchorPrice == null}
           autoRotateSpeed={0.1}
           minDistance={8}
           maxDistance={22}
@@ -371,7 +366,7 @@ export function SurfaceCanvasV2({
         <span className="chip h-7 px-3 text-[11px] text-text-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           {mode === 'range'
-            ? rangeAnchorOffset != null && !bandSet
+            ? rangeAnchorPrice != null && !bandSet
               ? 'Tap the second price level to set your range'
               : 'Tap two price levels to set your range'
             : 'Tap a point on the surface to build a trade'}

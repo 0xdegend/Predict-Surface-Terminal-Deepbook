@@ -4,9 +4,10 @@
  * V2PayoutSlider — v2's strike picker, same drag-to-payout UX as legacy's
  * ticket/payout-slider.tsx (see there for the full rationale) but wired to
  * v2's admission-tick grid (lib/sui/v2/ticks.ts, lib/sui/v2/invert.ts)
- * instead of the legacy Oracle grid. The result is reported as `strikeOffset`
- * (admission-tick steps from ATM) to match how v2-trade-store already models
- * strike, rather than an absolute strike.
+ * instead of the legacy Oracle grid. Reports an ABSOLUTE strike (admission-grid
+ * price) — the picked level is pinned and doesn't chase the forward (legacy
+ * parity). The thumb still tracks the strike's live probability, so as the price
+ * moves the payout multiple updates while the strike stays put.
  */
 import { useRef } from 'react';
 import { upFair, type SviFloat } from '@/lib/svi/svi';
@@ -23,31 +24,28 @@ export function V2PayoutSlider({
   forward,
   svi,
   isUp,
-  atm,
   admStep,
   admissionTickSize,
-  strikeOffset,
+  strike,
   onChange,
   disabled = false,
 }: {
   forward: number;
   svi: SviFloat;
   isUp: boolean;
-  /** At-the-money strike (float), already snapped to the admission grid. */
-  atm: number;
   /** Admission tick size (float dollars). */
   admStep: number;
   /** Admission tick size (1e9-scaled), for the inversion's grid snap. */
   admissionTickSize: bigint;
-  /** Current strike offset, in admission-tick steps from ATM. */
-  strikeOffset: number;
-  onChange: (offset: number) => void;
+  /** Current absolute strike (admission-grid price). */
+  strike: number;
+  onChange: (strike: number) => void;
   disabled?: boolean;
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
 
-  const strikeFloat = atm + strikeOffset * admStep;
+  const strikeFloat = strike;
   const up = upFair(strikeFloat, forward, svi);
   const dirFair = isUp ? up : 1 - up;
   const clamped = Math.min(SAFE, Math.max(RISKY, dirFair));
@@ -55,14 +53,14 @@ export function V2PayoutSlider({
   const atmT = (SAFE - 0.5) / (SAFE - RISKY);
   const multiple = payoutMultiple(dirFair);
 
-  function offsetForTargetDir(targetDir: number): number {
-    const strike = strikeForDirectionFair(targetDir, forward, svi, admissionTickSize, isUp);
-    return Math.round((toFloat(Number(strike)) - atm) / admStep);
+  function strikeForTargetDir(targetDir: number): number {
+    const s = strikeForDirectionFair(targetDir, forward, svi, admissionTickSize, isUp);
+    return toFloat(Number(s));
   }
   function setFromT(tt: number) {
     const cl = Math.min(1, Math.max(0, tt));
     const targetDir = SAFE + (RISKY - SAFE) * cl;
-    onChange(offsetForTargetDir(targetDir));
+    onChange(strikeForTargetDir(targetDir));
   }
   function setFromClientX(clientX: number) {
     const el = trackRef.current;
@@ -84,7 +82,7 @@ export function V2PayoutSlider({
   }
   function nudge(dir: number) {
     if (disabled) return;
-    onChange(strikeOffset + dir);
+    onChange(strikeFloat + dir * admStep);
   }
   function onKey(e: React.KeyboardEvent) {
     if (disabled) return;

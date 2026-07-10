@@ -38,7 +38,6 @@ import type { SmileInput } from '@/lib/svi/surface';
 import type { V2Market } from '@/lib/api/v2/types';
 
 const SLIPPAGE_BPS = 100; // 1% deposit-buffer headroom (same as the rail ticket)
-const ODDS_SLACK = 0.05; // budget-mint odds guard (same as the rail ticket)
 const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -47,12 +46,12 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   const maxLev = Math.max(1, Math.floor(toFloat(market.max_admission_leverage)));
   const lev = Math.min(leverage, maxLev);
   const stakeBase = toQuote(Math.max(0, stake));
-  const quantity = quantityForStake(stakeBase, entryProb, lev); // payout ESTIMATE (chain sizes the real one)
   // Budget mint: the chain derives the quantity at execution from its own live
-  // odds — the premium can never exceed `amount`, and minQuantity aborts the
-  // fill if the odds move more than ODDS_SLACK against the quote.
+  // odds — the premium can never exceed `amount`. `quantity` is the quoted
+  // payout; minQuantity aborts only on a violent gap (MAX_PAYOUT_SHRINK).
   const amount = mintAmountBase(stakeBase);
-  const minQuantity = minQuantityForBudget(amount, entryProb, lev, ODDS_SLACK);
+  const quantity = quantityForStake(amount, entryProb, lev); // quoted payout (chain sizes the real one)
+  const minQuantity = minQuantityForBudget(quantity);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
@@ -136,10 +135,10 @@ function BinaryBody({
   const acct = usePredictAccountV2();
   const isUp = useV2TradeStore((s) => s.isUp);
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
-  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
-  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
+  const strikePrice = useV2TradeStore((s) => s.strikePrice);
+  const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
   const setMode = useV2TradeStore((s) => s.setMode);
-  const pickRangeOffset = useV2TradeStore((s) => s.pickRangeOffset);
+  const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
   const stake = useV2TradeStore((s) => s.stake);
   const setStake = useV2TradeStore((s) => s.setStake);
   const leverage = useV2TradeStore((s) => s.leverage);
@@ -157,7 +156,8 @@ function BinaryBody({
   const admissionTickSize = BigInt(market.admission_tick_size);
   const admStep = toFloat(market.admission_tick_size) || 1;
   const atm = toFloat(snapStrikeToAdmission(fromFloat(forward), admissionTickSize));
-  const strike = atm + strikeOffset * admStep;
+  // Absolute strike — a picked level stays put as the price moves; default to ATM.
+  const strike = strikePrice ?? atm;
 
   const upProb = upFair(strike, forward, svi);
   const entryProb = isUp ? upProb : 1 - upProb;
@@ -174,7 +174,7 @@ function BinaryBody({
   // Switch this market into the range builder, seeding the just-clicked strike
   // as the first edge — the user clicks one more node to complete the band.
   function switchToRange() {
-    pickRangeOffset(strikeOffset);
+    pickRangeLevel(strike);
     setMode('range');
   }
 
@@ -241,11 +241,10 @@ function BinaryBody({
               forward={forward}
               svi={svi}
               isUp={isUp}
-              atm={atm}
               admStep={admStep}
               admissionTickSize={admissionTickSize}
-              strikeOffset={strikeOffset}
-              onChange={setStrikeOffset}
+              strike={strike}
+              onChange={setStrikePrice}
               disabled={expired}
             />
           </div>
@@ -351,9 +350,9 @@ function RangeBody({
   onClose: () => void;
 }) {
   const acct = usePredictAccountV2();
-  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
-  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
-  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
+  const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
+  const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
+  const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
   const clearRange = useV2TradeStore((s) => s.clearRange);
   const setMode = useV2TradeStore((s) => s.setMode);
   const stake = useV2TradeStore((s) => s.stake);
@@ -373,9 +372,9 @@ function RangeBody({
   const admStep = toFloat(market.admission_tick_size) || 1;
   const atm = toFloat(snapStrikeToAdmission(fromFloat(forward), admissionTickSize));
 
-  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
-  const lower = bandSet ? atm + rangeLowerOffset * admStep : atm - admStep;
-  const higher = bandSet ? atm + rangeHigherOffset * admStep : atm + admStep;
+  const bandSet = rangeLowerPrice != null && rangeHigherPrice != null;
+  const lower = bandSet ? rangeLowerPrice : atm - admStep;
+  const higher = bandSet ? rangeHigherPrice : atm + admStep;
 
   const entryProb = rangeFair(lower, higher, forward, svi);
   const probOk = entryProb > 0.005 && entryProb < 0.995;
@@ -424,8 +423,8 @@ function RangeBody({
         // being drawn, so this only shows if the band was cleared underneath us.
         <div className="flex flex-col gap-2 px-3.5 pb-3.5 pt-3">
           <p className="text-[11px] leading-relaxed text-text-2">
-            {rangeAnchorOffset != null
-              ? `First edge set at ${price(atm + rangeAnchorOffset * admStep)}. Click another point on the surface to complete the band.`
+            {rangeAnchorPrice != null
+              ? `First edge set at ${price(rangeAnchorPrice)}. Click another point on the surface to complete the band.`
               : 'Click two points on the surface to bet BTC settles between them.'}
           </p>
           <button

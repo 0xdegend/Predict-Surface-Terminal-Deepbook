@@ -40,20 +40,26 @@ export function mintAmountBase(stakeBase: bigint): bigint {
 }
 
 /**
- * The `min_quantity` guard for a budget mint: the payout the trader would get
- * if the odds moved `oddsSlack` (e.g. 0.05 = 5%) against them, lot-floored and
- * eased one further lot for fixed-point rounding. If the chain sizes below
- * this, the mint aborts (expiry_market #6) instead of silently filling the same
- * money at much worse odds.
+ * How much a budget mint's payout may shrink from the quote before the chain
+ * should reject it. A budget mint's payout floats with the live odds at
+ * execution (that's what makes it robust to the $1-minimum boundary), so this
+ * bounds how much worse than quoted a fill can be if the odds move against the
+ * trader while they confirm. Deliberately generous — legacy had NO guard at all
+ * (fixed payout, pay-what-it-costs), so we only want to catch a genuinely
+ * broken fill (a violent gap), never normal short-market movement. 0.25 = the
+ * trader is guaranteed at least 75% of the quoted payout, or the tx reverts.
  */
-export function minQuantityForBudget(
-  amountBase: bigint,
-  entryProb: number,
-  leverage: number,
-  oddsSlack: number,
-): bigint {
-  const q = quantityForStake(amountBase, Math.min(1, entryProb * (1 + oddsSlack)), leverage);
-  return q > POSITION_LOT_BASE ? q - POSITION_LOT_BASE : q;
+export const MAX_PAYOUT_SHRINK = 0.25;
+
+/**
+ * The `min_quantity` guard for a budget mint: the quoted payout reduced by
+ * `shrink`, lot-floored. If the chain would size below this the mint aborts
+ * (expiry_market #6) instead of silently buying a much smaller payout than the
+ * trader was shown. Pass the same quoted quantity the ticket displays.
+ */
+export function minQuantityForBudget(quotedQuantity: bigint, shrink = MAX_PAYOUT_SHRINK): bigint {
+  const keepBps = BigInt(Math.round((1 - shrink) * 10_000));
+  return lotAlign((quotedQuantity * keepBps) / 10_000n);
 }
 
 /** Floor a raw quantity onto the lot grid (never below one lot). */

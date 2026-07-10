@@ -60,7 +60,6 @@ import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
-const ODDS_SLACK = 0.05; // budget-mint odds guard: abort if odds move >5% against the quote
 const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -80,11 +79,11 @@ export function V2TradeTicket({
   const setMode = useV2TradeStore((s) => s.setMode);
   const isUp = useV2TradeStore((s) => s.isUp);
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
-  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
-  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
-  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
-  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
-  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
+  const strikePrice = useV2TradeStore((s) => s.strikePrice);
+  const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
+  const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
+  const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
+  const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
   const stake = useV2TradeStore((s) => s.stake);
   const setStake = useV2TradeStore((s) => s.setStake);
   const leverage = useV2TradeStore((s) => s.leverage);
@@ -145,11 +144,13 @@ export function V2TradeTicket({
   const atm = toFloat(snapStrikeToAdmission(fromFloat(pricer.forward), admissionTickSize));
 
   const rangeMode = mode === 'range';
-  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
-  const strike = atm + strikeOffset * admStep;
-  const lowerStrike = bandSet ? atm + rangeLowerOffset * admStep : atm - admStep;
-  const higherStrike = bandSet ? atm + rangeHigherOffset * admStep : atm + admStep;
-  const anchorStrike = rangeAnchorOffset != null ? atm + rangeAnchorOffset * admStep : null;
+  const bandSet = rangeLowerPrice != null && rangeHigherPrice != null;
+  // Absolute strikes — a picked level stays put as the forward moves (legacy
+  // parity); until the user picks, default to the current ATM.
+  const strike = strikePrice ?? atm;
+  const lowerStrike = bandSet ? rangeLowerPrice : atm - admStep;
+  const higherStrike = bandSet ? rangeHigherPrice : atm + admStep;
+  const anchorStrike = rangeAnchorPrice;
 
   const upProb = upFair(strike, pricer.forward, svi);
   const binaryProb = isUp ? upProb : 1 - upProb;
@@ -179,13 +180,13 @@ export function V2TradeTicket({
     knockoutMove != null ? `${(knockoutMove * 100).toFixed(knockoutMove >= 0.001 ? 1 : 2)}%` : null;
 
   const stakeBase = toQuote(stake);
-  const quantity = quantityForStake(stakeBase, entryProb, lev); // payout ESTIMATE (chain sizes the real one)
   // Budget mint: the chain derives the quantity from ITS live odds at execution,
   // so the user pays at most `amount` in premium no matter how the odds move
-  // between quoting and landing. minQuantity guards against filling the same
-  // money at much worse odds (ODDS_SLACK tolerance).
+  // between quoting and landing. `quantity` is the quoted payout off the current
+  // odds; minQuantity guards only against a violent gap (MAX_PAYOUT_SHRINK).
   const amount = mintAmountBase(stakeBase);
-  const minQuantity = minQuantityForBudget(amount, entryProb, lev, ODDS_SLACK);
+  const quantity = quantityForStake(amount, entryProb, lev); // quoted payout (chain sizes the real one)
+  const minQuantity = minQuantityForBudget(quantity);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
@@ -646,11 +647,10 @@ export function V2TradeTicket({
                   forward={pricer.forward}
                   svi={svi}
                   isUp={isUp}
-                  atm={atm}
                   admStep={admStep}
                   admissionTickSize={admissionTickSize}
-                  strikeOffset={strikeOffset}
-                  onChange={setStrikeOffset}
+                  strike={strike}
+                  onChange={setStrikePrice}
                   disabled={tooCloseToExpiry}
                 />
 

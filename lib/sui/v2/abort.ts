@@ -16,7 +16,7 @@ const V2_ABORTS: Record<string, string> = {
   'expiry_market:3': 'Wrong price feed for this market. Refresh and retry.',
   'expiry_market:4': 'The cost moved above your limit. Nudge slippage up or try again.',
   'expiry_market:5': 'The odds moved past your limit. Nudge slippage up or try again.',
-  'expiry_market:6': 'The odds moved while you were confirming and your money would buy a smaller payout than quoted. Refresh and try again.',
+  'expiry_market:6': 'The price jumped sharply while you were confirming — your payout would be well below the quote. Refresh and try again.',
   'expiry_market:7': 'The price snapshot didn’t match — refresh the quote and retry.',
   'expiry_market:8': 'The “price to beat” isn’t ready for this market yet.',
   'expiry_market:9': 'The “price to beat” timing didn’t line up — try again shortly.',

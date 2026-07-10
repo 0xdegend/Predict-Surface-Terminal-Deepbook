@@ -6,6 +6,7 @@ import {
   mintAmountBase,
   minQuantityForBudget,
   MIN_MINT_AMOUNT_BASE,
+  MAX_PAYOUT_SHRINK,
   POSITION_LOT_BASE,
 } from './quote';
 import { upFair, type SviFloat } from '@/lib/svi/svi';
@@ -42,17 +43,19 @@ describe('budget mint sizing (mint_exact_amount)', () => {
     expect(mintAmountBase(1_010_000n)).toBe(1_010_000n);
     expect(mintAmountBase(5_000_000n)).toBe(5_000_000n);
   });
-  it('minQuantity is lot-aligned and sits below the fair-odds quantity', () => {
-    const amount = 5_000_000n;
-    const fairQty = quantityForStake(amount, 0.502, 2);
-    const minQty = minQuantityForBudget(amount, 0.502, 2, 0.05);
+  it('minQuantity is lot-aligned and is the quoted payout minus the shrink tolerance', () => {
+    const quoted = quantityForStake(5_000_000n, 0.502, 2);
+    const minQty = minQuantityForBudget(quoted);
     expect(minQty % POSITION_LOT_BASE).toBe(0n);
-    expect(minQty).toBeLessThan(fairQty);
+    expect(minQty).toBeLessThan(quoted);
     expect(minQty).toBeGreaterThan(0n);
-    // ~5% odds slack: min ≈ fair / 1.05 (within a lot of the exact ratio).
-    const ratio = Number(fairQty) / Number(minQty);
-    expect(ratio).toBeGreaterThan(1.04);
-    expect(ratio).toBeLessThan(1.07);
+    // Guaranteed floor = quoted × (1 − MAX_PAYOUT_SHRINK), within one lot.
+    const expected = Number(quoted) * (1 - MAX_PAYOUT_SHRINK);
+    expect(Math.abs(Number(minQty) - expected)).toBeLessThanOrEqual(Number(POSITION_LOT_BASE));
+  });
+  it('a custom shrink of 0 keeps (almost) the full quoted payout', () => {
+    const quoted = 4_000_000n;
+    expect(minQuantityForBudget(quoted, 0)).toBe(quoted);
   });
 });
 

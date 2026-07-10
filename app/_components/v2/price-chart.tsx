@@ -92,20 +92,18 @@ export function V2PriceChart({
   // Ticket selection → absolute prices on the chart.
   const mode = useV2TradeStore((s) => s.mode);
   const isUp = useV2TradeStore((s) => s.isUp);
-  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
-  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
-  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
+  const strikePrice = useV2TradeStore((s) => s.strikePrice);
+  const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
+  const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
 
-  const admStep = market ? toFloat(market.admission_tick_size) || 1 : null;
   const atm =
     market && pricer
       ? toFloat(snapStrikeToAdmission(fromFloat(pricer.forward), BigInt(market.admission_tick_size)))
       : null;
-  const strike = atm != null && admStep != null && mode === 'binary' ? atm + strikeOffset * admStep : null;
-  const bandLow =
-    atm != null && admStep != null && mode === 'range' && rangeLowerOffset != null ? atm + rangeLowerOffset * admStep : null;
-  const bandHigh =
-    atm != null && admStep != null && mode === 'range' && rangeHigherOffset != null ? atm + rangeHigherOffset * admStep : null;
+  // Absolute strikes (pinned); the binary line defaults to ATM until a level is picked.
+  const strike = atm != null && mode === 'binary' ? strikePrice ?? atm : null;
+  const bandLow = mode === 'range' ? rangeLowerPrice : null;
+  const bandHigh = mode === 'range' ? rangeHigherPrice : null;
 
   // 500 = the propbook API's cap (~3.6 min of ticks) → a dense, legacy-count line.
   const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 30_000 });

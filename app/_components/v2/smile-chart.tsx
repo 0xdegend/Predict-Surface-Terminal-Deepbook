@@ -6,9 +6,9 @@
  *
  * Hover anywhere to read the fair UP/DOWN odds at that price.
  *  - Binary mode: click or drag to set your strike — maps the pointed price onto
- *    the admission grid and writes `strikeOffset`, synced with the ticket's
- *    payout slider (both read/write the same store). A crosshair marks the
- *    strike; the dashed level line shows the picked side's chance.
+ *    the admission grid and writes the absolute `strikePrice`, synced with the
+ *    ticket's payout slider (both read/write the same store). A crosshair marks
+ *    the strike; the dashed level line shows the picked side's chance.
  *  - Range mode (legacy SmileStrip parity): tap two price levels to set the band
  *    — the first tap anchors, a live preview shades to the pointer, the second
  *    tap closes it. Then drag either edge handle to resize, tap elsewhere to
@@ -40,14 +40,14 @@ const GRAB_PX = 16; // how near (viewBox x) the pointer must be to grab a band e
 
 export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: LivePricer }) {
   const mode = useV2TradeStore((s) => s.mode);
-  const strikeOffset = useV2TradeStore((s) => s.strikeOffset);
+  const strikePrice = useV2TradeStore((s) => s.strikePrice);
   const isUp = useV2TradeStore((s) => s.isUp);
-  const setStrikeOffset = useV2TradeStore((s) => s.setStrikeOffset);
-  const rangeLowerOffset = useV2TradeStore((s) => s.rangeLowerOffset);
-  const rangeHigherOffset = useV2TradeStore((s) => s.rangeHigherOffset);
-  const rangeAnchorOffset = useV2TradeStore((s) => s.rangeAnchorOffset);
+  const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
+  const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
+  const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
+  const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
   const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
-  const pickRangeOffset = useV2TradeStore((s) => s.pickRangeOffset);
+  const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
   const clearRange = useV2TradeStore((s) => s.clearRange);
 
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
@@ -62,12 +62,13 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   const step = toFloat(market.admission_tick_size) || 1;
   const atm = toFloat(snapStrikeToAdmission(fromFloat(forward), BigInt(market.admission_tick_size)));
   const rangeMode = mode === 'range';
-  const bandSet = rangeLowerOffset != null && rangeHigherOffset != null;
+  const bandSet = rangeLowerPrice != null && rangeHigherPrice != null;
 
-  const selStrike = atm + strikeOffset * step;
-  const lowerStrike = bandSet ? atm + rangeLowerOffset * step : null;
-  const higherStrike = bandSet ? atm + rangeHigherOffset * step : null;
-  const anchorStrike = rangeAnchorOffset != null ? atm + rangeAnchorOffset * step : null;
+  // Absolute strikes (pinned), defaulting to ATM until picked.
+  const selStrike = strikePrice ?? atm;
+  const lowerStrike = bandSet ? rangeLowerPrice : null;
+  const higherStrike = bandSet ? rangeHigherPrice : null;
+  const anchorStrike = rangeAnchorPrice;
 
   // Sample the UP curve linearly in price across a generous window.
   const all: { strike: number; up: number }[] = [];
@@ -132,8 +133,9 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     const rect = e.currentTarget.getBoundingClientRect();
     return ((e.clientX - rect.left) / rect.width) * W;
   }
-  function offsetAt(p: number) {
-    return Math.round((p - atm) / step);
+  /** Snap a pointed price onto the admission grid (absolute price). */
+  function snapPrice(p: number) {
+    return atm + Math.round((p - atm) / step) * step;
   }
   /** The band edge nearest the pointer, if within GRAB_PX — else null. */
   function edgeNear(vx: number): 'lower' | 'higher' | null {
@@ -144,10 +146,11 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     return dLo <= dHi ? 'lower' : 'higher';
   }
   function applyEdge(edge: 'lower' | 'higher', p: number) {
-    if (rangeLowerOffset == null || rangeHigherOffset == null) return;
-    const o = offsetAt(p);
-    if (edge === 'lower') setRangeBand(Math.min(o, rangeHigherOffset - 1), rangeHigherOffset);
-    else setRangeBand(rangeLowerOffset, Math.max(o, rangeLowerOffset + 1));
+    if (rangeLowerPrice == null || rangeHigherPrice == null) return;
+    const sp = snapPrice(p);
+    // Keep the edges at least one grid step apart.
+    if (edge === 'lower') setRangeBand(Math.min(sp, rangeHigherPrice - step), rangeHigherPrice);
+    else setRangeBand(rangeLowerPrice, Math.max(sp, rangeLowerPrice + step));
   }
 
   function onDown(e: React.PointerEvent<SVGSVGElement>) {
@@ -163,13 +166,13 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
       }
     } else {
       setDrag('strike');
-      setStrikeOffset(offsetAt(p));
+      setStrikePrice(snapPrice(p));
     }
   }
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
     const p = priceAt(e);
     setHoverPrice(p);
-    if (drag === 'strike') setStrikeOffset(offsetAt(p));
+    if (drag === 'strike') setStrikePrice(snapPrice(p));
     else if (drag === 'lower' || drag === 'higher') applyEdge(drag, p);
   }
   function onUp(e: React.PointerEvent<SVGSVGElement>) {
@@ -190,7 +193,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
       draggedRef.current = false;
       return;
     }
-    pickRangeOffset(offsetAt(priceAt(e)));
+    pickRangeLevel(snapPrice(priceAt(e)));
   }
 
   const overEdge = rangeMode && hoverPrice != null && edgeNear(cx(hoverPrice)) != null;
