@@ -19,6 +19,7 @@ import type {
   PythObservation,
   OracleBinding,
   V2Position,
+  V2OrderEvent,
   V2VaultServerState,
   V2OpenInterest,
   V2ActivityBucket,
@@ -58,9 +59,14 @@ export const getV2Markets = (limit = 100, o?: GetOptions) =>
 export const getV2MarketState = (marketId: string, o?: GetOptions) =>
   beta<V2MarketState>(`/markets/${marketId}/state`, o);
 
-/** Owner-scoped open positions (verified 200; empty on testnet, shape best-effort). */
-export const getAccountPositions = (owner: string, o?: GetOptions) =>
-  beta<V2Position[]>(`/accounts/${owner}/positions`, o);
+/** Open positions for an ACCOUNT id (the internal account_id from events, NOT
+ *  the wallet owner — the indexer keys positions/orders under account_id). */
+export const getAccountPositions = (accountId: string, o?: GetOptions) =>
+  beta<V2Position[]>(`/accounts/${accountId}/positions`, o);
+
+/** The account's order EVENT log (mints + redeems) — the source for trade history. */
+export const getAccountOrders = (accountId: string, o?: GetOptions) =>
+  beta<V2OrderEvent[]>(`/accounts/${accountId}/orders`, o);
 
 /** Vault NAV + latest flush/fill events — pool_value/total_supply give the live
  *  share price (endpoint shipped ~2026-07, verified live 2026-07-08). */
@@ -111,6 +117,7 @@ export const qkV2 = {
   pythLatest: ['v2', 'pyth', 'latest'] as const,
   pythHistory: ['v2', 'pyth', 'history'] as const,
   pricer: (id: string) => ['v2', 'pricer', id] as const,
-  accountPositions: (owner: string) => ['v2', 'account', owner, 'positions'] as const,
+  accountPositions: (accountId: string) => ['v2', 'account', accountId, 'positions'] as const,
+  accountOrders: (accountId: string) => ['v2', 'account', accountId, 'orders'] as const,
   vaultServerState: ['v2', 'vault', 'server-state'] as const,
 };

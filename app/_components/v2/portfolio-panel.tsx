@@ -29,8 +29,10 @@ import {
   LuFlaskConical,
   LuVault,
 } from 'react-icons/lu';
+import { useQuery } from '@tanstack/react-query';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2Positions } from '@/lib/hooks/use-v2-positions';
+import { getV2Markets, getPythHistory, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote, toQuote } from '@/config/scale';
@@ -47,11 +49,20 @@ import { derivePortfolioHistory, equityCurve } from '@/lib/portfolio/history';
 import {
   V2_DEMO_ENABLED,
   normalizeV2Position,
+  valueV2Position,
+  settleV2Position,
+  positionMarkPrice,
+  buildV2Spark,
   demoPositions,
   demoHistory,
   type V2PortfolioPosition,
+  type SpotPoint,
 } from '@/lib/portfolio/v2';
+import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
+import { useV2Settlements } from '@/lib/hooks/use-v2-settlements';
+import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
+import { V2RedeemModal } from './redeem-modal';
 
 type FundMode = 'add' | 'withdraw';
 
@@ -59,14 +70,77 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccountV2();
   const mounted = useMounted();
   const now = useNow(serverNow);
-  const { positions: rawPositions, isLoading: positionsLoading } = useV2Positions(acct.owner);
+  const { positions: rawPositions, isLoading: positionsLoading } = useV2Positions(acct.accountId);
+
+  // Markets, to join each position to its tick_size/expiry (ticks are grid
+  // indices, not prices). Shares the trade screen's cache.
+  const marketsQ = useQuery({ queryKey: qkV2.markets, queryFn: () => getV2Markets(100), staleTime: 30_000 });
+  const marketMap = useMemo(
+    () => new Map((marketsQ.data ?? []).map((m) => [m.expiry_market_id, m])),
+    [marketsQ.data],
+  );
 
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
   const [fundMode, setFundMode] = useState<FundMode | null>(null);
   const [fundDone, setFundDone] = useState<{ mode: FundMode; amount: number; digest: string } | null>(null);
+  // Close/redeem runs through a confirmation dialog (win/loss + partial close),
+  // mirroring the legacy flow — never a one-shot instant tx.
+  const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
 
-  // Real indexer rows, normalized. Empty on testnet today (see lib/portfolio/v2).
-  const real = useMemo(() => rawPositions.map(normalizeV2Position), [rawPositions]);
+  // Real indexer rows, normalized and joined to their market for tick→price.
+  const normalized = useMemo(
+    () =>
+      rawPositions.map((p, i) =>
+        normalizeV2Position(p, i, marketMap.get((p.expiry_market_id ?? p.market_id) as string)),
+      ),
+    [rawPositions, marketMap],
+  );
+
+  // Live pricers for the OPEN positions' markets — the v2 indexer reports no
+  // mark/PnL, so we mark each position client-side (bounded: only open markets).
+  const openMarketIds = useMemo(
+    () => [...new Set(normalized.filter((p) => !p.settled && p.marketId).map((p) => p.marketId!))],
+    [normalized],
+  );
+  const pricers = useV2Pricers(openMarketIds, {});
+
+  // Settlement price per open market (present once it settles). An expired
+  // position can't be priced live any more, so we resolve its win/loss from
+  // this instead of leaving it stuck on "settling" (see settleV2Position).
+  const settlements = useV2Settlements(openMarketIds);
+
+  // Recent spot history → the position sparklines (a binary's price is its
+  // probability). One shared query — all v2 markets ride the same BTC pyth feed;
+  // shares cache with the price chart's `qkV2.pythHistory`.
+  const pythHistQ = useQuery({
+    queryKey: qkV2.pythHistory,
+    queryFn: () => getPythHistory(predictV2Config.asset.pythFeedId, 500),
+    refetchInterval: 30_000,
+    enabled: openMarketIds.length > 0,
+  });
+  const spots = useMemo<SpotPoint[]>(
+    () =>
+      (pythHistQ.data ?? [])
+        .map((o) => ({ t: o.checkpoint_timestamp_ms ?? o.source_timestamp_ms ?? 0, s: pythSpot(o) }))
+        .filter((d): d is SpotPoint => d.s != null && d.s > 0),
+    [pythHistQ.data],
+  );
+
+  const real = useMemo(
+    () =>
+      normalized.map((p) => {
+        // Settled? Resolve win/loss from the market's settlement price first —
+        // it's terminal and needs no live pricer. Falls through unchanged while
+        // the market is still live (settlement null).
+        const settled = settleV2Position(p, p.marketId ? settlements[p.marketId] : null);
+        if (settled.settled) return { ...settled, spark: buildV2Spark(settled, undefined, spots) };
+        const pricer = p.marketId ? pricers[p.marketId] : undefined;
+        const valued = valueV2Position(settled, positionMarkPrice(settled, pricer));
+        return { ...valued, spark: buildV2Spark(valued, pricer, spots) };
+      }),
+    [normalized, pricers, spots, settlements],
+  );
+
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
   // Sample rows are anchored to the page-load clock so countdowns tick down
@@ -76,10 +150,12 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
     [demoActive, serverNow, real],
   );
 
-  // Settled track record — sample until a history endpoint exists.
+  // Real trade history from the order event log (authoritative). Sample rows
+  // fill the tab only while the account has no real positions at all.
+  const { history: realHistory } = useV2History(acct.accountId, marketMap);
   const { history, stats } = useMemo(
-    () => derivePortfolioHistory([], demoActive ? demoHistory(serverNow) : []),
-    [demoActive, serverNow],
+    () => derivePortfolioHistory([], demoActive ? demoHistory(serverNow) : realHistory),
+    [demoActive, serverNow, realHistory],
   );
   const curve = useMemo(() => equityCurve(history), [history]);
 
@@ -107,23 +183,37 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
     return <CreateAccountCard busy={acct.busy === 'create'} onCreate={() => acct.createAccount()} />;
   }
 
-  const open = rows.filter((p) => !p.settled && p.qty > 0);
+  const live = rows.filter((p) => !p.settled && p.qty > 0);
   const redeemable = rows.filter((p) => p.settled && p.qty > 0 && p.won !== false);
+  // Settled losers still hold quantity until cleared — show them (with a plain
+  // "Lost" verdict + Clear action) rather than dropping them silently, so the
+  // trader can always tell whether a bet won or lost. They carry no unrealized
+  // value, so they stay out of the money math below.
+  const settledLost = rows.filter((p) => p.settled && p.qty > 0 && p.won === false);
+  const open = [...live, ...settledLost];
 
   const freeBalance = fromQuote(acct.balanceBase);
-  const openValue = open.reduce((s, p) => s + (p.markValue ?? p.cost ?? 0), 0);
+  const openValue = live.reduce((s, p) => s + (p.markValue ?? p.cost ?? 0), 0);
   const claimValue = redeemable.reduce((s, p) => s + (p.markValue ?? 0), 0);
   const accountValue = freeBalance + openValue + claimValue;
-  const openExposure = open.reduce((s, p) => s + (p.cost ?? 0), 0);
-  const unrealized = open.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const openExposure = live.reduce((s, p) => s + (p.cost ?? 0), 0);
+  const unrealized = live.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const unrealizedPct = openExposure > 0 ? unrealized / openExposure : 0;
   const totalPnl = unrealized + stats.realizedPnl;
 
-  async function handleRedeem(p: V2PortfolioPosition) {
-    if (p.sample || !p.marketId || p.orderId == null || !p.qtyBase || p.qtyBase <= 0n) return;
-    const args = { marketId: p.marketId, orderId: p.orderId, closeQuantity: p.qtyBase };
-    if (p.settled) await acct.redeemSettled(args);
-    else await acct.redeemLive(args);
+  // Confirmed from the dialog with the chosen partial amount (base units). A
+  // close < full leaves the remainder open to close later; equal-to-open closes
+  // the whole lot. The chain confirms the exact quantity on sign.
+  async function handleRedeemConfirm(p: V2PortfolioPosition, closeQuantity: bigint) {
+    if (p.sample || !p.marketId || p.orderId == null || closeQuantity <= 0n) {
+      setRedeeming(null);
+      return;
+    }
+    const args = { marketId: p.marketId, orderId: p.orderId, closeQuantity };
+    const digest = p.settled ? await acct.redeemSettled(args) : await acct.redeemLive(args);
+    // Keep the dialog open on failure (error surfaces in the panel); close it once
+    // the tx lands so the refreshed position list takes over.
+    if (digest) setRedeeming(null);
   }
 
   async function handleFund(amount: number) {
@@ -257,7 +347,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         <Section title="Ready to redeem" hint="settled — claim your payout">
           <Grid>
             {redeemable.map((p) => (
-              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={handleRedeem} />
+              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
             ))}
           </Grid>
         </Section>
@@ -274,7 +364,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           <TabButton icon={LuLayers} label="Positions" active={tab === 'positions'} onClick={() => setTab('positions')} />
           <TabButton icon={LuHistory} label="History" active={tab === 'history'} onClick={() => setTab('history')} />
         </div>
-        {tab === 'positions' && open.length > 0 && (
+        {tab === 'positions' && live.length > 0 && (
           <span className={`font-mono text-[11px] tabular-nums ${unrealized >= 0 ? 'text-up' : 'text-down'}`}>
             {signed(unrealized)} unrealized ({signed(unrealizedPct * 100, 1)}%)
           </span>
@@ -306,7 +396,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         ) : (
           <Grid>
             {open.map((p) => (
-              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={handleRedeem} />
+              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
             ))}
           </Grid>
         )
@@ -327,6 +417,13 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           </Section>
         </>
       )}
+
+      <V2RedeemModal
+        position={redeeming}
+        busy={!!acct.busy}
+        onConfirm={handleRedeemConfirm}
+        onClose={() => setRedeeming(null)}
+      />
 
       <FundModal
         mode={fundMode}

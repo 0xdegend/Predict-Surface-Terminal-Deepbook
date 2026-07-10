@@ -103,6 +103,43 @@ export interface V2Position {
   [k: string]: unknown;
 }
 
+/**
+ * `/accounts/{account_id}/orders` — the append-only order EVENT log. Each row is
+ * one on-chain event, tagged by `kind`. Field names mirror the Move event
+ * structs (order_events.move on predict-testnet-6-24):
+ *  - `order_minted`             → OrderMinted (mint: quantity, net_premium, ticks…)
+ *  - `live_order_redeemed`      → LiveOrderRedeemed (close: redeem_amount, fees…)
+ *  - `settled_order_redeemed`   → SettledOrderRedeemed (claim: payout_amount, settlement_price)
+ *  - `liquidated_order_redeemed`→ LiquidatedOrderRedeemed (knocked out: zero payout)
+ * A closed trade = a `*_redeemed` event joined to its mint by `position_root_id`.
+ */
+export interface V2OrderEvent {
+  kind?: string;
+  expiry_market_id?: string;
+  account_id?: string;
+  owner?: string;
+  order_id?: string | number;
+  position_root_id?: string | number;
+  checkpoint_timestamp_ms?: number;
+  // mint (order_minted)
+  lower_tick?: string | number;
+  higher_tick?: string | number;
+  quantity?: string | number;
+  net_premium?: string | number;
+  entry_probability?: string | number;
+  leverage?: string | number;
+  // redeem (live/settled/liquidated)
+  quantity_closed?: string | number;
+  remaining_quantity?: string | number;
+  redeem_amount?: string | number; // live close, before fees, after floor
+  payout_amount?: string | number; // settled terminal payout
+  settlement_price?: string | number;
+  trading_fee?: string | number;
+  builder_fee?: string | number;
+  penalty_fee?: string | number;
+  [k: string]: unknown;
+}
+
 /** `/oracle-bindings` — maps an underlying to its feed object ids per oracle kind. */
 export interface OracleBinding {
   propbook_underlying_id: number;

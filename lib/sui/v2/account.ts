@@ -137,6 +137,30 @@ export async function readWrapper(
 }
 
 /**
+ * The wrapper's internal ACCOUNT id — the key the indexer files positions,
+ * orders and balances under (`/accounts/{account_id}/...`). This is NOT the
+ * wallet owner and NOT the shared-wrapper object id; it's `account::account_id`
+ * of the Account inside the wrapper, surfaced in every OrderMinted/Deposited
+ * event as `account_id`. Read it once (per wrapper) to query portfolio data.
+ */
+export async function readAccountId(
+  client: SimulateCapableClient,
+  wrapperId: string,
+): Promise<string> {
+  const tx = new Transaction();
+  tx.setSender(SIM_SENDER);
+  const account = tx.moveCall({
+    target: ACC('account', 'load_account'),
+    arguments: [tx.object(wrapperId)],
+  });
+  tx.moveCall({ target: ACC('account', 'account_id'), arguments: [account] });
+  const res = await simulate(client, tx);
+  const last = res.commandResults?.at(-1);
+  if (!last?.returnValues?.length) throw new Error('readAccountId: no value');
+  return bcs.Address.parse(new Uint8Array(last.returnValues[0].bcs));
+}
+
+/**
  * Free balance of `coinType` in the wrapper's account (base units). Defaults to
  * DUSDC; pass the PLP type to read custodied vault shares.
  */

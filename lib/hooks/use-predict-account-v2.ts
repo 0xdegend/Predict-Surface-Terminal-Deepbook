@@ -22,7 +22,7 @@ import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor'
 import { humanizeV2Error } from '@/lib/sui/v2/abort';
 import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { toast } from '@/lib/store/toast-store';
-import { readWrapper, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
+import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
 import { qkV2 } from '@/lib/api/v2/client';
 import {
@@ -34,6 +34,7 @@ import {
 
 const qkV2Account = {
   wrapper: (owner: string) => ['v2', 'wrapper', owner] as const,
+  accountId: (wrapperId: string) => ['v2', 'account-id', wrapperId] as const,
   balance: (wrapperId: string) => ['v2', 'balance', wrapperId] as const,
   plpBalance: (wrapperId: string) => ['v2', 'plp-balance', wrapperId] as const,
   walletDusdc: (owner: string) => ['v2', 'wallet-dusdc', owner] as const,
@@ -61,6 +62,17 @@ export function usePredictAccountV2() {
   });
   const wrapperId = wrapperQ.data?.wrapperId;
   const wrapperExists = wrapperQ.data?.exists ?? false;
+
+  // The internal account id — the key the indexer files positions/orders under
+  // (NOT the wallet owner, NOT the wrapper object). Resolved on-chain from the
+  // wrapper; stable, so cache it long.
+  const accountIdQ = useQuery({
+    queryKey: qkV2Account.accountId(wrapperId ?? ''),
+    queryFn: () => readAccountId(client.core, wrapperId!),
+    enabled: !!wrapperId && wrapperExists,
+    staleTime: Infinity,
+  });
+  const accountId = accountIdQ.data;
 
   // Free DUSDC balance in the account (base units).
   const balanceQ = useQuery({
@@ -145,9 +157,20 @@ export function usePredictAccountV2() {
     }
   }
 
+  // Closing a position reduces the lot and pays proceeds into the account —
+  // refresh the position list (filed under the indexer account key) and the
+  // free balance so a partial close visibly draws down and the payout lands.
+  const redeemInvalidations: readonly (readonly unknown[])[] = [
+    ...(accountId ? [qkV2.accountPositions(accountId)] : []),
+    ...(wrapperId ? [qkV2Account.balance(wrapperId)] : []),
+  ];
+
   return {
     owner,
     wrapperId,
+    /** The indexer's account key (positions/orders/history are filed under this,
+     *  not the wallet owner). Undefined until the wrapper exists + is resolved. */
+    accountId,
     wrapperExists,
     balanceBase,
     plpBalanceBase,
@@ -186,9 +209,9 @@ export function usePredictAccountV2() {
         ? runTx('mint', buildMintBudgetTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
         : Promise.resolve(null),
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>) =>
-      wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId })) : Promise.resolve(null),
+      wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations) : Promise.resolve(null),
     redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>) =>
-      wrapperId ? runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId })) : Promise.resolve(null),
+      wrapperId ? runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations) : Promise.resolve(null),
     /* ---- async vault (PLP) ---- */
     requestSupply: (amount: bigint, deposit?: bigint) =>
       wrapperId ? runTx('supply', buildRequestSupplyTx({ wrapperId, amount, deposit })) : Promise.resolve(null),

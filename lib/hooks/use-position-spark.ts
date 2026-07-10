@@ -17,14 +17,17 @@ import type { PositionSummary } from '@/lib/api/types';
 
 const LIMIT = 90;
 
-export function usePositionSpark(p: PositionSummary): number[] {
-  const strike = toFloat(p.strike);
+export function usePositionSpark(p?: PositionSummary): number[] {
+  const strike = p ? toFloat(p.strike) : 0;
   const q = useQuery({
-    queryKey: ['position-spark', p.oracle_id, p.strike, p.is_up],
+    queryKey: ['position-spark', p?.oracle_id ?? '', p?.strike ?? '', p?.is_up ?? false],
+    // Rows without a legacy source (e.g. v2 history) have no server-side prob
+    // history — skip the fetch and let the share card render without a spark.
+    enabled: !!p,
     queryFn: async (): Promise<number[]> => {
       const [prices, svis] = await Promise.all([
-        getPriceHistory(p.oracle_id, LIMIT),
-        getSviHistory(p.oracle_id, LIMIT),
+        getPriceHistory(p!.oracle_id, LIMIT),
+        getSviHistory(p!.oracle_id, LIMIT),
       ]);
       if (prices.length === 0 || svis.length === 0) return [];
 
@@ -39,11 +42,11 @@ export function usePositionSpark(p: PositionSummary): number[] {
         while (si + 1 < sv.length && sv[si + 1].checkpoint_timestamp_ms <= t) si++;
         const svi = parseSvi(sv[si]);
         const fwd = toFloat(e.forward);
-        const fair = p.is_up ? upFair(strike, fwd, svi) : dnFair(strike, fwd, svi);
+        const fair = p!.is_up ? upFair(strike, fwd, svi) : dnFair(strike, fwd, svi);
         return { t, v: fair };
       });
 
-      const held = full.filter((d) => d.t >= (p.first_minted_at || 0)).map((d) => d.v);
+      const held = full.filter((d) => d.t >= (p!.first_minted_at || 0)).map((d) => d.v);
       return held.length >= 4 ? held : full.map((d) => d.v);
     },
     staleTime: 15_000,

@@ -20,7 +20,7 @@ export function V2PositionsPanel() {
   // SSR has no wallet but the client restores one synchronously — branch on
   // owner only after mount so the server and first client paint match.
   const mounted = useMounted();
-  const { positions, isLoading } = useV2Positions(acct.owner);
+  const { positions, isLoading } = useV2Positions(acct.accountId);
 
   return (
     <div className="panel flex flex-col gap-3 p-4">
