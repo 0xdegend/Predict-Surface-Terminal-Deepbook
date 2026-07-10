@@ -1,101 +1,157 @@
 'use client';
 
 /**
- * V2PositionsPanel — the connected account's open positions with close/claim.
+ * V2PositionsPanel — the connected account's open positions in the trade rail,
+ * at full styling parity with the legacy OpenPositions (positions/open-positions):
+ * an "Open positions" eyebrow + Portfolio link, then compact directional
+ * glass-cards (UP / DOWN / RANGE pill, strike/band, "N to win · PnL") each with a
+ * one-tap Close / Redeem / Clear that opens the same confirmation dialog as the
+ * full Portfolio (win/loss preview + partial close). Capped at 3 — the rest are
+ * one tap away under Portfolio.
  *
- * Reads the owner-scoped indexer endpoint (empty on testnet today). Rows are read
- * defensively (shape unconfirmed — see V2Position); redeem wires to redeem_live
- * (still-trading market) or redeem_settled (settled). Once a real account holds
- * positions, confirm the field mapping here. Clean empty state until then.
+ * Reads the SAME enriched rows as the Portfolio (useV2PortfolioPositions), so the
+ * rail and the full grid can never disagree, and TanStack dedupes the fetches.
  */
+import { useState } from 'react';
+import Link from 'next/link';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useMounted } from '@/lib/hooks/use-mounted';
-import { useV2Positions } from '@/lib/hooks/use-v2-positions';
-import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
-import { fromQuote } from '@/config/scale';
-import type { V2Position } from '@/lib/api/v2/types';
+import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
+import { predictV2Config } from '@/config/predict';
+import { quote as fmtQuote, price, signed } from '@/lib/format';
+import { V2RedeemModal } from './redeem-modal';
+import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
+
+/** Max position cards shown in the rail before deferring to Portfolio. */
+const MAX_SHOWN = 3;
 
 export function V2PositionsPanel() {
   const acct = usePredictAccountV2();
-  // SSR has no wallet but the client restores one synchronously — branch on
+  // SSR has no wallet but the client restores one synchronously — branch on the
   // owner only after mount so the server and first client paint match.
   const mounted = useMounted();
-  const { positions, isLoading } = useV2Positions(acct.accountId);
+  const { positions, isLoading } = useV2PortfolioPositions(acct.accountId);
+  const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
 
-  return (
-    <div className="panel flex flex-col gap-3 p-4">
-      <h3 className="text-[14px] font-medium tracking-tight text-text-1">Open positions</h3>
+  const sym = predictV2Config.quote.symbol;
+  const open = positions.filter((p) => p.qty > 0);
+  const shown = open.slice(0, MAX_SHOWN);
 
-      {!mounted || !acct.owner ? (
-        <p className="text-[12px] text-text-3">Connect your wallet to see your positions.</p>
-      ) : isLoading ? (
-        <p className="text-[12px] text-text-3">Loading positions…</p>
-      ) : positions.length === 0 ? (
-        <p className="text-[12px] leading-relaxed text-text-3">No open positions yet. Make a trade and it’ll show here.</p>
-      ) : (
-        <div className="rows-divided">
-          {positions.map((p, i) => (
-            <PositionRow key={positionKey(p, i)} p={p} acct={acct} />
-          ))}
-        </div>
-      )}
-      {acct.error && <p className="text-[11px] leading-relaxed text-down">{acct.error}</p>}
-    </div>
-  );
-}
-
-function PositionRow({ p, acct }: { p: V2Position; acct: ReturnType<typeof usePredictAccountV2> }) {
-  const marketId = (p.expiry_market_id ?? p.market_id) as string | undefined;
-  const orderId = p.order_id != null ? BigInt(p.order_id) : null;
-  const qtyBase = BigInt(Math.round(Number(p.open_quantity ?? p.quantity ?? 0)));
-  const dir = direction(p);
-  const settled = isSettled(p);
-  const markValue = p.mark_value != null ? fromQuote(p.mark_value) : null;
-  const pnl = p.pnl != null ? fromQuote(p.pnl) : null;
-
-  const canRedeem = !!marketId && orderId != null && qtyBase > 0n;
-  async function redeem() {
-    if (!canRedeem) return;
-    const args = { marketId: marketId!, orderId: orderId!, closeQuantity: qtyBase };
-    if (settled) await acct.redeemSettled(args);
-    else await acct.redeemLive(args);
+  // Confirmed from the dialog with the chosen partial amount (base units).
+  async function handleConfirm(p: V2PortfolioPosition, closeQuantity: bigint) {
+    if (p.sample || !p.marketId || p.orderId == null || closeQuantity <= 0n) {
+      setRedeeming(null);
+      return;
+    }
+    const args = { marketId: p.marketId, orderId: p.orderId, closeQuantity };
+    const digest = p.settled ? await acct.redeemSettled(args) : await acct.redeemLive(args);
+    if (digest) setRedeeming(null);
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 text-[12px]">
-          <span className={`font-medium ${dir === 'Up' ? 'text-up' : dir === 'Down' ? 'text-down' : 'text-text-1'}`}>{dir}</span>
-          <span className="font-mono tabular-nums text-text-2">${fromQuote(qtyBase).toLocaleString(undefined, { maximumFractionDigits: 2 })} max</span>
-          {settled && <span className="rounded-[3px] bg-white/5 px-1 py-0.5 text-[8px] uppercase tracking-wider text-text-3">settled</span>}
-        </div>
-        <div className="mt-0.5 font-mono text-[10px] text-text-3">
-          {markValue != null && <span>value ${markValue.toFixed(2)}</span>}
-          {pnl != null && <span className={`ml-2 ${pnl >= 0 ? 'text-up' : 'text-down'}`}>{pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}</span>}
-        </div>
+    // `font-mono tabular-nums` renders the prices/PnL in the terminal's monospace
+    // figures. No self-border — the trade-screen wrapper owns the rail divider.
+    <div className="flex flex-col gap-2 font-mono text-[12px] tabular-nums">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-text-3">Open positions</span>
+        <Link href="/v2/portfolio" className="text-[10px] text-text-2 underline hover:text-text-1">
+          Portfolio →
+        </Link>
       </div>
-      <button
-        onClick={redeem}
-        disabled={!canRedeem || !!acct.busy}
-        className="shrink-0 rounded-md bg-white/5 px-3 py-1.5 text-[12px] font-medium text-text-1 transition-colors hover:bg-white/8 disabled:opacity-50"
-      >
-        {acct.busy === 'redeem' ? '…' : settled ? 'Claim' : 'Close'}
-      </button>
+
+      {!mounted || !acct.owner ? (
+        <span className="text-text-2">Connect your wallet to see your positions.</span>
+      ) : isLoading ? (
+        <span className="text-text-3">loading…</span>
+      ) : open.length === 0 ? (
+        <span className="text-text-2">No open positions yet — pick a market above and place your first bet.</span>
+      ) : (
+        <>
+          {shown.map((p) => (
+            <PositionRow key={p.key} p={p} sym={sym} busy={!!acct.busy} onClose={() => setRedeeming(p)} />
+          ))}
+          {open.length > MAX_SHOWN && (
+            <Link href="/v2/portfolio" className="text-[10px] text-text-3 underline hover:text-text-2">
+              view all {open.length} positions →
+            </Link>
+          )}
+        </>
+      )}
+
+      {acct.error && <span className="text-[11px] leading-relaxed text-down">{acct.error}</span>}
+
+      <V2RedeemModal
+        position={redeeming}
+        busy={!!acct.busy}
+        onConfirm={handleConfirm}
+        onClose={() => setRedeeming(null)}
+      />
     </div>
   );
 }
 
-/* Defensive field reads (shape unconfirmed until populated). */
-function direction(p: V2Position): 'Up' | 'Down' | 'Range' {
-  const lo = p.lower_tick != null ? BigInt(p.lower_tick) : 0n;
-  const hi = p.higher_tick != null ? BigInt(p.higher_tick) : 0n;
-  if (hi === POS_INF_TICK) return 'Up';
-  if (lo === 0n && hi !== 0n) return 'Down';
-  return 'Range';
-}
-function isSettled(p: V2Position): boolean {
-  return /settl|redeem|won|lost|expired/i.test(String(p.status ?? ''));
-}
-function positionKey(p: V2Position, i: number): string {
-  return `${p.expiry_market_id ?? p.market_id ?? 'm'}-${p.order_id ?? i}`;
+/** One compact position card — mirrors the legacy OpenPositions row exactly. */
+function PositionRow({
+  p,
+  sym,
+  busy,
+  onClose,
+}: {
+  p: V2PortfolioPosition;
+  sym: string;
+  busy: boolean;
+  onClose: () => void;
+}) {
+  const isRange = p.direction === 'Range';
+  const up = p.direction !== 'Down';
+  // Range + winning binaries carry the green tint; a losing binary carries coral.
+  const tone = isRange || up ? 'up' : 'down';
+  const dirLabel = isRange ? 'RANGE' : up ? 'UP' : 'DOWN';
+
+  // Settled against the bet → marks to 0, nothing to redeem, so "Clear" it.
+  const worthless = p.settled && (p.won === false || (p.markValue != null && p.markValue <= 0));
+  const label = worthless ? 'Clear' : p.settled ? 'Redeem' : 'Close';
+
+  const hasPnl = p.pnl != null;
+  const pnlPct = p.cost && p.cost > 0 ? (p.pnl ?? 0) / p.cost : 0;
+
+  return (
+    <div className={`glass-card interactive flex items-center justify-between py-2 pl-3.5 pr-2 ${tone}`}>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="flex items-center gap-1.5">
+          <span className={`text-[10px] font-medium uppercase tracking-wider ${up ? 'text-up' : 'text-down'}`}>
+            {dirLabel}
+          </span>
+          <span className="truncate text-text-1">
+            {isRange
+              ? p.band
+                ? `${price(p.band.lower)}–${price(p.band.higher)}`
+                : '—'
+              : p.strike != null
+                ? price(p.strike)
+                : '—'}
+          </span>
+        </span>
+        <span className="text-[10px] text-text-3">
+          {fmtQuote(p.qty)} {sym} to win
+          {hasPnl && (
+            <>
+              {' '}·{' '}
+              <span className={(p.pnl ?? 0) >= 0 ? 'text-up' : 'text-down'}>
+                {signed(p.pnl ?? 0)}
+                {!isRange && ` (${signed(pnlPct * 100, 1)}%)`}
+              </span>
+            </>
+          )}
+        </span>
+      </div>
+      <button
+        onClick={onClose}
+        disabled={busy || p.sample}
+        className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
+      >
+        {label}
+      </button>
+    </div>
+  );
 }

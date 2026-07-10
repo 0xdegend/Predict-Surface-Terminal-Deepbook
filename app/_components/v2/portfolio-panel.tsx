@@ -29,10 +29,7 @@ import {
   LuFlaskConical,
   LuVault,
 } from 'react-icons/lu';
-import { useQuery } from '@tanstack/react-query';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
-import { useV2Positions } from '@/lib/hooks/use-v2-positions';
-import { getV2Markets, getPythHistory, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { fromQuote, toQuote } from '@/config/scale';
@@ -48,18 +45,11 @@ import { HistoryTable } from '../positions/history-table';
 import { derivePortfolioHistory, equityCurve } from '@/lib/portfolio/history';
 import {
   V2_DEMO_ENABLED,
-  normalizeV2Position,
-  valueV2Position,
-  settleV2Position,
-  positionMarkPrice,
-  buildV2Spark,
   demoPositions,
   demoHistory,
   type V2PortfolioPosition,
-  type SpotPoint,
 } from '@/lib/portfolio/v2';
-import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
-import { useV2Settlements } from '@/lib/hooks/use-v2-settlements';
+import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
 import { V2RedeemModal } from './redeem-modal';
@@ -70,15 +60,9 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccountV2();
   const mounted = useMounted();
   const now = useNow(serverNow);
-  const { positions: rawPositions, isLoading: positionsLoading } = useV2Positions(acct.accountId);
-
-  // Markets, to join each position to its tick_size/expiry (ticks are grid
-  // indices, not prices). Shares the trade screen's cache.
-  const marketsQ = useQuery({ queryKey: qkV2.markets, queryFn: () => getV2Markets(100), staleTime: 30_000 });
-  const marketMap = useMemo(
-    () => new Map((marketsQ.data ?? []).map((m) => [m.expiry_market_id, m])),
-    [marketsQ.data],
-  );
+  // Enriched real positions + the market map (shared with the trade-rail panel so
+  // the two never drift). Sample rows + history stay local to this panel.
+  const { positions: real, isLoading: positionsLoading, marketMap } = useV2PortfolioPositions(acct.accountId);
 
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
   const [fundMode, setFundMode] = useState<FundMode | null>(null);
@@ -86,60 +70,6 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Close/redeem runs through a confirmation dialog (win/loss + partial close),
   // mirroring the legacy flow — never a one-shot instant tx.
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
-
-  // Real indexer rows, normalized and joined to their market for tick→price.
-  const normalized = useMemo(
-    () =>
-      rawPositions.map((p, i) =>
-        normalizeV2Position(p, i, marketMap.get((p.expiry_market_id ?? p.market_id) as string)),
-      ),
-    [rawPositions, marketMap],
-  );
-
-  // Live pricers for the OPEN positions' markets — the v2 indexer reports no
-  // mark/PnL, so we mark each position client-side (bounded: only open markets).
-  const openMarketIds = useMemo(
-    () => [...new Set(normalized.filter((p) => !p.settled && p.marketId).map((p) => p.marketId!))],
-    [normalized],
-  );
-  const pricers = useV2Pricers(openMarketIds, {});
-
-  // Settlement price per open market (present once it settles). An expired
-  // position can't be priced live any more, so we resolve its win/loss from
-  // this instead of leaving it stuck on "settling" (see settleV2Position).
-  const settlements = useV2Settlements(openMarketIds);
-
-  // Recent spot history → the position sparklines (a binary's price is its
-  // probability). One shared query — all v2 markets ride the same BTC pyth feed;
-  // shares cache with the price chart's `qkV2.pythHistory`.
-  const pythHistQ = useQuery({
-    queryKey: qkV2.pythHistory,
-    queryFn: () => getPythHistory(predictV2Config.asset.pythFeedId, 500),
-    refetchInterval: 30_000,
-    enabled: openMarketIds.length > 0,
-  });
-  const spots = useMemo<SpotPoint[]>(
-    () =>
-      (pythHistQ.data ?? [])
-        .map((o) => ({ t: o.checkpoint_timestamp_ms ?? o.source_timestamp_ms ?? 0, s: pythSpot(o) }))
-        .filter((d): d is SpotPoint => d.s != null && d.s > 0),
-    [pythHistQ.data],
-  );
-
-  const real = useMemo(
-    () =>
-      normalized.map((p) => {
-        // Settled? Resolve win/loss from the market's settlement price first —
-        // it's terminal and needs no live pricer. Falls through unchanged while
-        // the market is still live (settlement null).
-        const settled = settleV2Position(p, p.marketId ? settlements[p.marketId] : null);
-        if (settled.settled) return { ...settled, spark: buildV2Spark(settled, undefined, spots) };
-        const pricer = p.marketId ? pricers[p.marketId] : undefined;
-        const valued = valueV2Position(settled, positionMarkPrice(settled, pricer));
-        return { ...valued, spark: buildV2Spark(valued, pricer, spots) };
-      }),
-    [normalized, pricers, spots, settlements],
-  );
 
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
@@ -199,7 +129,14 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const openExposure = live.reduce((s, p) => s + (p.cost ?? 0), 0);
   const unrealized = live.reduce((s, p) => s + (p.pnl ?? 0), 0);
   const unrealizedPct = openExposure > 0 ? unrealized / openExposure : 0;
-  const totalPnl = unrealized + stats.realizedPnl;
+  // Settled but not yet redeemed — the result is decided (won → +payout − cost,
+  // lost → −cost) even though the trader hasn't claimed/cleared it. Counting it
+  // keeps Total PnL continuous through settlement: a winning bet's gain carries
+  // straight over from unrealized instead of vanishing until it's claimed. No
+  // double-count — once redeemed a position leaves this list and lands in the
+  // realized history below.
+  const settledPnl = [...redeemable, ...settledLost].reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const totalPnl = unrealized + settledPnl + stats.realizedPnl;
 
   // Confirmed from the dialog with the chosen partial amount (base units). A
   // close < full leaves the remainder open to close later; equal-to-open closes
@@ -266,6 +203,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           icon={totalPnl >= 0 ? LuTrendingUp : LuTrendingDown}
           color={totalPnl >= 0 ? HUE.teal : HUE.coral}
           label="Total PnL"
+          info="Your all-in profit or loss: open bets marked to their current value, settled bets waiting to be claimed, and everything you've already closed."
           value={signed(totalPnl)}
           tone={totalPnl >= 0 ? 'up' : 'down'}
         />
