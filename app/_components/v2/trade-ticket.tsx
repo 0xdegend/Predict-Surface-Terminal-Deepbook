@@ -42,10 +42,9 @@ import {
   binaryTicks,
   rangeTicks,
   leverageScaled,
-  maxProbabilityWithSlippage,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, knockoutProbability, priceMoveToKnockout } from '@/lib/sui/v2/quote';
+import { quantityForStake, knockoutProbability, priceMoveToKnockout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2SmileChart } from './smile-chart';
 import { StepBar } from '@/app/_components/ticket/step-bar';
@@ -60,7 +59,8 @@ import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
-const SLIPPAGE_BPS = 100; // 1% cost-cap headroom
+const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
+const ODDS_SLACK = 0.05; // budget-mint odds guard: abort if odds move >5% against the quote
 const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -179,7 +179,13 @@ export function V2TradeTicket({
     knockoutMove != null ? `${(knockoutMove * 100).toFixed(knockoutMove >= 0.001 ? 1 : 2)}%` : null;
 
   const stakeBase = toQuote(stake);
-  const quantity = quantityForStake(stakeBase, entryProb, lev); // max payout base units
+  const quantity = quantityForStake(stakeBase, entryProb, lev); // payout ESTIMATE (chain sizes the real one)
+  // Budget mint: the chain derives the quantity from ITS live odds at execution,
+  // so the user pays at most `amount` in premium no matter how the odds move
+  // between quoting and landing. minQuantity guards against filling the same
+  // money at much worse odds (ODDS_SLACK tolerance).
+  const amount = mintAmountBase(stakeBase);
+  const minQuantity = minQuantityForBudget(amount, entryProb, lev, ODDS_SLACK);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
@@ -192,12 +198,15 @@ export function V2TradeTicket({
         BigInt(market.tick_size),
       )
     : binaryTicks(snapStrikeToAdmission(fromFloat(strike), admissionTickSize), isUp, BigInt(market.tick_size));
-  const maxProbability = maxProbabilityWithSlippage(fromFloat(entryProb), SLIPPAGE_BPS, BigInt(market.max_entry_probability));
 
   // A level is priceable while its odds stay off the 0%/100% extremes; the
   // stake only gates the mint itself, not the level pick.
   const probOk = entryProb > 0.005 && entryProb < 0.995 && (!rangeMode || bandSet);
-  const quotable = probOk && stake > 0;
+  // The chain rejects any mint whose stake (net premium, before fees) is under
+  // $1 — strike_exposure_config's min_net_premium — so a sub-$1 bet must never
+  // reach the wallet.
+  const stakeTooSmall = stake > 0 && stakeBase < MIN_STAKE_BASE;
+  const quotable = probOk && stakeBase >= MIN_STAKE_BASE;
   const shortfall = maxCost > acct.balanceBase ? maxCost - acct.balanceBase : 0n;
   const fundedFromAccount = estCostBase < acct.balanceBase ? estCostBase : acct.balanceBase;
 
@@ -249,15 +258,14 @@ export function V2TradeTicket({
   }
 
   async function handleMint() {
-    const digest = await acct.mint(
+    const digest = await acct.mintBudget(
       {
         marketId: market!.expiry_market_id,
         lowerTick,
         higherTick,
-        quantity,
+        amount,
+        minQuantity,
         leverage: leverageScaled(lev),
-        maxCost,
-        maxProbability,
         deposit: shortfall > 0n ? shortfall : undefined,
       },
       { silentSuccess: true },
@@ -318,6 +326,11 @@ export function V2TradeTicket({
           </button>
         ))}
       </div>
+      {stakeTooSmall && (
+        <span className="text-[10px] leading-relaxed text-down">
+          Minimum bet is $1.
+        </span>
+      )}
     </div>
   );
 
@@ -450,8 +463,10 @@ export function V2TradeTicket({
                   </div>
                 </>
               )}
+              {/* The stake is a hard on-chain cap (budget mint) — only fees ride on top;
+                  the row shows the deposit buffer that covers them. */}
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-text-3">Cost cap (slippage)</span>
+                <span className="text-[11px] text-text-3">Deposit buffer (covers fees)</span>
                 <span className="text-[11px] tabular-nums text-text-2">${fromQuote(maxCost).toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
@@ -486,7 +501,7 @@ export function V2TradeTicket({
         </div>
       )}
 
-      <ActionButton acct={acct} tone={tone} quotable={quotable} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} />
+      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} />
       {acct.error && <p className="text-[11px] leading-relaxed text-down">{acct.error}</p>}
       <p className="text-[10px] leading-relaxed text-text-3">
         You’ll preview the trade next; cost is an estimate — your wallet shows the exact amount
@@ -744,6 +759,7 @@ function ActionButton({
   acct,
   tone,
   quotable,
+  stakeTooSmall,
   tooCloseToExpiry,
   onReview,
   shortfall,
@@ -751,6 +767,7 @@ function ActionButton({
   acct: ReturnType<typeof usePredictAccountV2>;
   tone: 'up' | 'down';
   quotable: boolean;
+  stakeTooSmall: boolean;
   tooCloseToExpiry: boolean;
   onReview: () => void;
   shortfall: bigint;
@@ -765,13 +782,15 @@ function ActionButton({
     <ReviewButton tone={tone} onClick={onReview} disabled={tooCloseToExpiry || !quotable || !!acct.busy}>
       {tooCloseToExpiry
         ? 'Too close to expiry'
-        : !quotable
-          ? 'Adjust your level to quote'
-          : acct.busy === 'mint' || acct.busy === 'deposit'
-            ? 'Confirming…'
-            : shortfall > 0n
-              ? 'Review deposit & mint'
-              : 'Review'}
+        : stakeTooSmall
+          ? 'Minimum bet is $1'
+          : !quotable
+            ? 'Adjust your level to quote'
+            : acct.busy === 'mint' || acct.busy === 'deposit'
+              ? 'Confirming…'
+              : shortfall > 0n
+                ? 'Review deposit & mint'
+                : 'Review'}
     </ReviewButton>
   );
 }

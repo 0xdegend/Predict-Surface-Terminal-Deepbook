@@ -9,9 +9,62 @@
  */
 import { upFair, type SviFloat } from '@/lib/svi/svi';
 
+/**
+ * The protocol's minimum mint-time stake — `constants::min_net_premium` on
+ * predict-testnet-6-24 (1_000_000 base units = $1, before fees). A mint whose
+ * net premium (≈ the stake) lands under this aborts on-chain with
+ * strike_exposure_config #4, so tickets must gate on it before submitting.
+ */
+export const MIN_STAKE_BASE = 1_000_000n;
+
+/**
+ * Order quantities must be a whole number of `constants::position_lot_size`
+ * lots (10_000 base units = $0.01 of payout) — `order::assert_valid_quantity`
+ * aborts any mint whose quantity isn't lot-aligned.
+ */
+export const POSITION_LOT_BASE = 10_000n;
+
+/**
+ * The smallest usable `mint_exact_amount` budget: $1.01. The chain sizes the
+ * largest lot-rounded quantity whose net premium fits INSIDE the budget, so at
+ * an exactly-$1.00 budget the lot rounding lands the premium a fraction under
+ * the $1 minimum and admission aborts. One cent of headroom (> the max possible
+ * per-lot premium of $0.0099) makes a minimum-size bet deterministic; the user
+ * still only pays the derived premium (≤ the budget), never the pad.
+ */
+export const MIN_MINT_AMOUNT_BASE = 1_010_000n;
+
+/** The mint budget for a (gate-validated, ≥$1) stake. */
+export function mintAmountBase(stakeBase: bigint): bigint {
+  return stakeBase < MIN_MINT_AMOUNT_BASE ? MIN_MINT_AMOUNT_BASE : stakeBase;
+}
+
+/**
+ * The `min_quantity` guard for a budget mint: the payout the trader would get
+ * if the odds moved `oddsSlack` (e.g. 0.05 = 5%) against them, lot-floored and
+ * eased one further lot for fixed-point rounding. If the chain sizes below
+ * this, the mint aborts (expiry_market #6) instead of silently filling the same
+ * money at much worse odds.
+ */
+export function minQuantityForBudget(
+  amountBase: bigint,
+  entryProb: number,
+  leverage: number,
+  oddsSlack: number,
+): bigint {
+  const q = quantityForStake(amountBase, Math.min(1, entryProb * (1 + oddsSlack)), leverage);
+  return q > POSITION_LOT_BASE ? q - POSITION_LOT_BASE : q;
+}
+
+/** Floor a raw quantity onto the lot grid (never below one lot). */
+function lotAlign(quantity: bigint): bigint {
+  const lots = quantity / POSITION_LOT_BASE;
+  return (lots > 0n ? lots : 1n) * POSITION_LOT_BASE;
+}
+
 /** Quantity (base units) for a target max-payout in whole DUSDC. 1 → 1_000_000. */
 export function quantityForPayout(payoutDusdc: number): bigint {
-  return BigInt(Math.round(payoutDusdc * 1_000_000));
+  return lotAlign(BigInt(Math.round(payoutDusdc * 1_000_000)));
 }
 
 /**
@@ -19,11 +72,12 @@ export function quantityForPayout(payoutDusdc: number): bigint {
  * Cost at 1x ≈ entry_probability × quantity, and leverage L cuts the upfront to
  * ≈ cost/L — so to spend `stake` you can control L× the position:
  *   quantity = stake × L / entry_probability
- * An estimate (no public cost view); the on-chain max_cost guard enforces it.
+ * Floored onto the lot grid (the chain rejects non-lot quantities). An estimate
+ * (no public cost view); the on-chain max_cost guard enforces it.
  */
 export function quantityForStake(stakeBase: bigint, entryProb: number, leverage: number): bigint {
   const p = Math.min(Math.max(entryProb, 1e-6), 1);
-  return BigInt(Math.round((Number(stakeBase) * Math.max(1, leverage)) / p));
+  return lotAlign(BigInt(Math.round((Number(stakeBase) * Math.max(1, leverage)) / p)));
 }
 
 /**

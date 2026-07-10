@@ -66,6 +66,55 @@ export function buildMintTx(p: MintParams): Transaction {
   return tx;
 }
 
+export interface MintBudgetParams {
+  marketId: string;
+  wrapperId: string;
+  lowerTick: bigint;
+  higherTick: bigint;
+  /** Net-premium budget (DUSDC base units) — the chain sizes the largest
+   *  lot-rounded quantity whose premium fits inside it. Fees charge on top. */
+  amount: bigint;
+  /** Odds guard: abort if the sized quantity lands below this (base units). */
+  minQuantity: bigint;
+  /** 1e9-scaled (1e9 = 1x). */
+  leverage: bigint;
+  /** Optional: deposit this many base units into the wrapper in the same PTB first. */
+  deposit?: bigint;
+}
+
+/**
+ * mint_exact_amount — the budget path. The CHAIN derives the quantity from its
+ * own live probability at execution, so client-side odds drift between quoting
+ * and landing can never break the $1 minimum-premium admission check (the
+ * failure mode of sizing an exact quantity off a client quote). You never pay
+ * more than `amount` in premium; `minQuantity` guards against the odds moving
+ * far enough that the same money buys a much smaller payout.
+ */
+export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
+  const tx = new Transaction();
+  if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
+  const auth = addGenerateAuth(tx);
+  const pricer = buildLoadPricerCall(tx, p.marketId);
+  tx.moveCall({
+    target: v2Target('expiry_market', 'mint_exact_amount'),
+    arguments: [
+      tx.object(p.marketId),
+      tx.object(p.wrapperId),
+      auth,
+      tx.object(c().shared.protocolConfig),
+      pricer,
+      tx.pure.u64(p.lowerTick),
+      tx.pure.u64(p.higherTick),
+      tx.pure.u64(p.amount),
+      tx.pure.u64(p.minQuantity),
+      tx.pure.u64(p.leverage),
+      tx.object(c().accumulatorRootId),
+      tx.object(c().clockId),
+    ],
+  });
+  return tx;
+}
+
 export interface RedeemParams {
   marketId: string;
   wrapperId: string;

@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { quantityForStake, knockoutProbability, priceMoveToKnockout } from './quote';
+import {
+  quantityForStake,
+  knockoutProbability,
+  priceMoveToKnockout,
+  mintAmountBase,
+  minQuantityForBudget,
+  MIN_MINT_AMOUNT_BASE,
+  POSITION_LOT_BASE,
+} from './quote';
 import { upFair, type SviFloat } from '@/lib/svi/svi';
 
 const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
@@ -15,6 +23,36 @@ describe('quantityForStake', () => {
     const q1 = quantityForStake(10_000_000n, 0.5, 1);
     const q3 = quantityForStake(10_000_000n, 0.5, 3);
     expect(Number(q3)).toBeCloseTo(Number(q1) * 3, -3);
+  });
+  it('always lands on the lot grid (order::assert_valid_quantity requires it)', () => {
+    // 50.2% at 2x — the raw solve (3,984,063.7…) is nowhere near lot-aligned.
+    const q = quantityForStake(1_050_000n, 0.502, 2);
+    expect(q % POSITION_LOT_BASE).toBe(0n);
+    expect(q).toBeGreaterThan(0n);
+    // Awkward probability, 1x.
+    expect(quantityForStake(5_000_000n, 0.337, 1) % POSITION_LOT_BASE).toBe(0n);
+  });
+});
+
+describe('budget mint sizing (mint_exact_amount)', () => {
+  it('a $1.00 stake gets the $1.01 minimum budget (lot-rounding headroom)', () => {
+    expect(mintAmountBase(1_000_000n)).toBe(MIN_MINT_AMOUNT_BASE);
+  });
+  it('stakes at/above $1.01 pass through as the budget', () => {
+    expect(mintAmountBase(1_010_000n)).toBe(1_010_000n);
+    expect(mintAmountBase(5_000_000n)).toBe(5_000_000n);
+  });
+  it('minQuantity is lot-aligned and sits below the fair-odds quantity', () => {
+    const amount = 5_000_000n;
+    const fairQty = quantityForStake(amount, 0.502, 2);
+    const minQty = minQuantityForBudget(amount, 0.502, 2, 0.05);
+    expect(minQty % POSITION_LOT_BASE).toBe(0n);
+    expect(minQty).toBeLessThan(fairQty);
+    expect(minQty).toBeGreaterThan(0n);
+    // ~5% odds slack: min ≈ fair / 1.05 (within a lot of the exact ratio).
+    const ratio = Number(fairQty) / Number(minQty);
+    expect(ratio).toBeGreaterThan(1.04);
+    expect(ratio).toBeLessThan(1.07);
   });
 });
 

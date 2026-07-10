@@ -29,16 +29,16 @@ import {
   binaryTicks,
   rangeTicks,
   leverageScaled,
-  maxProbabilityWithSlippage,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake } from '@/lib/sui/v2/quote';
+import { quantityForStake, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from '../ticket/payout-slider';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { V2Market } from '@/lib/api/v2/types';
 
-const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (same as the rail ticket)
+const SLIPPAGE_BPS = 100; // 1% deposit-buffer headroom (same as the rail ticket)
+const ODDS_SLACK = 0.05; // budget-mint odds guard (same as the rail ticket)
 const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
@@ -47,16 +47,16 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   const maxLev = Math.max(1, Math.floor(toFloat(market.max_admission_leverage)));
   const lev = Math.min(leverage, maxLev);
   const stakeBase = toQuote(Math.max(0, stake));
-  const quantity = quantityForStake(stakeBase, entryProb, lev);
+  const quantity = quantityForStake(stakeBase, entryProb, lev); // payout ESTIMATE (chain sizes the real one)
+  // Budget mint: the chain derives the quantity at execution from its own live
+  // odds — the premium can never exceed `amount`, and minQuantity aborts the
+  // fill if the odds move more than ODDS_SLACK against the quote.
+  const amount = mintAmountBase(stakeBase);
+  const minQuantity = minQuantityForBudget(amount, entryProb, lev, ODDS_SLACK);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
-  const maxProbability = maxProbabilityWithSlippage(
-    fromFloat(entryProb),
-    SLIPPAGE_BPS,
-    BigInt(market.max_entry_probability),
-  );
-  return { maxLev, lev, stakeBase, quantity, feeBase, estCostBase, maxCost, maxProbability };
+  return { maxLev, lev, stakeBase, quantity, amount, minQuantity, feeBase, estCostBase, maxCost };
 }
 
 export function SurfaceTradePopoverV2({
@@ -167,7 +167,8 @@ function BinaryBody({
   const expired = isTooCloseToExpiry(market, now);
 
   const s = sizeTrade(market, entryProb, stake, leverage);
-  const quotable = probOk && stake > 0 && !expired;
+  // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
+  const quotable = probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
   const shortfall = s.maxCost > acct.balanceBase ? s.maxCost - acct.balanceBase : 0n;
 
   // Switch this market into the range builder, seeding the just-clicked strike
@@ -188,14 +189,13 @@ function BinaryBody({
       isUp,
       BigInt(market!.tick_size),
     );
-    const digest = await acct.mint({
+    const digest = await acct.mintBudget({
       marketId: market!.expiry_market_id,
       lowerTick,
       higherTick,
-      quantity: s.quantity,
+      amount: s.amount,
+      minQuantity: s.minQuantity,
       leverage: leverageScaled(s.lev),
-      maxCost: s.maxCost,
-      maxProbability: s.maxProbability,
       deposit: shortfall > 0n ? shortfall : undefined,
     });
     setConfirmOpen(false);
@@ -384,7 +384,8 @@ function RangeBody({
   const expired = isTooCloseToExpiry(market, now);
 
   const s = sizeTrade(market, entryProb, stake, leverage);
-  const quotable = bandSet && probOk && stake > 0 && !expired;
+  // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
+  const quotable = bandSet && probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
   const shortfall = s.maxCost > acct.balanceBase ? s.maxCost - acct.balanceBase : 0n;
 
   function openReview() {
@@ -398,14 +399,13 @@ function RangeBody({
       snapStrikeToAdmission(fromFloat(higher), admissionTickSize),
       BigInt(market!.tick_size),
     );
-    const digest = await acct.mint({
+    const digest = await acct.mintBudget({
       marketId: market!.expiry_market_id,
       lowerTick,
       higherTick,
-      quantity: s.quantity,
+      amount: s.amount,
+      minQuantity: s.minQuantity,
       leverage: leverageScaled(s.lev),
-      maxCost: s.maxCost,
-      maxProbability: s.maxProbability,
       deposit: shortfall > 0n ? shortfall : undefined,
     });
     setConfirmOpen(false);
@@ -633,6 +633,8 @@ function QuoteCard({
         Too far from spot to price — pick a level nearer the colored ridge.
       </span>
     );
+  } else if (s.stakeBase < MIN_STAKE_BASE) {
+    body = <span className="text-text-3">Minimum bet is $1 — pick a bigger amount.</span>;
   } else {
     const pay = fromQuote(s.stakeBase);
     const allIn = fromQuote(s.estCostBase);

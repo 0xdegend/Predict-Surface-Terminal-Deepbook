@@ -16,11 +16,21 @@ const V2_ABORTS: Record<string, string> = {
   'expiry_market:3': 'Wrong price feed for this market. Refresh and retry.',
   'expiry_market:4': 'The cost moved above your limit. Nudge slippage up or try again.',
   'expiry_market:5': 'The odds moved past your limit. Nudge slippage up or try again.',
-  'expiry_market:6': 'That’s below the minimum trade size — increase your amount.',
+  'expiry_market:6': 'The odds moved while you were confirming and your money would buy a smaller payout than quoted. Refresh and try again.',
   'expiry_market:7': 'The price snapshot didn’t match — refresh the quote and retry.',
   'expiry_market:8': 'The “price to beat” isn’t ready for this market yet.',
   'expiry_market:9': 'The “price to beat” timing didn’t line up — try again shortly.',
   'expiry_market:10': 'Can’t open and close in the same instant — wait a moment and retry.',
+  // expiry_cash (per-market exposure backing)
+  'expiry_cash:0': 'This market is at capacity right now — try the next expiry, or a smaller bet.',
+  // order (id encoding — quantities must be whole $0.01 lots)
+  'order:4': 'The position size didn’t land on the protocol’s size grid. Refresh and retry.',
+  // strike_exposure_config (mint admission)
+  'strike_exposure_config:0': 'This trade would open already at its knockout level — lower the leverage.',
+  'strike_exposure_config:1': 'The odds moved outside the tradeable 1%–99% band. Pick a level nearer the current price.',
+  'strike_exposure_config:4': 'Bets need at least a $1 stake (before fees). Add a little and try again.',
+  'strike_exposure_config:5': 'Leverage can’t be below 1×.',
+  'strike_exposure_config:6': 'That leverage is more than this market allows at these odds — lower it and retry.',
   // account
   'account:0': 'This account belongs to a different wallet. Reconnect the one that created it.',
   'account:1': 'Not enough balance in your account — deposit a bit more DUSDC first.',

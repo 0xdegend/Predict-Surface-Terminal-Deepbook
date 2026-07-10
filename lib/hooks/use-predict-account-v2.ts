@@ -23,7 +23,7 @@ import { humanizeV2Error } from '@/lib/sui/v2/abort';
 import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { toast } from '@/lib/store/toast-store';
 import { readWrapper, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
-import { buildMintTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
+import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
 import { qkV2 } from '@/lib/api/v2/client';
 import {
   buildRequestSupplyTx,
@@ -178,6 +178,12 @@ export function usePredictAccountV2() {
     mint: (p: Omit<MintParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
       wrapperId
         ? runTx('mint', buildMintTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
+        : Promise.resolve(null),
+    /** Budget mint (mint_exact_amount) — the chain sizes the quantity at
+     *  execution, so odds drift can't break the $1 minimum-premium check. */
+    mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
+      wrapperId
+        ? runTx('mint', buildMintBudgetTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
         : Promise.resolve(null),
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>) =>
       wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId })) : Promise.resolve(null),
