@@ -10,17 +10,25 @@
  * and re-derives the active set, seeded from the server snapshot (initialData)
  * so there's no refetch flash on mount.
  *
- * Poll beats event-push here: MarketCreated rows come from the indexer anyway,
- * and 10s is far inside a 1-minute cadence. Expiry-side freshness is already
- * handled downstream (pickers filter `expiry > now` per tick); this hook covers
- * the creation side.
+ * Poll beats event-push here: MarketCreated rows come from the indexer anyway.
+ *
+ * Cadence matters: the pickers drop expired rows every second (`expiry > now`),
+ * but this list only GROWS on the poll — so if the poll is slow the table keeps
+ * shrinking between refills and looks starved until a reload (which fetches
+ * immediately). Legacy gets away with a 20s poll only because its markets live
+ * for hours; v2's roll every minute, so we poll fast AND refetch on focus so a
+ * backgrounded tab refills the instant it's foregrounded (TanStack pauses the
+ * interval while hidden) — the live list then behaves like a fresh reload.
  */
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getV2Markets, qkV2 } from '@/lib/api/v2/client';
 import { activeMarkets } from '@/lib/markets/v2-discovery';
 import type { V2Market } from '@/lib/api/v2/types';
 
-const POLL_MS = 10_000;
+// Fast churn → fast poll: keep the refill window well under the per-tick expiry
+// drop so the table never visibly starves (legacy's 20s suits its hours-long
+// markets; v2's minute-long markets need this).
+const POLL_MS = 4_000;
 
 export function useV2Markets(initial: V2Market[]): V2Market[] {
   const { data } = useQuery({
@@ -28,6 +36,10 @@ export function useV2Markets(initial: V2Market[]): V2Market[] {
     queryFn: async () => activeMarkets(await getV2Markets(100)),
     initialData: initial,
     refetchInterval: POLL_MS,
+    // Refetch the moment the tab regains focus (overrides the global
+    // refetchOnWindowFocus: false) — returning to a backgrounded tab refills
+    // immediately instead of showing a stale, starved list until a reload.
+    refetchOnWindowFocus: true,
     // Keep the last good list on a transient server hiccup rather than
     // blanking the table (initialData already guarantees data is never
     // undefined, but a failed refetch shouldn't clear it either).

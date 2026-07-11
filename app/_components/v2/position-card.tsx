@@ -101,6 +101,7 @@ export function V2PositionCard({
     markPrice: p.markPrice ?? null,
     spark: p.spark ?? [],
     band: p.band,
+    leverage: p.leverage,
   };
 
   const heroTitle = isRange && p.band != null

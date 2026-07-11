@@ -207,6 +207,7 @@ export function deriveV2HistoryFromOrders(
       pnl,
       roi: cost > 0 ? pnl / cost : 0,
       entryPrice: mint?.entry_probability != null ? toFloat(mint.entry_probability) : 0,
+      leverage: mint?.leverage != null ? toFloat(mint.leverage) : undefined,
     });
   }
 

@@ -39,6 +39,9 @@ export interface PastPrediction {
   pnl: number; // DUSDC, signed (payout − cost)
   roi: number; // ratio (pnl / cost)
   entryPrice: number; // 0..1 implied
+  /** Leverage multiple used (e.g. 3 ⇒ 3×), when the trade was leveraged (v2 only).
+   *  Undefined/1 for plain bets and all legacy trades. */
+  leverage?: number;
   /** Raw binary row — lets the share card fetch its spark. Absent for ranges. */
   source?: PositionSummary;
 }

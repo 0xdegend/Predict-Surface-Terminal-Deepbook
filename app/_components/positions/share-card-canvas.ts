@@ -38,6 +38,9 @@ export interface ShareCardData {
   spark: number[]; // implied-probability path over the holding window
   /** Present for a vertical-range card — renders the band instead of a strike. */
   band?: { lower: number; higher: number };
+  /** Leverage multiple the trade used (e.g. 3 ⇒ 3×). Shown on the card only when
+   *  > 1; plain (1×) trades omit it entirely. Legacy trades never carry it. */
+  leverage?: number;
 }
 
 /** The bet line — a price band for ranges, else strike + direction. */
@@ -1190,6 +1193,13 @@ function drawStatStrip({ ctx, c, sans, mono, d }: Ctx) {
     ['AVG ENTRY', pct(d.entryPrice, 1)],
     [d.decided ? 'SETTLED' : 'MARK', d.markPrice != null ? pct(d.markPrice, 1) : '—'],
   ];
+  // Leverage is a headline attribute of a bet — insert it before the settle/mark
+  // cell, but ONLY for leveraged trades; plain 1× bets omit it (the strip then
+  // stays three cells and re-widths itself via colW below).
+  if (d.leverage != null && d.leverage > 1) {
+    const lev = Number.isInteger(d.leverage) ? d.leverage.toFixed(0) : d.leverage.toFixed(1);
+    cells.splice(2, 0, ['LEVERAGE', `${lev}×`]);
+  }
   const colW = (W - 2 * P) / cells.length;
   cells.forEach(([label, value], i) => {
     const x = P + i * colW;

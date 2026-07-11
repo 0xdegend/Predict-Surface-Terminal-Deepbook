@@ -151,6 +151,7 @@ function RangeHistoryShareModal({
     markPrice: h.result === 'won' ? 1 : 0,
     spark: [],
     band: h.band,
+    leverage: h.leverage,
   };
   return <ShareCardModal open onClose={onClose} data={data} />;
 }
@@ -182,6 +183,7 @@ function HistoryShareModal({
     entryPrice: h.entryPrice,
     markPrice: h.result === 'won' ? 1 : 0, // settled mark: ITM = 1.0, OTM = 0.0
     spark,
+    leverage: h.leverage,
   };
   return <ShareCardModal open onClose={onClose} data={data} />;
 }

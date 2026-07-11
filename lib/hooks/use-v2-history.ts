@@ -11,6 +11,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { deriveV2HistoryFromOrders } from '@/lib/portfolio/v2';
+import { useV2MarketStates } from './use-v2-market-states';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { PastPrediction } from '@/lib/portfolio/history';
 
@@ -24,9 +25,29 @@ export function useV2History(
     enabled: !!accountId,
     refetchInterval: 15_000,
   });
+
+  // A history row's market is usually SETTLED, so it has dropped out of the
+  // active marketMap passed in — and without its `tick_size` the stored ticks
+  // can't be turned into a strike price, so the row renders "BTC ≤ $0.00".
+  // Fetch each order's market state directly and merge it in, so strikes resolve
+  // for long-settled markets too.
+  const orderMarketIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const o of q.data ?? []) if (o.expiry_market_id) ids.add(o.expiry_market_id);
+    return [...ids];
+  }, [q.data]);
+  const marketStates = useV2MarketStates(orderMarketIds);
+  const mergedMap = useMemo(() => {
+    const m = new Map<string, V2Market>(marketMap ?? []);
+    for (const st of Object.values(marketStates)) {
+      if (st?.market) m.set(st.market.expiry_market_id, st.market);
+    }
+    return m;
+  }, [marketMap, marketStates]);
+
   const history = useMemo(
-    () => deriveV2HistoryFromOrders(q.data ?? [], marketMap),
-    [q.data, marketMap],
+    () => deriveV2HistoryFromOrders(q.data ?? [], mergedMap),
+    [q.data, mergedMap],
   );
   return { history, isLoading: q.isLoading };
 }

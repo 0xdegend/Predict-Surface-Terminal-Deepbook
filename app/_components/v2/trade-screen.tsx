@@ -18,6 +18,7 @@ import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
+import { useNow } from '@/lib/hooks/use-now';
 import { V2MarketPicker } from './market-picker';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2OddsPanel } from './odds-panel';
@@ -45,19 +46,8 @@ export function V2TradeScreen({
   // into the picker/table/ticket without a reload.
   const markets = useV2Markets(initialMarkets);
   const marketId = useV2TradeStore((s) => s.marketId);
-  const selectMarket = useV2TradeStore((s) => s.selectMarket);
-
-  // Default to the soonest market; re-select if the current one expired off-list.
-  // Prefer the soonest NOT-yet-expired market — the list is soonest-first and its
-  // head can have expired between polls, so a naive markets[0] would land the
-  // ticket on a dead market (same guard as legacy's active-oracle fallback).
-  useEffect(() => {
-    if (markets.length === 0) return;
-    if (!marketId || !markets.some((m) => m.expiry_market_id === marketId)) {
-      const next = markets.find((m) => m.expiry > Date.now()) ?? markets[0];
-      selectMarket(next.expiry_market_id);
-    }
-  }, [marketId, markets, selectMarket]);
+  // Auto-advance to the next market as expiries roll is handled by the
+  // per-second <MarketAutoAdvancer> below (legacy useFrontOracleId parity).
 
   const selected = markets.find((m) => m.expiry_market_id === marketId) ?? markets[0] ?? null;
   const { data: pricer } = useV2Pricer(selected?.expiry_market_id ?? null, selected ? pricerSeeds[selected.expiry_market_id] : undefined);
@@ -90,6 +80,8 @@ export function V2TradeScreen({
 
   return (
     <>
+    {/* Keeps the selection on a live market — advances the instant one expires. */}
+    <MarketAutoAdvancer markets={markets} serverNow={serverNow} />
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
@@ -132,6 +124,30 @@ export function V2TradeScreen({
     <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />
     </>
   );
+}
+
+/**
+ * Auto-advance the selected market as expiries roll — legacy parity with
+ * useFrontOracleId. Time-driven (useNow, per-second): the moment the selected
+ * market ticks past expiry — even while it lingers in the 10s-polled list until
+ * the next fetch — jump to the soonest market still open. A still-live explicit
+ * pick is left alone; only an expired or absent selection advances, and the
+ * guard skips redundant selectMarket calls (which would reset the pinned
+ * strike). Isolated in a null component so only IT re-renders each second, not
+ * the whole hero/chart/surface tree.
+ */
+function MarketAutoAdvancer({ markets, serverNow }: { markets: V2Market[]; serverNow: number }) {
+  const now = useNow(serverNow);
+  const marketId = useV2TradeStore((s) => s.marketId);
+  const selectMarket = useV2TradeStore((s) => s.selectMarket);
+  useEffect(() => {
+    if (markets.length === 0) return;
+    const current = markets.find((m) => m.expiry_market_id === marketId);
+    if (current && current.expiry > now) return; // live selection — leave it
+    const next = markets.find((m) => m.expiry > now); // soonest still open
+    if (next && next.expiry_market_id !== marketId) selectMarket(next.expiry_market_id);
+  }, [markets, marketId, now, selectMarket]);
+  return null;
 }
 
 function Hero({

@@ -17,6 +17,7 @@ import {
   createChart,
   AreaSeries,
   LineStyle,
+  LineType,
   ColorType,
   type IChartApi,
   type ISeriesApi,
@@ -40,26 +41,34 @@ const DOWN = '#f0796b';
 const PID = predictV2Config.asset.pythFeedId;
 
 /**
- * Observations → ascending {time, value} at FULL sub-second resolution — one
- * point per Pyth tick (~2.4/sec), timed in fractional seconds.
- *
- * The old code collapsed the stream to one point per second, leaving the line
- * sparse (~130 points) so straight-line segments read as angular "cut edges";
- * an EWMA fix then over-smoothed it into a flat, low-volatility-looking line.
- * The real cause was density: legacy's chart draws ~500 points, so its segments
- * are tiny and the line reads smooth AND detailed. lightweight-charts accepts
- * fractional-second timestamps, so we keep every tick (deduped by exact time) —
- * the density itself makes the line smooth while preserving true price action.
+ * A single, consistent timestamp (ms) for an observation. Prefer Pyth's own
+ * publish time (`source_timestamp_ms`) — the price's real market time — and only
+ * fall back to the Sui-checkpoint time. Picking ONE clock per point matters:
+ * the two are offset from each other, so mixing them across the series makes
+ * points interleave out of order and tears the line into vertical cliffs.
+ */
+function obsMs(o: PythObservation): number | null {
+  return o.source_timestamp_ms ?? o.checkpoint_timestamp_ms ?? null;
+}
+
+/**
+ * Observations → ascending {time, value}, ONE point per second (last value in
+ * the second wins). Legacy parity (see chart/price-chart.tsx): per-second
+ * decimation rejects the feed's sub-second noise — bid/ask flip, multi-publisher
+ * jitter, momentary outliers — which otherwise renders as a jagged zig-zag AND
+ * makes the price scale constantly re-expand and snap back. BTC moves only a few
+ * dollars per second, so the resulting ~1/sec line is both smooth and honest.
  */
 function toSeries(obs: PythObservation[]): { time: UTCTimestamp; value: number }[] {
-  const byTime = new Map<number, number>();
-  for (const o of obs) {
+  const bySec = new Map<number, number>();
+  // Sort by full ms so, within a second, the chronologically LAST tick wins.
+  for (const o of [...obs].sort((a, b) => (obsMs(a) ?? 0) - (obsMs(b) ?? 0))) {
     const v = pythSpot(o);
-    const ts = o.checkpoint_timestamp_ms ?? o.source_timestamp_ms;
-    if (v == null || ts == null) continue;
-    byTime.set(ts / 1000, v); // fractional seconds — full tick resolution
+    const ms = obsMs(o);
+    if (v == null || ms == null) continue;
+    bySec.set(Math.floor(ms / 1000), v);
   }
-  return [...byTime.entries()]
+  return [...bySec.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
 }
@@ -127,6 +136,9 @@ export function V2PriceChart({
         horzLines: { color: 'rgba(255,255,255,0.035)' },
       },
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.08)' },
+      // secondsVisible is set ADAPTIVELY after history loads (see below): a short,
+      // fast window collapses HH:MM labels into duplicates ("10:32 10:32 10:32"),
+      // so it shows seconds; a legacy-length window keeps clean minute labels.
       timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: true, secondsVisible: false, rightOffset: 6 },
       crosshair: {
         vertLine: { color: 'rgba(255,255,255,0.18)', labelBackgroundColor: '#181c20' },
@@ -138,6 +150,10 @@ export function V2PriceChart({
       topColor: 'rgba(77,214,176,0.22)',
       bottomColor: 'rgba(77,214,176,0)',
       lineWidth: 2,
+      // Curved interpolation rounds the corners into a smooth spline (vs the
+      // default straight-segment line) — the softer "flowing" look. Purely a
+      // render choice; the line still passes through every real data point.
+      lineType: LineType.Curved,
       priceLineVisible: false,
       priceFormat: { type: 'price', precision: 0, minMove: 1 },
       // Extend the auto-scale to include the selected strike/band so it's always
@@ -199,6 +215,12 @@ export function V2PriceChart({
     if (!points.length) return;
     series.setData(points);
     lastTimeRef.current = points[points.length - 1].time as number;
+    // Adapt the axis labels to the actual window: minute labels read cleanest
+    // (legacy parity), but collapse to duplicates once ticks fall closer than a
+    // minute apart — so only show seconds when the window is short (< ~8 min,
+    // the common case at the feed's 500-tick cap).
+    const span = (points[points.length - 1].time as number) - (points[0].time as number);
+    chartRef.current?.applyOptions({ timeScale: { secondsVisible: span < 8 * 60 } });
     if (!fittedRef.current) {
       chartRef.current?.timeScale().fitContent();
       // Snap to the live edge so the newest tick shows with the rightOffset gap
@@ -208,16 +230,18 @@ export function V2PriceChart({
     }
   }, [historyQ.data]);
 
-  // Append the live tick (update, not setData — no zoom reset), at full
-  // sub-second resolution so it continues the dense history line seamlessly.
+  // Append the live tick (update, not setData — no zoom reset). Same per-second
+  // bucket + single clock as the history, so an intra-second tick REPLACES the
+  // current second's point (smooth live edge) and each new second advances it —
+  // legacy parity. Sub-second resolution here is what caused the jitter.
   useEffect(() => {
     const series = seriesRef.current;
     const d = latestQ.data;
     if (!series || !d) return;
     const v = pythSpot(d);
-    const ts = d.checkpoint_timestamp_ms ?? d.source_timestamp_ms;
-    if (v == null || ts == null) return;
-    const t = ts / 1000; // fractional seconds — same resolution as the history
+    const ms = obsMs(d);
+    if (v == null || ms == null) return;
+    const t = Math.floor(ms / 1000); // one point per second, same as the history
     if (t < lastTimeRef.current) return; // can't update an older point
     series.update({ time: t as UTCTimestamp, value: v });
     lastTimeRef.current = t;

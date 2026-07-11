@@ -2,8 +2,8 @@
 
 /**
  * V2SpotTape — a live BTC spot readout for the new deployment, polled ~1.5s from
- * the propbook oracle indexer. Framed for the fast 1-minute markets; ticks green
- * up / red down. Read-only.
+ * the propbook oracle indexer. A quiet readout: just the asset, the price, and a
+ * tick arrow (green up / red down). Read-only.
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -33,12 +33,11 @@ export function V2SpotTape() {
 
   return (
     <div className="flex items-center gap-2 rounded-lg bg-white/2 px-3 py-2 backdrop-blur-md">
-      <span className="eyebrow">BTC · live</span>
+      <span className="eyebrow">BTC</span>
       <span className={`font-mono text-[15px] tabular-nums ${color}`}>
         {spot != null ? `$${spot.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
         <span className="ml-1 text-[11px]">{arrow}</span>
       </span>
-      <span className="ml-auto font-mono text-[10px] text-text-3">1-minute markets</span>
     </div>
   );
 }
