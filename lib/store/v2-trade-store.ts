@@ -20,6 +20,11 @@ export type V2TradeMode = 'binary' | 'range';
 
 interface V2TradeState {
   marketId: string | null;
+  /** True when the user explicitly picked this market (tapped a row/card/surface
+   *  node). Auto-advance follows the soonest market ONLY while this is false, so
+   *  an untouched selection stays pinned to the top of the list instead of
+   *  drifting down as newer, sooner markets open (legacy `selection ?? front`). */
+  marketPinned: boolean;
   mode: V2TradeMode;
   isUp: boolean;
   /** Absolute binary strike (admission-grid price). null = follow ATM until picked. */
@@ -47,7 +52,9 @@ interface V2TradeState {
    *  lives in the always-visible right rail there). Mirrors surface-store. */
   ticketSheetOpen: boolean;
 
-  selectMarket: (id: string) => void;
+  /** Select a market. `pinned` defaults to true (an explicit user pick); the
+   *  auto-advancer passes false so its selections keep tracking the soonest. */
+  selectMarket: (id: string, pinned?: boolean) => void;
   setMode: (m: V2TradeMode) => void;
   setIsUp: (v: boolean) => void;
   /** Pin an absolute binary strike (admission-grid price). */
@@ -72,6 +79,7 @@ interface V2TradeState {
 
 export const useV2TradeStore = create<V2TradeState>((set) => ({
   marketId: null,
+  marketPinned: false,
   mode: 'binary',
   isUp: true,
   strikePrice: null,
@@ -87,8 +95,8 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   // Switching markets drops the pinned strike/band (a $63k strike is meaningless
   // on a different expiry's grid); the new market defaults to its own ATM until
   // the user picks a level.
-  selectMarket: (marketId) =>
-    set({ marketId, strikePrice: null, rangeLowerPrice: null, rangeHigherPrice: null, rangeAnchorPrice: null }),
+  selectMarket: (marketId, pinned = true) =>
+    set({ marketId, marketPinned: pinned, strikePrice: null, rangeLowerPrice: null, rangeHigherPrice: null, rangeAnchorPrice: null }),
   // Leaving range mode abandons a half-built band (legacy setTicketMode parity).
   setMode: (mode) => set(mode === 'binary' ? { mode, rangeAnchorPrice: null } : { mode }),
   setIsUp: (isUp) => set({ isUp }),

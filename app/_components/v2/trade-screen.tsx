@@ -127,26 +127,32 @@ export function V2TradeScreen({
 }
 
 /**
- * Auto-advance the selected market as expiries roll — legacy parity with
- * useFrontOracleId. Time-driven (useNow, per-second): the moment the selected
- * market ticks past expiry — even while it lingers in the 10s-polled list until
- * the next fetch — jump to the soonest market still open. A still-live explicit
- * pick is left alone; only an expired or absent selection advances, and the
- * guard skips redundant selectMarket calls (which would reset the pinned
- * strike). Isolated in a null component so only IT re-renders each second, not
- * the whole hero/chart/surface tree.
+ * Keep the active market on the soonest one — legacy parity with the
+ * `selection ?? front` model (useFrontOracleId). Time-driven (useNow,
+ * per-second): with no explicit pick, the selection TRACKS the soonest open
+ * market (the top of the soonest-first list), so it never drifts down as newer,
+ * sooner markets open above a longer-dated one. An explicit user pick (pinned)
+ * is honored until it expires, then it falls back to auto-following the soonest.
+ * Isolated in a null component so only IT re-renders each second, not the whole
+ * hero/chart/surface tree.
  */
 function MarketAutoAdvancer({ markets, serverNow }: { markets: V2Market[]; serverNow: number }) {
   const now = useNow(serverNow);
   const marketId = useV2TradeStore((s) => s.marketId);
+  const marketPinned = useV2TradeStore((s) => s.marketPinned);
   const selectMarket = useV2TradeStore((s) => s.selectMarket);
   useEffect(() => {
     if (markets.length === 0) return;
+    // Soonest still-open market — the head of the (soonest-first) list.
+    const soonest = markets.find((m) => m.expiry > now);
+    if (!soonest) return; // nothing open right now — leave the selection be
+    // Honor a still-live explicit pick; otherwise (auto, or the pick expired)
+    // snap to the soonest. selectMarket(_, false) re-marks it as auto, and the
+    // `!== marketId` guard keeps it a no-op once already on the soonest.
     const current = markets.find((m) => m.expiry_market_id === marketId);
-    if (current && current.expiry > now) return; // live selection — leave it
-    const next = markets.find((m) => m.expiry > now); // soonest still open
-    if (next && next.expiry_market_id !== marketId) selectMarket(next.expiry_market_id);
-  }, [markets, marketId, now, selectMarket]);
+    if (marketPinned && current && current.expiry > now) return;
+    if (soonest.expiry_market_id !== marketId) selectMarket(soonest.expiry_market_id, false);
+  }, [markets, marketId, marketPinned, now, selectMarket]);
   return null;
 }
 
