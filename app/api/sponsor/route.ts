@@ -16,6 +16,11 @@
 import { NextResponse } from 'next/server';
 import { EnokiClient, type EnokiNetwork } from '@mysten/enoki';
 import { predictConfig, predictV2Config } from '@/config/predict';
+import { installEnokiTrace } from '@/lib/sui/enoki-trace';
+
+// Debug tracing of the raw api.enoki.mystenlabs.com request/response (URL +
+// Request-Id + bodies) — active only when ENOKI_DEBUG is set. See enoki-trace.ts.
+installEnokiTrace();
 
 const enoki = process.env.ENOKI_PRIVATE_API_KEY
   ? new EnokiClient({ apiKey: process.env.ENOKI_PRIVATE_API_KEY })
@@ -125,10 +130,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   } catch (e) {
     const phase = body.digest ? 'execute' : 'create';
-    const msg = e instanceof Error ? e.message : 'Sponsor request failed';
-    // Full detail in the server terminal — Enoki's raw text says WHY (allowlist,
-    // expired reservation, bad signature…) while the client toast stays humanized.
-    console.error(`[sponsor:${phase}]`, msg, e instanceof Error && e.cause ? e.cause : '');
+    // EnokiClientError carries the HTTP status + Enoki's error code; .cause holds
+    // their exact message (allowlist, expired reservation, bad signature…). Log
+    // all of it server-side so you can hand Enoki the endpoint + status + code
+    // while the client toast stays humanized. Add ENOKI_DEBUG=1 for the full
+    // request/response trace (URL + Request-Id + bodies) from enoki-trace.ts.
+    const err = e as { message?: string; status?: number; code?: string; cause?: unknown };
+    const msg = err.message ?? 'Sponsor request failed';
+    console.error(
+      `[sponsor:${phase}] POST https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor${
+        phase === 'execute' ? `/${body.digest}` : ''
+      } → status=${err.status ?? '?'} code=${err.code ?? '?'} — ${msg}`,
+      err.cause ?? '',
+    );
     return NextResponse.json({ error: `${phase} phase: ${msg}` }, { status: 502 });
   }
 }

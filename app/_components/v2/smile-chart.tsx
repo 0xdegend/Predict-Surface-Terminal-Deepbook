@@ -57,6 +57,11 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   // True from the moment an edge drag started until the next pick — swallows the
   // synthetic click that follows pointerup so a drag never re-anchors the band.
   const draggedRef = useRef(false);
+  // The x-window frozen at the start of an edge drag. The window normally reframes
+  // to fit the band, but doing that live mid-drag would rescale the x-axis every
+  // frame and make the dragged handle drift off the cursor — so we pin it during
+  // the gesture and let it reframe on release.
+  const dragWinRef = useRef<{ min: number; max: number } | null>(null);
 
   const { forward, svi } = pricer;
   const step = toFloat(market.admission_tick_size) || 1;
@@ -87,7 +92,8 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     }
   }
 
-  // Crop to the readable probability band (~2%–98%). up descends with strike.
+  // Readable crop (~2%–98%) — the default framing when no band is picked. up
+  // descends with strike.
   let lo = all.findIndex((p) => p.up <= PMAX);
   if (lo < 0) lo = 0;
   let hi = all.length - 1;
@@ -99,19 +105,58 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   }
   lo = Math.max(0, lo - 1);
   hi = Math.min(all.length - 1, hi + 1);
-  const pts = all.slice(lo, hi + 1);
-  if (pts.length < 2) return null;
+  const readMin = all[lo].strike;
+  const readMax = all[hi].strike;
+  const sampleMin = all[0].strike;
+  const sampleMax = all[all.length - 1].strike;
 
-  const xMin = pts[0].strike;
-  const xMax = pts[pts.length - 1].strike;
-  const xSpan = xMax - xMin || 1;
+  // The x-window. A picked band gets framed around itself with padding, so it
+  // always reads as a comfortable shaded region — never a hairline sliver, never
+  // clamped flat against an edge, regardless of how wide the readable crop is.
+  // Otherwise we use the readable crop. Either way a MINIMUM span keeps the curve
+  // from collapsing into a near-vertical line as expiry approaches (tiny
+  // time-to-expiry ⇒ a near-step probability curve, which is what made the chart
+  // look "thin"/degenerate on the 1-minute markets).
+  let winMin: number;
+  let winMax: number;
+  if ((drag === 'lower' || drag === 'higher') && dragWinRef.current) {
+    // Mid edge-drag: keep the framing pinned so the handle tracks the cursor 1:1.
+    winMin = dragWinRef.current.min;
+    winMax = dragWinRef.current.max;
+  } else if (rangeMode && lowerStrike != null && higherStrike != null) {
+    const bandSpan = higherStrike - lowerStrike;
+    const pad = Math.max(bandSpan * 0.6, forward * 0.0015, step * 3);
+    winMin = lowerStrike - pad;
+    winMax = higherStrike + pad;
+  } else {
+    winMin = readMin;
+    winMax = readMax;
+  }
+  const MIN_WIN = Math.max(forward * 0.004, step * 12);
+  if (winMax - winMin < MIN_WIN) {
+    const mid = (winMin + winMax) / 2;
+    winMin = mid - MIN_WIN / 2;
+    winMax = mid + MIN_WIN / 2;
+  }
+  // Keep the window within the sampled range.
+  winMin = Math.max(winMin, sampleMin);
+  winMax = Math.min(winMax, sampleMax);
+  const xSpan = winMax - winMin;
+  if (!(xSpan > 0)) return null;
+
   const plotW = W - PAD.l - PAD.r;
   const plotH = H - PAD.t - PAD.b;
-  const sx = (strike: number) => PAD.l + ((strike - xMin) / xSpan) * plotW;
-  const cx = (strike: number) => sx(Math.max(xMin, Math.min(xMax, strike)));
+  const sx = (strike: number) => PAD.l + ((strike - winMin) / xSpan) * plotW;
+  const cx = (strike: number) => sx(Math.max(winMin, Math.min(winMax, strike)));
   const sy = (up: number) => PAD.t + (1 - up) * plotH;
 
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.strike).toFixed(1)},${sy(p.up).toFixed(1)}`).join(' ');
+  // Draw the curve at a fixed resolution across the window (not off the coarse
+  // sample grid), so even a narrow near-expiry window renders a smooth line.
+  const DISP = 96;
+  const path = Array.from({ length: DISP }, (_, i) => {
+    const strike = winMin + (xSpan * i) / (DISP - 1);
+    return `${i === 0 ? 'M' : 'L'}${sx(strike).toFixed(1)},${sy(upFair(strike, forward, svi)).toFixed(1)}`;
+  }).join(' ');
   const fwdX = cx(forward);
   const atmUp = upFair(atm, forward, svi);
 
@@ -127,7 +172,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
     const rect = e.currentTarget.getBoundingClientRect();
     const vx = ((e.clientX - rect.left) / rect.width) * W;
     const t = (vx - PAD.l) / plotW;
-    return xMin + Math.max(0, Math.min(1, t)) * xSpan;
+    return winMin + Math.max(0, Math.min(1, t)) * xSpan;
   }
   function vxOf(e: React.PointerEvent<SVGSVGElement>): number {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -161,6 +206,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
       const edge = edgeNear(vxOf(e));
       if (edge) {
         draggedRef.current = true;
+        dragWinRef.current = { min: winMin, max: winMax };
         setDrag(edge);
         applyEdge(edge, p);
       }
@@ -177,6 +223,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
   }
   function onUp(e: React.PointerEvent<SVGSVGElement>) {
     setDrag(null);
+    dragWinRef.current = null;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
@@ -315,9 +362,11 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
           )}
 
           <path d={path} fill="none" stroke="var(--up)" strokeWidth={1.5} />
-          {butterflies.map((p) => (
-            <circle key={p.strike} cx={sx(p.strike)} cy={sy(p.up)} r={2.5} fill="var(--down)" />
-          ))}
+          {butterflies
+            .filter((p) => p.strike >= winMin && p.strike <= winMax)
+            .map((p) => (
+              <circle key={p.strike} cx={sx(p.strike)} cy={sy(p.up)} r={2.5} fill="var(--down)" />
+            ))}
 
           {/* chance level line (binary side chance / range band chance) */}
           {levelChance != null && (
@@ -340,10 +389,10 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
 
           {/* price axis labels */}
           <text x={PAD.l} y={H - 4} fill="var(--text-3)" fontSize={9} fontFamily="monospace">
-            {price(xMin, 0)}
+            {price(winMin, 0)}
           </text>
           <text x={W - PAD.r} y={H - 4} fill="var(--text-3)" fontSize={9} fontFamily="monospace" textAnchor="end">
-            {price(xMax, 0)}
+            {price(winMax, 0)}
           </text>
         </svg>
 

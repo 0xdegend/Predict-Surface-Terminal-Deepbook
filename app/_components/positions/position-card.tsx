@@ -169,22 +169,24 @@ export function PositionCard({
           </div>
         </div>
 
-        {/* hero — direction, the bet, live PnL + sparkline (the one raised plane) */}
-        <div className="glass-inset flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-4">
-          <div className="flex items-center gap-3">
+        {/* hero — direction, the bet, live PnL + sparkline (the one raised plane).
+            Left column flexes and truncates; the PnL block stays pinned to the
+            right edge so the row always fills (never wraps onto a half-empty line). */}
+        <div className="glass-inset flex items-center justify-between gap-x-4 gap-y-3 p-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <span className={`dir-orb ${up ? "up" : "down"}`} aria-hidden>
               {up ? <LuArrowUp size={20} /> : <LuArrowDown size={20} />}
             </span>
-            <div className="flex flex-col gap-1">
-              <h3 className="text-[15px] leading-none text-text-1">
+            <div className="flex min-w-0 flex-col gap-1">
+              <h3 className="truncate text-[15px] leading-none text-text-1">
                 {p.underlying_asset} <span className="text-text-3">·</span>{" "}
                 {dateUTC(p.expiry, false)}
               </h3>
-              <p className="font-sans text-[11px] text-text-2">
+              <p className="truncate font-sans text-[11px] text-text-2">
                 {p.underlying_asset} {up ? "≥" : "≤"} {price(toFloat(p.strike))}{" "}
                 at expiry
               </p>
-              <div className="mt-1 flex items-center gap-2.5">
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <ResultChip result={result} />
                 {result === "live" && (
                   <span
@@ -202,7 +204,7 @@ export function PositionCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-3.5">
+          <div className="flex shrink-0 items-center gap-3.5">
             <div className="flex flex-col items-end gap-1">
               <span className="eyebrow">
                 {decided ? "Realized" : "Unrealized"} PnL

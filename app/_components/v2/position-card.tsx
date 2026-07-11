@@ -149,14 +149,16 @@ export function V2PositionCard({
           </div>
         </div>
 
-        {/* hero — direction/band, the bet, live PnL + sparkline */}
-        <div className="glass-inset flex flex-wrap items-center justify-between gap-x-4 gap-y-3 p-4">
-          <div className="flex items-center gap-3">
+        {/* hero — direction/band, the bet, live PnL + sparkline. Left column
+            flexes and truncates; the PnL block stays pinned to the right edge so
+            the row always fills (never wraps the PnL onto its own half-empty line). */}
+        <div className="glass-inset flex items-center justify-between gap-x-4 gap-y-3 p-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
             <span className={`dir-orb ${up ? 'up' : 'down'} ${isRange ? 'scale-90' : ''}`} aria-hidden>
               {isRange ? <LuCalendarRange size={18} /> : up ? <LuArrowUp size={20} /> : <LuArrowDown size={20} />}
             </span>
-            <div className="flex flex-col gap-1">
-              <h3 className="text-[15px] leading-none text-text-1">
+            <div className="flex min-w-0 flex-col gap-1">
+              <h3 className="truncate text-[15px] leading-none text-text-1">
                 {heroTitle}
                 {!isRange && p.expiry != null && (
                   <>
@@ -165,8 +167,8 @@ export function V2PositionCard({
                   </>
                 )}
               </h3>
-              <p className="font-sans text-[11px] text-text-2">{condition}</p>
-              <div className="mt-1 flex items-center gap-2.5">
+              <p className="truncate font-sans text-[11px] text-text-2">{condition}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <ResultChip result={result} isRange={isRange} />
                 {p.sample && (
                   <span className="rounded-full border border-(--warn-soft) bg-(--warn-soft) px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-warn">
@@ -185,7 +187,7 @@ export function V2PositionCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-3.5">
+          <div className="flex shrink-0 items-center gap-3.5">
             <div className="flex flex-col items-end gap-1">
               <span className="eyebrow">{decided ? 'Realized' : 'Unrealized'} PnL</span>
               <span className={`flex items-baseline gap-1.5 ${positive ? 'text-up' : 'text-down'}`}>
