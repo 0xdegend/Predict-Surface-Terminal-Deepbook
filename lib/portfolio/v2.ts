@@ -8,9 +8,10 @@
  *  - `normalizeV2Position` maps a real `/accounts/{account_id}/positions` row
  *    (verified live 2026-07-10) into a display row, joined to its market for the
  *    tick→price conversion (ticks are indices, not prices).
- *  - `demoPositions` / `demoHistory` provide clearly-marked SAMPLE rows so the
- *    screen shows its full design today. Flip `V2_DEMO_ENABLED` off (or just
- *    let real rows arrive — they always win) once the indexer is live.
+ *  - `demoPositions` / `demoHistory` provide clearly-marked SAMPLE rows for
+ *    design screenshots / marketing, gated behind `V2_DEMO_ENABLED` (off by
+ *    default — a real connected account with no positions sees the honest empty
+ *    state instead). Real rows always take priority when present.
  */
 import { fromQuote, toFloat } from '@/config/scale';
 import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
@@ -18,8 +19,16 @@ import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import type { V2Position, V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { PastPrediction } from './history';
 
-/** Master switch for the sample dataset. Real indexer rows always take priority. */
-export const V2_DEMO_ENABLED = true;
+/**
+ * Master switch for the sample dataset. OFF by default: a connected account with
+ * no positions now sees the real empty state ("No open positions yet") — the
+ * honest UX. This flag only ever gated fully-onboarded accounts (logged-out →
+ * ConnectGate, no-account → CreateAccountCard), so leaving it ON showed
+ * illustrative positions to exactly the audience that should see their real,
+ * empty portfolio. Flip to `true` only to repopulate the layout for design
+ * screenshots / marketing. Real indexer rows always take priority regardless.
+ */
+export const V2_DEMO_ENABLED = false;
 
 export type V2Direction = 'Up' | 'Down' | 'Range';
 

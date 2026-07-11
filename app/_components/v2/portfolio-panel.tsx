@@ -7,10 +7,10 @@
  * Positions / History segmented tabs with glass position cards.
  *
  * Balances (trading account, wallet, vault shares) are live on-chain reads.
- * Positions and history come from the v2 indexer's owner-scoped endpoints,
- * which return no rows on testnet yet — until they report, clearly-marked
- * SAMPLE rows (lib/portfolio/v2.ts) fill the layout so the design is complete;
- * real rows automatically take over the moment the feed goes live.
+ * Positions and history come from the v2 indexer's owner-scoped endpoints. A
+ * connected account with none sees the real empty state ("No open positions
+ * yet"), not filler. Clearly-marked SAMPLE rows (lib/portfolio/v2.ts) are an
+ * opt-in design scaffold, gated behind V2_DEMO_ENABLED (off by default).
  */
 import { Fragment, useMemo, useState } from 'react';
 import Link from 'next/link';
