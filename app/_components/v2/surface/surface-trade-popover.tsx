@@ -320,7 +320,7 @@ function BinaryBody({
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2.5 px-3 pb-3 pt-3">
+        <div className="flex flex-col gap-2 px-3 pb-3 pt-3">
           <button
             type="button"
             onClick={() => setView('glance')}
@@ -337,8 +337,8 @@ function BinaryBody({
           <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp={isUp} shortfall={shortfall} />
 
           {closingSoon && !expired && (
-            <p className="rounded border border-down/40 bg-down/10 p-2 text-[10.5px] leading-snug text-down">
-              Closing in {countdown(market.expiry, now)} — a mint may revert if it settles first.
+            <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
+              Closes in {countdown(market.expiry, now)} — may revert if it settles first.
             </p>
           )}
 
@@ -521,7 +521,7 @@ function RangeBody({
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-2.5 px-3 pb-3 pt-3">
+        <div className="flex flex-col gap-2 px-3 pb-3 pt-3">
           <div className="flex items-center justify-between px-0.5">
             <span className="eyebrow">Settles between</span>
             <button
@@ -546,8 +546,8 @@ function RangeBody({
           <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp shortfall={shortfall} />
 
           {closingSoon && !expired && (
-            <p className="rounded border border-down/40 bg-down/10 p-2 text-[10.5px] leading-snug text-down">
-              Closing in {countdown(market.expiry, now)} — a mint may revert if it settles first.
+            <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
+              Closes in {countdown(market.expiry, now)} — may revert if it settles first.
             </p>
           )}
 
@@ -741,12 +741,12 @@ function QuoteCard({
           {s.feeBase > 0n && <> · fee +${fromQuote(s.feeBase).toFixed(2)}</>}
         </span>
         {shortfall > 0n && (
-          <span className="mt-1.5 text-[9.5px] leading-snug text-text-3">
-            ${fromQuote(shortfall).toFixed(2)} deposits from your wallet in the same transaction.
+          <span className="mt-1.5 text-[9.5px] leading-tight text-text-3">
+            +${fromQuote(shortfall).toFixed(2)} from your wallet, same transaction.
           </span>
         )}
-        <span className="mt-1.5 text-[9.5px] leading-snug text-text-3">
-          Cost is an estimate — your wallet shows the exact amount before you approve.
+        <span className="mt-1.5 text-[9.5px] leading-tight text-text-3">
+          Estimate — exact cost shown before you confirm.
         </span>
       </div>
     );

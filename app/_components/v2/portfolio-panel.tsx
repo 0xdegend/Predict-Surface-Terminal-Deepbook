@@ -379,6 +379,8 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       {claimCelebration}
 
       <FundModal
+        // Remount per open so the amount field always starts empty (see FundModal).
+        key={fundMode ?? 'closed'}
         mode={fundMode}
         walletBase={acct.walletDusdcBase}
         accountBase={acct.balanceBase}
@@ -510,7 +512,12 @@ function FundModal({
   onConfirm: (amount: number) => void;
   onClose: () => void;
 }) {
-  const [amount, setAmount] = useState(25);
+  // Empty by default — no pre-filled amount. `raw` is the string the user types
+  // (lets a trailing "." and decimals survive re-renders); `amount` is its numeric
+  // value. The parent keys this dialog by `mode`, so it remounts fresh on each open
+  // and `raw` always starts empty.
+  const [raw, setRaw] = useState('');
+  const amount = Number(raw) || 0;
   const add = mode === 'add';
   const available = add ? (walletBase !== undefined ? fromQuote(walletBase) : undefined) : fromQuote(accountBase);
   const over = available !== undefined && amount > available;
@@ -560,12 +567,15 @@ function FundModal({
             <span className="eyebrow">{add ? 'Adding' : 'Withdrawing'}</span>
             <div className="flex items-baseline gap-1.5 font-mono tabular-nums">
               <input
-                type="number"
-                min={0}
-                value={amount}
-                onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
+                type="text"
+                inputMode="decimal"
+                value={raw}
+                onChange={(e) =>
+                  setRaw(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))
+                }
+                placeholder="0"
                 aria-label="Amount in DUSDC"
-                className="w-32 bg-transparent text-[30px] leading-none text-text-1 outline-none"
+                className="w-32 bg-transparent text-[30px] leading-none text-text-1 outline-none placeholder:text-text-3"
               />
               <span className="text-[13px] text-text-3">{predictV2Config.quote.symbol}</span>
             </div>
@@ -575,7 +585,7 @@ function FundModal({
             {[10, 25, 50].map((v) => (
               <button
                 key={v}
-                onClick={() => setAmount(v)}
+                onClick={() => setRaw(String(v))}
                 className="glass-inset px-2.5 py-1 font-mono text-[11px] tabular-nums text-text-2 transition-colors hover:text-text-1"
               >
                 {v}
@@ -583,7 +593,7 @@ function FundModal({
             ))}
             {available !== undefined && available > 0 && (
               <button
-                onClick={() => setAmount(Math.floor(available * 100) / 100)}
+                onClick={() => setRaw(String(Math.floor(available * 100) / 100))}
                 className="glass-inset px-2.5 py-1 font-mono text-[11px] tabular-nums text-text-2 transition-colors hover:text-text-1"
               >
                 Max

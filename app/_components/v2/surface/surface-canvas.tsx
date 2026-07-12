@@ -254,6 +254,11 @@ export function SurfaceCanvasV2({
     setClickId((n) => n + 1); // remount so glance/size reset on each new pick
   }
 
+  // "Committed to a pick" — the ticket is open, or a range's first edge is placed
+  // and the second click is still pending. While true, the camera is frozen (no
+  // zoom/orbit) so an aimed click can't be thrown off by the model moving.
+  const interacting = popover || rangeAnchorPrice != null;
+
   // A surface needs ≥2 live expiries; between market rolls the filter can
   // briefly leave fewer — hold a quiet placeholder rather than a broken mesh.
   if (surface.rows.length < 2) {
@@ -269,7 +274,10 @@ export function SurfaceCanvasV2({
   return (
     <div className="relative h-full w-full">
       <Canvas
-        camera={{ position: [8, 7.5, 12.5], fov: 38 }}
+        // Pulled ~17% closer than legacy's [8, 7.5, 12.5] so the surface reads
+        // bigger/nearer at rest (same viewing angle; still inside the
+        // min/maxDistance band so the user can zoom out freely).
+        camera={{ position: [6.6, 6.2, 10.4], fov: 38 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
       >
@@ -320,7 +328,13 @@ export function SurfaceCanvasV2({
         </group>
         <OrbitControls
           enablePan={false}
-          enableZoom
+          // Freeze zoom + orbit while the user is committed to a pick — the ticket
+          // is open, or a range's first edge is set and they're aiming the second.
+          // Holding the model dead-still makes the click land where they aim;
+          // passive hovering still allows zoom/orbit to explore. (Pan is always off;
+          // autoRotate already pauses on these states + hover.)
+          enableZoom={!interacting}
+          enableRotate={!interacting}
           autoRotate={!hover && !reduced && !popover && rangeAnchorPrice == null}
           autoRotateSpeed={0.1}
           minDistance={8}

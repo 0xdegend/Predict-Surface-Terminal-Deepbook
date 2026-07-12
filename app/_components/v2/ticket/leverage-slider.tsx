@@ -81,9 +81,9 @@ export function V2LeverageSlider({
 
   return (
     <div className="select-none">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-1 flex items-center justify-between">
         <span className="text-[11px] text-text-3">Leverage</span>
-        <span className={`font-mono text-[15px] font-semibold tabular-nums ${lev > 1 ? (tone === 'up' ? 'text-accent' : 'text-down') : 'text-text-1'}`}>
+        <span className={`font-mono text-[14px] font-semibold tabular-nums ${lev > 1 ? (tone === 'up' ? 'text-accent' : 'text-down') : 'text-text-1'}`}>
           {fmtLev(lev)}
         </span>
       </div>
@@ -94,7 +94,7 @@ export function V2LeverageSlider({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className={`relative h-8 touch-none ${disabled || span <= 0 ? 'opacity-50' : 'cursor-pointer'}`}
+        className={`relative h-6 touch-none ${disabled || span <= 0 ? 'opacity-50' : 'cursor-pointer'}`}
       >
         <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-bg-3">
           <div className={`h-full rounded-full ${fill}`} style={{ width: `${t * 100}%`, opacity: 0.55 }} />
@@ -121,7 +121,7 @@ export function V2LeverageSlider({
         />
       </div>
 
-      <div className="mt-1.5 flex items-center justify-between gap-2">
+      <div className="mt-1 flex items-center justify-between gap-2">
         <div className="flex gap-1">
           {picks.map((p) => {
             const active = Math.abs(lev - p) < LEVERAGE_STEP / 2;
