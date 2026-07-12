@@ -74,6 +74,10 @@ function allowedMoveCallTargets(): string[] {
     targets.push(
       `${v2.predict}::expiry_market::load_live_pricer`,
       `${v2.predict}::expiry_market::mint_exact_quantity`,
+      // Budget mint (mintBudget → buildMintBudgetTx): the chain sizes the
+      // quantity from its own live odds. This is the DEFAULT open-position path
+      // (surface popover + trade ticket), so omitting it 400s every gasless mint.
+      `${v2.predict}::expiry_market::mint_exact_amount`,
       `${v2.predict}::expiry_market::redeem_live`,
       `${v2.predict}::expiry_market::redeem_settled`,
       `${v2.predict}::plp::request_supply`,
