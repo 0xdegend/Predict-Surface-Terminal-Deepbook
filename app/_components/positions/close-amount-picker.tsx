@@ -18,19 +18,36 @@ export function CloseAmountPicker({
   openBase,
   closeBase,
   onChange,
+  lotBase,
 }: {
   openBase: bigint;
   closeBase: bigint;
   onChange: (base: bigint) => void;
+  /** Snap partial amounts DOWN onto this lot grid (base units). The chain rejects
+   *  order quantities that aren't a whole number of lots (v2:
+   *  `order::assert_valid_quantity`), so a raw 50%-of-an-odd-lot amount aborts —
+   *  which surfaces as a gasless "create phase 400" (Enoki dry-runs at create).
+   *  A full close still sends the exact open lot. Omit ⇒ no snapping (legacy). */
+  lotBase?: bigint;
 }) {
   const fraction = openBase > 0n ? Number(closeBase) / Number(openBase) : 0;
   const activePreset = PRESETS.find((pp) => Math.abs(fraction * 100 - pp) < 0.5) ?? null;
   const maxContracts = fromQuote(openBase);
   const closeContracts = fromQuote(closeBase);
 
+  // A full close sends the exact open lot (already aligned, no dust left behind);
+  // a partial floors onto the lot grid, never below one lot — so the redeem can
+  // never carry a quantity the contract would reject.
+  function snap(base: bigint): bigint {
+    if (base >= openBase) return openBase;
+    if (!lotBase || lotBase <= 0n) return base;
+    const snapped = (base / lotBase) * lotBase;
+    if (snapped > 0n) return snapped;
+    return openBase < lotBase ? openBase : lotBase;
+  }
+
   function setPct(pct: number) {
-    // 100% → exact open (no rounding dust left behind); else floor to base units.
-    onChange(pct >= 100 ? openBase : BigInt(Math.floor(Number(openBase) * (pct / 100))));
+    onChange(pct >= 100 ? openBase : snap(BigInt(Math.floor(Number(openBase) * (pct / 100)))));
   }
 
   function setContracts(raw: string) {
@@ -39,9 +56,8 @@ export function CloseAmountPicker({
       onChange(0n);
       return;
     }
-    // contracts (human) → base units (1 contract = 1_000_000), clamped to open.
-    const base = BigInt(Math.round(n * 1_000_000));
-    onChange(base > openBase ? openBase : base);
+    // contracts (human) → base units (1 contract = 1_000_000), snapped + clamped.
+    onChange(snap(BigInt(Math.round(n * 1_000_000))));
   }
 
   return (

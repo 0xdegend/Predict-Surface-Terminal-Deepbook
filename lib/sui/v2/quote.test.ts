@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   quantityForStake,
+  winPayout,
   knockoutProbability,
   priceMoveToKnockout,
   mintAmountBase,
@@ -13,6 +14,25 @@ import { upFair, type SviFloat } from '@/lib/svi/svi';
 
 const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
 const FORWARD = 63_000;
+
+describe('winPayout (what a win actually pays)', () => {
+  it('at 1× pays the full max-payout quantity (floor 0)', () => {
+    expect(winPayout(6_500_000n, 0.769, 1)).toBe(6_500_000n);
+  });
+
+  it('at 2× pays qty − floor, matching the on-chain settled payout', () => {
+    // Verified on-chain: qty $12.72, entry 78.59%, 2× → floor ~$5.00 → payout $7.72.
+    const win = winPayout(12_720_000n, 0.785915858, 2);
+    expect(Number(win) / 1e6).toBeCloseTo(7.72, 1);
+    expect(win).toBeLessThan(12_720_000n); // NOT the full qty (the overstatement bug)
+    // second real order: qty $10.71, entry 93.33%, 2× → $5.71.
+    expect(Number(winPayout(10_710_000n, 0.933312689, 2)) / 1e6).toBeCloseTo(5.71, 1);
+  });
+
+  it('never goes negative', () => {
+    expect(winPayout(1_000_000n, 0.99, 3)).toBeGreaterThanOrEqual(0n);
+  });
+});
 
 describe('quantityForStake', () => {
   it('at 1x, cost ≈ stake (quantity = stake / prob)', () => {

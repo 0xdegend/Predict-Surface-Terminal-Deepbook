@@ -46,7 +46,7 @@ import {
   leverageScaled,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, knockoutProbability, priceMoveToKnockout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
+import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2SmileChart } from './smile-chart';
 import { StepBar } from '@/app/_components/ticket/step-bar';
@@ -200,6 +200,9 @@ export function V2TradeTicket({
   const amount = mintAmountBase(stakeBase);
   const quantity = quantityForStake(amount, entryProb, lev); // quoted payout (chain sizes the real one)
   const minQuantity = minQuantityForBudget(quantity);
+  // What a WIN actually pays: max payout minus the leverage floor (= full qty at
+  // 1×). Fees below still charge on the notional `quantity`, not this.
+  const winBase = winPayout(quantity, entryProb, lev);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
@@ -243,7 +246,7 @@ export function V2TradeTicket({
   // payout multiple stay ALL-IN (stake + fee) so the money math never lies.
   const payDollars = fromQuote(stakeBase);
   const allInDollars = fromQuote(estCostBase);
-  const winDollars = fromQuote(quantity);
+  const winDollars = fromQuote(winBase);
   const mult = allInDollars > 0 ? winDollars / allInDollars : 0;
   const profit = winDollars - allInDollars;
 
@@ -303,7 +306,7 @@ export function V2TradeTicket({
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ],
         staked: `$${fromQuote(stakeBase).toFixed(2)} ${sym}`,
-        maxWin: `$${fromQuote(quantity).toFixed(2)} ${sym}`,
+        maxWin: `$${fromQuote(winBase).toFixed(2)} ${sym}`,
         digest,
       });
     }
@@ -773,7 +776,7 @@ export function V2TradeTicket({
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ]}
         cost={`$${fromQuote(stakeBase).toFixed(2)} ${sym}`}
-        maxWin={`$${fromQuote(quantity).toFixed(2)} ${sym}`}
+        maxWin={`$${fromQuote(winBase).toFixed(2)} ${sym}`}
         confirmLabel={`Mint ${rangeMode ? 'Range' : isUp ? 'UP' : 'DOWN'}`}
         subtitle={
           acct.gasless

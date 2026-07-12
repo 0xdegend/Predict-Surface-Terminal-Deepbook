@@ -15,6 +15,8 @@
  */
 import { NextResponse } from 'next/server';
 import { EnokiClient, type EnokiNetwork } from '@mysten/enoki';
+import { Transaction } from '@mysten/sui/transactions';
+import { fromBase64, normalizeSuiAddress } from '@mysten/sui/utils';
 import { predictConfig, predictV2Config } from '@/config/predict';
 import { installEnokiTrace } from '@/lib/sui/enoki-trace';
 
@@ -26,67 +28,50 @@ const enoki = process.env.ENOKI_PRIVATE_API_KEY
   ? new EnokiClient({ apiKey: process.env.ENOKI_PRIVATE_API_KEY })
   : null;
 
-/** Move-call targets the sponsor will pay for (every moveCall in a sponsored PTB
- *  must be listed, incl. the key constructors used inside mint/redeem). */
-function allowedMoveCallTargets(): string[] {
-  const pkg = predictConfig.packageId;
-  const targets = [
-    `${pkg}::predict::create_manager`,
-    `${pkg}::predict::mint`,
-    `${pkg}::predict::redeem`,
-    `${pkg}::predict::redeem_permissionless`,
-    `${pkg}::predict::mint_range`,
-    `${pkg}::predict::redeem_range`,
-    `${pkg}::predict::supply`,
-    `${pkg}::predict::withdraw`,
-    `${pkg}::predict_manager::deposit`,
-    `${pkg}::predict_manager::withdraw`,
-    `${pkg}::market_key::new`,
-    `${pkg}::range_key::new`,
+/** Package IDs the sponsor is willing to pay gas for — our own deployments only,
+ *  so it can never be turned into a faucet for arbitrary transactions. Normalized
+ *  to canonical 0x-form so comparison against the tx's targets is exact. */
+function ownedPackages(): Set<string> {
+  const ids = [
+    predictConfig.packageId,
+    predictConfig.hedgePackageId,
+    predictConfig.skewFeePackageId,
+    predictV2Config.packages.predict,
+    predictV2Config.packages.account,
   ];
-  if (predictConfig.hedgePackageId) {
-    targets.push(`${predictConfig.hedgePackageId}::hedged_position::open_hedged_and_keep`);
+  return new Set(ids.filter(Boolean).map((id) => normalizeSuiAddress(id)));
+}
+
+/**
+ * Derive the sponsor allowlist from the ACTUAL transaction: every move-call
+ * target the kind bytes contain, each verified to live in one of our packages.
+ *
+ * This replaces the old hand-maintained target list, which silently 400'd Enoki's
+ * create phase the moment a flow called a function nobody remembered to add
+ * (mint_exact_amount, redeem_live/settled, …). Now ANY function in our packages is
+ * covered automatically — so gasless flows never break target-by-target — while a
+ * call into a package we don't own is refused up front. Targets are passed through
+ * exactly as parsed, so their normalization matches what Enoki reads from the same
+ * bytes (no stale-string or leading-zero mismatch). Throws → 400 in the caller.
+ */
+function sponsoredTargets(kindB64: string): string[] {
+  const { commands } = Transaction.fromKind(fromBase64(kindB64)).getData() as unknown as {
+    commands: { MoveCall?: { package: string; module: string; function: string } }[];
+  };
+  const owned = ownedPackages();
+  const targets = new Set<string>();
+  for (const cmd of commands) {
+    const mc = cmd.MoveCall;
+    if (!mc) continue; // native command (split/merge/transfer) — no target to gate
+    const pkg = normalizeSuiAddress(mc.package);
+    if (!owned.has(pkg)) {
+      throw new Error(
+        `Refusing to sponsor a call outside the Predict packages: ${pkg}::${mc.module}::${mc.function}`,
+      );
+    }
+    targets.add(`${pkg}::${mc.module}::${mc.function}`);
   }
-  // Skew builder-fee router: when deployed, mints route through fee_router (which
-  // builds the MarketKey/RangeKey internally and composes predict::mint), so the
-  // top-level PTB call is fee_router::* — allowlist it or sponsored fee-mints 403.
-  if (predictConfig.skewFeePackageId) {
-    targets.push(
-      `${predictConfig.skewFeePackageId}::fee_router::mint_with_fee`,
-      `${predictConfig.skewFeePackageId}::fee_router::mint_range_with_fee`,
-    );
-  }
-  // NEW (v2) deployment — account custody, expiry-market trading, async vault.
-  // Every moveCall in a sponsored v2 PTB must be here (generate_auth and
-  // load_live_pricer run inline in most flows), or Enoki rejects the create
-  // phase with a 4xx regardless of the portal settings.
-  const v2 = predictV2Config.packages;
-  if (v2.account) {
-    targets.push(
-      `${v2.account}::account::generate_auth`,
-      `${v2.account}::account::share`,
-      `${v2.account}::account::deposit_funds`,
-      `${v2.account}::account::withdraw_funds`,
-      `${v2.account}::account_registry::new`,
-    );
-  }
-  if (v2.predict) {
-    targets.push(
-      `${v2.predict}::expiry_market::load_live_pricer`,
-      `${v2.predict}::expiry_market::mint_exact_quantity`,
-      // Budget mint (mintBudget → buildMintBudgetTx): the chain sizes the
-      // quantity from its own live odds. This is the DEFAULT open-position path
-      // (surface popover + trade ticket), so omitting it 400s every gasless mint.
-      `${v2.predict}::expiry_market::mint_exact_amount`,
-      `${v2.predict}::expiry_market::redeem_live`,
-      `${v2.predict}::expiry_market::redeem_settled`,
-      `${v2.predict}::plp::request_supply`,
-      `${v2.predict}::plp::request_withdraw`,
-      `${v2.predict}::plp::cancel_supply_request`,
-      `${v2.predict}::plp::cancel_withdraw_request`,
-    );
-  }
-  return targets;
+  return [...targets];
 }
 
 export async function POST(req: Request) {
@@ -119,11 +104,19 @@ export async function POST(req: Request) {
 
     // Create phase — wrap the transaction kind with sponsor gas.
     if (body.transactionKindBytes && body.sender) {
+      // Allowlist is derived from the tx itself; a malformed kind or a call into a
+      // package we don't sponsor is a client error (400), not an Enoki failure.
+      let allowedMoveCallTargets: string[];
+      try {
+        allowedMoveCallTargets = sponsoredTargets(body.transactionKindBytes);
+      } catch (e) {
+        return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+      }
       const sponsored = await enoki.createSponsoredTransaction({
         network: predictConfig.network as EnokiNetwork,
         transactionKindBytes: body.transactionKindBytes,
         sender: body.sender,
-        allowedMoveCallTargets: allowedMoveCallTargets(),
+        allowedMoveCallTargets,
         // Restrict transfer recipients to those the client declared (e.g. a
         // cash-out destination + the sender). Undefined ⇒ no address restriction.
         allowedAddresses: body.allowedAddresses,

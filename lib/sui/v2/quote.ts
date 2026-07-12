@@ -87,6 +87,26 @@ export function quantityForStake(stakeBase: bigint, entryProb: number, leverage:
 }
 
 /**
+ * What a WINNING position actually PAYS OUT (DUSDC base units) — the max-payout
+ * `quantity` minus the static leverage floor `entry_value·(1 − 1/L)` (with
+ * `entry_value = entryProb·quantity`). Unleveraged (L ≤ 1) ⇒ the full quantity.
+ *
+ * A leveraged win never pays the full max payout: you only staked `1/L` of the
+ * entry value and the other `(1 − 1/L)` is the floor that's netted out on
+ * redeem. Mirrors the on-chain settled payout (verified: quantity $12.72, entry
+ * 78.6%, 2× → floor $5.00 → $7.72, NOT $12.72), and matches `leverageFloor` on
+ * the portfolio side. Use this for every "you win" / max-win figure so the
+ * ticket preview equals what actually lands.
+ */
+export function winPayout(quantityBase: bigint, entryProb: number, leverage: number): bigint {
+  if (leverage <= 1) return quantityBase;
+  const q = Number(quantityBase);
+  const floor = Math.min(Math.max(entryProb, 0), 1) * q * (1 - 1 / leverage);
+  const win = Math.round(q - floor);
+  return win > 0 ? BigInt(win) : 0n;
+}
+
+/**
  * The knockout barrier for a leveraged binary — the direction-fair chance at
  * which the position is closed early. Source-verified (predict-testnet-6-24):
  * at mint the static floor is `F = entryProb·qty·(1 − 1/L)`, and

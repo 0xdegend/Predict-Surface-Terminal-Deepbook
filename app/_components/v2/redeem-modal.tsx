@@ -5,6 +5,7 @@ import { Modal } from '@/app/_components/ui/modal';
 import { quote as fmtQuote, price, signed, shortId } from '@/lib/format';
 import { fromQuote } from '@/config/scale';
 import { CloseAmountPicker } from '@/app/_components/positions/close-amount-picker';
+import { POSITION_LOT_BASE } from '@/lib/sui/v2/quote';
 import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 /**
@@ -110,7 +111,7 @@ export function V2RedeemModal({
             Cancel
           </button>
           <button
-            onClick={() => p && canConfirm && onConfirm(p, closeBase)}
+            onClick={() => p && canConfirm && onConfirm(p, settled ? openBase : closeBase)}
             disabled={busy || !canConfirm}
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
@@ -143,11 +144,17 @@ export function V2RedeemModal({
             {worthless
               ? 'This market settled against your bet, so it paid nothing. Clearing just removes the worthless position from your account.'
               : settled
-                ? 'This market has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+                ? 'This market has settled — the payout is claimed in full (a settled position can’t be claimed in parts).'
                 : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 
-          <CloseAmountPicker openBase={openBase} closeBase={closeBase} onChange={setCloseBase} />
+          {/* Partial amounts are only valid while the market is LIVE. The contract
+              requires a settled position to be redeemed in full — redeem_settled
+              asserts close_quantity == the order's full quantity (EFullCloseRequired)
+              — so the picker only shows for a live close; settled claims go full. */}
+          {!settled && (
+            <CloseAmountPicker openBase={openBase} closeBase={closeBase} onChange={setCloseBase} lotBase={POSITION_LOT_BASE} />
+          )}
 
           <div className="glass-inset relative overflow-hidden p-4">
             {/* faint directional wash — green on profit, coral on loss */}

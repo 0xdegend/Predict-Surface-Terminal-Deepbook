@@ -31,7 +31,7 @@ import {
   leverageScaled,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
+import { quantityForStake, winPayout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from '../ticket/payout-slider';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -52,10 +52,13 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   const amount = mintAmountBase(stakeBase);
   const quantity = quantityForStake(amount, entryProb, lev); // quoted payout (chain sizes the real one)
   const minQuantity = minQuantityForBudget(quantity);
+  // What a WIN actually pays: max payout minus the leverage floor (= full qty at
+  // 1×). Fees still charge on the notional `quantity`, not this.
+  const win = winPayout(quantity, entryProb, lev);
   const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
   const estCostBase = stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
-  return { maxLev, lev, stakeBase, quantity, amount, minQuantity, feeBase, estCostBase, maxCost };
+  return { maxLev, lev, stakeBase, quantity, win, amount, minQuantity, feeBase, estCostBase, maxCost };
 }
 
 export function SurfaceTradePopoverV2({
@@ -324,7 +327,7 @@ function BinaryBody({
           s,
         )}
         cost={`$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`}
-        maxWin={`$${fromQuote(s.quantity).toFixed(2)} ${predictV2Config.quote.symbol}`}
+        maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
         subtitle={
           acct.gasless
@@ -494,7 +497,7 @@ function RangeBody({
           s,
         )}
         cost={`$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`}
-        maxWin={`$${fromQuote(s.quantity).toFixed(2)} ${predictV2Config.quote.symbol}`}
+        maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel="Mint Range"
         subtitle={
           acct.gasless
@@ -637,7 +640,7 @@ function QuoteCard({
   } else {
     const pay = fromQuote(s.stakeBase);
     const allIn = fromQuote(s.estCostBase);
-    const win = fromQuote(s.quantity);
+    const win = fromQuote(s.win);
     const mult = allIn > 0 ? win / allIn : 0;
     const profit = win - allIn;
     body = (

@@ -7,12 +7,12 @@
  *
  * `celebrate(payout, digest)` fires it; `overlay` is the render node to drop into
  * the panel — a SuccessModal (payout counting up, explorer link) plus a one-shot
- * ParticleBurst keyed to the digest so it replays per claim. Losing/worthless
+ * Confetti fall keyed to the digest so it replays per claim. Losing/worthless
  * clears and live closes don't call this; they keep the quiet success toast.
  */
 import { useState } from 'react';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
-import { ParticleBurst } from '@/app/_components/ui/particle-burst';
+import { Confetti } from '@/app/_components/ui/confetti';
 import { predictV2Config } from '@/config/predict';
 
 export function useClaimCelebration() {
@@ -32,7 +32,7 @@ export function useClaimCelebration() {
         sub="paid into your trading account"
         digest={done?.digest}
       />
-      {done && <ParticleBurst key={done.digest} />}
+      {done && <Confetti key={done.digest} />}
     </>
   );
 

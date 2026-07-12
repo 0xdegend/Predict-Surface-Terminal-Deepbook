@@ -302,12 +302,29 @@ export function buildV2Spark(
   return (held.length >= 4 ? held : path).map((d) => d.v);
 }
 
+/**
+ * The static leverage floor (DUSDC) — the "borrowed" portion of a leveraged
+ * position that is netted out of the payout on a win. Prefer the indexer's
+ * `floor_shares`, but DERIVE it from entry facts when that field is absent (the
+ * positions feed doesn't reliably carry it): `entry_value·(1 − 1/L)` with
+ * `entry_value = entryPrice·qty`. Unleveraged (L ≤ 1) ⇒ 0.
+ *
+ * Verified against chain: qty $12.72, entry 78.6%, 2× → floor $5.00 → win payout
+ * $7.72 (not the full $12.72); qty $10.71, entry 93.3%, 2× → $5.71.
+ */
+function leverageFloor(p: V2PortfolioPosition): number {
+  if (p.floorShares != null) return p.floorShares;
+  const L = p.leverage ?? 1;
+  if (L <= 1 || p.entryPrice == null) return 0;
+  return p.entryPrice * p.qty * (1 - 1 / L);
+}
+
 export function valueV2Position(
   p: V2PortfolioPosition,
   markPrice: number | null,
 ): V2PortfolioPosition {
   if (p.settled || markPrice == null) return p;
-  const floor = p.floorShares ?? 0;
+  const floor = leverageFloor(p);
   const markValue = Math.max(0, markPrice * p.qty - floor);
   const pnl = p.cost != null ? markValue - p.cost : undefined;
   const deltaPp = p.entryPrice != null ? (markPrice - p.entryPrice) * 100 : undefined;
@@ -346,9 +363,13 @@ export function settleV2Position(
   }
   if (outcome == null) return p;
   const won = outcome >= 0.5;
-  // Each contract pays 1.00 on a win; a loss (or knocked-out leverage) pays 0.
-  // The real terminal payout takes over once the indexer reports the redeem.
-  const markValue = won ? p.qty : 0;
+  // A win pays the equity ABOVE the static leverage floor — max(0, qty − floor),
+  // identical to valueV2Position at mark = 1. Unleveraged ⇒ floor 0 ⇒ the full
+  // qty; a 2× win ⇒ qty − floor (the REAL payout — e.g. qty $12.72, floor $5.00
+  // → $7.72, NOT $12.72; using the full qty was the 154%-vs-54% overstatement).
+  // A loss / knocked-out leverage pays 0. The real terminal payout takes over
+  // once the indexer reports the redeem.
+  const markValue = won ? Math.max(0, p.qty - leverageFloor(p)) : 0;
   const pnl = p.cost != null ? markValue - p.cost : undefined;
   const deltaPp = p.entryPrice != null ? (outcome - p.entryPrice) * 100 : undefined;
   return { ...p, settled: true, won, markPrice: outcome, markValue, pnl, deltaPp };

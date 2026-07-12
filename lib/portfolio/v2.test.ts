@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeV2Position,
   valueV2Position,
+  settleV2Position,
   positionMarkPrice,
   buildV2Spark,
   deriveV2HistoryFromOrders,
@@ -90,6 +91,45 @@ describe('valueV2Position (client-side MTM)', () => {
 
   it('is a no-op when there is no pricer', () => {
     expect(valueV2Position(base, null)).toBe(base);
+  });
+});
+
+describe('settleV2Position (settled winner payout — leverage-correct)', () => {
+  const base = normalizeV2Position(REAL_ROW, 0, MARKET); // 2×, qty $13.31, cost ~$5, floor ~$5, strike $64,364
+
+  it('a 2× win pays equity ABOVE the floor (qty − floor), NOT the full qty', () => {
+    const s = settleV2Position(base, 64_500); // settles above the $64,364 strike → UP wins
+    expect(s.settled).toBe(true);
+    expect(s.won).toBe(true);
+    // payout = 13.31 − 5.0 ≈ 8.31, NOT the full 13.31 (the 154%-vs-54% overstatement)
+    expect(s.markValue).toBeCloseTo(8.31, 1);
+    expect(s.markValue!).toBeLessThan(base.qty);
+    // PnL is NET (value − cost), not gross (value/cost)
+    expect(s.pnl).toBeCloseTo(3.31, 1);
+  });
+
+  it('the settled value equals the live mark at settlement (mark = 1)', () => {
+    const settledVal = settleV2Position(base, 64_500).markValue;
+    const liveAtOne = valueV2Position(base, 1).markValue; // in-the-money live mark
+    expect(settledVal).toBeCloseTo(liveAtOne!, 5);
+  });
+
+  it('derives the floor when floor_shares is absent (the positions feed omits it)', () => {
+    const noFloor = { ...base, floorShares: undefined };
+    // derived floor = entryPrice·qty·(1 − 1/L) = 0.7512·13.31·0.5 ≈ 5.0 → payout ≈ 8.31
+    expect(settleV2Position(noFloor, 64_500).markValue).toBeCloseTo(8.31, 1);
+  });
+
+  it('a loss (settles below the strike) pays 0', () => {
+    const s = settleV2Position(base, 60_000);
+    expect(s.won).toBe(false);
+    expect(s.markValue).toBe(0);
+    expect(s.pnl).toBeCloseTo(-base.cost!, 5);
+  });
+
+  it('an unleveraged win pays the full qty (floor 0)', () => {
+    const s = settleV2Position({ ...base, leverage: 1, floorShares: undefined }, 64_500);
+    expect(s.markValue).toBeCloseTo(base.qty, 5);
   });
 });
 
