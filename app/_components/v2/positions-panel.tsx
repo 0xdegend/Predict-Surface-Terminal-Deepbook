@@ -20,7 +20,8 @@ import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions'
 import { predictV2Config } from '@/config/predict';
 import { quote as fmtQuote, price, signed } from '@/lib/format';
 import { V2RedeemModal } from './redeem-modal';
-import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { useClaimCelebration } from './use-claim-celebration';
+import { winningClaimPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 /** Max position cards shown in the rail before deferring to Portfolio. */
 const MAX_SHOWN = 3;
@@ -32,6 +33,7 @@ export function V2PositionsPanel() {
   const mounted = useMounted();
   const { positions, isLoading } = useV2PortfolioPositions(acct.accountId);
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
+  const { celebrate, overlay: claimCelebration } = useClaimCelebration();
 
   const sym = predictV2Config.quote.symbol;
   const open = positions.filter((p) => p.qty > 0);
@@ -44,8 +46,15 @@ export function V2PositionsPanel() {
       return;
     }
     const args = { marketId: p.marketId, orderId: p.orderId, closeQuantity };
-    const digest = p.settled ? await acct.redeemSettled(args) : await acct.redeemLive(args);
-    if (digest) setRedeeming(null);
+    // Settled winner → celebrate (SuccessModal + confetti); everything else toasts.
+    const payout = winningClaimPayout(p, closeQuantity);
+    const digest = p.settled
+      ? await acct.redeemSettled(args, payout != null ? { silentSuccess: true } : undefined)
+      : await acct.redeemLive(args);
+    if (digest) {
+      setRedeeming(null);
+      if (payout != null) celebrate(payout, digest);
+    }
   }
 
   return (
@@ -86,6 +95,8 @@ export function V2PositionsPanel() {
         onConfirm={handleConfirm}
         onClose={() => setRedeeming(null)}
       />
+
+      {claimCelebration}
     </div>
   );
 }

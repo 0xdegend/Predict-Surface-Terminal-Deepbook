@@ -47,12 +47,14 @@ import {
   V2_DEMO_ENABLED,
   demoPositions,
   demoHistory,
+  winningClaimPayout,
   type V2PortfolioPosition,
 } from '@/lib/portfolio/v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
 import { V2RedeemModal } from './redeem-modal';
+import { useClaimCelebration } from './use-claim-celebration';
 
 type FundMode = 'add' | 'withdraw';
 
@@ -70,6 +72,8 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Close/redeem runs through a confirmation dialog (win/loss + partial close),
   // mirroring the legacy flow — never a one-shot instant tx.
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
+  // Winning claims get a celebration (SuccessModal + confetti) instead of a toast.
+  const { celebrate, overlay: claimCelebration } = useClaimCelebration();
 
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
@@ -147,10 +151,19 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       return;
     }
     const args = { marketId: p.marketId, orderId: p.orderId, closeQuantity };
-    const digest = p.settled ? await acct.redeemSettled(args) : await acct.redeemLive(args);
+    // A settled winner is a celebration, not a toast: claim it silently, then pop
+    // the SuccessModal + confetti with the payout. Live closes / worthless clears
+    // keep the quiet toast (winningClaimPayout returns null for them).
+    const payout = winningClaimPayout(p, closeQuantity);
+    const digest = p.settled
+      ? await acct.redeemSettled(args, payout != null ? { silentSuccess: true } : undefined)
+      : await acct.redeemLive(args);
     // Keep the dialog open on failure (error surfaces in the panel); close it once
     // the tx lands so the refreshed position list takes over.
-    if (digest) setRedeeming(null);
+    if (digest) {
+      setRedeeming(null);
+      if (payout != null) celebrate(payout, digest);
+    }
   }
 
   async function handleFund(amount: number) {
@@ -362,6 +375,8 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         onConfirm={handleRedeemConfirm}
         onClose={() => setRedeeming(null)}
       />
+
+      {claimCelebration}
 
       <FundModal
         mode={fundMode}

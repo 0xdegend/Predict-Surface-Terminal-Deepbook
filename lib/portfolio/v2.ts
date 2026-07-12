@@ -71,6 +71,21 @@ export interface V2PortfolioPosition {
   openedAt?: number;
 }
 
+/**
+ * Whether closing this position is a *winning claim* worth celebrating, and the
+ * payout for the chosen amount. Only a settled winner with a positive payout
+ * qualifies — a live close or a worthless (lost) clear returns null, so those
+ * keep the quiet toast. `closeQuantity` is on-chain base units (@6dec); the
+ * payout scales linearly with the fraction of the lot being claimed.
+ */
+export function winningClaimPayout(p: V2PortfolioPosition, closeQuantity: bigint): number | null {
+  if (!p.settled || p.won === false) return null;
+  const openBase = p.qtyBase ?? 0n;
+  const fraction = openBase > 0n ? Number(closeQuantity) / Number(openBase) : 1;
+  const payout = (p.markValue ?? 0) * fraction;
+  return payout > 0 ? payout : null;
+}
+
 /* ────────────────────────────── real rows ────────────────────────────── */
 
 /** Direction from the tick pair: [x, +inf) = Up, [0, x) = Down, else Range. */

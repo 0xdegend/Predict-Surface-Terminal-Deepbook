@@ -208,10 +208,12 @@ export function usePredictAccountV2() {
       wrapperId
         ? runTx('mint', buildMintBudgetTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
         : Promise.resolve(null),
-    redeemLive: (p: Omit<RedeemParams, 'wrapperId'>) =>
-      wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations) : Promise.resolve(null),
-    redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>) =>
-      wrapperId ? runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations) : Promise.resolve(null),
+    redeemLive: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
+      wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts) : Promise.resolve(null),
+    // A winning claim passes silentSuccess so the caller can own the celebration
+    // (SuccessModal + confetti) instead of the quiet bottom-right toast.
+    redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
+      wrapperId ? runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts) : Promise.resolve(null),
     /* ---- async vault (PLP) ---- */
     requestSupply: (amount: bigint, deposit?: bigint) =>
       wrapperId ? runTx('supply', buildRequestSupplyTx({ wrapperId, amount, deposit })) : Promise.resolve(null),

@@ -879,6 +879,18 @@ select:focus-visible,
   0% { opacity: 0; transform: translate(10px, -12px) scale(0.9); }
   100% { opacity: 0.9; transform: translate(0, 0) scale(1); }
 }
+/* Winning-claim celebration — a particle pops out from the origin, then drifts
+   out along its vector and fades. Per-particle vector/rotation/scale ride in on
+   CSS custom properties (see ParticleBurst). translate(-50%,-50%) centers the
+   glyph on the origin point before the burst offset is added. */
+@keyframes particleBurst {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
+  12% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(var(--ps)) rotate(var(--pr));
+  }
+}
 
 /* Preloader (skew-loader) — CSS-driven so the bar + shimmer move even before
    hydration; GSAP layers the logo float/glow on top once mounted. Reduced-motion
