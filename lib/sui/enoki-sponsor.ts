@@ -14,7 +14,7 @@
  *   4. POST /api/sponsor (execute)             → { digest }          [private key, server]
  */
 import { Transaction } from '@mysten/sui/transactions';
-import { toBase64 } from '@mysten/sui/utils';
+import { toBase64, fromBase64 } from '@mysten/sui/utils';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { enokiEnabled } from '@/config/enoki';
 
@@ -77,6 +77,52 @@ async function sponsorSignExecute(kindB64: string, sender: string, allowedAddres
   }
 }
 
+/** Minimal simulate surface — `dAppKit.getClient().core` (a gRPC core client)
+ *  satisfies this; we narrow the result ourselves (below) rather than depend on
+ *  the SDK's exact generic. */
+interface SimulateCore {
+  simulateTransaction: (opts: { transaction: Transaction; checksEnabled?: boolean }) => Promise<unknown>;
+}
+
+/** The only bit of a simulate result we read — a MoveAbort's raw message. */
+interface SimFailure {
+  $kind?: string;
+  FailedTransaction?: { status?: { error?: { message?: string } | string | null } };
+}
+
+/**
+ * Dry-run the exact kind bytes we're about to sponsor, and throw the raw Move
+ * abort if the tx would abort on-chain.
+ *
+ * Why this exists: Enoki's `create` step dry-runs the tx to attach sponsor gas.
+ * When the tx would abort (e.g. a leverage the market won't admit at these odds,
+ * or a market that just expired), Enoki rejects with a generic 4xx that HIDES the
+ * Move abort — so the trader only ever sees "the gasless service briefly rejected
+ * the request, try again", which never clears for a real, deterministic abort.
+ * Running the same dry-run ourselves first lets the caller's humanizer decode the
+ * actual reason (`humanizeV2Error` reads exactly this message format) and show
+ * plain, actionable copy instead of an infinite retry loop. The wallet path
+ * already surfaces aborts via `executeTransaction`; this closes the same gap for
+ * gasless. We rebuild from the sponsored KIND bytes (not the live tx object) so we
+ * validate precisely what Enoki will run. A simulate transport hiccup returns
+ * quietly — we don't block a real send on our own extra check; Enoki still guards.
+ */
+async function assertSponsoredKindExecutes(core: SimulateCore, kindB64: string, sender: string): Promise<void> {
+  let res: SimFailure;
+  try {
+    const probe = Transaction.fromKind(fromBase64(kindB64));
+    probe.setSender(sender);
+    res = (await core.simulateTransaction({ transaction: probe, checksEnabled: false })) as SimFailure;
+  } catch {
+    return; // couldn't reach simulate — leave the real sponsor path to guard it
+  }
+  if (res.$kind === 'FailedTransaction') {
+    const err = res.FailedTransaction?.status?.error;
+    const msg = typeof err === 'string' ? err : err?.message;
+    if (msg) throw new Error(msg);
+  }
+}
+
 /** Bounded on-chain lookup of a digest (a few seconds), false if not found. */
 async function txLanded(digest: string): Promise<boolean> {
   try {
@@ -111,6 +157,10 @@ export async function executeSponsored(
   // Only the transaction KIND — Enoki owns the gas object. Built once; a retry
   // re-sponsors fresh gas from these same bytes.
   const kindB64 = toBase64(await tx.build({ client, onlyTransactionKind: true }));
+
+  // Surface a real on-chain abort (e.g. inadmissible leverage) as itself, before
+  // Enoki's sponsor dry-run buries it under a generic "gasless rejected, retry".
+  await assertSponsoredKindExecutes(client.core, kindB64, sender);
 
   const MAX_ATTEMPTS = 2;
   let lastErr: unknown;

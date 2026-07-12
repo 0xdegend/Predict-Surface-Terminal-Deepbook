@@ -107,6 +107,66 @@ export function winPayout(quantityBase: bigint, entryProb: number, leverage: num
 }
 
 /**
+ * The protocol's admission curve constant `k` — `config_constants::
+ * admission_leverage_curve_k = 200_000_000` (0.2, 1e9-scaled) on
+ * predict-testnet-6-24. Do not confuse with `liquidation_ltv`.
+ */
+export const ADMISSION_LEVERAGE_CURVE_K = 0.2;
+
+/**
+ * The largest leverage the protocol will ADMIT at a given entry probability —
+ * `strike_exposure_config::admitted_leverage_cap`, source-verified
+ * (predict-testnet-6-24):
+ *   risk_curve = p·(1 + k)/(p + k)              // 0 at p=0, →1 as p→1
+ *   cap        = 1 + (maxAdmissionLeverage − 1)·risk_curve
+ * The market's `max_admission_leverage` (e.g. 3×) is only the p→1 asymptote — the
+ * curve scales it DOWN for anything short of a near-certainty, so the achievable
+ * cap is strictly below it at every tradeable strike (e.g. 2.71× at 50/50, 2.997×
+ * at 99% with maxLev=3, k=0.2). This is the check that aborts a mint with
+ * `ELeverageAboveAdmissionCap` (strike_exposure_config #6). `entryProb` is the
+ * direction-fair chance of the side being bet.
+ */
+export function admittedLeverageCap(
+  entryProb: number,
+  maxAdmissionLeverage: number,
+  k = ADMISSION_LEVERAGE_CURVE_K,
+): number {
+  const p = Math.min(Math.max(entryProb, 0), 1);
+  const lMax = Math.max(1, maxAdmissionLeverage);
+  if (p <= 0) return 1;
+  const riskCurve = (p * (1 + k)) / (p + k);
+  return 1 + (lMax - 1) * riskCurve;
+}
+
+/**
+ * The largest WHOLE-number leverage a trader may select at these odds — the
+ * admitted cap floored to an integer preset, never below 1×. A hair of margin
+ * (1e-6) keeps us safely under the chain's fixed-point `mul_div_down` cap at the
+ * exact integer boundary. Use this to size leverage presets so the UI never
+ * offers a multiple the chain will reject (the market-wide `max_admission_leverage`
+ * over-promises — a full 3× is unreachable below 100% odds).
+ */
+export function maxSelectableLeverage(entryProb: number, maxAdmissionLeverage: number): number {
+  return Math.max(1, Math.floor(admittedLeverageCap(entryProb, maxAdmissionLeverage) - 1e-6));
+}
+
+/** Granularity of the continuous leverage slider — 0.1× steps. */
+export const LEVERAGE_STEP = 0.1;
+
+/**
+ * The max leverage a CONTINUOUS slider should allow at these odds: the admitted
+ * cap floored onto the 0.1× grid (a hair under the exact cap via the 1e-6 nudge,
+ * so we stay inside the chain's fixed-point bound). ≥ 1×. Unlike
+ * `maxSelectableLeverage` (whole-number presets) this exposes the fractional
+ * headroom — e.g. 2.7× at 50/50 instead of stopping at 2×. The pre-flight
+ * simulate ([[enoki-sponsor]]) backstops any odds drift between quote and mint.
+ */
+export function leverageSliderMax(entryProb: number, maxAdmissionLeverage: number): number {
+  const cap = admittedLeverageCap(entryProb, maxAdmissionLeverage) - 1e-6;
+  return Math.max(1, Math.floor(cap / LEVERAGE_STEP) * LEVERAGE_STEP);
+}
+
+/**
  * The knockout barrier for a leveraged binary — the direction-fair chance at
  * which the position is closed early. Source-verified (predict-testnet-6-24):
  * at mint the static floor is `F = entryProb·qty·(1 − 1/L)`, and

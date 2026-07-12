@@ -21,7 +21,7 @@ import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
-import { price, pct, signed, countdown, dateUTC } from '@/lib/format';
+import { price, pct, signed, countdown, dateUTC, leverage as fmtLev } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { isClosingSoon, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import {
@@ -31,11 +31,31 @@ import {
   leverageScaled,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, winPayout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
+import {
+  quantityForStake,
+  winPayout,
+  leverageSliderMax,
+  MIN_STAKE_BASE,
+  mintAmountBase,
+  minQuantityForBudget,
+} from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from '../ticket/payout-slider';
+import { V2LeverageSlider } from '../ticket/leverage-slider';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
+import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { V2Market } from '@/lib/api/v2/types';
+
+/** The frozen recap a successful mint shows in the MintSuccessModal (parity with
+ *  the rail ticket) — captured at mint time so it never re-renders behind it. */
+type MintSuccessState = {
+  headline: string;
+  tone: 'up' | 'down';
+  rows: ConfirmRow[];
+  staked: string;
+  maxWin: string;
+  digest: string;
+};
 
 const SLIPPAGE_BPS = 100; // 1% deposit-buffer headroom (same as the rail ticket)
 const AMOUNT_PRESETS = [1, 5, 10, 25];
@@ -43,7 +63,11 @@ const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigi
 
 /** The mint sizing shared by both bodies — mirrors the rail ticket line-for-line. */
 function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage: number) {
-  const maxLev = Math.max(1, Math.floor(toFloat(market.max_admission_leverage)));
+  // Cap by the protocol's PROBABILITY-SCALED admission curve, not the market-wide
+  // `max_admission_leverage` — that ceiling (e.g. 3×) is only the p→1 asymptote, so
+  // offering it at real odds always aborts with strike_exposure_config #6. The
+  // slider exposes the fractional headroom up to this cap (continuous on-chain).
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
   const lev = Math.min(leverage, maxLev);
   const stakeBase = toQuote(Math.max(0, stake));
   // Budget mint: the chain derives the quantity at execution from its own live
@@ -150,6 +174,7 @@ function BinaryBody({
 
   const [view, setView] = useState<'glance' | 'ticket'>('glance');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [mintSuccess, setMintSuccess] = useState<MintSuccessState | null>(null);
 
   if (!market || !input) {
     return <div className="px-3.5 py-3 text-[11px] text-text-3">Loading market…</div>;
@@ -192,19 +217,37 @@ function BinaryBody({
       isUp,
       BigInt(market!.tick_size),
     );
-    const digest = await acct.mintBudget({
-      marketId: market!.expiry_market_id,
-      lowerTick,
-      higherTick,
-      amount: s.amount,
-      minQuantity: s.minQuantity,
-      leverage: leverageScaled(s.lev),
-      deposit: shortfall > 0n ? shortfall : undefined,
-    });
+    // silentSuccess: the celebratory MintSuccessModal replaces the toast (rail parity).
+    const digest = await acct.mintBudget(
+      {
+        marketId: market!.expiry_market_id,
+        lowerTick,
+        higherTick,
+        amount: s.amount,
+        minQuantity: s.minQuantity,
+        leverage: leverageScaled(s.lev),
+        deposit: shortfall > 0n ? shortfall : undefined,
+      },
+      { silentSuccess: true },
+    );
     setConfirmOpen(false);
     if (digest) {
       pulseFill({ marketId: market!.expiry_market_id, strike, isUp });
-      onClose();
+      // Keep the popover mounted behind the success modal; it closes on Done.
+      setMintSuccess({
+        headline: `BTC · ${isUp ? 'UP' : 'DOWN'}`,
+        tone: isUp ? 'up' : 'down',
+        rows: confirmRows(
+          { label: 'Outcome', value: isUp ? 'Pays if price ends ABOVE' : 'Pays if price ends AT/BELOW' },
+          { label: 'Strike', value: usd(strike), emphasize: true },
+          market!,
+          now,
+          s,
+        ),
+        staked: `$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`,
+        maxWin: `$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`,
+        digest,
+      });
     }
   }
 
@@ -287,7 +330,9 @@ function BinaryBody({
           </button>
 
           <BetRow stake={stake} setStake={setStake} />
-          <LeverageRow maxLev={s.maxLev} lev={s.lev} setLeverage={setLeverage} />
+          {s.maxLev > 1 && (
+            <V2LeverageSlider value={s.lev} max={s.maxLev} onChange={setLeverage} tone={isUp ? 'up' : 'down'} />
+          )}
 
           <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp={isUp} shortfall={shortfall} />
 
@@ -335,6 +380,24 @@ function BinaryBody({
             : 'Review your position, then approve it in your wallet'
         }
       />
+
+      {mintSuccess && (
+        <MintSuccessModal
+          open={!!mintSuccess}
+          onClose={() => {
+            setMintSuccess(null);
+            onClose();
+          }}
+          headline={mintSuccess.headline}
+          tone={mintSuccess.tone}
+          rows={mintSuccess.rows}
+          staked={mintSuccess.staked}
+          maxWin={mintSuccess.maxWin}
+          digest={mintSuccess.digest}
+          network={predictV2Config.network}
+          positionsHref="/v2/portfolio"
+        />
+      )}
     </div>
   );
 }
@@ -365,6 +428,7 @@ function RangeBody({
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [mintSuccess, setMintSuccess] = useState<MintSuccessState | null>(null);
 
   if (!market || !input) {
     return <div className="px-3.5 py-3 text-[11px] text-text-3">Loading market…</div>;
@@ -401,19 +465,37 @@ function RangeBody({
       snapStrikeToAdmission(fromFloat(higher), admissionTickSize),
       BigInt(market!.tick_size),
     );
-    const digest = await acct.mintBudget({
-      marketId: market!.expiry_market_id,
-      lowerTick,
-      higherTick,
-      amount: s.amount,
-      minQuantity: s.minQuantity,
-      leverage: leverageScaled(s.lev),
-      deposit: shortfall > 0n ? shortfall : undefined,
-    });
+    // silentSuccess: the celebratory MintSuccessModal replaces the toast (rail parity).
+    const digest = await acct.mintBudget(
+      {
+        marketId: market!.expiry_market_id,
+        lowerTick,
+        higherTick,
+        amount: s.amount,
+        minQuantity: s.minQuantity,
+        leverage: leverageScaled(s.lev),
+        deposit: shortfall > 0n ? shortfall : undefined,
+      },
+      { silentSuccess: true },
+    );
     setConfirmOpen(false);
     if (digest) {
       pulseFill({ marketId: market!.expiry_market_id, strike: (lower + higher) / 2, isUp: true });
-      onClose();
+      // Keep the popover mounted behind the success modal; it closes on Done.
+      setMintSuccess({
+        headline: 'BTC · RANGE',
+        tone: 'up',
+        rows: confirmRows(
+          { label: 'Outcome', value: 'Pays if price ends in the band' },
+          { label: 'Band', value: `${usd(lower)}–${usd(higher)}`, emphasize: true },
+          market!,
+          now,
+          s,
+        ),
+        staked: `$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`,
+        maxWin: `$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`,
+        digest,
+      });
     }
   }
 
@@ -457,7 +539,9 @@ function RangeBody({
           </div>
 
           <BetRow stake={stake} setStake={setStake} />
-          <LeverageRow maxLev={s.maxLev} lev={s.lev} setLeverage={setLeverage} />
+          {s.maxLev > 1 && (
+            <V2LeverageSlider value={s.lev} max={s.maxLev} onChange={setLeverage} tone="up" />
+          )}
 
           <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp shortfall={shortfall} />
 
@@ -505,6 +589,24 @@ function RangeBody({
             : 'Review your position, then approve it in your wallet'
         }
       />
+
+      {mintSuccess && (
+        <MintSuccessModal
+          open={!!mintSuccess}
+          onClose={() => {
+            setMintSuccess(null);
+            onClose();
+          }}
+          headline={mintSuccess.headline}
+          tone={mintSuccess.tone}
+          rows={mintSuccess.rows}
+          staked={mintSuccess.staked}
+          maxWin={mintSuccess.maxWin}
+          digest={mintSuccess.digest}
+          network={predictV2Config.network}
+          positionsHref="/v2/portfolio"
+        />
+      )}
     </div>
   );
 }
@@ -522,7 +624,7 @@ function confirmRows(
     outcome,
     level,
     { label: 'Expiry', value: `${dateUTC(market.expiry)} · ${countdown(market.expiry, now)}` },
-    ...(s.lev > 1 ? [{ label: 'Leverage', value: `${s.lev}×` }] : []),
+    ...(s.lev > 1 ? [{ label: 'Leverage', value: fmtLev(s.lev) }] : []),
     ...(s.feeBase > 0n
       ? [{ label: 'Protocol fee', value: `$${fromQuote(s.feeBase).toFixed(2)} ${predictV2Config.quote.symbol}` }]
       : []),
@@ -568,39 +670,6 @@ function BetRow({ stake, setStake }: { stake: number; setStake: (n: number) => v
             }`}
           >
             ${n}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** Leverage presets (v2's addition — the market admits a handful of multiples). */
-function LeverageRow({
-  maxLev,
-  lev,
-  setLeverage,
-}: {
-  maxLev: number;
-  lev: number;
-  setLeverage: (n: number) => void;
-}) {
-  if (maxLev <= 1) return null;
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[11px] text-text-3">Leverage</span>
-      <div className="ml-auto flex gap-1.5">
-        {Array.from({ length: maxLev }, (_, i) => i + 1).map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => setLeverage(n)}
-            aria-pressed={lev === n}
-            className={`min-w-7 rounded-md px-2 py-1 text-[11px] tabular-nums transition-colors ${
-              lev === n ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3'
-            }`}
-          >
-            {n}×
           </button>
         ))}
       </div>

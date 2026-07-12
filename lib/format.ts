@@ -69,6 +69,14 @@ export function pct(value: number, decimals = 2): string {
   return `${num(value * 100, decimals)}%`;
 }
 
+/** Leverage multiple: whole numbers stay bare (2×), fractional show one decimal
+ *  (2.7×). Absorbs float artefacts from 0.1-step slider math. */
+export function leverage(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}×` : `${rounded.toFixed(1)}×`;
+}
+
 /** Signed value with explicit + for positives (for PnL). */
 export function signed(value: number, decimals = 2): string {
   if (!Number.isFinite(value)) return '—';

@@ -4,6 +4,10 @@ import {
   winPayout,
   knockoutProbability,
   priceMoveToKnockout,
+  admittedLeverageCap,
+  maxSelectableLeverage,
+  leverageSliderMax,
+  LEVERAGE_STEP,
   mintAmountBase,
   minQuantityForBudget,
   MIN_MINT_AMOUNT_BASE,
@@ -14,6 +18,52 @@ import { upFair, type SviFloat } from '@/lib/svi/svi';
 
 const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
 const FORWARD = 63_000;
+
+describe('admittedLeverageCap (strike_exposure_config::admitted_leverage_cap)', () => {
+  // Source-verified curve: cap = 1 + (Lmax−1)·p(1+k)/(p+k), k=0.2, Lmax=3.
+  it('scales the market cap DOWN for anything short of certainty', () => {
+    expect(admittedLeverageCap(0.5, 3)).toBeCloseTo(2.7143, 3);
+    expect(admittedLeverageCap(0.99, 3)).toBeCloseTo(2.9966, 3);
+    expect(admittedLeverageCap(0.1, 3)).toBeCloseTo(1.8, 3);
+  });
+  it('only reaches the full market cap at p=1, and is 1× at p=0', () => {
+    expect(admittedLeverageCap(1, 3)).toBeCloseTo(3, 6);
+    expect(admittedLeverageCap(0, 3)).toBe(1);
+  });
+  it('never below 1× and treats a sub-1× market cap as 1×', () => {
+    expect(admittedLeverageCap(0.5, 0.4)).toBe(1);
+  });
+});
+
+describe('maxSelectableLeverage (integer preset ceiling)', () => {
+  it('is 2× across the tradeable band with a 3× market cap — never the impossible 3×', () => {
+    for (const p of [0.2, 0.5, 0.8, 0.99]) {
+      expect(maxSelectableLeverage(p, 3)).toBe(2);
+    }
+  });
+  it('drops to 1× for long-shot odds (cap < 2×, below ~14.3%)', () => {
+    expect(maxSelectableLeverage(0.1, 3)).toBe(1);
+    expect(maxSelectableLeverage(0.05, 3)).toBe(1);
+  });
+});
+
+describe('leverageSliderMax (continuous slider ceiling)', () => {
+  it('exposes fractional headroom on the 0.1× grid, unlike the integer preset', () => {
+    // cap(0.5)=2.714 → 2.7×; cap(0.99)=2.9966 → 2.9×; cap(0.2)=2.20 → 2.1× (1e-6 nudge).
+    expect(leverageSliderMax(0.5, 3)).toBeCloseTo(2.7, 6);
+    expect(leverageSliderMax(0.99, 3)).toBeCloseTo(2.9, 6);
+    expect(leverageSliderMax(0.8, 3)).toBeCloseTo(2.9, 6); // cap 2.92
+  });
+  it('never exceeds the true admitted cap and never below 1×', () => {
+    for (const p of [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]) {
+      const m = leverageSliderMax(p, 3);
+      expect(m).toBeLessThanOrEqual(admittedLeverageCap(p, 3));
+      expect(m).toBeGreaterThanOrEqual(1);
+      // lands on the 0.1× grid
+      expect(Math.round(m / LEVERAGE_STEP) * LEVERAGE_STEP).toBeCloseTo(m, 9);
+    }
+  });
+});
 
 describe('winPayout (what a win actually pays)', () => {
   it('at 1× pays the full max-payout quantity (floor 0)', () => {

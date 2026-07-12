@@ -35,7 +35,7 @@ import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
-import { dateUTC, countdown, pct, signed, quote as fmtQuote } from '@/lib/format';
+import { dateUTC, countdown, pct, signed, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { isClosingSoon, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
@@ -46,8 +46,9 @@ import {
   leverageScaled,
   maxCostWithSlippage,
 } from '@/lib/sui/v2/ticks';
-import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
+import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, leverageSliderMax, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './ticket/payout-slider';
+import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { DirectionToggle } from '@/app/_components/ticket/direction-toggle';
@@ -170,9 +171,11 @@ export function V2TradeTicket({
   const rangeProb = rangeFair(lowerStrike, higherStrike, pricer.forward, svi);
   const entryProb = rangeMode ? rangeProb : binaryProb;
 
-  // Market cap on leverage; clamp the working value so a stale store pick
-  // (e.g. 3× kept across a switch to a 2×-max market) can never mint above it.
-  const maxLev = Math.max(1, Math.floor(toFloat(market.max_admission_leverage)));
+  // Cap on leverage from the protocol's PROBABILITY-SCALED admission curve — the
+  // market-wide `max_admission_leverage` (e.g. 3×) is only the p→1 asymptote, so a
+  // preset at it always aborts strike_exposure_config #6 at real odds. Clamp the
+  // working value too, so a stale store pick can never mint above the live cap.
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
   const lev = Math.min(leverage, maxLev);
 
   // Leverage risk (verified from source, predict-testnet-6-24 — see
@@ -302,7 +305,7 @@ export function V2TradeTicket({
           outcomeRow,
           levelRow,
           { label: 'Expiry', value: dateUTC(market!.expiry) },
-          ...(lev > 1 ? [{ label: 'Leverage', value: `${lev}×` }] : []),
+          ...(lev > 1 ? [{ label: 'Leverage', value: fmtLev(lev) }] : []),
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ],
         staked: `$${fromQuote(stakeBase).toFixed(2)} ${sym}`,
@@ -351,28 +354,17 @@ export function V2TradeTicket({
     </div>
   );
 
-  // Leverage as a preset row (1× … max), matching the bet-amount presets above
-  // it — the market only admits a handful of whole multiples, so buttons beat a
-  // slider.
+  // Continuous leverage slider (1× → the odds-scaled admission cap) — the
+  // protocol admits any fractional multiple up to the cap, not just whole steps.
   const leverageSection = (
     <div className="flex flex-col gap-1.5">
-      <Row label="Leverage">
-        <span className="text-[10px] text-text-3">multiplies your payout</span>
-      </Row>
-      <div className="flex gap-1.5">
-        {Array.from({ length: maxLev }, (_, i) => i + 1).map((n) => (
-          <button
-            key={n}
-            onClick={() => setLeverage(n)}
-            aria-pressed={lev === n}
-            className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-              lev === n ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3'
-            }`}
-          >
-            {n}×
-          </button>
-        ))}
-      </div>
+      {maxLev > 1 ? (
+        <V2LeverageSlider value={lev} max={maxLev} onChange={setLeverage} tone={tone} />
+      ) : (
+        <Row label="Leverage">
+          <span className="text-[10px] text-text-3">1× only at these odds</span>
+        </Row>
+      )}
       {lev > 1 && knockoutProb != null && (
         <Row
           label={
@@ -383,13 +375,13 @@ export function V2TradeTicket({
                 closes early and pays $0. Leverage just shrinks your buffer:{' '}
                 {knockoutMoveUsd != null && knockoutMoveUsd >= 1 ? (
                   <>
-                    at {lev}×, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
+                    at {fmtLev(lev)}, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
                     {isUp ? 'down' : 'up'} knocks you out.
                   </>
                 ) : knockoutMove != null ? (
-                  <>at {lev}×, even a tiny move in BTC {isUp ? 'down' : 'up'} knocks you out.</>
+                  <>at {fmtLev(lev)}, even a tiny move in BTC {isUp ? 'down' : 'up'} knocks you out.</>
                 ) : (
-                  <>at {lev}×, it closes once your chance falls to about {pct(knockoutProb, 0)}.</>
+                  <>at {fmtLev(lev)}, it closes once your chance falls to about {pct(knockoutProb, 0)}.</>
                 )}
               </InfoTip>
             </span>
@@ -772,7 +764,7 @@ export function V2TradeTicket({
           outcomeRow,
           levelRow,
           { label: 'Expiry', value: `${dateUTC(market.expiry)} · ${countdown(market.expiry, now)}` },
-          ...(lev > 1 ? [{ label: 'Leverage', value: `${lev}×` }] : []),
+          ...(lev > 1 ? [{ label: 'Leverage', value: fmtLev(lev) }] : []),
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
         ]}
         cost={`$${fromQuote(stakeBase).toFixed(2)} ${sym}`}
