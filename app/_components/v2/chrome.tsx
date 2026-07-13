@@ -20,12 +20,15 @@ import {
   LuTarget,
   LuSwords,
   LuBookOpen,
+  LuKeyRound,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
 import { DeploymentToggle } from '../deployment-toggle';
 import { TourButton } from '../tour/tour-button';
 import { V2SpotTape } from './spot-tape';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { isAdminAddress } from '@/config/predict';
 
 type NavItem = { href: string; label: string; exact?: boolean };
 type MenuItem = { href: string; label: string; desc: string; icon: IconType; soon?: boolean };
@@ -57,6 +60,23 @@ const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWit
 export function V2Chrome() {
   const pathname = usePathname() ?? '';
 
+  // Builder fees shows only for a team wallet (config allowlist). Gating on code
+  // ownership instead would hide the link from the very wallet that still needs to
+  // register the first code — and would surface it to any stranger who registered
+  // a code of their own. The page and the chain gate it again regardless.
+  const account = useCurrentAccount();
+  const moreItems: MenuItem[] = isAdminAddress(account?.address)
+    ? [
+        ...MORE_ITEMS,
+        {
+          href: '/v2/admin',
+          label: 'Builder fees',
+          desc: 'Claim protocol builder fees',
+          icon: LuKeyRound,
+        },
+      ]
+    : MORE_ITEMS;
+
   return (
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
       {/* brand + nav */}
@@ -77,7 +97,7 @@ export function V2Chrome() {
             <NavLink key={n.href} href={n.href} label={n.label} active={matches(pathname, n)} />
           ))}
           <NavMenu fallbackLabel="Vault" items={VAULT_ITEMS} pathname={pathname} />
-          <NavMenu fallbackLabel="More" items={MORE_ITEMS} pathname={pathname} />
+          <NavMenu fallbackLabel="More" items={moreItems} pathname={pathname} />
         </nav>
       </div>
 

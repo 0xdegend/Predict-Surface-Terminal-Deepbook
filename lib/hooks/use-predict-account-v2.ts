@@ -25,6 +25,7 @@ import { toast } from '@/lib/store/toast-store';
 import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
 import { qkV2 } from '@/lib/api/v2/client';
+import { useBuilderCode, qkBuilderCode } from '@/lib/hooks/use-builder-code';
 import {
   buildRequestSupplyTx,
   buildRequestWithdrawTx,
@@ -91,6 +92,12 @@ export function usePredictAccountV2() {
     refetchInterval: 10_000,
   });
   const plpBalanceBase = plpQ.data ?? 0n;
+
+  // Builder-fee attribution. The protocol pays the add-on builder fee to the code
+  // carried by the ACCOUNT, not by the transaction — so a trade placed here earns
+  // us nothing unless this account is attributed to us. We ride the attach along
+  // inside the mint PTB (no second signature), and only when the slot is empty.
+  const builderCode = useBuilderCode(wrapperId);
 
   // DUSDC still in the connected wallet (outside the trading account).
   const walletDusdcQ = useQuery({
@@ -165,6 +172,13 @@ export function usePredictAccountV2() {
     ...(wrapperId ? [qkV2Account.balance(wrapperId)] : []),
   ];
 
+  // A mint may have carried a `set_builder_code` alongside it — re-read the
+  // attachment so the next mint doesn't append a redundant attach command.
+  const mintInvalidations: readonly (readonly unknown[])[] = [
+    ...(owner ? [qkV2.accountPositions(owner)] : []),
+    ...(wrapperId ? [qkBuilderCode.attached(wrapperId)] : []),
+  ];
+
   return {
     owner,
     wrapperId,
@@ -182,6 +196,10 @@ export function usePredictAccountV2() {
      *  pop-up, so callers can show honest, wallet-aware copy. */
     gasless,
     isLoading: wrapperQ.isLoading,
+    /** Escape hatch for callers that build their own PTB (e.g. the admin fee claim),
+     *  so they inherit the same signing path: Enoki sponsorship, the sign-then-execute
+     *  workaround, finalized-status check, toasts and invalidation. */
+    runTx,
     /** Create + share the AccountWrapper (standalone tx — required before first deposit/mint). */
     createAccount: () => runTx('create', buildCreateAccountTx(), []),
     deposit: (amount: bigint) =>
@@ -198,15 +216,27 @@ export function usePredictAccountV2() {
             qkV2Account.walletDusdc(owner),
           ])
         : Promise.resolve(null),
+    /** Builder-fee attribution for this account (attach happens inside the mint). */
+    builderCode,
     mint: (p: Omit<MintParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
       wrapperId
-        ? runTx('mint', buildMintTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
+        ? runTx(
+            'mint',
+            buildMintTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }),
+            mintInvalidations,
+            opts,
+          )
         : Promise.resolve(null),
     /** Budget mint (mint_exact_amount) — the chain sizes the quantity at
      *  execution, so odds drift can't break the $1 minimum-premium check. */
     mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
       wrapperId
-        ? runTx('mint', buildMintBudgetTx({ ...p, wrapperId }), owner ? [qkV2.accountPositions(owner)] : [], opts)
+        ? runTx(
+            'mint',
+            buildMintBudgetTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }),
+            mintInvalidations,
+            opts,
+          )
         : Promise.resolve(null),
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>
       wrapperId ? runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts) : Promise.resolve(null),

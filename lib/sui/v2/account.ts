@@ -92,15 +92,15 @@ export interface SimulateCapableClient {
   }) => Promise<unknown>;
 }
 
-interface SimResult {
+export interface SimResult {
   $kind: string;
   commandResults?: { returnValues: { bcs: Uint8Array }[] }[];
   FailedTransaction?: { status?: { error?: unknown } };
 }
 
-const SIM_SENDER = '0x43a5782881f7ae4584fb7a3d9d9b3cd3440ed634a67301de5e45f734505e8e7d';
+export const SIM_SENDER = '0x43a5782881f7ae4584fb7a3d9d9b3cd3440ed634a67301de5e45f734505e8e7d';
 
-async function simulate(client: SimulateCapableClient, tx: Transaction): Promise<SimResult> {
+export async function simulate(client: SimulateCapableClient, tx: Transaction): Promise<SimResult> {
   return (await client.simulateTransaction({
     transaction: tx,
     include: { commandResults: true },

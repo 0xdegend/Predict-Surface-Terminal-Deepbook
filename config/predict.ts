@@ -173,6 +173,15 @@ export interface PredictV2Config {
     oracleRegistry: string; // propbook::registry::OracleRegistry
     accountRegistry: string; // account::account_registry::AccountRegistry
   };
+  /**
+   * Our registered `builder_code::BuilderCode` (shared). Empty = not registered
+   * for this network → no attach, no fee, UI hidden. The protocol pays an add-on
+   * builder fee (10% of the trade fee, capped at 0.5% of notional) to whatever
+   * code the TRADER'S ACCOUNT carries — so we must attach it to each account.
+   * Its `owner` is fixed at creation and can never change; only that address can
+   * claim. See lib/sui/v2/builder-code.ts.
+   */
+  builderCodeId: string;
   /** Per-owner balances/accounting live behind a shared AccumulatorRoot. */
   accumulatorRootId: string;
   clockId: string;
@@ -222,6 +231,14 @@ const V2_TESTNET: PredictV2Config = {
     oracleRegistry: '0xf3deaff68cbd081a35ec21653af6f671d2ad5f012f3b4d817d81752843374136',
     accountRegistry: '0x3c54d5b8b6bca376fc289121838ad02f8a5b3843242b9ad7e8f8245720e685a2',
   },
+  // Registered 2026-07-13 (index 0). owner = 0x33a8c3…f3f4 (the deployer key) —
+  // PERMANENT, no setter exists on-chain. Mainnet must register from a multisig.
+  // Override with NEXT_PUBLIC_BUILDER_CODE_ID to point the app at a code owned by
+  // a different wallet (register it from that wallet at /v2/admin first) without
+  // editing this file.
+  builderCodeId:
+    process.env.NEXT_PUBLIC_BUILDER_CODE_ID ||
+    '0x3d916a9be41e850028b342029301e4d7ec19a1c3a843b55ec256d789cfdf2194',
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
   quote: {
@@ -255,6 +272,11 @@ const V2_MAINNET: PredictV2Config = {
   grpcUrl: 'https://fullnode.mainnet.sui.io:443',
   serverUrl: '',
   oracleServerUrl: '',
+  // Must NOT inherit testnet's code — a BuilderCode is bound to its registry and
+  // its owner is permanent. Register a fresh one on mainnet FROM A MULTISIG (the
+  // owning wallet must sign `create_builder_code` itself; there is no way to
+  // reassign it later) and paste the id here.
+  builderCodeId: '',
 };
 
 const V2_CONFIGS: Record<SuiNetwork, PredictV2Config> = {
@@ -270,6 +292,33 @@ export function getPredictV2Config(network: SuiNetwork = ACTIVE_NETWORK): Predic
 
 /** True when the active-network v2 deployment has a server wired (testnet does). */
 export const v2Deployed: boolean = !!predictV2Config.serverUrl;
+
+/** True when our BuilderCode is registered for this network. False → mints never
+ *  attach and the admin claim UI stays hidden; everything else is unaffected. */
+export const builderCodeEnabled: boolean = !!predictV2Config.builderCodeId;
+
+/**
+ * Wallets allowed to see /v2/admin. v2 has no capability object to gate on (v1 had
+ * the router's `AdminCap`), and BEFORE a code is registered there is nothing
+ * on-chain that identifies the team — so bootstrapping needs an explicit list.
+ *
+ * This is UI-only and not a security boundary: `create_builder_code` is
+ * permissionless (anyone can register a code for themselves anywhere), and
+ * claiming is enforced by the chain's `assert_owner`. The list exists so founder
+ * tooling isn't served to whoever guesses the URL.
+ *
+ * Override with NEXT_PUBLIC_ADMIN_ADDRESSES (comma-separated).
+ */
+export const adminAddresses: string[] = (
+  process.env.NEXT_PUBLIC_ADMIN_ADDRESSES ||
+  '0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4'
+)
+  .split(',')
+  .map((a) => a.trim().toLowerCase())
+  .filter(Boolean);
+
+export const isAdminAddress = (addr: string | undefined | null): boolean =>
+  !!addr && adminAddresses.includes(addr.toLowerCase());
 
 /** Fully-qualified type helpers for the v2 predict package. */
 export const v2Target = (

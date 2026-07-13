@@ -14,6 +14,7 @@ import { Transaction } from '@mysten/sui/transactions';
 import { predictV2Config, v2Target } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import { addGenerateAuth, addDeposit } from './account';
+import { addSetBuilderCode } from './builder-code';
 
 const c = () => predictV2Config;
 
@@ -33,16 +34,24 @@ export interface MintParams {
   maxProbability: bigint;
   /** Optional: deposit this many base units into the wrapper in the same PTB first. */
   deposit?: bigint;
+  /** Attribute this account to our BuilderCode before minting (see below). */
+  attachBuilderCode?: boolean;
 }
 
 /**
  * mint_exact_quantity — open a position of exactly `quantity` max-payout.
  * Optionally pre-funds the wrapper in the same PTB. Returns the tx; the new
  * order id (u256) is read from the OrderMinted event in the effects.
+ *
+ * When `attachBuilderCode` is set we prepend `set_builder_code`, which MUST come
+ * before the mint: mint reads the attribution off the account at execution, so a
+ * later attach would miss this trade's fee. It costs the user no extra signature
+ * (the PTB just carries a second `Auth`).
  */
 export function buildMintTx(p: MintParams): Transaction {
   const tx = new Transaction();
   if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
+  if (p.attachBuilderCode) addSetBuilderCode(tx, p.wrapperId);
   const auth = addGenerateAuth(tx);
   const pricer = buildLoadPricerCall(tx, p.marketId);
   tx.moveCall({
@@ -80,6 +89,8 @@ export interface MintBudgetParams {
   leverage: bigint;
   /** Optional: deposit this many base units into the wrapper in the same PTB first. */
   deposit?: bigint;
+  /** Attribute this account to our BuilderCode before minting (see buildMintTx). */
+  attachBuilderCode?: boolean;
 }
 
 /**
@@ -93,6 +104,7 @@ export interface MintBudgetParams {
 export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
   const tx = new Transaction();
   if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
+  if (p.attachBuilderCode) addSetBuilderCode(tx, p.wrapperId);
   const auth = addGenerateAuth(tx);
   const pricer = buildLoadPricerCall(tx, p.marketId);
   tx.moveCall({
