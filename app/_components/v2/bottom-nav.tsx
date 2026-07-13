@@ -17,6 +17,7 @@ import {
   LuActivity,
   LuWallet,
   LuVault,
+  LuShieldAlert,
   LuTrophy,
   LuLayoutGrid,
   LuChartNoAxesCombined,
@@ -36,6 +37,7 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
 ];
 
 const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean }[] = [
+  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
   { href: '/v2/analytics', label: 'Analytics', desc: 'Live markets & activity', icon: LuChartNoAxesCombined },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },
