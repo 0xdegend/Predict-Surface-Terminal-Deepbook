@@ -12,6 +12,7 @@ import type { IconType } from 'react-icons';
 import { LuDroplets, LuUpload, LuDownload } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useLpQueue } from '@/lib/hooks/use-lp-queue';
 import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
@@ -24,11 +25,20 @@ const QUICK = [10, 25, 50];
 export function V2VaultPanel() {
   const acct = usePredictAccountV2();
   const mounted = useMounted();
+  const { mine } = useLpQueue(acct.accountId);
   const [mode, setMode] = useState<Mode>('add');
   const [amountStr, setAmountStr] = useState('10');
 
   const sym = predictV2Config.quote.symbol;
   const plpBalance = fromQuote(acct.plpBalanceBase);
+  // A deposit that's still queued has NOT become PLP shares yet, so Remove — which
+  // burns shares — has nothing to work with and reads as a dead end ("More than
+  // your shares", with a shares balance of 0). Name the real state instead, and
+  // point at the escape hatch (cancel), which is the only way out before a flush.
+  const queuedDeposit = mine
+    .filter((m) => m.side === 'supply')
+    .reduce((s, m) => s + fromQuote(m.entry.amount), 0);
+  const stuckOnQueue = mode === 'remove' && plpBalance <= 0 && queuedDeposit > 0;
   const accountBalance = fromQuote(acct.balanceBase);
   const walletBalance = acct.walletDusdcBase !== undefined ? fromQuote(acct.walletDusdcBase) : 0;
 
@@ -123,6 +133,19 @@ export function V2VaultPanel() {
           </span>
         </div>
       </label>
+
+      {stuckOnQueue && (
+        <div className="glass-inset p-3">
+          <p className="text-[11.5px] leading-relaxed text-text-2">
+            <span className="font-medium text-text-1">
+              Your {fmtQuote(queuedDeposit)} {sym} deposit is still in the queue.
+            </span>{' '}
+            It hasn&apos;t converted to PLP shares yet, and Remove can only sell shares — so
+            there&apos;s nothing here to remove. To get it back now, cancel it in the queue below.
+            Otherwise it fills at the next vault update.
+          </p>
+        </div>
+      )}
 
       {acct.error && (
         <div className="rounded-lg border border-down/40 bg-down/10 p-2 font-mono text-[12px] text-down">

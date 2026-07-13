@@ -17,6 +17,7 @@ import { usePathname } from 'next/navigation';
 import {
   LuChevronDown,
   LuVault,
+  LuShieldAlert,
   LuTarget,
   LuSwords,
   LuBookOpen,
@@ -40,10 +41,10 @@ const PRIMARY: NavItem[] = [
   { href: '/v2/leaderboard', label: 'Leaderboard' },
 ];
 
-/** Vault group — mirrors legacy NavVault (a Risk entry joins it when the v2
- *  risk screen ships). */
+/** Vault group — mirrors legacy NavVault (Vault + Vault Risk). */
 const VAULT_ITEMS: MenuItem[] = [
   { href: '/v2/vault', label: 'Vault', desc: 'Add liquidity · earn the trading edge', icon: LuVault },
+  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
 ];
 
 /** Secondary destinations — same set as the legacy "More" menu. Quests /

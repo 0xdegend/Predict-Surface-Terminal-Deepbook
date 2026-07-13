@@ -26,6 +26,7 @@ import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDep
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
 import { qkV2 } from '@/lib/api/v2/client';
 import { useBuilderCode, qkBuilderCode } from '@/lib/hooks/use-builder-code';
+import { qkLpQueue } from '@/lib/hooks/use-lp-queue';
 import {
   buildRequestSupplyTx,
   buildRequestWithdrawTx,
@@ -179,6 +180,15 @@ export function usePredictAccountV2() {
     ...(wrapperId ? [qkBuilderCode.attached(wrapperId)] : []),
   ];
 
+  // Every LP action (queue a deposit/withdrawal, or cancel one) moves money
+  // between the account and the vault's escrow, so the queue table and both
+  // balances have to re-read — otherwise a cancel appears to do nothing until
+  // the next poll.
+  const vaultInvalidations: readonly (readonly unknown[])[] = [
+    qkLpQueue.all,
+    ...(wrapperId ? [qkV2Account.balance(wrapperId), qkV2Account.plpBalance(wrapperId)] : []),
+  ];
+
   return {
     owner,
     wrapperId,
@@ -246,12 +256,16 @@ export function usePredictAccountV2() {
       wrapperId ? runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts) : Promise.resolve(null),
     /* ---- async vault (PLP) ---- */
     requestSupply: (amount: bigint, deposit?: bigint) =>
-      wrapperId ? runTx('supply', buildRequestSupplyTx({ wrapperId, amount, deposit })) : Promise.resolve(null),
+      wrapperId
+        ? runTx('supply', buildRequestSupplyTx({ wrapperId, amount, deposit }), vaultInvalidations)
+        : Promise.resolve(null),
     requestWithdraw: (plpAmount: bigint) =>
-      wrapperId ? runTx('withdraw-lp', buildRequestWithdrawTx(wrapperId, plpAmount)) : Promise.resolve(null),
+      wrapperId
+        ? runTx('withdraw-lp', buildRequestWithdrawTx(wrapperId, plpAmount), vaultInvalidations)
+        : Promise.resolve(null),
     cancelSupply: (index: bigint) =>
-      wrapperId ? runTx('cancel', buildCancelSupplyTx(wrapperId, index)) : Promise.resolve(null),
+      wrapperId ? runTx('cancel', buildCancelSupplyTx(wrapperId, index), vaultInvalidations) : Promise.resolve(null),
     cancelWithdraw: (index: bigint) =>
-      wrapperId ? runTx('cancel', buildCancelWithdrawTx(wrapperId, index)) : Promise.resolve(null),
+      wrapperId ? runTx('cancel', buildCancelWithdrawTx(wrapperId, index), vaultInvalidations) : Promise.resolve(null),
   };
 }

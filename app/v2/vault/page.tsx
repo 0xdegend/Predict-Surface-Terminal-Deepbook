@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { LuLandmark } from 'react-icons/lu';
 import { V2VaultOverview } from '@/app/_components/v2/vault-overview';
 import { V2VaultPanel } from '@/app/_components/v2/vault-panel';
+import { V2VaultQueue } from '@/app/_components/v2/vault-queue';
 
 export const metadata: Metadata = {
   title: 'Vault',
@@ -26,7 +27,13 @@ export default function V2VaultPage() {
         </p>
       </header>
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <V2VaultOverview />
+        <div className="flex flex-col gap-5">
+          <V2VaultOverview />
+          {/* The queue sits under the pool metrics: it's the read-side answer to
+              "where did my deposit go", and the only place a queued request can be
+              cancelled before the keeper's flush fills it. */}
+          <V2VaultQueue />
+        </div>
         <V2VaultPanel />
       </div>
     </main>

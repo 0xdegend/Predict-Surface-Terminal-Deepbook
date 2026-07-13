@@ -21,6 +21,7 @@ import type {
   V2Position,
   V2OrderEvent,
   V2VaultServerState,
+  V2VaultFlush,
   V2OpenInterest,
   V2ActivityBucket,
   V2LiquidationBucket,
@@ -73,6 +74,12 @@ export const getAccountOrders = (accountId: string, o?: GetOptions) =>
 export const getVaultState = (vaultId: string, o?: GetOptions) =>
   beta<V2VaultServerState>(`/vaults/${vaultId}/state`, o);
 
+/** Keeper flush history (newest-first). Each flush marks the pool at that moment,
+ *  so pool_value/total_supply per flush IS the share-price series over time — the
+ *  v2 stand-in for legacy's `/vault/performance` (which v2 doesn't expose). */
+export const getVaultFlushes = (vaultId: string, limit = 200, o?: GetOptions) =>
+  beta<V2VaultFlush[]>(`/vaults/${vaultId}/flushes?limit=${limit}`, o);
+
 /** Open positions + max payout at risk for one market. */
 export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
   beta<V2OpenInterest>(`/markets/${marketId}/open-interest`, o);
@@ -120,4 +127,6 @@ export const qkV2 = {
   accountPositions: (accountId: string) => ['v2', 'account', accountId, 'positions'] as const,
   accountOrders: (accountId: string) => ['v2', 'account', accountId, 'orders'] as const,
   vaultServerState: ['v2', 'vault', 'server-state'] as const,
+  vaultFlushes: ['v2', 'vault', 'flushes'] as const,
+  marketOpenInterest: (id: string) => ['v2', 'market', id, 'open-interest'] as const,
 };
