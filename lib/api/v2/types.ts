@@ -89,6 +89,8 @@ export interface V2Position {
   expiry_market_id?: string;
   market_id?: string;
   order_id?: string | number;
+  /** Joins the position to its `order_minted` event (for the fees paid at mint). */
+  position_root_id?: string | number;
   lower_tick?: string | number;
   higher_tick?: string | number;
   open_quantity?: string | number;

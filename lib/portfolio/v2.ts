@@ -44,9 +44,14 @@ export interface V2PortfolioPosition {
   /** Range band (float $) — renders instead of strike. */
   band?: { lower: number; higher: number };
   expiry?: number; // ms
-  /** Max payout if it resolves in your favor (DUSDC). */
+  /**
+   * Contract count = the position's NOTIONAL (DUSDC). This is NOT what a win
+   * pays once leverage is involved — the static floor is netted out on redeem.
+   * Use `positionWinPayout` for any "you win / to win / pays" figure.
+   */
   qty: number;
-  cost?: number; // DUSDC staked
+  /** All-in entry cost (DUSDC): the stake plus the fees charged at mint. */
+  cost?: number;
   entryPrice?: number; // 0..1 implied
   markPrice?: number; // 0..1 implied
   markValue?: number; // DUSDC
@@ -86,6 +91,21 @@ export function winningClaimPayout(p: V2PortfolioPosition, closeQuantity: bigint
   return payout > 0 ? payout : null;
 }
 
+/**
+ * What this position ACTUALLY pays if it wins (DUSDC) — the notional `qty` minus
+ * the static leverage floor. Unleveraged ⇒ the full qty.
+ *
+ * A leveraged win never pays the full notional: you staked only `1/L` of the
+ * entry value and the vault fronted the rest, which is netted out on redeem. The
+ * portfolio-side mirror of `winPayout` in lib/sui/v2/quote.ts (the ticket's
+ * preview), so "to win" before the trade and "to win" after it are the same
+ * number, and both equal the chain's payout (verified: qty 14.68, entry 68.12%,
+ * 2× → floor 5.00 → payout 9.68, NOT 14.68).
+ */
+export function positionWinPayout(p: V2PortfolioPosition): number {
+  return Math.max(0, p.qty - leverageFloor(p));
+}
+
 /* ────────────────────────────── real rows ────────────────────────────── */
 
 /** Direction from the tick pair: [x, +inf) = Up, [0, x) = Down, else Range. */
@@ -110,13 +130,17 @@ export function normalizeV2Position(
   p: V2Position,
   index: number,
   market?: V2Market,
+  entryFeeBase = 0,
 ): V2PortfolioPosition {
   const marketId = (p.expiry_market_id ?? p.market_id) as string | undefined;
   const direction = tickDirection(p);
   const qtyBase = BigInt(Math.round(Number(p.open_quantity ?? p.quantity ?? 0)));
-  // net_premium is what the trader staked (before fees); it's the closest the
-  // indexer gives to "cost" (no cost/total_cost field on the real row).
-  const costBase = p.cost ?? p.total_cost ?? (p as { net_premium?: string | number }).net_premium;
+  // `net_premium` is only the STAKE. The positions feed carries no fee fields, so
+  // the fees charged at mint arrive separately (v2EntryFees, joined from the order
+  // event log) and are added here — otherwise cost is understated and every PnL /
+  // ROI built on it reads high.
+  const stakeBase = p.cost ?? p.total_cost ?? (p as { net_premium?: string | number }).net_premium;
+  const costBase = stakeBase != null ? Number(stakeBase) + entryFeeBase : undefined;
   // Ticks are grid INDICES — the strike price is `tick × tick_size`. Without the
   // market we can't convert, so leave strike/band undefined rather than show a
   // nonsense number.
@@ -166,6 +190,26 @@ function wonFromStatus(status: unknown): boolean {
 
 const n = (v: unknown): number => (v == null ? 0 : Number(v));
 
+/** Fees charged at mint (base units) — what the stake doesn't cover. */
+const mintFees = (o: V2OrderEvent): number =>
+  n(o.trading_fee) + n(o.builder_fee) + n(o.penalty_fee);
+
+/**
+ * `position_root_id` → fees paid at mint (base units), from the account's order
+ * EVENT log. The positions feed reports the stake (`net_premium`) but no fees, so
+ * this is the only way to get a true entry cost onto an open position — join it
+ * in via `normalizeV2Position`'s `entryFeeBase`.
+ */
+export function v2EntryFees(orders: V2OrderEvent[]): Map<string, number> {
+  const fees = new Map<string, number>();
+  for (const o of orders) {
+    if (o.kind !== 'order_minted') continue;
+    const id = o.position_root_id ?? o.order_id;
+    if (id != null) fees.set(String(id), mintFees(o));
+  }
+  return fees;
+}
+
 /**
  * Trade history from the account's order EVENT log (`/accounts/{id}/orders`) —
  * the authoritative, append-only record. Each `*_redeemed` event is one realized
@@ -206,7 +250,9 @@ export function deriveV2HistoryFromOrders(
     const totalQty = n(mint?.quantity) || n(o.quantity_closed);
     const closed = n(o.quantity_closed) || totalQty;
     const frac = totalQty > 0 ? closed / totalQty : 1;
-    const cost = fromQuote(n(mint?.net_premium) * frac);
+    // All-in cost basis: the stake PLUS the fees charged at mint. Leaving the
+    // entry fee out understates cost and overstates every PnL / ROI built on it.
+    const cost = fromQuote((n(mint?.net_premium) + (mint ? mintFees(mint) : 0)) * frac);
 
     const settled = /settled/i.test(kind);
     const liquidated = /liquidat/i.test(kind);
@@ -363,13 +409,10 @@ export function settleV2Position(
   }
   if (outcome == null) return p;
   const won = outcome >= 0.5;
-  // A win pays the equity ABOVE the static leverage floor — max(0, qty − floor),
-  // identical to valueV2Position at mark = 1. Unleveraged ⇒ floor 0 ⇒ the full
-  // qty; a 2× win ⇒ qty − floor (the REAL payout — e.g. qty $12.72, floor $5.00
-  // → $7.72, NOT $12.72; using the full qty was the 154%-vs-54% overstatement).
-  // A loss / knocked-out leverage pays 0. The real terminal payout takes over
-  // once the indexer reports the redeem.
-  const markValue = won ? Math.max(0, p.qty - leverageFloor(p)) : 0;
+  // A win pays the equity ABOVE the static leverage floor (identical to
+  // valueV2Position at mark = 1); a loss / knocked-out leverage pays 0. The real
+  // terminal payout takes over once the indexer reports the redeem.
+  const markValue = won ? positionWinPayout(p) : 0;
   const pnl = p.cost != null ? markValue - p.cost : undefined;
   const deltaPp = p.entryPrice != null ? (outcome - p.entryPrice) * 100 : undefined;
   return { ...p, settled: true, won, markPrice: outcome, markValue, pnl, deltaPp };

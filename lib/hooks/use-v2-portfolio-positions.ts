@@ -15,7 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useV2Positions } from './use-v2-positions';
 import { useV2Pricers } from './use-v2-pricers';
 import { useV2MarketStates } from './use-v2-market-states';
-import { getV2Markets, getPythHistory, pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { getV2Markets, getAccountOrders, getPythHistory, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { predictV2Config } from '@/config/predict';
 import { toFloat } from '@/config/scale';
 import {
@@ -24,10 +24,11 @@ import {
   settleV2Position,
   positionMarkPrice,
   buildV2Spark,
+  v2EntryFees,
   type V2PortfolioPosition,
   type SpotPoint,
 } from '@/lib/portfolio/v2';
-import type { V2Market } from '@/lib/api/v2/types';
+import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 export interface UseV2PortfolioPositions {
   /** Enriched real rows (settled/valued + sparkline). Empty until the feed reports. */
@@ -77,13 +78,29 @@ export function useV2PortfolioPositions(accountId?: string): UseV2PortfolioPosit
     return out;
   }, [marketStates]);
 
+  // Fees paid at mint, from the order EVENT log — the positions feed carries the
+  // stake but no fees, so without this join the cost basis (and every PnL built
+  // on it) is understated. Same TanStack key as useV2History ⇒ one shared fetch.
+  const ordersQ = useQuery<V2OrderEvent[]>({
+    queryKey: qkV2.accountOrders(accountId ?? ''),
+    queryFn: () => getAccountOrders(accountId!),
+    enabled: !!accountId,
+    refetchInterval: 15_000,
+  });
+  const entryFees = useMemo(() => v2EntryFees(ordersQ.data ?? []), [ordersQ.data]);
+
   // Real indexer rows, normalized and joined to their market for tick→price.
   const normalized = useMemo(
     () =>
       rawPositions.map((p, i) =>
-        normalizeV2Position(p, i, marketMap.get((p.expiry_market_id ?? p.market_id) as string)),
+        normalizeV2Position(
+          p,
+          i,
+          marketMap.get((p.expiry_market_id ?? p.market_id) as string),
+          entryFees.get(String(p.position_root_id ?? p.order_id)) ?? 0,
+        ),
       ),
-    [rawPositions, marketMap],
+    [rawPositions, marketMap, entryFees],
   );
 
   // Live pricers for the OPEN positions' markets — the v2 indexer reports no

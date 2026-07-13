@@ -21,7 +21,7 @@ import { predictV2Config } from '@/config/predict';
 import { quote as fmtQuote, price, signed } from '@/lib/format';
 import { V2RedeemModal } from './redeem-modal';
 import { useClaimCelebration } from './use-claim-celebration';
-import { winningClaimPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { winningClaimPayout, positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 /** Max position cards shown in the rail before deferring to Portfolio. */
 const MAX_SHOWN = 3;
@@ -144,7 +144,7 @@ function PositionRow({
           </span>
         </span>
         <span className="text-[10px] text-text-3">
-          {fmtQuote(p.qty)} {sym} to win
+          {fmtQuote(positionWinPayout(p))} {sym} to win
           {hasPnl && (
             <>
               {' '}·{' '}

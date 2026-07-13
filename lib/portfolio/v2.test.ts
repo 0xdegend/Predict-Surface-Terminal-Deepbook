@@ -4,8 +4,10 @@ import {
   valueV2Position,
   settleV2Position,
   positionMarkPrice,
+  positionWinPayout,
   buildV2Spark,
   deriveV2HistoryFromOrders,
+  v2EntryFees,
 } from './v2';
 import type { V2Position, V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { SviFloat } from '@/lib/svi/svi';
@@ -266,5 +268,119 @@ describe('deriveV2HistoryFromOrders', () => {
     const [row] = deriveV2HistoryFromOrders([mintP1, halfClose], mm);
     expect(row.cost).toBeCloseTo(2.5, 2); // half of $5 staked
     expect(row.contracts).toBeCloseTo(6.655, 3);
+  });
+});
+
+/**
+ * Golden test against a REAL settled claim on testnet — expiry market
+ * 0x2542c65…, claim tx CusBoEJ7…. Every figure below is copied from the on-chain
+ * events, so if our payout/cost rules ever drift from the protocol's, this fails.
+ *
+ * The two bugs it locks down:
+ *  1. the position card advertised the raw notional (14.68) as "to win", but a 2×
+ *     win nets out the leverage floor and the chain paid 9.680034;
+ *  2. cost counted only the stake, dropping the 0.136821 mint fee, so PnL and ROI
+ *     both read high (+93.60% instead of the true +88.45%).
+ */
+describe('golden: the 2026-07-13 settled claim (chain-verified)', () => {
+  const MKT = '0x2542c6537322ee64b57770b6eda9f93a2026943070344e53d2a3c3c8fc03851b';
+  const ROOT = '100433593438436434593118549792012172889945301013461314043905';
+  const CHAIN_PAYOUT = 9.680034; // SettledOrderRedeemed.payout_amount = 9_680_034
+  const ALL_IN_COST = 5.136787; // net_premium 4.999966 + trading_fee 0.136821
+
+  const market = {
+    expiry_market_id: MKT,
+    expiry: 1783905240000,
+    tick_size: '10000000', // $0.01
+  } as unknown as V2Market;
+
+  // settlement_price 63_829_945_556_340 (1e9-scaled) → above the $63,802 strike.
+  const SETTLEMENT = 63829.94555634;
+
+  // order_minted: UP $63,802 · 14.68 contracts · 2× · entry 68.1194%.
+  const mint: V2OrderEvent = {
+    kind: 'order_minted',
+    expiry_market_id: MKT,
+    position_root_id: ROOT,
+    order_id: ROOT,
+    lower_tick: 6380200,
+    higher_tick: 1073741823, // +∞ ⇒ UP
+    quantity: '14680000',
+    net_premium: '4999966',
+    trading_fee: '136821',
+    builder_fee: '0',
+    penalty_fee: '0',
+    entry_probability: 681194345,
+    leverage: 2000000000,
+    checkpoint_timestamp_ms: 1783905206819,
+  };
+
+  const claim: V2OrderEvent = {
+    kind: 'settled_order_redeemed',
+    expiry_market_id: MKT,
+    position_root_id: ROOT,
+    order_id: ROOT,
+    quantity_closed: '14680000',
+    payout_amount: '9680034',
+    settlement_price: '63829945556340',
+    checkpoint_timestamp_ms: 1783979560830,
+  };
+
+  // The open row exactly as /accounts/{id}/positions reports it — note it carries
+  // the stake but NO fee field, which is why v2EntryFees has to join the mint in.
+  const row = {
+    expiry_market_id: MKT,
+    order_id: ROOT,
+    position_root_id: ROOT,
+    status: 'open',
+    lower_tick: 6380200,
+    higher_tick: 1073741823,
+    quantity: '14680000',
+    net_premium: '4999966',
+    // entry_value·(1 − 1/L) = 0.681194345 × 14.68 × 0.5. The chain's payout implies
+    // exactly this floor: 14.68 − 9.680034 = 4.999966.
+    floor_shares: '4999966',
+    entry_probability: 681194345,
+    leverage: 2000000000,
+    opened_at_ms: 1783905206819,
+  } as unknown as V2Position;
+
+  const enriched = () =>
+    normalizeV2Position(row, 0, market, v2EntryFees([mint]).get(ROOT) ?? 0);
+
+  it('"to win" is the notional MINUS the leverage floor — the amount the chain paid', () => {
+    const p = enriched();
+    expect(p.qty).toBeCloseTo(14.68, 2); // the notional the card used to advertise
+    expect(positionWinPayout(p)).toBeCloseTo(CHAIN_PAYOUT, 4); // what actually lands
+    expect(positionWinPayout(p)).toBeLessThan(p.qty);
+  });
+
+  it('derives the same payout when the feed omits floor_shares', () => {
+    // Falls back to entry_value·(1 − 1/L) — must still land on the chain's number.
+    const derived = { ...enriched(), floorShares: undefined };
+    expect(positionWinPayout(derived)).toBeCloseTo(CHAIN_PAYOUT, 4);
+  });
+
+  it('cost is all-in: the stake PLUS the fee charged at mint', () => {
+    expect(enriched().cost).toBeCloseTo(ALL_IN_COST, 6);
+    // Without the fee join it would understate by the 0.136821 trading fee.
+    expect(normalizeV2Position(row, 0, market).cost).toBeCloseTo(4.999966, 6);
+  });
+
+  it('settling the winner reproduces the chain payout and a fee-aware PnL', () => {
+    const s = settleV2Position(enriched(), SETTLEMENT);
+    expect(s.won).toBe(true); // 63,829.95 settled above the $63,802 strike
+    expect(s.markValue).toBeCloseTo(CHAIN_PAYOUT, 4);
+    expect(s.pnl).toBeCloseTo(CHAIN_PAYOUT - ALL_IN_COST, 4); // +4.543, not +4.680
+  });
+
+  it('the realized history row agrees with the claim event', () => {
+    const [h] = deriveV2HistoryFromOrders([mint, claim], new Map([[MKT, market]]));
+    expect(h.result).toBe('won');
+    expect(h.strike).toBeCloseTo(63802, 0); // 6_380_200 ticks × $0.01
+    expect(h.payout).toBeCloseTo(CHAIN_PAYOUT, 4);
+    expect(h.cost).toBeCloseTo(ALL_IN_COST, 6);
+    expect(h.pnl).toBeCloseTo(4.543247, 5);
+    expect(h.roi).toBeCloseTo(0.8845, 3); // +88.45%, not the +93.60% the bare stake implied
   });
 });

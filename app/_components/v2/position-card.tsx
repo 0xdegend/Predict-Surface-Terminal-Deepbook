@@ -37,7 +37,7 @@ import { quote as fmtQuote, price, pct, signed, dateUTC, countdown, shortId } fr
 import { predictV2Config } from '@/config/predict';
 import { ShareCardModal } from '@/app/_components/positions/share-card-modal';
 import type { ShareCardData } from '@/app/_components/positions/share-card-canvas';
-import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 const OBJECT_EXPLORER = (id: string) =>
   `https://suiscan.xyz/${predictV2Config.network}/object/${id}`;
@@ -211,7 +211,12 @@ export function V2PositionCard({
         {/* metrics — two tiers, monochrome, one faded hairline between them */}
         <div className="flex flex-col gap-3 px-1">
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 @lg:grid-cols-4">
-            <Metric icon={LuLayers} label="Size" value={fmtQuote(p.qty)} sub="contracts" />
+            <Metric
+              icon={LuLayers}
+              label="Size"
+              value={fmtQuote(p.qty)}
+              sub={p.leverage != null && p.leverage > 1 ? `contracts · ${p.leverage.toFixed(0)}×` : 'contracts'}
+            />
             <Metric
               icon={LuPercent}
               label="Avg entry"
@@ -237,10 +242,13 @@ export function V2PositionCard({
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 @md:grid-cols-3 @xl:grid-cols-5">
             <MiniMetric icon={LuClock} label="Entered" value={p.openedAt != null ? dateUTC(p.openedAt, false) : '—'} />
             <MiniMetric icon={LuDollarSign} label="Cost" value={p.cost != null ? `${fmtQuote(p.cost)} ${sym}` : '—'} />
+            {/* The real max payout — notional minus the leverage floor. Leverage
+                itself rides on the Size metric above, so a leveraged position no
+                longer has to trade away its payout figure to show its multiple. */}
             <MiniMetric
               icon={LuShieldCheck}
-              label={p.leverage != null && p.leverage > 1 ? 'Leverage' : 'Max payout'}
-              value={p.leverage != null && p.leverage > 1 ? `${p.leverage.toFixed(0)}×` : `${fmtQuote(p.qty)} ${sym}`}
+              label="Max payout"
+              value={`${fmtQuote(positionWinPayout(p))} ${sym}`}
             />
             <MiniMetric
               icon={LuActivity}
@@ -267,7 +275,7 @@ export function V2PositionCard({
                 : result === 'settling'
                   ? "Expired — waiting on the oracle's final settlement price."
                   : isRange
-                    ? `Pays ${fmtQuote(p.qty)} ${sym} if ${title} settles in the band.`
+                    ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
                     : 'Probabilistic · resolved by oracle data.'}
           </p>
           <div className="flex items-center gap-2">
