@@ -3,19 +3,18 @@
 /**
  * The v2 Analytics tools — Pulse, Markets, Sentiment, Price swings — each a
  * full-width instrument in the legacy Analytics language (glass-card headers,
- * rows-divided lists, metric toggles). Real market list / cadence / expiry;
- * sample volume / sentiment / IV until the flow endpoints are indexed.
+ * rows-divided lists, metric toggles). All REAL now: the market list, cadence and
+ * expiry from the indexer; volume / open bets / sentiment / implied vol folded
+ * from the per-market order + activity feeds and the live pricer (useV2Analytics).
  */
 import { useMemo, useState } from 'react';
 import { LuGrid3X3, LuArrowUp, LuArrowDown, LuWaves } from 'react-icons/lu';
 import { compact, num, pct, ttl } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
-import { Sparkline } from '@/app/_components/analytics/charts/sparkline';
-import { demoIvSeries, type DemoKpis, type DemoMarketCell, type DemoSentiment, type DemoFlowRow } from '@/lib/api/v2/analytics-demo';
+import type { Kpis, MarketCell, Sentiment, FlowRow } from '@/lib/analytics/v2-aggregate';
 import { V2KpiStrip, V2HotMarkets, V2PriceSwing } from './pulse-widgets';
 import { V2SentimentGauge } from './sentiment-gauge';
 import { V2FlowTape } from './flow-tape';
-import { SampleBadge } from './sample-badge';
 
 /* --------------------------------- Pulse ---------------------------------- */
 
@@ -25,13 +24,12 @@ export function V2Pulse({
   sentiment,
   flow,
 }: {
-  kpis: DemoKpis;
-  cells: DemoMarketCell[];
-  sentiment: DemoSentiment;
-  flow: DemoFlowRow[];
+  kpis: Kpis;
+  cells: MarketCell[];
+  sentiment: Sentiment;
+  flow: FlowRow[];
 }) {
   const front = cells.length ? [...cells].sort((a, b) => a.expiry - b.expiry)[0] : null;
-  const series = useMemo(() => (front ? demoIvSeries(front.atmIv) : []), [front]);
 
   return (
     <div className="space-y-3">
@@ -42,10 +40,10 @@ export function V2Pulse({
         </div>
         <div className="flex flex-col gap-3 lg:col-span-1 lg:h-full">
           <V2SentimentGauge sentiment={sentiment} className="min-h-0 flex-1" />
-          <V2PriceSwing cell={front} series={series} className="min-h-0 flex-1" />
+          <V2PriceSwing cell={front} className="min-h-0 flex-1" />
         </div>
       </div>
-      <V2FlowTape initial={flow} limit={8} title="Latest bets" />
+      <V2FlowTape rows={flow} limit={8} title="Latest bets" />
     </div>
   );
 }
@@ -60,12 +58,12 @@ const METRICS: { id: Metric; label: string }[] = [
   { id: 'sentiment', label: 'Sentiment' },
 ];
 
-const metricValue = (c: DemoMarketCell, m: Metric): number =>
+const metricValue = (c: MarketCell, m: Metric): number =>
   m === 'volume' ? c.volume : m === 'oi' ? c.oi : m === 'iv' ? c.atmIv : Math.abs(c.upShare - 0.5);
-const metricText = (c: DemoMarketCell, m: Metric): string =>
+const metricText = (c: MarketCell, m: Metric): string =>
   m === 'volume' ? `${compact(c.volume)}` : m === 'oi' ? `${c.oi}` : m === 'iv' ? pct(c.atmIv, 0) : `${Math.round((c.upShare >= 0.5 ? c.upShare : 1 - c.upShare) * 100)}%`;
 
-export function V2MarketsTool({ cells }: { cells: DemoMarketCell[] }) {
+export function V2MarketsTool({ cells }: { cells: MarketCell[] }) {
   const now = useNow(0);
   const [metric, setMetric] = useState<Metric>('volume');
   const ranked = useMemo(() => [...cells].sort((a, b) => metricValue(b, metric) - metricValue(a, metric)), [cells, metric]);
@@ -79,22 +77,19 @@ export function V2MarketsTool({ cells }: { cells: DemoMarketCell[] }) {
           <span className="text-[13px] font-semibold tracking-tight text-text-1">Markets</span>
           <span className="eyebrow text-text-3">size = {METRICS.find((m) => m.id === metric)?.label} · color = sentiment</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1">
-            {METRICS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMetric(m.id)}
-                aria-pressed={metric === m.id}
-                className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-tight transition-colors ${
-                  metric === m.id ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          <SampleBadge />
+        <div className="flex flex-wrap items-center gap-1">
+          {METRICS.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => setMetric(m.id)}
+              aria-pressed={metric === m.id}
+              className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-tight transition-colors ${
+                metric === m.id ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -139,10 +134,16 @@ export function V2MarketsTool({ cells }: { cells: DemoMarketCell[] }) {
 
 /* ------------------------------- Sentiment -------------------------------- */
 
-export function V2SentimentTool({ sentiment, cells }: { sentiment: DemoSentiment; cells: DemoMarketCell[] }) {
+export function V2SentimentTool({ sentiment, cells }: { sentiment: Sentiment; cells: MarketCell[] }) {
   const now = useNow(0);
+  // Markets where the crowd leans hardest one way — and where there's real money
+  // on it (a lopsided market with no volume isn't interesting).
   const lopsided = useMemo(
-    () => [...cells].sort((a, b) => Math.abs(b.upShare - 0.5) - Math.abs(a.upShare - 0.5)).slice(0, 6),
+    () =>
+      [...cells]
+        .filter((c) => c.volume > 0)
+        .sort((a, b) => Math.abs(b.upShare - 0.5) - Math.abs(a.upShare - 0.5))
+        .slice(0, 6),
     [cells],
   );
 
@@ -155,10 +156,9 @@ export function V2SentimentTool({ sentiment, cells }: { sentiment: DemoSentiment
             <div className="text-[13px] font-semibold tracking-tight text-text-1">Where sentiment is strongest</div>
             <div className="eyebrow mt-0.5 text-text-3">markets most people are betting the same way</div>
           </div>
-          <SampleBadge />
         </div>
         {lopsided.length === 0 ? (
-          <div className="px-4 py-12 text-center text-[12px] text-text-3">No live markets right now.</div>
+          <div className="px-4 py-12 text-center text-[12px] text-text-3">No bets on the board yet.</div>
         ) : (
           <div className="rows-divided">
             {lopsided.map((c) => {
@@ -199,9 +199,10 @@ export function V2SentimentTool({ sentiment, cells }: { sentiment: DemoSentiment
 
 /* ------------------------------ Price swings ------------------------------ */
 
-export function V2VolTool({ cells }: { cells: DemoMarketCell[] }) {
+export function V2VolTool({ cells }: { cells: MarketCell[] }) {
   const now = useNow(0);
-  const ranked = useMemo(() => [...cells].sort((a, b) => b.atmIv - a.atmIv), [cells]);
+  const ranked = useMemo(() => [...cells].filter((c) => c.atmIv > 0).sort((a, b) => b.atmIv - a.atmIv), [cells]);
+  const max = Math.max(0.0001, ...ranked.map((c) => c.atmIv));
 
   return (
     <div className="glass-card overflow-hidden">
@@ -209,12 +210,11 @@ export function V2VolTool({ cells }: { cells: DemoMarketCell[] }) {
         <div className="flex items-center gap-2">
           <LuWaves size={15} className="text-accent" />
           <span className="text-[13px] font-semibold tracking-tight text-text-1">Price swings</span>
-          <span className="eyebrow text-text-3">expected move per market</span>
+          <span className="eyebrow text-text-3">expected move per market · implied vol</span>
         </div>
-        <SampleBadge />
       </div>
       {ranked.length === 0 ? (
-        <div className="px-4 py-12 text-center text-[12px] text-text-3">No live markets right now.</div>
+        <div className="px-4 py-12 text-center text-[12px] text-text-3">Pricing not available right now.</div>
       ) : (
         <div className="rows-divided">
           {ranked.map((c) => (
@@ -224,8 +224,13 @@ export function V2VolTool({ cells }: { cells: DemoMarketCell[] }) {
                   <span className="font-mono text-[12px] text-text-1">BTC {num(c.forward, 0)}</span>
                   <span className="font-mono text-[10px] tabular-nums text-text-3">ends in {ttl(c.expiry, now)}</span>
                 </div>
+                <span className="mt-1.5 block h-1 w-full max-w-sm overflow-hidden rounded-full bg-bg-3">
+                  <span
+                    className="block h-full rounded-full bg-accent transition-[width] duration-500"
+                    style={{ width: `${Math.max(4, Math.round((c.atmIv / max) * 100))}%`, opacity: 0.75 }}
+                  />
+                </span>
               </div>
-              <Sparkline data={demoIvSeries(c.atmIv, 32)} width={90} height={26} color="var(--accent)" />
               <span className="w-14 flex-none text-right font-mono text-[14px] font-semibold tabular-nums text-text-1">{pct(c.atmIv, 0)}</span>
             </div>
           ))}

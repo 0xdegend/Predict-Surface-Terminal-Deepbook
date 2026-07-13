@@ -84,6 +84,12 @@ export const getVaultFlushes = (vaultId: string, limit = 200, o?: GetOptions) =>
 export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
   beta<V2OpenInterest>(`/markets/${marketId}/open-interest`, o);
 
+/** The market's order EVENT log (mints + redeems), newest-first — the per-market
+ *  flow feed. There is no GLOBAL orders endpoint, so the analytics aggregate fans
+ *  this out across the active markets to reconstruct the whole book's flow. */
+export const getMarketOrders = (marketId: string, limit = 60, o?: GetOptions) =>
+  beta<V2OrderEvent[]>(`/markets/${marketId}/orders?limit=${limit}`, o);
+
 /** Hourly mint/redeem activity buckets for one market (30-day MV, 60s refresh). */
 export const getMarketActivity = (marketId: string, limit = 50, o?: GetOptions) =>
   beta<V2ActivityBucket[]>(`/markets/${marketId}/activity?limit=${limit}`, o);
@@ -129,4 +135,6 @@ export const qkV2 = {
   vaultServerState: ['v2', 'vault', 'server-state'] as const,
   vaultFlushes: ['v2', 'vault', 'flushes'] as const,
   marketOpenInterest: (id: string) => ['v2', 'market', id, 'open-interest'] as const,
+  marketActivity: (id: string) => ['v2', 'market', id, 'activity'] as const,
+  marketOrders: (id: string) => ['v2', 'market', id, 'orders'] as const,
 };

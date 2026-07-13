@@ -1,16 +1,16 @@
 /**
  * /v2/analytics — market analytics for the new deployment, mirroring the legacy
  * Analytics screen (tabbed: Pulse · Markets · Sentiment · Price swings · Live
- * bets). This server route fetches the REAL inputs — the live market list and
+ * bets). This server route seeds the REAL inputs — the live market list and
  * network time from the indexer, plus live BTC spot from the propbook oracle —
- * and hands them to the client panel, which renders the tools. Volume, sentiment,
- * IV and the bet feed are sample (labelled) until the global flow feed is
- * indexed; each view flips to real data by swapping its demo generator.
+ * and hands them to the client panel. The panel takes over live: it fans the
+ * per-market order + activity feeds and the live pricer out across the active
+ * markets to reconstruct the whole book's volume, sentiment, flow and implied vol
+ * (there is no global flow endpoint). See useV2Analytics.
  */
 import { getV2Markets, getV2Status, getPythLatest, pythSpot } from '@/lib/api/v2/client';
 import { predictV2Config } from '@/config/predict';
 import { activeMarkets, wallClockMs } from '@/lib/markets/v2-discovery';
-import { hourlySeed } from '@/lib/api/v2/analytics-demo';
 import { V2AnalyticsPanel } from '@/app/_components/v2/analytics/panel';
 import type { V2Market } from '@/lib/api/v2/types';
 
@@ -36,7 +36,7 @@ export default async function V2AnalyticsPage() {
 
   return (
     <main className="flex flex-1 flex-col">
-      <V2AnalyticsPanel markets={markets} serverNow={now} seed={hourlySeed(now)} spot={spot} />
+      <V2AnalyticsPanel markets={markets} spot={spot} />
     </main>
   );
 }

@@ -3,58 +3,33 @@
 /**
  * V2FlowTape — the live bet feed, in the legacy LiveTicker/FlowTape language:
  * a glass-card with a head-divider, then rows-divided entries (direction chip ·
- * avatar · short id · market · staked · age). The global trade feed isn't
- * indexed yet, so this runs on SAMPLE data — seeded from server rows (stable
- * hydration) then a fresh sample bet flashes in every few seconds. Swap
- * `makeFlowRow` for the real `/positions/minted` stream when it ships.
+ * avatar · short id · market · staked · age). Fed REAL rows reconstructed from the
+ * per-market order feeds (see useV2Analytics); it just renders and keeps the age
+ * column ticking. Newest first, capped to `limit`.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LuArrowUp, LuArrowDown, LuArrowLeftRight } from 'react-icons/lu';
 import { CADENCE_LABEL } from '@/lib/markets/v2-discovery';
-import { makeFlowRow, makeRng, type DemoFlowRow } from '@/lib/api/v2/analytics-demo';
 import { num, ago, shortId } from '@/lib/format';
 import { WalletAvatar } from '@/app/_components/leaderboard/wallet-avatar';
-import { SampleBadge } from './sample-badge';
+import type { FlowRow } from '@/lib/analytics/v2-aggregate';
 
 export function V2FlowTape({
-  initial,
+  rows,
   limit,
   title = 'Live bets',
-  live = true,
 }: {
-  initial: DemoFlowRow[];
-  /** Cap the visible rows (Pulse ticker passes a small number). */
+  rows: FlowRow[];
+  /** Cap the visible rows (the Pulse ticker passes a small number). */
   limit?: number;
   title?: string;
-  live?: boolean;
 }) {
-  const [rows, setRows] = useState<DemoFlowRow[]>(initial);
-  const [now, setNow] = useState<number>(() => initial[0]?.tsMs ?? Date.now());
-  const rng = useRef(makeRng());
-  const cap = limit ?? 40;
-
+  // A 1s clock just for the age column — the rows themselves refresh from the hook.
+  const [now, setNow] = useState<number>(() => Date.now());
   useEffect(() => {
-    if (!live) return;
-    let alive = true;
-    const clock = setInterval(() => alive && setNow(Date.now()), 1000);
-    let timer: ReturnType<typeof setTimeout>;
-    const schedule = () => {
-      timer = setTimeout(
-        () => {
-          if (!alive) return;
-          setRows((prev) => [makeFlowRow(rng.current, Date.now(), 0), ...prev].slice(0, cap));
-          schedule();
-        },
-        2000 + Math.random() * 3200,
-      );
-    };
-    schedule();
-    return () => {
-      alive = false;
-      clearInterval(clock);
-      clearTimeout(timer);
-    };
-  }, [live, cap]);
+    const clock = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(clock);
+  }, []);
 
   const visible = limit ? rows.slice(0, limit) : rows;
 
@@ -66,20 +41,21 @@ export function V2FlowTape({
           <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
         </span>
         <span className="text-[13px] font-semibold tracking-tight text-text-1">{title}</span>
-        <span className="ml-auto">
-          <SampleBadge />
-        </span>
       </div>
       <div className="rows-divided flex-1">
-        {visible.map((r) => (
-          <FlowRow key={r.id} row={r} now={now} />
-        ))}
+        {visible.length === 0 ? (
+          <div className="px-4 py-10 text-center text-[12px] text-text-3">
+            No bets yet — as soon as someone places one it shows up here.
+          </div>
+        ) : (
+          visible.map((r) => <FlowRowView key={r.id} row={r} now={now} />)
+        )}
       </div>
     </div>
   );
 }
 
-function FlowRow({ row, now }: { row: DemoFlowRow; now: number }) {
+function FlowRowView({ row, now }: { row: FlowRow; now: number }) {
   const isUp = row.side === 'up';
   const isRange = row.side === 'range';
   const Icon = isRange ? LuArrowLeftRight : isUp ? LuArrowUp : LuArrowDown;

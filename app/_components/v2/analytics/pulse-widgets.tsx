@@ -2,9 +2,9 @@
 
 /**
  * Pulse widgets for the v2 Analytics dashboard — the legacy KpiStrip, HotMarkets
- * and IvSnapshot rebuilt on v2 data (real market list + cadence + expiry; sample
- * volume / sentiment / IV until the flow endpoints are indexed). Same glass /
- * head-divider / rows-divided / AnimatedNumber / Sparkline language as legacy.
+ * and price-swing snapshot rebuilt on REAL v2 data (per-market order + activity
+ * feeds + the live pricer for ATM implied vol; see useV2Analytics). Same glass /
+ * head-divider / rows-divided / AnimatedNumber language as legacy.
  */
 import { LuCoins, LuLayers, LuScale, LuFlame, LuWaves } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
@@ -12,18 +12,16 @@ import { compact, num, pct, ttl } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { HUE } from '@/app/_components/ui/metric';
 import { AnimatedNumber } from '@/app/_components/analytics/charts/animated-number';
-import { ResponsiveSparkline } from '@/app/_components/analytics/charts/sparkline';
-import type { DemoKpis, DemoMarketCell } from '@/lib/api/v2/analytics-demo';
-import { SampleBadge } from './sample-badge';
+import type { Kpis, MarketCell } from '@/lib/analytics/v2-aggregate';
 
 /* -------------------------------- KPI strip ------------------------------- */
 
-export function V2KpiStrip({ kpis }: { kpis: DemoKpis }) {
+export function V2KpiStrip({ kpis }: { kpis: Kpis }) {
   const upPct = Math.round(kpis.upShare * 100);
   const leadUp = kpis.upShare >= 0.5;
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · last hour" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" sample />
+      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · 24h" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" />
       <Kpi icon={LuLayers} hue={HUE.blue} label="Live markets" value={kpis.activeMarkets} format={(n) => String(Math.round(n))} />
       <Kpi
         icon={LuScale}
@@ -33,9 +31,8 @@ export function V2KpiStrip({ kpis }: { kpis: DemoKpis }) {
         format={(n) => `${Math.round(n)}%`}
         unit={leadUp ? 'UP' : 'DOWN'}
         valueClass={leadUp ? 'text-up' : 'text-down'}
-        sample
       />
-      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="DUSDC" sample />
+      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="DUSDC" />
     </div>
   );
 }
@@ -48,7 +45,6 @@ function Kpi({
   format,
   unit,
   valueClass,
-  sample = false,
 }: {
   icon: IconType;
   hue?: string;
@@ -57,7 +53,6 @@ function Kpi({
   format: (n: number) => string;
   unit?: string;
   valueClass?: string;
-  sample?: boolean;
 }) {
   return (
     <div className="glass-inset flex items-center gap-3 p-3">
@@ -68,9 +63,7 @@ function Kpi({
         <Icon size={16} />
       </span>
       <div className="min-w-0">
-        <div className="eyebrow flex items-center gap-1.5 text-text-3">
-          {label} {sample && <SampleBadge />}
-        </div>
+        <div className="eyebrow flex items-center gap-1.5 text-text-3">{label}</div>
         <div className={`font-mono text-[17px] font-semibold leading-tight tracking-tight ${valueClass ?? 'text-text-1'}`}>
           <AnimatedNumber value={value} format={format} />
           {unit && <span className="ml-1 text-[10px] font-normal text-text-3">{unit}</span>}
@@ -82,7 +75,7 @@ function Kpi({
 
 /* ------------------------------- hot markets ------------------------------ */
 
-export function V2HotMarkets({ cells, className = '' }: { cells: DemoMarketCell[]; className?: string }) {
+export function V2HotMarkets({ cells, className = '' }: { cells: MarketCell[]; className?: string }) {
   const now = useNow(0);
   const max = Math.max(1, ...cells.map((c) => c.volume));
 
@@ -91,10 +84,7 @@ export function V2HotMarkets({ cells, className = '' }: { cells: DemoMarketCell[
       <div className="head-divider flex items-center gap-2 px-4 py-3">
         <LuFlame size={15} className="text-accent" />
         <span className="text-[13px] font-semibold tracking-tight text-text-1">Hottest markets</span>
-        <span className="eyebrow text-text-3">most bet right now</span>
-        <span className="ml-auto">
-          <SampleBadge label="Sample volume" />
-        </span>
+        <span className="eyebrow text-text-3">most bet · 24h</span>
       </div>
 
       {cells.length === 0 ? (
@@ -136,9 +126,9 @@ export function V2HotMarkets({ cells, className = '' }: { cells: DemoMarketCell[
 
 /* ------------------------------ price swing ------------------------------- */
 
-export function V2PriceSwing({ cell, series, className = '' }: { cell: DemoMarketCell | null; series: number[]; className?: string }) {
+export function V2PriceSwing({ cell, className = '' }: { cell: MarketCell | null; className?: string }) {
   const now = useNow(0);
-  const current = cell?.atmIv ?? (series.length ? series[series.length - 1] : 0);
+  const current = cell?.atmIv ?? 0;
 
   return (
     <div className={`glass-card flex flex-col overflow-hidden ${className}`}>
@@ -146,24 +136,22 @@ export function V2PriceSwing({ cell, series, className = '' }: { cell: DemoMarke
         <LuWaves size={15} className="text-accent" />
         <span className="text-[13px] font-semibold tracking-tight text-text-1">Price swing</span>
         {cell && <span className="eyebrow text-text-3">BTC · ends in {ttl(cell.expiry, now)}</span>}
-        <span className="ml-auto">
-          <SampleBadge />
-        </span>
       </div>
-      <div className="flex flex-1 flex-col justify-between gap-3 p-4">
+      <div className="flex flex-1 flex-col justify-center gap-2 p-4">
         {!cell ? (
           <div className="py-6 text-center text-[12px] text-text-3">No live market.</div>
         ) : (
           <>
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-mono text-[24px] font-semibold leading-none tracking-tight text-text-1">{pct(current, 0)}</span>
+              <span className="font-mono text-[28px] font-semibold leading-none tracking-tight text-text-1">
+                {current > 0 ? pct(current, 0) : '—'}
+              </span>
               <span className="text-[11px] font-medium text-text-2">expected swing</span>
             </div>
-            {series.length >= 2 ? (
-              <ResponsiveSparkline data={series} height={40} color="var(--accent)" />
-            ) : (
-              <div className="py-2 text-[11px] text-text-3">Not enough history yet.</div>
-            )}
+            <p className="text-[11px] leading-relaxed text-text-3">
+              The market&apos;s implied volatility for the front expiry — how big a move traders are
+              pricing in before it settles.
+            </p>
           </>
         )}
       </div>

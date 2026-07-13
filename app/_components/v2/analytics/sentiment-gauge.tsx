@@ -3,15 +3,14 @@
 /**
  * V2SentimentGauge — the protocol's UP-vs-DOWN dollar imbalance (the "skew" the
  * app is named for), matching the legacy SentimentGauge: a glass-card with a
- * single split bar and per-side dollar/bet totals. Sample data until the global
- * mint feed is indexed (labelled).
+ * single split bar and per-side dollar/bet totals. Real, weighted by premium
+ * staked across the recent minted orders (see useV2Analytics).
  */
 import { LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { compact, num } from '@/lib/format';
-import type { DemoSentiment } from '@/lib/api/v2/analytics-demo';
-import { SampleBadge } from './sample-badge';
+import type { Sentiment } from '@/lib/analytics/v2-aggregate';
 
-export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: DemoSentiment; className?: string }) {
+export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Sentiment; className?: string }) {
   const { upCost, downCost, upCount, downCount, upShare, totalCost } = sentiment;
   const upPct = Math.round(upShare * 100);
   const downPct = 100 - upPct;
@@ -23,7 +22,7 @@ export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Dem
       <div className="mb-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
           <div className="eyebrow flex items-center gap-1.5 whitespace-nowrap text-text-3">
-            Sentiment · last hour <SampleBadge />
+            Sentiment · recent bets
           </div>
           <div
             className={`mt-0.5 whitespace-nowrap text-[15px] font-semibold tracking-tight ${
