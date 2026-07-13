@@ -114,9 +114,10 @@ export function SurfaceControls({
             any bad spots light up; if every price is fair, nothing shows.
           </span>
           <span className="mt-2 block">
-            <span className="font-medium text-down">Stress</span> — bends the surface out of shape on
-            purpose, so Arb Check has something to flag. Turn both on to watch it catch the problem,
-            then off to go back to live prices.
+            <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
+            the live surface, so Arb Check has a real example to catch. The rest of the surface stays
+            exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
+            prices.
           </span>
         </InfoTip>
       </div>

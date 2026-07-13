@@ -14,8 +14,9 @@
  *    mode builds a band from two clicks. Below lg the surface is VIEW-ONLY —
  *    trading happens from the rail/list (a 3-D tap on a phone is imprecise).
  *  - OVERLAYS: Arb Check paints butterfly/calendar-violating cells red on the
- *    mesh (plus the status pill), Stress perturbs the SVI so the checker
- *    visibly fires; the popover always prices off the UNSTRESSED live inputs.
+ *    mesh (plus the status pill), Stress injects one localized sample mispricing
+ *    (at the live IV scale) so the checker visibly fires; the popover always
+ *    prices off the UNSTRESSED live inputs.
  *  - Legacy extras: first-run coach pulse, mode-aware tap hint, and a fill
  *    ripple on every successful mint (popover or rail ticket).
  *
@@ -26,7 +27,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import { buildSurface, stressSvi, type SmileInput, type Surface } from '@/lib/svi/surface';
+import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
@@ -147,21 +148,21 @@ export function SurfaceCanvasV2({
     () => inputs.filter((i) => i.oracle.expiry > nowMs + 5_000),
     [inputs, nowMs],
   );
-  // Stress perturbs the SVI (adds slope/skew) so the no-arb checker visibly
-  // fires — the credibility flex. DISPLAY-ONLY: the trade popover prices off
-  // the unstressed `liveInputs`. Live data is normally clean.
-  const shownInputs = useMemo(
-    () => (stress ? liveInputs.map((i) => ({ ...i, svi: stressSvi(i.svi) })) : liveInputs),
-    [liveInputs, stress],
-  );
   // Finer k-grid (49 cols) over ±0.06 log-moneyness — half legacy's ±0.12
   // window, sized to v2's short tenors (≤8h): the tradeable band of even the
   // longest row only spans |k| ≲ 0.035, so at ±0.12 three quarters of every row
   // was dead zone (washed slate) and the surface read as two pale slabs. At
   // ±0.06 the glowing ridge fills the canvas the way legacy's does.
+  //
+  // Stress is DISPLAY-ONLY: buildSurface keeps the whole surface at the live IV
+  // scale and injects ONE localized sample mispricing (a gentle kink + a real
+  // no-arb violation) so the checker fires while the surface still reads real —
+  // NOT a global perturbation, which pinned every short-tenor row to the display
+  // ceiling and flattened it into a red plateau. The popover always prices off
+  // the unstressed `liveInputs`.
   const surface = useMemo(
-    () => buildSurface(shownInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49 }),
-    [shownInputs, nowMs],
+    () => buildSurface(liveInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49, stress }),
+    [liveInputs, nowMs, stress],
   );
   const mesh = useMemo(() => buildSurfaceMesh(surface), [surface]);
 
@@ -1099,9 +1100,10 @@ function SurfaceControls({
           any bad spots light up; if every price is fair, nothing shows.
         </span>
         <span className="mt-2 block">
-          <span className="font-medium text-down">Stress</span> — bends the surface out of shape on
-          purpose, so Arb Check has something to flag. Turn both on to watch it catch the problem,
-          then off to go back to live prices.
+          <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
+          the live surface, so Arb Check has a real example to catch. The rest of the surface stays
+          exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
+          prices.
         </span>
       </InfoTip>
     </div>

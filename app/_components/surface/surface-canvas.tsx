@@ -73,6 +73,7 @@ export function SurfaceCanvas({
     initialInputs,
   );
   const showNoArb = useSurfaceStore((s) => s.showNoArb);
+  const stress = useSurfaceStore((s) => s.stress);
   const select = useSurfaceStore((s) => s.select);
   const selection = useSurfaceStore((s) => s.selection);
   const ticketMode = useSurfaceStore((s) => s.ticketMode);
@@ -115,10 +116,13 @@ export function SurfaceCanvas({
     setCoachSeen(true);
   }
 
+  // Stress is DISPLAY-ONLY: buildSurface keeps the surface at the live IV scale
+  // and injects one localized sample mispricing (a gentle kink + a real no-arb
+  // violation) so the checker fires while the surface still reads real.
   const { surface, mesh } = useMemo(() => {
-    const s = buildSurface(inputs, { kMin: -0.12, kMax: 0.12, kSteps: 49 });
+    const s = buildSurface(inputs, { kMin: -0.12, kMax: 0.12, kSteps: 49, stress: stress > 0 });
     return { surface: s, mesh: buildSurfaceMesh(s) };
-  }, [inputs]);
+  }, [inputs, stress]);
 
   const oracleById = useMemo(() => {
     const m = new Map<string, Oracle>();

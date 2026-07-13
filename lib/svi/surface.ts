@@ -177,7 +177,7 @@ export interface Surface {
  */
 export function buildSurface(
   inputs: SmileInput[],
-  opts: { kMin?: number; kMax?: number; kSteps?: number; nowMs?: number } = {},
+  opts: { kMin?: number; kMax?: number; kSteps?: number; nowMs?: number; stress?: boolean } = {},
 ): Surface {
   const nowMs = opts.nowMs ?? Date.now();
   const kMin = opts.kMin ?? -0.15;
@@ -192,8 +192,6 @@ export function buildSurface(
   const sorted = [...inputs].sort((a, b) => a.oracle.expiry - b.oracle.expiry);
   const underlying = sorted[0]?.oracle.underlying_asset ?? '';
 
-  let hasCalendar = false;
-  let hasButterfly = false;
   const rows: SurfaceRow[] = sorted.map((input, expiryIndex) => {
     const tYears = Math.max(timeToExpiryYears(input.oracle.expiry, nowMs), 1e-9);
     const settlement = input.settlement ?? null;
@@ -204,13 +202,6 @@ export function buildSurface(
       const up = upFair(input.forward * Math.exp(k), input.forward, input.svi, settlement);
       return { expiryIndex, kIndex, k, iv, w, up, tradeable: isTradeableFair(up), butterfly: false, calendar: false };
     });
-    // Butterfly: within a row, UP must be non-increasing in k (k ascending).
-    for (let c = 0; c < cells.length - 1; c++) {
-      if (cells[c].up < cells[c + 1].up - ARB_EPS) {
-        cells[c].butterfly = true;
-        hasButterfly = true;
-      }
-    }
     return {
       oracleId: input.oracle.oracle_id,
       expiry: input.oracle.expiry,
@@ -220,7 +211,28 @@ export function buildSurface(
     };
   });
 
+  // Demo only: before the checks run, introduce ONE localized sample mispricing
+  // (a gentle, smoothed kink + a genuine no-arb violation). This keeps the whole
+  // surface at its true live IV scale — no global perturbation, which would send
+  // IV = √(w/T) into the thousands of % on short tenors and pancake it into a
+  // flat red plateau. The checks below then flag exactly the injected cells, and
+  // the Arb Check overlay lights them up.
+  if (opts.stress) injectStressArb(rows, kGrid);
+
+  // Butterfly: within a row, UP must be non-increasing in k (k ascending). Flag
+  // the left node of any adjacent pair where UP rises.
+  let hasButterfly = false;
+  for (const row of rows) {
+    for (let c = 0; c < row.cells.length - 1; c++) {
+      if (row.cells[c].up < row.cells[c + 1].up - ARB_EPS) {
+        row.cells[c].butterfly = true;
+        hasButterfly = true;
+      }
+    }
+  }
+
   // Calendar: at each k, w must be non-decreasing as T increases.
+  let hasCalendar = false;
   for (let r = 1; r < rows.length; r++) {
     for (let c = 0; c < kGrid.length; c++) {
       if (rows[r].cells[c].w < rows[r - 1].cells[c].w - ARB_EPS) {
@@ -233,21 +245,125 @@ export function buildSurface(
   return { underlying, kGrid, rows, hasCalendar, hasButterfly };
 }
 
+/** Smooth raised-cosine (Hann) weight: 1 at the center, easing to 0 at ±R. */
+function hann(d: number, R: number): number {
+  if (Math.abs(d) >= R) return 0;
+  return 0.5 * (1 + Math.cos((Math.PI * d) / R));
+}
+
+/** Index of the k-grid column whose k is closest to `target`. */
+function nearestK(kGrid: number[], target: number): number {
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < kGrid.length; i++) {
+    const d = Math.abs(kGrid[i] - target);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Demo-only STRESS (§6.4). The surface stays at its true, live IV scale — we do
+ * NOT globally perturb the SVI (that explodes IV = √(w/T) into the thousands of
+ * % on these ultra-short markets and pancakes everything into a flat red
+ * plateau at the display ceiling). Instead we seed several *localized* sample
+ * mispricings — broad, legacy-style red bands, but each confined to a wing on a
+ * few expiries so most of the surface still looks live:
+ *
+ *   • Butterfly: contiguous bands across BOTH wings on a few expiries, where UP
+ *     is made to climb with strike (it must be non-increasing).
+ *   • Calendar: bands on the last two expiries, each pulled below the one in
+ *     front (total variance must be non-decreasing in T).
+ *
+ * The flags ride on `up` / `w`, which don't drive the mesh height, so the
+ * geometry only gets gentle Hann-smoothed swells/dips — the "arb" is shown by
+ * the red overlay lighting up those bands, not by deforming the whole surface.
+ * Bands stay on the glowing tradeable ridge (|k| ≲ 0.035), off the dead zone.
+ */
+function injectStressArb(rows: SurfaceRow[], kGrid: number[]): void {
+  const n = rows.length;
+  if (n === 0 || kGrid.length < 6) return;
+  const AMP = 0.06; // gentle ±6% IV swell/dip — a hint, never a spike
+  const inRange = (i: number) => i >= 0 && i < n;
+
+  // A soft Hann-windowed IV swell (sign +1) or dip (sign −1) across [from, to].
+  const bandSwell = (row: SurfaceRow, from: number, to: number, sign: number) => {
+    const mid = (from + to) / 2;
+    const half = Math.max((to - from) / 2, 1) + 2;
+    for (let c = from - 2; c <= to + 2; c++) {
+      if (c < 0 || c >= row.cells.length) continue;
+      row.cells[c].iv *= 1 + sign * AMP * hann(c - mid, half);
+    }
+  };
+
+  // Butterfly band on one expiry: UP climbs across [from, to] → every adjacent
+  // pair violates. UP isn't a height, so only the overlay changes, not the mesh.
+  const butterflyBand = (row: SurfaceRow, from: number, to: number) => {
+    if (to <= from) return;
+    bandSwell(row, from, to, +1);
+    for (let c = from + 1; c <= to && c < row.cells.length; c++) {
+      row.cells[c].up = Math.min(0.985, row.cells[c - 1].up + 0.005);
+    }
+  };
+
+  // Calendar band on one expiry: total variance pulled below the expiry in front
+  // across [from, to]. Read `prev` AFTER it may have been dipped too, so stacking
+  // consecutive back rows keeps each below the last.
+  const calendarBand = (row: SurfaceRow, prev: SurfaceRow, from: number, to: number) => {
+    if (to <= from) return;
+    bandSwell(row, from, to, -1);
+    for (let c = from; c <= to && c < row.cells.length; c++) {
+      if (c < 0) continue;
+      row.cells[c].w = prev.cells[c].w * 0.9;
+    }
+  };
+
+  const midIdx = Math.floor(n / 2);
+
+  // ── Butterfly: right wing on a mid group of expiries ──
+  const rb0 = nearestK(kGrid, 0.006);
+  const rb1 = nearestK(kGrid, 0.034);
+  for (const ri of [midIdx - 1, midIdx, midIdx + 1]) {
+    if (inRange(ri)) butterflyBand(rows[ri], rb0, rb1);
+  }
+
+  // ── Butterfly: left wing on an earlier group of expiries ──
+  const lb0 = nearestK(kGrid, -0.03);
+  const lb1 = nearestK(kGrid, -0.006);
+  const lStart = Math.max(1, midIdx - 3);
+  for (const ri of [lStart, lStart + 1]) {
+    if (inRange(ri)) butterflyBand(rows[ri], lb0, lb1);
+  }
+
+  // ── Calendar: a central band on the last two expiries ──
+  const cb0 = nearestK(kGrid, -0.022);
+  const cb1 = nearestK(kGrid, 0.022);
+  for (const ri of [n - 2, n - 1]) {
+    if (ri >= 1 && inRange(ri)) calendarBand(rows[ri], rows[ri - 1], cb0, cb1);
+  }
+}
+
 /**
  * Stress perturbation for the demo (§6.4): tilt the smile so the no-arb checker
  * visibly fires. Pure — returns new params.
  *
  * These oracles are ultra-short-dated, so b is tiny (~1e-3) — far below Lee's
- * moment bound b·(1±ρ) ≤ 2. A multiplicative bump never reaches arb territory,
- * so we ADD slope: at amount=1, b≈3 with ρ≈-0.97 gives b·(1−ρ)≈5.9 ≫ 2, a hard
- * left-wing butterfly violation, and a sharp kink (σ→0) to make it pop.
+ * moment bound b·(1±ρ) ≤ 2. A multiplicative bump never reaches arb territory, so
+ * we ADD slope. We only need to CLEAR the bound, not blow past it: at amount=1,
+ * b≈2 with the ρ push gives b·(1−ρ) ≈ 3.2 (> 2) — a clear left-wing butterfly
+ * violation with comfortable margin — while keeping the smile far gentler than the
+ * old b+3 kink, which sent IV = √(w/T) into the thousands of % on 10-minute
+ * markets. The display ceiling (mesh.ts IV_DISPLAY_MAX) bounds whatever remains.
  */
 export function stressSvi(svi: SviFloat, amount = 1): SviFloat {
   return {
-    a: Math.max(svi.a * (1 - 0.7 * amount), 1e-6),
-    b: svi.b + 3 * amount,
+    a: Math.max(svi.a * (1 - 0.5 * amount), 1e-6),
+    b: svi.b + 2 * amount,
     rho: Math.max(-0.97, Math.min(0.97, svi.rho - 0.5 * amount)),
     m: svi.m,
-    sigma: Math.max(svi.sigma * (1 - 0.6 * amount), 1e-6),
+    sigma: Math.max(svi.sigma * (1 - 0.3 * amount), 1e-6),
   };
 }

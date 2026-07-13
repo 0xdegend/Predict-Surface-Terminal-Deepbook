@@ -9,15 +9,16 @@
  *    snapshot at-or-before the scrub time).
  *
  * Real event subscription scores better (§4) but server polling at ~2s is the
- * robust path for the live demo; the indexer is ~1s fresh. Stress perturbation
- * (no-arb demo) is applied here so it composes with both live and scrub.
+ * robust path for the live demo; the indexer is ~1s fresh. (The Stress no-arb
+ * demo is a localized sample mispricing injected at mesh-build time in the
+ * canvas, not here — this hook always returns the true live/scrub inputs.)
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getOracles, getOracleState, getSviHistory, getPriceHistory } from '@/lib/api/client';
 import { toFloat } from '@/config/scale';
 import { parseSvi } from '@/lib/svi/svi';
-import { stressSvi, type SmileInput } from '@/lib/svi/surface';
+import { type SmileInput } from '@/lib/svi/surface';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import type { Oracle, SviEvent, PriceEvent } from '@/lib/api/types';
 
@@ -73,7 +74,6 @@ export interface SurfaceData {
 export function useSurfaceInputs(initialOracles: Oracle[], initialInputs: SmileInput[]): SurfaceData {
   const mode = useSurfaceStore((s) => s.mode);
   const scrub = useSurfaceStore((s) => s.scrub);
-  const stress = useSurfaceStore((s) => s.stress);
 
   // Share the table's live active-oracle list (identical query key → one
   // deduped fetch), so the surface, SVI panel, table and ticket never drift on
@@ -159,10 +159,6 @@ export function useSurfaceInputs(initialOracles: Oracle[], initialInputs: SmileI
       base = liveQ.data ?? initialInputs;
     }
 
-    if (stress > 0) {
-      base = base.map((i) => ({ ...i, svi: stressSvi(i.svi, stress) }));
-    }
-
     return {
       inputs: base,
       isLive: mode === 'live',
@@ -171,5 +167,5 @@ export function useSurfaceInputs(initialOracles: Oracle[], initialInputs: SmileI
       historyReady: !!histQ.data,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, scrub, stress, liveQ.data, histQ.data, initialInputs]);
+  }, [mode, scrub, liveQ.data, histQ.data, initialInputs]);
 }

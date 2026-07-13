@@ -61,26 +61,54 @@ export interface MeshOptions {
   height?: number;
 }
 
+/* ── Surface display treatment (VISUAL ONLY) ──────────────────────────────────
+ * These shape how DRAMATIC the surface reads; they never touch pricing, fair
+ * values, or the arb checker (those use `w` / fair prices, not the mesh). Tune
+ * freely — set (Infinity, 3) to restore the original raw-min/max, low-relief look. */
+// IV used for color + height is capped at this multiple of the MEDIAN IV. Without
+// it, a single row blowing up at expiry (IV = √(w/T) as T→0) stretches the scale
+// so far that every live row pancakes onto the floor and the legend reads a
+// nonsense "417,050%". Real data (wings ≲ 2× the median) never reaches the cap, so
+// this only clips the degenerate artifact — the live surface is untouched.
+const IV_DISPLAY_CAP_X_MEDIAN = 2.5;
+// Vertical relief — IV maps into [0, RELIEF_HEIGHT]. Taller = bolder 3-D presence.
+// This is the main "drama" knob; push it up for more standing height.
+const RELIEF_HEIGHT = 4;
+// Absolute IV display ceiling (fraction; 2.0 = 200%). Real BTC IV never gets near
+// this, so it only ever clips the STRESS demo (and any T→0 artifact) — on
+// ultra-short markets a no-arb-firing perturbation makes IV = √(w/T) explode into
+// the thousands of %, and this keeps the legend + height sane instead of towering.
+const IV_DISPLAY_MAX = 2.0;
+
 export function buildSurfaceMesh(surface: Surface, opts: MeshOptions = {}): SurfaceMesh {
   const width = opts.width ?? 10;
   const depth = opts.depth ?? 6;
-  const height = opts.height ?? 3;
+  const height = opts.height ?? RELIEF_HEIGHT;
 
   const rows = surface.rows.length;
   const cols = surface.kGrid.length;
 
-  // IV range for color + height normalization.
-  let ivMin = Infinity;
-  let ivMax = -Infinity;
-  for (const row of surface.rows) {
-    for (const c of row.cells) {
-      if (c.iv < ivMin) ivMin = c.iv;
-      if (c.iv > ivMax) ivMax = c.iv;
-    }
+  // IV range for color + height normalization. ivMax is capped at a multiple of
+  // the MEDIAN IV so one degenerate row (an expiring oracle whose IV = √(w/T)
+  // blows up as T→0) can't hijack the scale — that outlier would otherwise flatten
+  // every live row onto the floor and drive the legend to "417,050%". The median
+  // is robust to a whole outlier row, and clean data sits well under the cap, so
+  // this leaves the real surface exactly as-is while defusing the artifact.
+  const ivs: number[] = [];
+  for (const row of surface.rows) for (const c of row.cells) ivs.push(c.iv);
+  ivs.sort((a, b) => a - b);
+  let ivMin = ivs.length ? ivs[0] : 0;
+  let ivMax = ivs.length ? ivs[ivs.length - 1] : 1;
+  if (ivs.length) {
+    const cap = ivs[Math.floor(ivs.length / 2)] * IV_DISPLAY_CAP_X_MEDIAN; // median × k
+    if (Number.isFinite(cap) && cap > ivMin) ivMax = Math.min(ivMax, cap);
   }
-  if (!Number.isFinite(ivMin)) {
+  // Hard ceiling on top of the median cap — bounds the stress demo (and artifacts)
+  // so the surface can't tower to thousands of %. Below it, nothing changes.
+  ivMax = Math.min(ivMax, IV_DISPLAY_MAX);
+  if (!Number.isFinite(ivMin) || !Number.isFinite(ivMax) || ivMax <= ivMin) {
     ivMin = 0;
-    ivMax = 1;
+    ivMax = IV_DISPLAY_MAX;
   }
   const ivSpan = ivMax - ivMin || 1;
 
@@ -107,7 +135,9 @@ export function buildSurfaceMesh(surface: Surface, opts: MeshOptions = {}): Surf
     for (let c = 0; c < cols; c++) {
       const cell = surface.rows[r].cells[c];
       const idx = (r * cols + c) * 3;
-      const tColor = (cell.iv - ivMin) / ivSpan;
+      // Clamp: cells above the capped ivMax (the degenerate artifact) saturate at
+      // the top of the ramp/height instead of overshooting.
+      const tColor = Math.max(0, Math.min(1, (cell.iv - ivMin) / ivSpan));
       positions[idx] = colMeta[c].x;
       positions[idx + 1] = tColor * height; // height by normalized IV
       positions[idx + 2] = rowMeta[r].z;

@@ -184,4 +184,33 @@ describe('buildSurface', () => {
     // Same SVI at a longer T → larger total variance → calendar clean.
     expect(surface.hasCalendar).toBe(false);
   });
+
+  it('stress option injects a localized butterfly+calendar sample at the live IV scale', () => {
+    const inputs = [
+      { oracle: oracleFixture({ oracle_id: '0xa', expiry: Date.now() + 1 * 3600_000 }), svi: SVI, forward: FORWARD },
+      { oracle: oracleFixture({ oracle_id: '0xb', expiry: Date.now() + 4 * 3600_000 }), svi: SVI, forward: FORWARD },
+    ];
+    const opts = { kMin: -0.06, kMax: 0.06, kSteps: 49 };
+    const clean = buildSurface(inputs, opts);
+    const stressed = buildSurface(inputs, { ...opts, stress: true });
+
+    // Clean surface has neither violation; the stressed one fires BOTH checks.
+    expect(clean.hasButterfly).toBe(false);
+    expect(clean.hasCalendar).toBe(false);
+    expect(stressed.hasButterfly).toBe(true);
+    expect(stressed.hasCalendar).toBe(true);
+
+    // The whole point: the surface stays at the LIVE IV scale — no red-plateau
+    // explosion. Max IV rises at most by the gentle ~6% cue, never blowing past
+    // the clean scale.
+    const maxIv = (s: typeof clean) => Math.max(...s.rows.flatMap((r) => r.cells.map((c) => c.iv)));
+    expect(maxIv(stressed)).toBeLessThanOrEqual(maxIv(clean) * 1.12);
+
+    // The arb reads as clear bands (more than a couple of cells), but stays a
+    // localized region — never the whole surface.
+    const total = stressed.rows.reduce((n, r) => n + r.cells.length, 0);
+    const flagged = stressed.rows.flatMap((r) => r.cells.filter((c) => c.butterfly || c.calendar));
+    expect(flagged.length).toBeGreaterThan(8);
+    expect(flagged.length).toBeLessThan(total * 0.5);
+  });
 });
