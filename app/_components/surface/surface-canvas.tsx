@@ -93,6 +93,10 @@ export function SurfaceCanvas({
   // popover on each new pick so its internal step/size reset cleanly.
   const [popover, setPopover] = useState(false);
   const [clickId, setClickId] = useState(0);
+  // Stress makes the surface a falsified preview → trading is gated. Treat the
+  // ticket as closed while it's on (Stress is toggled from SurfaceControls, so we
+  // derive this rather than reset state), which also un-suppresses the guide.
+  const popoverOpen = popover && stress === 0;
 
   // First-run coach mark — a pulsing ripple on a real near-the-money node that
   // makes "tap the surface to trade" unmistakable (the mesh otherwise reads as
@@ -151,6 +155,8 @@ export function SurfaceCanvas({
   function pick(row: number, col: number) {
     // Surface is view-only below lg — trade from the markets list instead.
     if (isMobile) return;
+    // Stress makes the surface a deliberately-falsified preview — not tradeable.
+    if (stress > 0) return;
     const clickedRow = surface.rows[row];
     const clickedCell = clickedRow?.cells[col];
     if (!clickedRow || !clickedCell) return;
@@ -250,6 +256,7 @@ export function SurfaceCanvas({
             reduced={reduced}
             onHover={setHover}
             onPick={pick}
+            disabled={stress > 0}
           />
           <SelectedMarker mesh={mesh} surface={surface} />
           <BinaryWinZone mesh={mesh} surface={surface} />
@@ -265,7 +272,8 @@ export function SurfaceCanvas({
               !selection &&
               !rangeSelection &&
               !rangeAnchor &&
-              !popover
+              !popover &&
+              stress === 0
             }
           />
           <SurfaceAxes mesh={mesh} />
@@ -288,18 +296,18 @@ export function SurfaceCanvas({
           minDistance={8}
           maxDistance={22}
           maxPolarAngle={Math.PI / 2.05}
-          autoRotate={isLive && !hover && !reduced && !popover && !rangeAnchor}
+          autoRotate={isLive && !hover && !reduced && !popoverOpen && !rangeAnchor}
           autoRotateSpeed={0.1}
           target={[0, -0.5, 0]}
         />
       </Canvas>
 
-      {hover && !popover && <SurfaceTooltip hover={hover} />}
+      {hover && !popoverOpen && <SurfaceTooltip hover={hover} />}
 
       {/* While a range band is still being drawn (no finalized band yet), never
           mount the centered card — it would cover the surface and block the second
           pick. The bottom hint covers guidance until both edges are set. */}
-      {popover && !(ticketMode === "range" && !rangeSelection) && (
+      {popoverOpen && !(ticketMode === "range" && !rangeSelection) && (
         <SurfaceTradePopover
           key={clickId}
           active={popoverActive}
@@ -324,27 +332,37 @@ export function SurfaceCanvas({
       {/* Keep the "Reading the surface" explainer mounted but suppressed while the
           trade popover is open, so it never shows through behind the card yet
           reliably reappears (with its state intact) on close. */}
-      <SurfaceCaption suppressed={!!popover} />
+      <SurfaceCaption suppressed={popoverOpen} />
 
       {/* Empty-state hint — desktop only (the surface is view-only below lg, so
-          "tap to trade" doesn't apply there). Mode-aware, fading out once the
-          relevant selection is made. */}
-      <div
-        className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
-          (ticketMode === "range" ? !!rangeSelection : !!selection)
-            ? "translate-y-1 opacity-0"
-            : "opacity-100"
-        }`}
-      >
-        <span className="chip h-7 px-3 text-[11px] text-text-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          {ticketMode === "range"
-            ? rangeAnchor && !rangeSelection
-              ? "Tap the second price level to set your range"
-              : "Tap two price levels to set your range"
-            : "Tap a point on the surface to build a trade"}
-        </span>
-      </div>
+          "tap to trade" doesn't apply there). While Stress is on the surface is a
+          falsified preview and trading is gated, so swap in a note that says so;
+          otherwise it's mode-aware and fades out once the selection is made. */}
+      {stress > 0 ? (
+        <div className="pointer-events-none absolute bottom-[5.25rem] left-1/2 hidden -translate-x-1/2 lg:block">
+          <span className="chip h-7 px-3 text-[11px] text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-down" />
+            Stress is a preview — turn it off to trade
+          </span>
+        </div>
+      ) : (
+        <div
+          className={`pointer-events-none absolute bottom-[5.25rem] left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
+            (ticketMode === "range" ? !!rangeSelection : !!selection)
+              ? "translate-y-1 opacity-0"
+              : "opacity-100"
+          }`}
+        >
+          <span className="chip h-7 px-3 text-[11px] text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            {ticketMode === "range"
+              ? rangeAnchor && !rangeSelection
+                ? "Tap the second price level to set your range"
+                : "Tap two price levels to set your range"
+              : "Tap a point on the surface to build a trade"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -383,6 +401,7 @@ function MorphSurface({
   reduced,
   onHover,
   onPick,
+  disabled = false,
 }: {
   mesh: SurfaceMesh;
   surface: Surface;
@@ -390,6 +409,7 @@ function MorphSurface({
   reduced: boolean;
   onHover: (h: HoverInfo | null) => void;
   onPick: (row: number, col: number) => void;
+  disabled?: boolean;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
   const lastCell = useRef<{ row: number; col: number }>({ row: -1, col: -1 });
@@ -468,7 +488,11 @@ function MorphSurface({
       lastCell.current = { row, col };
     }
     if (typeof document !== "undefined") {
-      document.body.style.cursor = cell.tradeable ? "pointer" : "not-allowed";
+      document.body.style.cursor = disabled
+        ? "default"
+        : cell.tradeable
+          ? "pointer"
+          : "not-allowed";
     }
     onHover({
       row,

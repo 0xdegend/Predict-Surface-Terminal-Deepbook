@@ -140,6 +140,7 @@ export function SurfaceCanvasV2({
   const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
   const markPicked = useV2TradeStore((s) => s.markPicked);
   const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
+  const clearRange = useV2TradeStore((s) => s.clearRange);
 
   // Drop rows at/past expiry: their w is frozen while T clamps to ~0, so
   // IV = √(w/T) explodes and the height/colour normalization pancakes every
@@ -194,9 +195,22 @@ export function SurfaceCanvasV2({
     [liveInputs, marketId],
   );
 
+  // Turning Stress on makes the surface a deliberately-falsified diagnostic view
+  // (fabricated arb), so trading off it is gated — close any open ticket and drop
+  // an in-progress range draw so the camera unfreezes.
+  function toggleStress(v: boolean) {
+    setStress(v);
+    if (v) {
+      setPopover(false);
+      clearRange();
+    }
+  }
+
   function pick(row: number, col: number) {
     // Surface is view-only below lg — trade from the rail/list instead.
     if (isMobile) return;
+    // Stress is a preview of a mispriced surface — not tradeable. Turn it off.
+    if (stress) return;
     const sRow = surface.rows[row];
     const cell = sRow?.cells[col];
     // Dead-zone nodes (fair UP outside the mintable band) are dimmed and not
@@ -298,6 +312,7 @@ export function SurfaceCanvasV2({
             reduced={reduced}
             onHover={setHover}
             onPick={pick}
+            disabled={stress}
           />
           <SurfaceAxes mesh={mesh} />
           {selection?.kind === 'binary' && (
@@ -312,7 +327,7 @@ export function SurfaceCanvasV2({
             mesh={mesh}
             surface={surface}
             reduced={reduced}
-            show={!isMobile && !coachSeen && pickSeq === 0 && !popover}
+            show={!isMobile && !coachSeen && pickSeq === 0 && !popover && !stress}
           />
           <Grid
             args={[mesh.width + 2, mesh.depth + 2]}
@@ -350,7 +365,7 @@ export function SurfaceCanvasV2({
       {/* While a range band is still being drawn (no finalized band yet), never
           mount the card — it would cover the surface and block the second pick;
           the bottom hint guides until both edges are set (legacy parity). */}
-      {popover && !(mode === 'range' && !bandSet) && (
+      {popover && !stress && !(mode === 'range' && !bandSet) && (
         <SurfaceTradePopoverV2
           key={clickId}
           market={activeMarket}
@@ -370,7 +385,7 @@ export function SurfaceCanvasV2({
         showNoArb={showNoArb}
         onNoArb={() => setShowNoArb((v) => !v)}
         stress={stress}
-        onStress={setStress}
+        onStress={toggleStress}
       />
 
       {/* Plain-English "how to read the surface" guide. Kept mounted but suppressed
@@ -378,21 +393,32 @@ export function SurfaceCanvasV2({
       <SurfaceCaption suppressed={popover} />
 
       {/* Tap-to-trade hint — desktop only (the surface is view-only below lg).
-          Mode-aware, fading out once the relevant pick is made (legacy parity). */}
-      <div
-        className={`pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
-          (mode === 'range' ? bandSet : pickSeq > 0) ? 'translate-y-1 opacity-0' : 'opacity-100'
-        }`}
-      >
-        <span className="chip h-7 px-3 text-[11px] text-text-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-          {mode === 'range'
-            ? rangeAnchorPrice != null && !bandSet
-              ? 'Tap the second price level to set your range'
-              : 'Tap two price levels to set your range'
-            : 'Tap a point on the surface to build a trade'}
-        </span>
-      </div>
+          While Stress is on the surface is a preview and trading is gated, so
+          swap in a note that says so; otherwise it's mode-aware and fades out
+          once the relevant pick is made (legacy parity). */}
+      {stress ? (
+        <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
+          <span className="chip h-7 px-3 text-[11px] text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-down" />
+            Stress is a preview — turn it off to trade
+          </span>
+        </div>
+      ) : (
+        <div
+          className={`pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 transition-all duration-300 lg:block ${
+            (mode === 'range' ? bandSet : pickSeq > 0) ? 'translate-y-1 opacity-0' : 'opacity-100'
+          }`}
+        >
+          <span className="chip h-7 px-3 text-[11px] text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            {mode === 'range'
+              ? rangeAnchorPrice != null && !bandSet
+                ? 'Tap the second price level to set your range'
+                : 'Tap two price levels to set your range'
+              : 'Tap a point on the surface to build a trade'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -410,6 +436,7 @@ function MorphSurface({
   reduced,
   onHover,
   onPick,
+  disabled = false,
 }: {
   surface: Surface;
   mesh: SurfaceMesh;
@@ -417,6 +444,7 @@ function MorphSurface({
   reduced: boolean;
   onHover: (h: HoverInfo | null) => void;
   onPick: (row: number, col: number) => void;
+  disabled?: boolean;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
 
@@ -494,9 +522,10 @@ function MorphSurface({
     const cell = sRow?.cells[col];
     if (!sRow || !cell) return;
     // Pointer over a mintable node, not-allowed over the dead zone (legacy
-    // parity) — the cursor is the first "you can trade this" signal.
+    // parity) — the cursor is the first "you can trade this" signal. While Stress
+    // gates trading, keep the default cursor so nothing reads as clickable.
     if (typeof document !== 'undefined') {
-      document.body.style.cursor = cell.tradeable ? 'pointer' : 'not-allowed';
+      document.body.style.cursor = disabled ? 'default' : cell.tradeable ? 'pointer' : 'not-allowed';
     }
     onHover({
       x: e.nativeEvent.offsetX,
