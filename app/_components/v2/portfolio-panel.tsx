@@ -41,6 +41,7 @@ import { Modal } from '../ui/modal';
 import { SuccessModal } from '../ui/success-modal';
 import { ConnectGate } from '../positions/connect-gate';
 import { PerformanceCard } from '../positions/performance-card';
+import { PerfShareCardModal } from '../positions/perf-share-card-modal';
 import { HistoryTable } from '../positions/history-table';
 import { derivePortfolioHistory, equityCurve } from '@/lib/portfolio/history';
 import {
@@ -74,6 +75,8 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
   // Winning claims get a celebration (SuccessModal + confetti) instead of a toast.
   const { celebrate, overlay: claimCelebration } = useClaimCelebration();
+  // Share-as-image dialog for the settled track record (win rate) — legacy parity.
+  const [shareOpen, setShareOpen] = useState(false);
 
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
@@ -361,7 +364,8 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       ) : (
         <>
           <Section title="Performance" hint={demoActive ? 'sample data' : `${stats.total} settled markets`}>
-            <PerformanceCard stats={stats} curve={curve} />
+            {/* Share is offered only on REAL figures — never a sample track record. */}
+            <PerformanceCard stats={stats} curve={curve} onShare={demoActive ? undefined : () => setShareOpen(true)} />
           </Section>
           <Section title="Trade history" hint={demoActive ? 'sample data' : undefined}>
             <HistoryTable history={history} />
@@ -374,6 +378,31 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         busy={!!acct.busy}
         onConfirm={handleRedeemConfirm}
         onClose={() => setRedeeming(null)}
+      />
+
+      {/* Share the settled track record as an image (win rate + curve) — legacy
+          parity. Gated to real data: the button above is hidden while sample. */}
+      <PerfShareCardModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        data={
+          !demoActive && stats.total > 0
+            ? {
+                winRate: stats.winRate,
+                wins: stats.wins,
+                losses: stats.losses,
+                settled: stats.total,
+                realizedPnl: stats.realizedPnl,
+                staked: stats.staked,
+                avgRoi: stats.staked > 0 ? stats.realizedPnl / stats.staked : 0,
+                best: stats.best,
+                streak: stats.streak
+                  ? { count: stats.streak.count, won: stats.streak.result === 'won' }
+                  : null,
+                curve: curve.map((p) => p.cumulative),
+              }
+            : null
+        }
       />
 
       {claimCelebration}

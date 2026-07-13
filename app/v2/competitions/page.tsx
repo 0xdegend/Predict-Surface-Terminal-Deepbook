@@ -1,20 +1,20 @@
 import type { Metadata } from 'next';
-import { CompetitionsPanel } from '@/app/_components/rewards/competitions-panel';
+import { DegenArena } from '@/app/_components/arena/degen-arena';
 
 export const metadata: Metadata = {
   title: 'Competitions',
   description:
-    'Skew Competitions — seasonal trading races where the top traders split a DUSDC prize pool. A preview of the competitive layer coming to the Skew terminal.',
+    'Degen Arena — Skew’s faction competition. Factions compete each season for a share of a DUSDC prize pool, split by faction rank and by each member’s performance.',
 };
 
-// Same self-contained showcase as legacy /competitions — the v2 layout provides
-// the chrome, and the cross-link stays inside the Latest shell.
+// Same self-contained Degen Arena as legacy /competitions — the v2 layout
+// provides the chrome, and the cross-link stays inside the Latest shell.
 export const dynamic = 'force-dynamic';
 
 export default function V2CompetitionsPage() {
   return (
     <main className="flex flex-1 flex-col">
-      <CompetitionsPanel questsHref="/v2/quests" />
+      <DegenArena questsHref="/v2/quests" />
     </main>
   );
 }
