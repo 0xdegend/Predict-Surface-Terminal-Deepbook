@@ -6,16 +6,26 @@
  * single split bar and per-side dollar/bet totals. Real, weighted by premium
  * staked across the recent minted orders (see useV2Analytics).
  */
-import { LuArrowUp, LuArrowDown } from 'react-icons/lu';
+import { useState } from 'react';
+import { LuArrowUp, LuArrowDown, LuShare } from 'react-icons/lu';
 import { compact, num } from '@/lib/format';
 import type { Sentiment } from '@/lib/analytics/v2-aggregate';
+import { SentimentShareModal } from '@/app/_components/analytics/sentiment-share-modal';
 
 export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Sentiment; className?: string }) {
   const { upCost, downCost, upCount, downCount, upShare, totalCost } = sentiment;
+  const hasFlow = totalCost > 0;
+  const [shareOpen, setShareOpen] = useState(false);
   const upPct = Math.round(upShare * 100);
   const downPct = 100 - upPct;
-  const lean = upPct > 55 ? 'up' : downPct > 55 ? 'down' : 'split';
-  const leanLabel = lean === 'up' ? `Leans UP · ${upPct}%` : lean === 'down' ? `Leans DOWN · ${downPct}%` : 'Evenly split';
+  const lean = !hasFlow ? 'split' : upPct > 55 ? 'up' : downPct > 55 ? 'down' : 'split';
+  const leanLabel = !hasFlow
+    ? 'No bets yet'
+    : lean === 'up'
+      ? `Leans UP · ${upPct}%`
+      : lean === 'down'
+        ? `Leans DOWN · ${downPct}%`
+        : 'Evenly split';
 
   return (
     <div className={`glass-card flex flex-col justify-center p-4 ${className}`}>
@@ -32,11 +42,26 @@ export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Sen
             {leanLabel}
           </div>
         </div>
-        <div className="text-right">
-          <div className="eyebrow whitespace-nowrap text-text-3">Total bet</div>
-          <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-text-2">
-            {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+        <div className="flex flex-none items-center gap-2.5">
+          <div className="text-right">
+            <div className="eyebrow whitespace-nowrap text-text-3">Total bet</div>
+            <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-text-2">
+              {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+            </div>
           </div>
+          {/* Share the sentiment read as a poster for X — only meaningful once
+              there's flow to post about. */}
+          {hasFlow && (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              aria-label="Share sentiment on X"
+              title="Share sentiment"
+              className="ctrl-soft flex h-8 w-8 flex-none items-center justify-center rounded-lg text-text-3 transition-colors hover:text-text-1"
+            >
+              <LuShare size={15} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -49,6 +74,8 @@ export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Sen
         <Side dir="up" pct={upPct} dollars={upCost} count={upCount} />
         <Side dir="down" pct={downPct} dollars={downCost} count={downCount} alignRight />
       </div>
+
+      <SentimentShareModal open={shareOpen} onClose={() => setShareOpen(false)} sentiment={sentiment} />
     </div>
   );
 }

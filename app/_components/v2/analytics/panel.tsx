@@ -18,6 +18,7 @@ import { useV2Analytics } from '@/lib/hooks/use-v2-analytics';
 import type { V2Market } from '@/lib/api/v2/types';
 import { V2AnalyticsToolbar, type V2AnalyticsTool } from './toolbar';
 import { V2Pulse, V2MarketsTool, V2SentimentTool, V2VolTool } from './tools';
+import { V2StylesTool } from './styles-tool';
 import { V2FlowTape } from './flow-tape';
 
 export function V2AnalyticsPanel({
@@ -28,7 +29,7 @@ export function V2AnalyticsPanel({
   spot: number | null;
 }) {
   const [tool, setTool] = useState<V2AnalyticsTool>('pulse');
-  const { cells, kpis, sentiment, flow, isLoading } = useV2Analytics(markets, spot);
+  const { cells, kpis, sentiment, flow, traderStyles, isLoading } = useV2Analytics(markets, spot);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
@@ -53,6 +54,7 @@ export function V2AnalyticsPanel({
           {tool === 'markets' && <V2MarketsTool cells={cells} />}
           {tool === 'sentiment' && <V2SentimentTool sentiment={sentiment} cells={cells} />}
           {tool === 'vol' && <V2VolTool cells={cells} />}
+          {tool === 'styles' && <V2StylesTool styles={traderStyles} loading={isLoading} />}
           {tool === 'flow' && <V2FlowTape rows={flow} title="Live bets" />}
         </div>
       )}

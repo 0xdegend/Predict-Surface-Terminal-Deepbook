@@ -184,6 +184,14 @@ export function marketCell(market: V2Market, input: MarketInputs, spot: number |
   };
 }
 
+/** The metric that drives the Markets treemap/table (size ∝ value). */
+export type GridMetric = 'volume' | 'oi' | 'iv' | 'sentiment';
+
+/** A cell's value under the chosen metric (sentiment = distance from a coin-flip). */
+export function metricValue(c: MarketCell, m: GridMetric): number {
+  return m === 'volume' ? c.volume : m === 'oi' ? c.oi : m === 'iv' ? c.atmIv : Math.abs(c.upShare - 0.5);
+}
+
 /** All cells, ranked by volume desc (the tools re-sort per selected metric). */
 export function marketCells(
   markets: V2Market[],

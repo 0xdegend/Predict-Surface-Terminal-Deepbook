@@ -24,6 +24,7 @@ import {
   sentimentFromOrders,
   type MarketInputs,
 } from './v2-aggregate';
+import { classifyV2Traders } from './v2-trader-style';
 import type { V2OrderEvent } from '@/lib/api/v2/types';
 
 const RUN = process.env.RUN_LIVE === '1';
@@ -84,5 +85,20 @@ describe.skipIf(!RUN)('v2 analytics aggregate (live testnet)', () => {
     );
     const top = cells[0];
     if (top) console.log(`top market ${top.marketId.slice(0, 10)}… vol ${top.volume.toFixed(2)} · ${top.bets} bets · ${top.oi} open`);
+
+    // Trader styles from the same feeds — every classified trader is real + valid.
+    const styles = classifyV2Traders(ordersByMarket);
+    expect(styles.distribution.reduce((s, d) => s + d.count, 0)).toBe(styles.total);
+    for (let i = 1; i < styles.traders.length; i++) {
+      expect(styles.traders[i - 1].volume).toBeGreaterThanOrEqual(styles.traders[i].volume);
+    }
+    for (const t of styles.traders) {
+      expect(t.owner).toMatch(/^0x[0-9a-f]+/);
+      expect(t.style.primary).not.toBeNull();
+      expect(t.volume).toBeGreaterThan(0);
+    }
+    console.log(
+      `traders classified ${styles.total} · ${styles.distribution.map((d) => `${d.label} ${d.count}`).join(' · ')}`,
+    );
   }, 60_000);
 });

@@ -8,15 +8,16 @@
  * so both deployments read identically.
  */
 import type { IconType } from 'react-icons';
-import { LuLayoutDashboard, LuGrid3X3, LuGauge, LuWaves, LuActivity } from 'react-icons/lu';
+import { LuLayoutDashboard, LuGrid3X3, LuGauge, LuWaves, LuUsers, LuActivity } from 'react-icons/lu';
 
-export type V2AnalyticsTool = 'pulse' | 'markets' | 'sentiment' | 'vol' | 'flow';
+export type V2AnalyticsTool = 'pulse' | 'markets' | 'sentiment' | 'vol' | 'styles' | 'flow';
 
 export const V2_TOOLS: { id: V2AnalyticsTool; label: string; desc: string; icon: IconType }[] = [
   { id: 'pulse', label: 'Pulse', desc: 'The whole market at a glance', icon: LuLayoutDashboard },
   { id: 'markets', label: 'Markets', desc: 'Where the action is', icon: LuGrid3X3 },
   { id: 'sentiment', label: 'Sentiment', desc: 'UP vs DOWN bets', icon: LuGauge },
   { id: 'vol', label: 'Price swings', desc: 'How jumpy each market is', icon: LuWaves },
+  { id: 'styles', label: 'Trader styles', desc: 'How traders bet', icon: LuUsers },
   { id: 'flow', label: 'Live bets', desc: 'Every bet as it happens', icon: LuActivity },
 ];
 
