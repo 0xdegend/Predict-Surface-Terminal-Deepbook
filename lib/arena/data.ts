@@ -325,7 +325,9 @@ function buildArena(): { factions: Faction[]; you: You } {
     { label: 'Positions', count: 214, points: 1_284_000, hue: '#4dd6b0' },
     { label: 'Ranges', count: 63, points: 486_000, hue: '#9d92e8' },
     { label: 'Referrals', count: 4, points: 92_000, hue: '#6aa6e6' },
-    { label: 'Liquidity', count: 11, points: 341_000, hue: '#d9a94e' },
+    // Points from supplying the vault (LP → PLP). "Vault" over "Liquidity"/"PLP"
+    // so it reads plainly and points back to the Vault page where you do it.
+    { label: 'Vault', count: 11, points: 341_000, hue: '#d9a94e' },
   ];
   const you: You = {
     handle: '@0xskew',

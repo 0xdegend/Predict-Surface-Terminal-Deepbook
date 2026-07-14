@@ -52,7 +52,7 @@ const VAULT_ITEMS: MenuItem[] = [
  *  stays deployment-agnostic. */
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
-  { href: '/v2/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },
+  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];
 

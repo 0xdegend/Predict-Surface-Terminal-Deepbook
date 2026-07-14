@@ -51,7 +51,7 @@ const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: 
   { href: '/analytics', label: 'Analytics', desc: 'Live flow & sentiment', icon: LuChartNoAxesCombined },
   { href: '/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
   { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
-  { href: '/competitions', label: 'Competitions', desc: 'Seasonal races · prize pools', icon: LuSwords, soon: true },
+  { href: '/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];
 
