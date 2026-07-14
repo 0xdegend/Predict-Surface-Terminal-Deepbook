@@ -20,7 +20,6 @@ const YOU_HUE = '#9d92e8'; // the violet identity tint (echoes the reference car
 export function ArenaHeader({
   mode,
   joined,
-  onBack,
   onToggleRules,
   showRules,
   you,
@@ -29,7 +28,6 @@ export function ArenaHeader({
 }: {
   mode: 'hub' | 'detail';
   joined?: boolean;
-  onBack?: () => void;
   onToggleRules: () => void;
   showRules: boolean;
   you: You;
@@ -43,7 +41,6 @@ export function ArenaHeader({
       <ArenaBanner
         mode={mode}
         joined={joined}
-        onBack={onBack}
         onToggleRules={onToggleRules}
         showRules={showRules}
         className="lg:col-start-1 lg:row-span-2"

@@ -11,7 +11,7 @@
  * rail — everything tiles across the page so there are no empty columns.
  */
 import { useState } from 'react';
-import { LuSwords, LuTarget, LuUserPlus, LuUsers, LuCoins, LuTrophy } from 'react-icons/lu';
+import { LuSwords, LuTarget, LuUserPlus, LuUsers, LuCoins, LuTrophy, LuChevronLeft } from 'react-icons/lu';
 import { SoonPill, FundingNote, CrossLink } from '../rewards/shared';
 import { ArenaHeader } from './arena-header';
 import { ArenaStatStrip } from './arena-stats';
@@ -27,11 +27,22 @@ export function DegenArena({ questsHref = '/quests' }: { questsHref?: string } =
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
-      {/* Signal row — this is a preview, kept honest like the other rewards pages */}
+      {/* Signal row — a clear back breadcrumb when drilled into a faction, else
+          the page title. Preview pill stays (honest, like the other rewards pages). */}
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-text-2">
-          <LuSwords size={16} className="text-[var(--accent)]" /> Competitions
-        </h1>
+        {mode === 'detail' ? (
+          <button
+            onClick={() => setSelectedId(null)}
+            className="group inline-flex items-center gap-1.5 text-[13px] font-medium text-text-2 transition-colors hover:text-text-1"
+          >
+            <LuChevronLeft size={16} className="transition-transform group-hover:-translate-x-0.5" />
+            Back to Degen Arena
+          </button>
+        ) : (
+          <h1 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-text-2">
+            <LuSwords size={16} className="text-[var(--accent)]" /> Competitions
+          </h1>
+        )}
         <SoonPill label="Preview" />
       </div>
 
@@ -40,7 +51,6 @@ export function DegenArena({ questsHref = '/quests' }: { questsHref?: string } =
         <ArenaHeader
           mode={mode}
           joined={mode === 'detail' && selected?.id === YOU.factionId}
-          onBack={() => setSelectedId(null)}
           onToggleRules={() => setShowRules((v) => !v)}
           showRules={showRules}
           you={YOU}

@@ -10,7 +10,7 @@
  * the painted `.arena-banner` stays as the loading + reduced-motion fallback.
  * Grid placement is passed in via `className` so the header owns the layout.
  */
-import { LuScrollText, LuChevronLeft, LuChevronDown, LuCheck, LuCoins } from 'react-icons/lu';
+import { LuScrollText, LuChevronDown, LuCheck, LuCoins } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useNow, countdownParts } from '../rewards/shared';
@@ -21,14 +21,12 @@ const ARENA_HUE = '#e6b450'; // warm arena gold (the app's --warn tone)
 export function ArenaBanner({
   mode,
   joined,
-  onBack,
   onToggleRules,
   showRules,
   className = '',
 }: {
   mode: 'hub' | 'detail';
   joined?: boolean;
-  onBack?: () => void;
   onToggleRules: () => void;
   showRules: boolean;
   className?: string;
@@ -55,22 +53,16 @@ export function ArenaBanner({
       {/* top controls */}
       <div className="relative z-10 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {mode === 'detail' && (
-            <button
-              onClick={onBack}
-              className="ctrl-soft inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-text-2"
-            >
-              <LuChevronLeft size={14} /> Back
-            </button>
-          )}
+          {/* Solid glass pill (matches the Season control) so it stays legible
+              over any video frame — the old ctrl-soft vanished over the sky. */}
           <button
             onClick={onToggleRules}
             aria-pressed={showRules}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
-              showRules ? 'bg-[var(--accent-soft)] text-text-1' : 'ctrl-soft text-text-2'
+            className={`glass-menu inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+              showRules ? 'text-up' : 'text-text-1'
             }`}
           >
-            <LuScrollText size={13} /> Rules
+            <LuScrollText size={13} className="text-accent" /> Rules
           </button>
         </div>
         <div className="flex items-center gap-2">
