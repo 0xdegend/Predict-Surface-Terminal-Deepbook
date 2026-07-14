@@ -13,19 +13,26 @@
  * on-chain by the parent), so this works for any address, board-ranked or not.
  */
 import { useMemo } from 'react';
-import { LuArrowUp, LuArrowDown, LuCalendarRange, LuCopy } from 'react-icons/lu';
+import { LuArrowUp, LuArrowDown, LuCalendarRange, LuCopy, LuShare } from 'react-icons/lu';
 import { quote as fmtQuote, price, pct, signed, dateUTC } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { useV2CopyTrade } from '@/lib/hooks/use-v2-copy-trade';
-import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import type { TraderShareCard } from './trader-share-card-canvas';
 
 export function V2TraderPositionsList({
   accountId,
+  trader,
   enabled = true,
+  onShare,
 }: {
   accountId?: string;
+  /** The trader's wallet address — attribution + jazzicon on the share card. */
+  trader: string;
   enabled?: boolean;
+  /** Open a share card for one of this trader's bets. */
+  onShare: (card: TraderShareCard) => void;
 }) {
   const { positions, isLoading } = useV2PortfolioPositions(enabled ? accountId : undefined);
   const { copyBinary, copyRange } = useV2CopyTrade();
@@ -38,6 +45,23 @@ export function V2TraderPositionsList({
   // Live = still mintable (has a market, hasn't passed expiry). A settled lot is
   // already filtered out above.
   const isLive = (p: V2PortfolioPosition) => !!p.marketId && (p.expiry == null || p.expiry > now);
+
+  // A bet-slip share card for one position (market · pick · cost · odds · to-win).
+  const shareCard = (p: V2PortfolioPosition): TraderShareCard => ({
+    kind: 'position',
+    data: {
+      trader,
+      underlying: p.underlying ?? 'BTC',
+      direction: p.direction,
+      strike: p.strike,
+      band: p.band,
+      expiry: p.expiry,
+      cost: p.cost ?? 0,
+      odds: p.markPrice ?? p.entryPrice ?? 0,
+      toWin: positionWinPayout(p),
+      leverage: p.leverage,
+    },
+  });
 
   if (isLoading && positions.length === 0) return <SkeletonRows />;
   if (open.length === 0) {
@@ -61,6 +85,7 @@ export function V2TraderPositionsList({
               onCopy={() =>
                 copyBinary({ marketId: p.marketId!, strike: p.strike!, isUp: p.direction === 'Up' })
               }
+              onShare={() => onShare(shareCard(p))}
             />
           ))}
         </Section>
@@ -75,6 +100,7 @@ export function V2TraderPositionsList({
               onCopy={() =>
                 copyRange({ marketId: p.marketId!, lower: p.band!.lower, higher: p.band!.higher })
               }
+              onShare={() => onShare(shareCard(p))}
             />
           ))}
         </Section>
@@ -85,7 +111,17 @@ export function V2TraderPositionsList({
 
 /* --------------------------------- rows ---------------------------------- */
 
-function BinaryRow({ p, copyable, onCopy }: { p: V2PortfolioPosition; copyable: boolean; onCopy: () => void }) {
+function BinaryRow({
+  p,
+  copyable,
+  onCopy,
+  onShare,
+}: {
+  p: V2PortfolioPosition;
+  copyable: boolean;
+  onCopy: () => void;
+  onShare: () => void;
+}) {
   const up = p.direction === 'Up';
   return (
     <Row
@@ -105,12 +141,23 @@ function BinaryRow({ p, copyable, onCopy }: { p: V2PortfolioPosition; copyable: 
       }`}
       mark={p.markPrice != null ? pct(p.markPrice, 1) : '—'}
       pnl={p.pnl ?? 0}
+      share={<ShareAction onShare={onShare} />}
       copy={<CopyAction copyable={copyable} onCopy={onCopy} />}
     />
   );
 }
 
-function RangeRow({ p, copyable, onCopy }: { p: V2PortfolioPosition; copyable: boolean; onCopy: () => void }) {
+function RangeRow({
+  p,
+  copyable,
+  onCopy,
+  onShare,
+}: {
+  p: V2PortfolioPosition;
+  copyable: boolean;
+  onCopy: () => void;
+  onShare: () => void;
+}) {
   return (
     <Row
       orb={
@@ -137,8 +184,23 @@ function RangeRow({ p, copyable, onCopy }: { p: V2PortfolioPosition; copyable: b
       }`}
       mark={p.markPrice != null ? pct(p.markPrice, 1) : '—'}
       pnl={p.pnl ?? 0}
+      share={<ShareAction onShare={onShare} />}
       copy={<CopyAction copyable={copyable} onCopy={onCopy} />}
     />
+  );
+}
+
+/** Share this bet as a card — always available (a closed bet is still shareable). */
+function ShareAction({ onShare }: { onShare: () => void }) {
+  return (
+    <button
+      onClick={onShare}
+      aria-label="Share this bet as an image"
+      title="Share this bet as an image"
+      className="ctrl-soft inline-flex h-7 w-7 items-center justify-center rounded-md text-text-2 hover:text-text-1"
+    >
+      <LuShare size={12} />
+    </button>
   );
 }
 
@@ -169,6 +231,7 @@ function Row({
   sub,
   mark,
   pnl,
+  share,
   copy,
 }: {
   orb: React.ReactNode;
@@ -176,6 +239,7 @@ function Row({
   sub: string;
   mark: string;
   pnl: number;
+  share: React.ReactNode;
   copy: React.ReactNode;
 }) {
   const positive = pnl >= 0;
@@ -193,7 +257,10 @@ function Row({
         </span>
         <span className={`text-[12px] ${positive ? 'text-up' : 'text-down'}`}>{signed(pnl)}</span>
       </div>
-      <div className="flex w-[68px] flex-none justify-end">{copy}</div>
+      <div className="flex flex-none items-center gap-1.5">
+        {share}
+        <div className="flex w-[68px] justify-end">{copy}</div>
+      </div>
     </div>
   );
 }
