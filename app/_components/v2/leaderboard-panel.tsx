@@ -10,8 +10,9 @@
  * explorer/profile links on fake addresses. Wire the real hook where noted and
  * real rows take over with zero restyle.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
+import type { IconType } from 'react-icons';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import {
   LuTrophy,
@@ -21,7 +22,9 @@ import {
   LuCrown,
   LuChevronLeft,
   LuChevronRight,
-  LuFlaskConical,
+  LuGlobe,
+  LuSparkles,
+  LuRefreshCw,
   LuArrowRight,
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
@@ -30,9 +33,8 @@ import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
+import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
 import {
-  V2_LEADERBOARD_DEMO_ENABLED,
-  demoLeaderboardRows,
   sortV2Rows,
   v2LeaderboardTotals,
   type V2LeaderboardRow,
@@ -48,19 +50,27 @@ const COLS = 'grid-cols-[2rem_1fr_4.5rem_4.5rem] sm:grid-cols-[2.5rem_1fr_7rem_7
 
 const SORT_LABEL: Record<V2SortKey, string> = { points: 'Points', volume: 'Volume' };
 
+type Scope = 'all' | 'skew';
+
 export function V2LeaderboardPanel() {
   const account = useCurrentAccount();
   const mounted = useMounted();
   const [sort, setSort] = useState<V2SortKey>('points');
+  const [scope, setScope] = useState<Scope>('all');
   const [page, setPage] = useState(0);
 
-  // Season-2 rows. No aggregation endpoint exists yet — plug the real hook in
-  // here when it ships; sample rows fill the board until then.
-  const rows = useMemo(() => (V2_LEADERBOARD_DEMO_ENABLED ? demoLeaderboardRows() : []), []);
-  const demoActive = rows.some((r) => r.sample);
+  // Real Season-2 standings, reconstructed from the per-market order feeds. 'all'
+  // is the whole indexed venue; 'skew' is only bets placed through the app (they
+  // carry its on-chain builder code).
+  const { rows: allRows, skewRows, loading, refreshing, refetch } = useV2Leaderboard();
+  const rows = scope === 'skew' ? skewRows : allRows;
 
   function selectSort(key: V2SortKey) {
     setSort(key);
+    setPage(0);
+  }
+  function selectScope(next: Scope) {
+    setScope(next);
     setPage(0);
   }
 
@@ -108,17 +118,30 @@ export function V2LeaderboardPanel() {
         </Link>
       </div>
 
-      {/* Sample-data notice — until the indexer exposes per-trader aggregation. */}
-      {demoActive && (
-        <div className="glass-inset mb-4 flex items-center gap-3 px-4 py-3">
-          <IconChip icon={LuFlaskConical} color={HUE.amber} size={26} />
-          <p className="text-[11.5px] leading-relaxed text-text-2">
-            <span className="font-medium text-text-1">You&apos;re viewing sample standings.</span>{' '}
-            Season 2 is live on-chain, but per-trader rankings arrive with the new deployment&apos;s
-            data feed — these illustrative rows switch to the real board the moment it reports.
-          </p>
-        </div>
-      )}
+      {/* Scope: the whole indexed venue vs only bets placed through the Skew app. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <ScopeTab
+          label="All traders"
+          icon={LuGlobe}
+          active={scope === 'all'}
+          onClick={() => selectScope('all')}
+          count={mounted && !loading ? allRows.length : undefined}
+        />
+        <ScopeTab
+          label="Skew traders"
+          icon={LuSparkles}
+          active={scope === 'skew'}
+          onClick={() => selectScope('skew')}
+          count={mounted && !loading ? skewRows.length : undefined}
+        />
+        <button
+          onClick={refetch}
+          aria-label="Refresh"
+          className="group glass-inset ml-auto inline-flex items-center justify-center p-1.5 text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+        >
+          <LuRefreshCw size={12} className={`transition-colors duration-200 group-hover:text-accent ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
+      </div>
 
       {/* Totals strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
@@ -153,9 +176,8 @@ export function V2LeaderboardPanel() {
       {/* Podium — top three for the active ranking */}
       {showPodium && <Podium rows={podiumRows} sort={sort} me={me} />}
 
-      {/* Your standing — sample rows can't contain you, so while demo is active a
-          connected wallet gets the claim-your-spot hint instead. */}
-      {me && myIndex < 0 && <NotRankedHint demo={demoActive} />}
+      {/* Connected but not on the (active-scope) board yet. */}
+      {me && !loading && myIndex < 0 && <NotRankedHint scope={scope} />}
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
@@ -169,9 +191,13 @@ export function V2LeaderboardPanel() {
         </div>
 
         <div className="rows-divided">
-          {sorted.length === 0 ? (
+          {loading && sorted.length === 0 ? (
+            <TableSkeleton />
+          ) : sorted.length === 0 ? (
             <div className="px-4 py-12 text-center text-[13px] text-text-2">
-              No trading activity yet — be the first name on the Season-2 board.
+              {scope === 'skew'
+                ? 'No one has traded through Skew yet — bets placed in the app show up here.'
+                : 'No trading activity yet — be the first name on the Season-2 board.'}
             </div>
           ) : (
             <>
@@ -220,15 +246,8 @@ export function V2LeaderboardPanel() {
   );
 }
 
-/** A trader's name cell — explorer-linked for real rows, plain for sample rows. */
+/** A trader's name cell — explorer-linked, with a "you" tag for the connected wallet. */
 function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
-  if (row.sample) {
-    return (
-      <span className="truncate text-text-1" title="Sample trader">
-        <TraderName owner={row.owner} />
-      </span>
-    );
-  }
   return (
     <a
       href={EXPLORER(row.owner)}
@@ -243,8 +262,8 @@ function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
   );
 }
 
-/** Connected but not on the board — Season 2 is a fresh start, claim a spot. */
-function NotRankedHint({ demo }: { demo: boolean }) {
+/** Connected but not on the board yet — claim a spot. */
+function NotRankedHint({ scope }: { scope: Scope }) {
   return (
     <div className="glass-inset relative mb-4 flex items-center gap-2.5 overflow-hidden rounded-2xl px-4 py-3 text-[12px] text-text-2">
       <span
@@ -252,10 +271,56 @@ function NotRankedHint({ demo }: { demo: boolean }) {
         className="pointer-events-none absolute inset-x-6 top-0 h-px bg-linear-to-r from-transparent via-white/15 to-transparent"
       />
       <LuTrophy size={14} className="flex-none text-text-3" />
-      {demo
-        ? 'Season 2 starts everyone fresh — trade on the new release and your name takes a real spot here once rankings go live.'
+      {scope === 'skew'
+        ? "You haven't bet through the Skew app this season yet — place one to land on the Skew board."
         : "You're connected but haven't traded this season yet — mint a position to claim your spot."}
     </div>
+  );
+}
+
+/** Scope switch (All venue ↔ Skew traders) — a pill with an icon + count badge. */
+function ScopeTab({
+  label,
+  icon: Icon,
+  active,
+  onClick,
+  count,
+}: {
+  label: string;
+  icon: IconType;
+  active: boolean;
+  onClick: () => void;
+  count?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
+        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
+      }`}
+    >
+      <Icon size={13} className={active ? 'text-accent' : 'text-text-3'} />
+      {label}
+      {count != null && (
+        <span className="rounded-full bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">{count}</span>
+      )}
+    </button>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className={`grid ${COLS} items-center gap-2 px-4 py-3.5`}>
+          <span className="h-3 w-4 justify-self-end rounded skeleton" />
+          <span className="h-4 w-32 rounded skeleton" />
+          <span className="h-3 w-12 justify-self-end rounded skeleton" />
+          <span className="h-3 w-12 justify-self-end rounded skeleton" />
+        </div>
+      ))}
+    </>
   );
 }
 
