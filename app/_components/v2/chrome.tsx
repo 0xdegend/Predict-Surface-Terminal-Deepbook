@@ -119,14 +119,24 @@ export function V2Chrome() {
   );
 }
 
+/**
+ * Shared nav-item styling so the inline links and the Vault/More dropdown triggers
+ * read identically. Active = a framed "selected" state (accent tint + hairline
+ * accent border), the design system's canonical selection treatment; rest = quiet
+ * muted text that lifts to primary with a soft wash on hover. The border is
+ * transparent at rest, so selecting an item never shifts the row by a pixel.
+ */
+function navItemClass(active: boolean): string {
+  return `rounded-md border px-3 py-1.5 text-[13px] font-medium tracking-tight transition-colors duration-200 ${
+    active
+      ? 'border-(--accent-line) bg-(--accent-soft) text-text-1'
+      : 'border-transparent text-text-2 hover:bg-white/[0.035] hover:text-text-1'
+  }`;
+}
+
 function NavLink({ href, label, active }: { href: string; label: string; active: boolean }) {
   return (
-    <Link
-      href={href}
-      className={`rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
-        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
-      }`}
-    >
+    <Link href={href} aria-current={active ? 'page' : undefined} className={navItemClass(active)}>
       {label}
     </Link>
   );
@@ -171,14 +181,12 @@ function NavMenu({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className={`flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
-          activeItem ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
-        }`}
+        className={`flex items-center gap-1 ${navItemClass(!!activeItem)}`}
       >
         {activeItem ? activeItem.label : fallbackLabel}
         <LuChevronDown
           size={13}
-          className={`text-text-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`transition-transform duration-200 ${open ? 'rotate-180 text-text-2' : 'text-text-3'}`}
         />
       </button>
 
