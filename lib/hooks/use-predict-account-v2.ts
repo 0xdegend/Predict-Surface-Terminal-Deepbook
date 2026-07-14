@@ -173,11 +173,15 @@ export function usePredictAccountV2() {
     ...(wrapperId ? [qkV2Account.balance(wrapperId)] : []),
   ];
 
-  // A mint may have carried a `set_builder_code` alongside it — re-read the
-  // attachment so the next mint doesn't append a redundant attach command.
+  // Refresh the freshly minted bet everywhere it shows. Positions and orders are
+  // filed under the internal ACCOUNT id, NOT the wallet owner (see use-v2-positions)
+  // — invalidating the owner key was a no-op, so a new position only surfaced on the
+  // 12s poll or a manual reload. Use the account id (matching the redeem path above)
+  // plus the order log that backs history + the cost-basis join. A mint may also have
+  // carried a `set_builder_code`, so re-read the attachment too.
   const mintInvalidations: readonly (readonly unknown[])[] = [
-    ...(owner ? [qkV2.accountPositions(owner)] : []),
-    ...(wrapperId ? [qkBuilderCode.attached(wrapperId)] : []),
+    ...(accountId ? [qkV2.accountPositions(accountId), qkV2.accountOrders(accountId)] : []),
+    ...(wrapperId ? [qkBuilderCode.attached(wrapperId), qkV2Account.balance(wrapperId)] : []),
   ];
 
   // Every LP action (queue a deposit/withdrawal, or cancel one) moves money

@@ -14,6 +14,7 @@ import { LuScrollText, LuChevronDown, LuCheck, LuCoins } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useNow, countdownParts } from '../rewards/shared';
+import { AboutArena } from './arena-about';
 import { SEASON, PRIZE_POOL } from '@/lib/arena/data';
 
 const ARENA_HUE = '#e6b450'; // warm arena gold (the app's --warn tone)
@@ -64,6 +65,7 @@ export function ArenaBanner({
           >
             <LuScrollText size={13} className="text-accent" /> Rules
           </button>
+          <AboutArena />
         </div>
         <div className="flex items-center gap-2">
           {mode === 'detail' && joined && (

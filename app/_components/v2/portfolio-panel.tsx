@@ -62,9 +62,37 @@ import { useClaimCelebration } from './use-claim-celebration';
 
 type FundMode = 'add' | 'withdraw';
 
-/** Position layout preference (persisted). */
+/** Position layout preference (persisted). The claimable strip and the open-
+ *  positions list each keep their OWN preference, so switching one never flips
+ *  the other. */
 type PosView = 'grid' | 'compact';
-const VIEW_KEY = 'v2:positions-view';
+const POS_VIEW_KEY = 'v2:positions-view';
+const REDEEM_VIEW_KEY = 'v2:redeem-view';
+
+/** A grid/compact preference persisted to localStorage under `key`. */
+function usePersistedView(key: string): [PosView, (v: PosView) => void] {
+  const [view, setView] = useState<PosView>('compact');
+  useEffect(() => {
+    // Read the saved preference AFTER mount (not in the initializer) so SSR and
+    // the first client render agree on the default — no hydration mismatch.
+    try {
+      const v = localStorage.getItem(key);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot sync from localStorage
+      if (v === 'grid' || v === 'compact') setView(v);
+    } catch {
+      /* private mode / no storage — keep the default */
+    }
+  }, [key]);
+  const change = (v: PosView) => {
+    setView(v);
+    try {
+      localStorage.setItem(key, v);
+    } catch {
+      /* ignore */
+    }
+  };
+  return [view, change];
+}
 
 export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccountV2();
@@ -85,28 +113,10 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   // Share-as-image dialog for the settled track record (win rate) — legacy parity.
   const [shareOpen, setShareOpen] = useState(false);
   // Position layout: dense rows (default — claimable winners never dominate the
-  // page) or the full cards. Applies to Ready-to-redeem + open Positions; the
-  // choice is remembered across visits.
-  const [view, setView] = useState<PosView>('compact');
-  useEffect(() => {
-    // Read the saved preference AFTER mount (not in the initializer) so SSR and
-    // the first client render agree on the default — no hydration mismatch.
-    try {
-      const v = localStorage.getItem(VIEW_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot sync from localStorage
-      if (v === 'grid' || v === 'compact') setView(v);
-    } catch {
-      /* private mode / no storage — keep the default */
-    }
-  }, []);
-  const changeView = (v: PosView) => {
-    setView(v);
-    try {
-      localStorage.setItem(VIEW_KEY, v);
-    } catch {
-      /* ignore */
-    }
-  };
+  // page) or the full cards. The claimable strip and the open-positions list each
+  // remember their OWN choice, so switching one doesn't flip the other.
+  const [redeemView, changeRedeemView] = usePersistedView(REDEEM_VIEW_KEY);
+  const [posView, changePosView] = usePersistedView(POS_VIEW_KEY);
 
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
@@ -331,9 +341,9 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         <Section
           title="Ready to redeem"
           hint={`${fmtQuote(claimValue)} ${predictV2Config.quote.symbol} to claim`}
-          action={<ViewToggle view={view} onChange={changeView} />}
+          action={<ViewToggle view={redeemView} onChange={changeRedeemView} />}
         >
-          <PositionList view={view} positions={redeemable} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
+          <PositionList view={redeemView} positions={redeemable} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
         </Section>
       )}
 
@@ -355,7 +365,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
                 {signed(unrealized)} unrealized ({signed(unrealizedPct * 100, 1)}%)
               </span>
             )}
-            <ViewToggle view={view} onChange={changeView} />
+            <ViewToggle view={posView} onChange={changePosView} />
           </div>
         )}
         {tab === 'history' && stats.total > 0 && (
@@ -383,7 +393,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
             }
           />
         ) : (
-          <PositionList view={view} positions={open} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
+          <PositionList view={posView} positions={open} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
         )
       ) : stats.total === 0 ? (
         <EmptyState
