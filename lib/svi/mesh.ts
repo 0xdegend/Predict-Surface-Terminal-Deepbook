@@ -59,6 +59,17 @@ export interface MeshOptions {
   width?: number;
   depth?: number;
   height?: number;
+  /**
+   * Pin the IV normalization window instead of auto-ranging to THIS frame's data.
+   *
+   * Auto-ranging re-fits the surface to fill the display box on every build. That's
+   * right for a live surface (it always reads at full drama), but it is wrong for
+   * time travel: it normalizes away the very thing you rewound to see. If the whole
+   * vol level rises, an auto-ranged mesh just re-scales and looks identical — so the
+   * surface appears to shift as a rigid block instead of actually rising. Pin the
+   * range and the past is drawn on the SAME ruler as the present.
+   */
+  ivRange?: { min: number; max: number };
 }
 
 /* ── Surface display treatment (VISUAL ONLY) ──────────────────────────────────
@@ -94,18 +105,27 @@ export function buildSurfaceMesh(surface: Surface, opts: MeshOptions = {}): Surf
   // every live row onto the floor and drive the legend to "417,050%". The median
   // is robust to a whole outlier row, and clean data sits well under the cap, so
   // this leaves the real surface exactly as-is while defusing the artifact.
-  const ivs: number[] = [];
-  for (const row of surface.rows) for (const c of row.cells) ivs.push(c.iv);
-  ivs.sort((a, b) => a - b);
-  let ivMin = ivs.length ? ivs[0] : 0;
-  let ivMax = ivs.length ? ivs[ivs.length - 1] : 1;
-  if (ivs.length) {
-    const cap = ivs[Math.floor(ivs.length / 2)] * IV_DISPLAY_CAP_X_MEDIAN; // median × k
-    if (Number.isFinite(cap) && cap > ivMin) ivMax = Math.min(ivMax, cap);
+  let ivMin: number;
+  let ivMax: number;
+  if (opts.ivRange) {
+    // Caller-pinned ruler (time travel ONLY) — see MeshOptions.ivRange. The live
+    // surface never passes this and takes the auto-range path below, unchanged.
+    ivMin = opts.ivRange.min;
+    ivMax = opts.ivRange.max;
+  } else {
+    const ivs: number[] = [];
+    for (const row of surface.rows) for (const c of row.cells) ivs.push(c.iv);
+    ivs.sort((a, b) => a - b);
+    ivMin = ivs.length ? ivs[0] : 0;
+    ivMax = ivs.length ? ivs[ivs.length - 1] : 1;
+    if (ivs.length) {
+      const cap = ivs[Math.floor(ivs.length / 2)] * IV_DISPLAY_CAP_X_MEDIAN; // median × k
+      if (Number.isFinite(cap) && cap > ivMin) ivMax = Math.min(ivMax, cap);
+    }
+    // Hard ceiling on top of the median cap — bounds the stress demo (and artifacts)
+    // so the surface can't tower to thousands of %. Below it, nothing changes.
+    ivMax = Math.min(ivMax, IV_DISPLAY_MAX);
   }
-  // Hard ceiling on top of the median cap — bounds the stress demo (and artifacts)
-  // so the surface can't tower to thousands of %. Below it, nothing changes.
-  ivMax = Math.min(ivMax, IV_DISPLAY_MAX);
   if (!Number.isFinite(ivMin) || !Number.isFinite(ivMax) || ivMax <= ivMin) {
     ivMin = 0;
     ivMax = IV_DISPLAY_MAX;

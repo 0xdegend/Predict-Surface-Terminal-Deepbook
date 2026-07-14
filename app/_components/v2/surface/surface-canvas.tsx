@@ -23,23 +23,51 @@
  * Not yet ported: LIVE/time-travel scrub (needs a per-market SVI history the v2
  * data path doesn't expose today).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useV2SurfaceStore } from '@/lib/store/v2-surface-store';
+import { useV2SurfaceInputs } from '@/lib/hooks/use-v2-surface-inputs';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
 import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
-import { price, pct, dateUTC, ttl } from '@/lib/format';
+import { price, pct, dateUTC, ttl, timeUTC } from '@/lib/format';
 import { InfoTip } from '@/app/_components/ui/info-tip';
 import { LuBoxes, LuMoveHorizontal, LuMoveDiagonal, LuMoveVertical } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { SurfaceTradePopoverV2 } from './surface-trade-popover';
 import type { V2Market } from '@/lib/api/v2/types';
+
+/**
+ * Per-frame smoothing constants for the geometry morph (`a = 1 - ease^delta`), so
+ * LOWER = snappier.
+ *
+ * LIVE catches up fast — a data refresh should land, not drift.
+ *
+ * TIME TRAVEL is only *slightly* gentler, and deliberately so: the scrub's real
+ * smoothing lives upstream in useSmoothScrub (an eased, speed-capped follower), so
+ * the mesh is already being handed a calm, continuous target. Piling heavy damping
+ * on top of that would just make the surface feel mushy and lag the slider.
+ */
+const LIVE_EASE = 0.0008;
+const SCRUB_EASE = 0.004;
+
+/**
+ * The k-grid the surface is built on: 49 cols over ±0.06 log-moneyness — half
+ * legacy's ±0.12 window, sized to v2's short tenors (≤8h), whose tradeable band only
+ * spans |k| ≲ 0.035. At ±0.12 three quarters of every row was dead zone and the
+ * surface read as two pale slabs; at ±0.06 the glowing ridge fills the canvas.
+ *
+ * Module-level (not inline) so its identity is stable: it's a memo dependency, and
+ * it's also handed to useV2SurfaceInputs so the pinned IV ruler is measured on
+ * exactly the geometry we render.
+ */
+const K_GRID = { kMin: -0.06, kMax: 0.06, kSteps: 49 } as const;
 
 interface HoverInfo {
   x: number; // canvas-relative px
@@ -149,12 +177,15 @@ export function SurfaceCanvasV2({
     () => inputs.filter((i) => i.oracle.expiry > nowMs + 5_000),
     [inputs, nowMs],
   );
-  // Finer k-grid (49 cols) over ±0.06 log-moneyness — half legacy's ±0.12
-  // window, sized to v2's short tenors (≤8h): the tradeable band of even the
-  // longest row only spans |k| ≲ 0.035, so at ±0.12 three quarters of every row
-  // was dead zone (washed slate) and the surface read as two pale slabs. At
-  // ±0.06 the glowing ridge fills the canvas the way legacy's does.
-  //
+
+  // LIVE vs time-travel. The hook records every live observation to the SVI tape
+  // (v2 has no server-side SVI history — see lib/surface/v2-svi-tape.ts) and, while
+  // scrubbing, replays the real snapshot at that moment. `displayNow` is the clock
+  // the surface must be built against: v2 markets roll every ~minute, so a rewound
+  // surface holds markets that have since expired — against the real `now` their
+  // T→0 and IV = √(w/T) would explode. `ivRange` pins the IV ruler while rewound.
+  const { inputs: shownInputs, isLive, currentTime, historyReady, displayNow, ivRange } =
+    useV2SurfaceInputs(liveInputs, nowMs, K_GRID);
   // Stress is DISPLAY-ONLY: buildSurface keeps the whole surface at the live IV
   // scale and injects ONE localized sample mispricing (a gentle kink + a real
   // no-arb violation) so the checker fires while the surface still reads real —
@@ -162,10 +193,17 @@ export function SurfaceCanvasV2({
   // ceiling and flattened it into a red plateau. The popover always prices off
   // the unstressed `liveInputs`.
   const surface = useMemo(
-    () => buildSurface(liveInputs, { nowMs, kMin: -0.06, kMax: 0.06, kSteps: 49, stress }),
-    [liveInputs, nowMs, stress],
+    () => buildSurface(shownInputs, { ...K_GRID, nowMs: displayNow, stress }),
+    [shownInputs, displayNow, stress],
   );
-  const mesh = useMemo(() => buildSurfaceMesh(surface), [surface]);
+  // While rewound, measure every frame on the SAME pinned IV ruler — otherwise the
+  // mesh re-fits itself to the display box each frame and the vol level's rise and
+  // fall is normalized straight back out (the surface then only appears to shift as
+  // a block). Live keeps auto-ranging, which is what makes it always read at full drama.
+  const mesh = useMemo(
+    () => buildSurfaceMesh(surface, ivRange ? { ivRange } : undefined),
+    [surface, ivRange],
+  );
 
   const selection = useMemo<SurfaceSelection | null>(() => {
     if (!marketId) return null;
@@ -211,6 +249,8 @@ export function SurfaceCanvasV2({
     if (isMobile) return;
     // Stress is a preview of a mispriced surface — not tradeable. Turn it off.
     if (stress) return;
+    // A rewound surface shows odds that are no longer for sale — go Live to trade.
+    if (!isLive) return;
     const sRow = surface.rows[row];
     const cell = sRow?.cells[col];
     // Dead-zone nodes (fair UP outside the mintable band) are dimmed and not
@@ -274,14 +314,25 @@ export function SurfaceCanvasV2({
   // zoom/orbit) so an aimed click can't be thrown off by the model moving.
   const interacting = popover || rangeAnchorPrice != null;
 
-  // A surface needs ≥2 live expiries; between market rolls the filter can
-  // briefly leave fewer — hold a quiet placeholder rather than a broken mesh.
+  // A surface needs ≥2 live expiries; between market rolls the filter can briefly
+  // leave fewer, and an early stretch of tape may not have two markets recorded yet.
+  // Hold a quiet placeholder rather than a broken mesh — but KEEP the controls
+  // mounted, or scrubbing into a thin patch would strand the user with no Live button.
   if (surface.rows.length < 2) {
     return (
-      <div className="flex h-full w-full items-center justify-center">
+      <div className="relative flex h-full w-full items-center justify-center">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-text-3">
-          waiting for live markets…
+          {isLive ? 'waiting for live markets…' : 'nothing recorded at this moment'}
         </span>
+        <SurfaceControls
+          isLive={isLive}
+          currentTime={currentTime}
+          historyReady={historyReady}
+          showNoArb={showNoArb}
+          onNoArb={() => setShowNoArb((v) => !v)}
+          stress={stress}
+          onStress={toggleStress}
+        />
       </div>
     );
   }
@@ -312,9 +363,10 @@ export function SurfaceCanvasV2({
             reduced={reduced}
             onHover={setHover}
             onPick={pick}
-            disabled={stress}
+            disabled={stress || !isLive}
+            ease={isLive ? LIVE_EASE : SCRUB_EASE}
           />
-          <SurfaceAxes mesh={mesh} />
+          <SurfaceAxes mesh={mesh} now={displayNow} />
           {selection?.kind === 'binary' && (
             <>
               <BinaryWinZone mesh={mesh} surface={surface} sel={selection} />
@@ -351,7 +403,7 @@ export function SurfaceCanvasV2({
           // autoRotate already pauses on these states + hover.)
           enableZoom={!interacting}
           enableRotate={!interacting}
-          autoRotate={!hover && !reduced && !popover && rangeAnchorPrice == null}
+          autoRotate={isLive && !hover && !reduced && !popover && rangeAnchorPrice == null}
           autoRotateSpeed={0.1}
           minDistance={8}
           maxDistance={22}
@@ -365,7 +417,7 @@ export function SurfaceCanvasV2({
       {/* While a range band is still being drawn (no finalized band yet), never
           mount the card — it would cover the surface and block the second pick;
           the bottom hint guides until both edges are set (legacy parity). */}
-      {popover && !stress && !(mode === 'range' && !bandSet) && (
+      {popover && !stress && isLive && !(mode === 'range' && !bandSet) && (
         <SurfaceTradePopoverV2
           key={clickId}
           market={activeMarket}
@@ -382,6 +434,9 @@ export function SurfaceCanvasV2({
         showNoArb={showNoArb}
       />
       <SurfaceControls
+        isLive={isLive}
+        currentTime={currentTime}
+        historyReady={historyReady}
         showNoArb={showNoArb}
         onNoArb={() => setShowNoArb((v) => !v)}
         stress={stress}
@@ -396,7 +451,14 @@ export function SurfaceCanvasV2({
           While Stress is on the surface is a preview and trading is gated, so
           swap in a note that says so; otherwise it's mode-aware and fades out
           once the relevant pick is made (legacy parity). */}
-      {stress ? (
+      {!isLive ? (
+        <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
+          <span className="chip h-7 px-3 text-[11px] text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-warn" />
+            Rewound to a past surface — hit Live to trade
+          </span>
+        </div>
+      ) : stress ? (
         <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
           <span className="chip h-7 px-3 text-[11px] text-text-2">
             <span className="h-1.5 w-1.5 rounded-full bg-down" />
@@ -437,6 +499,7 @@ function MorphSurface({
   onHover,
   onPick,
   disabled = false,
+  ease = LIVE_EASE,
 }: {
   surface: Surface;
   mesh: SurfaceMesh;
@@ -445,6 +508,8 @@ function MorphSurface({
   onHover: (h: HoverInfo | null) => void;
   onPick: (row: number, col: number) => void;
   disabled?: boolean;
+  /** Per-frame smoothing constant (see LIVE_EASE / SCRUB_EASE). Lower = snappier. */
+  ease?: number;
 }) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null);
 
@@ -464,15 +529,15 @@ function MorphSurface({
   }, [mesh, showNoArb]);
 
   const topoKey = `${mesh.rows}x${mesh.cols}`;
+  // A new geometry starts AT its target height; the per-frame lerp below carries it
+  // from there. The row count changes whenever a market rolls off — and while time
+  // travelling you cross those boundaries constantly — so rebuilding flat each time
+  // collapsed the whole surface and slammed it back up. That was the single most
+  // distracting thing about the scrub. The upward assembly is a ONE-TIME load
+  // flourish, applied below instead of on every rebuild.
   const geom = useMemo(() => {
     const g = new THREE.BufferGeometry();
-    // Start flat (y=0) so the surface ASSEMBLES upward on first frames — the
-    // load choreography (§10.6). Under reduced motion, start at full height.
-    const init = mesh.positions.slice();
-    if (!reduced) {
-      for (let i = 1; i < init.length; i += 3) init[i] = 0;
-    }
-    g.setAttribute('position', new THREE.BufferAttribute(init, 3));
+    g.setAttribute('position', new THREE.BufferAttribute(mesh.positions.slice(), 3));
     g.setAttribute('color', new THREE.BufferAttribute(targetColors.slice(), 3));
     g.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     g.computeVertexNormals();
@@ -481,6 +546,19 @@ function MorphSurface({
   }, [topoKey]);
 
   useEffect(() => () => geom.dispose(), [geom]);
+
+  // The load choreography (§10.6): flatten the FIRST geometry so the surface
+  // assembles upward on the opening frames. Layout effect so it lands before paint,
+  // and guarded by a ref so a later topology change never repeats it.
+  const assembled = useRef(false);
+  useLayoutEffect(() => {
+    if (reduced || assembled.current) return;
+    assembled.current = true;
+    const attr = geom.getAttribute('position') as THREE.BufferAttribute;
+    const pos = attr.array as Float32Array;
+    for (let i = 1; i < pos.length; i += 3) pos[i] = 0;
+    attr.needsUpdate = true;
+  }, [geom, reduced]);
 
   const target = useRef({ positions: mesh.positions, colors: targetColors });
   useEffect(() => {
@@ -495,7 +573,7 @@ function MorphSurface({
     const tp = target.current.positions;
     const tc = target.current.colors;
     if (pos.length !== tp.length) return;
-    const a = reduced ? 1 : 1 - Math.pow(0.0008, delta);
+    const a = reduced ? 1 : 1 - Math.pow(ease, delta);
     let moved = false;
     for (let i = 0; i < pos.length; i++) {
       const dp = tp[i] - pos[i];
@@ -948,7 +1026,7 @@ function shortDate(ms: number): string {
 /** In-canvas axis guide: strike ticks along the front edge, expiry labels down
  *  the right edge, and a faint forward meridian at k=0. Billboarded drei <Html>
  *  (constant pixel size) + one static <Line> — no per-frame cost. */
-function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
+function SurfaceAxes({ mesh, now }: { mesh: SurfaceMesh; now: number }) {
   const isMobile = useMediaQuery('(max-width: 639px)');
   const maxExpiryLabels = isMobile ? 5 : 10;
   const labelStep = Math.max(1, Math.ceil(mesh.rowMeta.length / maxExpiryLabels));
@@ -991,7 +1069,9 @@ function SurfaceAxes({ mesh }: { mesh: SurfaceMesh }) {
           <Html key={`e${r}`} position={[rightX + 0.5, y, rm.z]} center occlude zIndexRange={[10, 0]}>
             <span className={`${chip} flex flex-col items-start gap-px font-mono text-[9px] tabular-nums leading-tight`}>
               <span className="text-text-1">{shortDate(rm.expiry)}</span>
-              <span className="text-text-3">{ttl(rm.expiry)}</span>
+              {/* Counted against the DISPLAYED moment — while rewound, "12m left"
+                  must mean 12m left back then, not 12m from now. */}
+              <span className="text-text-3">{ttl(rm.expiry, now)}</span>
             </span>
           </Html>
         );
@@ -1101,40 +1181,106 @@ function SurfaceMeta({
  * Stress) without the LIVE/time-travel scrub (no per-market SVI history in the
  * v2 data path yet; the scrub joins this bar when it ships).
  */
+/**
+ * The surface's only chrome: a LIVE snap-pill + time-travel scrub on the left, the
+ * overlay toggles on the right (legacy SurfaceControls parity).
+ *
+ * The scrub replays the RECORDED SVI tape (v2 exposes no server-side SVI history —
+ * see lib/surface/v2-svi-tape.ts), so until ~30s of tape exists the slider is
+ * disabled and says so honestly rather than pretending to have history.
+ */
 function SurfaceControls({
+  isLive,
+  currentTime,
+  historyReady,
   showNoArb,
   onNoArb,
   stress,
   onStress,
 }: {
+  isLive: boolean;
+  currentTime: number;
+  historyReady: boolean;
   showNoArb: boolean;
   onNoArb: () => void;
   stress: boolean;
   onStress: (v: boolean) => void;
 }) {
+  const scrub = useV2SurfaceStore((s) => s.scrub);
+  const setScrub = useV2SurfaceStore((s) => s.setScrub);
+  const requestLive = useV2SurfaceStore((s) => s.requestLive);
+
   return (
-    <div className="pointer-events-auto absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass sm:bottom-5">
-      <div className="flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
-        <SegToggle active={showNoArb} onClick={onNoArb} tone="accent">
-          Arb Check
-        </SegToggle>
-        <SegToggle active={stress} onClick={() => onStress(!stress)} tone="down">
-          Stress
-        </SegToggle>
+    <div className="pointer-events-auto absolute bottom-4 left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-xl p-1.5 shadow-[0_16px_44px_-12px_rgba(0,0,0,0.7)] glass sm:bottom-5 sm:flex-nowrap">
+      {/* Returning to live is a glide, not a cut — requestLive aims the follower at
+          the newest frame and the handoff commits once the surface arrives. */}
+      <button
+        onClick={requestLive}
+        className={`flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+          isLive ? 'bg-(--accent-soft) text-accent' : 'text-text-3 hover:bg-white/4 hover:text-text-2'
+        }`}
+      >
+        Live
+      </button>
+
+      <div className="flex items-center gap-2 px-1 sm:gap-2.5 sm:px-2">
+        <span className="flex shrink-0 items-center gap-1">
+          <span className="hidden text-[10px] font-medium uppercase tracking-wider text-text-3 sm:inline">
+            Time Travel
+          </span>
+          <InfoTip label="Time Travel" size={13}>
+            <span className="block">
+              <span className="font-medium text-accent">Time Travel</span> — drag the slider to rewind
+              the volatility surface and watch how the odds shifted, moment by moment.
+            </span>
+            <span className="mt-2 block">
+              Each keyframe is a real recording of the prices the protocol was quoting, captured
+              live while this page is open — so the window grows the longer you watch (the motion
+              between recordings is smoothed). The time on the right is the moment you’re viewing;
+              hit <span className="font-medium text-accent">Live</span> to snap back to the
+              streaming surface. Rewound odds aren’t for sale, so trading is paused until you do.
+            </span>
+          </InfoTip>
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.001}
+          value={scrub}
+          disabled={!historyReady}
+          onChange={(e) => setScrub(Number(e.target.value))}
+          className="surface-scrub h-1 w-32 cursor-pointer disabled:cursor-not-allowed disabled:opacity-30 sm:w-52"
+          aria-label="Time-travel scrub"
+        />
+        <span className="w-16 whitespace-nowrap text-center font-mono text-[10px] tabular-nums text-text-2 sm:w-20">
+          {!historyReady ? 'recording…' : isLive ? 'now' : timeUTC(currentTime)}
+        </span>
       </div>
-      <InfoTip label="the surface overlays" size={13}>
-        <span className="block">
-          <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
-          that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
-          any bad spots light up; if every price is fair, nothing shows.
-        </span>
-        <span className="mt-2 block">
-          <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
-          the live surface, so Arb Check has a real example to catch. The rest of the surface stays
-          exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
-          prices.
-        </span>
-      </InfoTip>
+
+      <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+        <div className="flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
+          <SegToggle active={showNoArb} onClick={onNoArb} tone="accent">
+            Arb Check
+          </SegToggle>
+          <SegToggle active={stress} onClick={() => onStress(!stress)} tone="down">
+            Stress
+          </SegToggle>
+        </div>
+        <InfoTip label="the surface overlays" size={13}>
+          <span className="block">
+            <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
+            that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
+            any bad spots light up; if every price is fair, nothing shows.
+          </span>
+          <span className="mt-2 block">
+            <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
+            the live surface, so Arb Check has a real example to catch. The rest of the surface stays
+            exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
+            prices.
+          </span>
+        </InfoTip>
+      </div>
     </div>
   );
 }

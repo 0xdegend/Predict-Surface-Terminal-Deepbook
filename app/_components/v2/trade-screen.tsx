@@ -59,7 +59,11 @@ export function V2TradeScreen({
   // join, and each surviving row's SVI/forward stays frozen) — the "live"
   // surface was neither live nor whole after a few minutes.
   const marketIds = useMemo(() => markets.map((m) => m.expiry_market_id), [markets]);
-  const pricers = useV2Pricers(marketIds, pricerSeeds);
+  // 5s (not the 20s default): this poll is also what the surface's SVI tape records
+  // (lib/surface/v2-svi-tape.ts), and the tape's resolution IS the time-travel
+  // scrub's resolution — at 20s a 4-minute rewind would be a dozen coarse steps.
+  // It doubles as a livelier surface. Bounded: only the handful of active markets.
+  const pricers = useV2Pricers(marketIds, pricerSeeds, 5_000);
 
   // Surface inputs from the live pricers (≥2 expiries needed to form a surface).
   // buildSurface only reads oracle_id/expiry/underlying_asset, so a minimal cast is safe.
