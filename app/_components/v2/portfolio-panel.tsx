@@ -12,7 +12,7 @@
  * yet"), not filler. Clearly-marked SAMPLE rows (lib/portfolio/v2.ts) are an
  * opt-in design scaffold, gated behind V2_DEMO_ENABLED (off by default).
  */
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
 import {
@@ -28,6 +28,8 @@ import {
   LuArrowRight,
   LuFlaskConical,
   LuVault,
+  LuLayoutGrid,
+  LuRows3,
 } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useNow } from '@/lib/hooks/use-now';
@@ -54,10 +56,15 @@ import {
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
+import { V2PositionRow } from './position-row';
 import { V2RedeemModal } from './redeem-modal';
 import { useClaimCelebration } from './use-claim-celebration';
 
 type FundMode = 'add' | 'withdraw';
+
+/** Position layout preference (persisted). */
+type PosView = 'grid' | 'compact';
+const VIEW_KEY = 'v2:positions-view';
 
 export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccountV2();
@@ -77,6 +84,29 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const { celebrate, overlay: claimCelebration } = useClaimCelebration();
   // Share-as-image dialog for the settled track record (win rate) — legacy parity.
   const [shareOpen, setShareOpen] = useState(false);
+  // Position layout: dense rows (default — claimable winners never dominate the
+  // page) or the full cards. Applies to Ready-to-redeem + open Positions; the
+  // choice is remembered across visits.
+  const [view, setView] = useState<PosView>('compact');
+  useEffect(() => {
+    // Read the saved preference AFTER mount (not in the initializer) so SSR and
+    // the first client render agree on the default — no hydration mismatch.
+    try {
+      const v = localStorage.getItem(VIEW_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot sync from localStorage
+      if (v === 'grid' || v === 'compact') setView(v);
+    } catch {
+      /* private mode / no storage — keep the default */
+    }
+  }, []);
+  const changeView = (v: PosView) => {
+    setView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const demoActive = V2_DEMO_ENABLED && !positionsLoading && real.length === 0;
 
@@ -298,12 +328,12 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       {/* Ready to redeem (settled) — ALWAYS visible; it's claimable money and
           should never sit behind a tab. */}
       {redeemable.length > 0 && (
-        <Section title="Ready to redeem" hint="settled — claim your payout">
-          <Grid>
-            {redeemable.map((p) => (
-              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
-            ))}
-          </Grid>
+        <Section
+          title="Ready to redeem"
+          hint={`${fmtQuote(claimValue)} ${predictV2Config.quote.symbol} to claim`}
+          action={<ViewToggle view={view} onChange={changeView} />}
+        >
+          <PositionList view={view} positions={redeemable} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
         </Section>
       )}
 
@@ -318,10 +348,15 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           <TabButton icon={LuLayers} label="Positions" active={tab === 'positions'} onClick={() => setTab('positions')} />
           <TabButton icon={LuHistory} label="History" active={tab === 'history'} onClick={() => setTab('history')} />
         </div>
-        {tab === 'positions' && live.length > 0 && (
-          <span className={`font-mono text-[11px] tabular-nums ${unrealized >= 0 ? 'text-up' : 'text-down'}`}>
-            {signed(unrealized)} unrealized ({signed(unrealizedPct * 100, 1)}%)
-          </span>
+        {tab === 'positions' && open.length > 0 && (
+          <div className="flex items-center gap-3">
+            {live.length > 0 && (
+              <span className={`font-mono text-[11px] tabular-nums ${unrealized >= 0 ? 'text-up' : 'text-down'}`}>
+                {signed(unrealized)} unrealized ({signed(unrealizedPct * 100, 1)}%)
+              </span>
+            )}
+            <ViewToggle view={view} onChange={changeView} />
+          </div>
         )}
         {tab === 'history' && stats.total > 0 && (
           <span className={`font-mono text-[11px] tabular-nums ${stats.realizedPnl >= 0 ? 'text-up' : 'text-down'}`}>
@@ -348,11 +383,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
             }
           />
         ) : (
-          <Grid>
-            {open.map((p) => (
-              <V2PositionCard key={p.key} position={p} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
-            ))}
-          </Grid>
+          <PositionList view={view} positions={open} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
         )
       ) : stats.total === 0 ? (
         <EmptyState
@@ -686,15 +717,28 @@ function SmallStat({
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({
+  title,
+  hint,
+  action,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="mb-6">
-      <div className="mb-3 flex items-baseline justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
           <span className="h-3 w-px bg-accent/70" />
           {title}
         </h2>
-        {hint && <span className="font-mono text-[11px] tabular-nums text-text-3">{hint}</span>}
+        <div className="flex items-center gap-3">
+          {hint && <span className="font-mono text-[11px] tabular-nums text-text-3">{hint}</span>}
+          {action}
+        </div>
       </div>
       {children}
     </section>
@@ -703,6 +747,73 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 function Grid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{children}</div>;
+}
+
+/** Renders positions as the full-card grid or the dense row list, per `view`. */
+function PositionList({
+  view,
+  positions,
+  now,
+  busy,
+  onRedeem,
+}: {
+  view: PosView;
+  positions: V2PortfolioPosition[];
+  now: number;
+  busy: boolean;
+  onRedeem: (p: V2PortfolioPosition) => void;
+}) {
+  if (view === 'compact') {
+    return (
+      <div className="flex flex-col gap-2">
+        {positions.map((p) => (
+          <V2PositionRow key={p.key} position={p} now={now} busy={busy} onRedeem={onRedeem} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <Grid>
+      {positions.map((p) => (
+        <V2PositionCard key={p.key} position={p} now={now} busy={busy} onRedeem={onRedeem} />
+      ))}
+    </Grid>
+  );
+}
+
+/** Card-grid ↔ compact-list segmented toggle (shared across the position sections). */
+function ViewToggle({ view, onChange }: { view: PosView; onChange: (v: PosView) => void }) {
+  return (
+    <div className="glass-inset flex items-center gap-0.5 rounded-md p-0.5">
+      <ViewToggleBtn active={view === 'compact'} onClick={() => onChange('compact')} icon={LuRows3} label="Compact list" />
+      <ViewToggleBtn active={view === 'grid'} onClick={() => onChange('grid')} icon={LuLayoutGrid} label="Card grid" />
+    </div>
+  );
+}
+function ViewToggleBtn({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: IconType;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
+      className={`inline-flex h-6 w-7 items-center justify-center rounded transition-colors ${
+        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-1'
+      }`}
+    >
+      <Icon size={13} />
+    </button>
+  );
 }
 
 /** A segment in the Positions/History tab strip (matches the legacy portfolio). */
