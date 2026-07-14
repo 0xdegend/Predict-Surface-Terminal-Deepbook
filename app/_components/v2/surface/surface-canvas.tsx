@@ -455,7 +455,7 @@ export function SurfaceCanvasV2({
         <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
           <span className="chip h-7 px-3 text-[11px] text-text-2">
             <span className="h-1.5 w-1.5 rounded-full bg-warn" />
-            Rewound to a past surface — hit Live to trade
+            Drag slowly to morph the surface — hit Live to trade
           </span>
         </div>
       ) : stress ? (
@@ -1231,7 +1231,9 @@ function SurfaceControls({
           <InfoTip label="Time Travel" size={13}>
             <span className="block">
               <span className="font-medium text-accent">Time Travel</span> — drag the slider to rewind
-              the volatility surface and watch how the odds shifted, moment by moment.
+              the volatility surface and watch how the odds shifted, moment by moment.{' '}
+              <span className="font-medium text-text-1">Drag slowly</span> — the surface morphs as you
+              go, and a gentle pace is what makes it read.
             </span>
             <span className="mt-2 block">
               Each keyframe is a real recording of the prices the protocol was quoting, captured

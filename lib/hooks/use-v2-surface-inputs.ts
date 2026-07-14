@@ -75,6 +75,7 @@ export function useV2SurfaceInputs(
   const scrub = useV2SurfaceStore((s) => s.scrub);
   const pendingLive = useV2SurfaceStore((s) => s.pendingLive);
   const goLive = useV2SurfaceStore((s) => s.goLive);
+  const scrubSession = useV2SurfaceStore((s) => s.scrubSession);
 
   // The surface follows the slider through an eased, speed-capped follower — a fast
   // fling of the thumb must not fling the 3-D with it. THIS, not `scrub`, is the
@@ -112,6 +113,10 @@ export function useV2SurfaceInputs(
   // every other frame into the bottom of the ramp. The median is the ruler a TYPICAL
   // moment would have used, so a rewound surface reads like the live one — just on a
   // scale that holds still. A rare extreme frame saturates, exactly as it does live.
+  // FROZEN PER SESSION. Keyed on `scrubSession`, deliberately NOT on `tape`/`bounds`:
+  // the tape keeps recording while you rewind, so re-deriving the ruler off a growing
+  // window shifted the scale under the surface every few seconds — the whole model
+  // rose and then settled. It's captured once, when you leave the live stream.
   const ivRange = useMemo(() => {
     if (!rewound || !bounds) return undefined;
     const span = bounds.tMax - bounds.tMin;
@@ -130,7 +135,8 @@ export function useV2SurfaceInputs(
     const min = median(mins);
     const max = median(maxes);
     return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min, max } : undefined;
-  }, [rewound, bounds, tape, opts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- frozen per scrub session on purpose (see above)
+  }, [scrubSession, rewound, opts]);
 
   return useMemo(() => {
     if (rewound && bounds) {
