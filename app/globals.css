@@ -478,6 +478,31 @@ select:focus-visible,
   filter: drop-shadow(0 2px 18px color-mix(in srgb, var(--warn) 26%, transparent));
 }
 
+/* Looping arena video layer. Sits over the painted banner (which stays as the
+   loading + reduced-motion fallback). Desaturated + dimmed a touch so the clip
+   reads as our dark surface, not a stock reel (§10.2). */
+.arena-media {
+  z-index: 0;
+}
+.arena-video {
+  filter: saturate(0.9) brightness(0.82) contrast(1.03);
+}
+/* Scrim: a warm top glow tying into the gold wordmark + a mint whisper at the
+   floor (our two arena tones), over a darkened base so text stays legible on any
+   frame. Rounded to match the banner so the video corners never peek. */
+.arena-scrim {
+  background:
+    radial-gradient(130% 150% at 50% -35%, color-mix(in srgb, var(--warn) 22%, transparent), transparent 52%),
+    radial-gradient(100% 130% at 88% 130%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%),
+    linear-gradient(180deg, rgba(10, 11, 13, 0.34) 0%, rgba(10, 11, 13, 0.08) 44%, rgba(10, 11, 13, 0.8) 100%);
+}
+/* Honour reduced-motion: drop the clip, fall back to the painted banner + colonnade. */
+@media (prefers-reduced-motion: reduce) {
+  .arena-media {
+    display: none;
+  }
+}
+
 /* Small square icon chip (tinted) sitting beside a metric label. */
 .icon-chip {
   display: inline-flex;

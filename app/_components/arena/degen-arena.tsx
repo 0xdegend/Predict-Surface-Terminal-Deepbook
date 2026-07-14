@@ -3,18 +3,18 @@
 /**
  * DegenArena — Skew's faction competition surface (a PREVIEW; the roster is
  * illustrative, the countdown is real). Two zoom levels share one layout:
- *   · hub    → the faction leaderboard + your profile in the rail
- *   · detail → one faction's members + that faction's profile in the rail
+ *   · hub    → the faction leaderboard, with YOUR profile in the bento header
+ *   · detail → one faction's members, with that faction's profile in the header
  *
- * Layout mirrors the reference's three-band top row: on lg the left column
- * carries [banner | economics] over the table, and the right rail (profile)
- * spans alongside — so banner · economics · profile read as one band.
+ * Full-width bento: a header band (video hero + prize + countdown + identity +
+ * faction) over a metrics strip, then the faction table at FULL width. No side
+ * rail — everything tiles across the page so there are no empty columns.
  */
 import { useState } from 'react';
 import { LuSwords, LuTarget, LuUserPlus, LuUsers, LuCoins, LuTrophy } from 'react-icons/lu';
 import { SoonPill, FundingNote, CrossLink } from '../rewards/shared';
-import { ArenaHero } from './arena-hero';
-import { ProfileRail } from './profile-rail';
+import { ArenaHeader } from './arena-header';
+import { ArenaStatStrip } from './arena-stats';
 import { FactionTable } from './faction-table';
 import { FactionDetail } from './faction-detail';
 import { FACTIONS, YOU, getFaction } from '@/lib/arena/data';
@@ -35,29 +35,28 @@ export function DegenArena({ questsHref = '/quests' }: { questsHref?: string } =
         <SoonPill label="Preview" />
       </div>
 
-      {/* Two columns: left (hero + rules + table/detail) · right rail (profile) */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <ArenaHero
-            mode={mode}
-            joined={mode === 'detail' && selected?.id === YOU.factionId}
-            onBack={() => setSelectedId(null)}
-            onToggleRules={() => setShowRules((v) => !v)}
-            showRules={showRules}
-          />
+      {/* Full-width bento: header band → metrics strip → table/detail. */}
+      <div className="flex flex-col gap-4">
+        <ArenaHeader
+          mode={mode}
+          joined={mode === 'detail' && selected?.id === YOU.factionId}
+          onBack={() => setSelectedId(null)}
+          onToggleRules={() => setShowRules((v) => !v)}
+          showRules={showRules}
+          you={YOU}
+          faction={selected ?? undefined}
+          onSelectFaction={setSelectedId}
+        />
 
-          {showRules && <RulesPanel />}
+        {showRules && <RulesPanel />}
 
-          {mode === 'detail' && selected ? (
-            <FactionDetail faction={selected} />
-          ) : (
-            <FactionTable factions={FACTIONS} youFactionId={YOU.factionId} onSelect={setSelectedId} />
-          )}
-        </div>
+        <ArenaStatStrip mode={mode} you={YOU} faction={selected ?? undefined} />
 
-        <div className="lg:sticky lg:top-4 lg:self-start">
-          <ProfileRail mode={mode} you={YOU} faction={selected} onSelectFaction={setSelectedId} />
-        </div>
+        {mode === 'detail' && selected ? (
+          <FactionDetail faction={selected} />
+        ) : (
+          <FactionTable factions={FACTIONS} youFactionId={YOU.factionId} onSelect={setSelectedId} />
+        )}
       </div>
 
       <FundingNote

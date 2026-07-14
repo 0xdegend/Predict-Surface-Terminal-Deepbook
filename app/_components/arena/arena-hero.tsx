@@ -1,13 +1,14 @@
 'use client';
 
 /**
- * ArenaHero — the "DEGEN ARENA" banner + the season economics panel.
+ * Arena hero tiles — the pieces the bento header (arena-header.tsx) composes:
+ *   · ArenaBanner  — the looping-video hero card with the gold wordmark.
+ *   · PrizeTile    — the season prize pool.
+ *   · CountdownTile— a real ticking clock to the season close.
  *
- * The banner is drawn entirely in CSS (a warm glow + a faint colonnade) rather
- * than a stock photo, so it stays on-brand with the terminal's dark
- * "engineered minimalism" and ships zero assets. The economics panel carries
- * the season prize pool and a *real* ticking countdown to the season close, so
- * the surface feels live rather than a static mock.
+ * The banner plays `/degen-arena.mp4` behind a scrim (see globals.css .arena-*);
+ * the painted `.arena-banner` stays as the loading + reduced-motion fallback.
+ * Grid placement is passed in via `className` so the header owns the layout.
  */
 import { LuScrollText, LuChevronLeft, LuChevronDown, LuCheck, LuCoins } from 'react-icons/lu';
 import { num } from '@/lib/format';
@@ -17,99 +18,123 @@ import { SEASON, PRIZE_POOL } from '@/lib/arena/data';
 
 const ARENA_HUE = '#e6b450'; // warm arena gold (the app's --warn tone)
 
-export function ArenaHero({
+export function ArenaBanner({
   mode,
   joined,
   onBack,
   onToggleRules,
   showRules,
+  className = '',
 }: {
   mode: 'hub' | 'detail';
   joined?: boolean;
   onBack?: () => void;
   onToggleRules: () => void;
   showRules: boolean;
+  className?: string;
 }) {
-  const mounted = useMounted();
-  const now = useNow(1000);
-  const parts = countdownParts(SEASON.endMs - now);
-
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_minmax(0,300px)]">
-      {/* ---- Banner ---- */}
-      <div className="arena-banner rise relative flex min-h-[168px] flex-col justify-between overflow-hidden rounded-2xl p-4 sm:p-5">
-        {/* top controls */}
-        <div className="relative flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {mode === 'detail' && (
-              <button
-                onClick={onBack}
-                className="ctrl-soft inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-text-2"
-              >
-                <LuChevronLeft size={14} /> Back
-              </button>
-            )}
-            <button
-              onClick={onToggleRules}
-              aria-pressed={showRules}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
-                showRules ? 'bg-[var(--accent-soft)] text-text-1' : 'ctrl-soft text-text-2'
-              }`}
-            >
-              <LuScrollText size={13} /> Rules
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {mode === 'detail' && joined && (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                style={{ color: 'var(--up)', background: 'var(--accent-soft)' }}
-              >
-                <LuCheck size={12} /> Joined
-              </span>
-            )}
-            <button className="glass-menu inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-text-1">
-              {SEASON.label}
-              <LuChevronDown size={13} className="text-text-3" />
-            </button>
-          </div>
-        </div>
+    <div
+      className={`arena-banner rise relative flex min-h-[228px] flex-col justify-between overflow-hidden rounded-2xl p-4 sm:min-h-[268px] sm:p-5 ${className}`}
+    >
+      {/* Looping arena video behind the wordmark (painted banner is the loading +
+          reduced-motion fallback). Muted/inline so it autoplays everywhere. */}
+      <div className="arena-media pointer-events-none absolute inset-0" aria-hidden>
+        <video
+          className="arena-video h-full w-full object-cover"
+          src="/degen-arena.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+        />
+        <span className="arena-scrim absolute inset-0" />
+      </div>
 
-        {/* wordmark */}
-        <div className="relative mt-4">
-          <h1 className="arena-wordmark text-[30px] font-bold leading-none tracking-[0.16em] sm:text-[40px]">
-            DEGEN ARENA
-          </h1>
-          <p className="mt-2 text-[12px] tracking-wide text-text-3">
-            Welcome to {SEASON.label} — factions clash for the prize pool
-          </p>
+      {/* top controls */}
+      <div className="relative z-10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {mode === 'detail' && (
+            <button
+              onClick={onBack}
+              className="ctrl-soft inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-text-2"
+            >
+              <LuChevronLeft size={14} /> Back
+            </button>
+          )}
+          <button
+            onClick={onToggleRules}
+            aria-pressed={showRules}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+              showRules ? 'bg-[var(--accent-soft)] text-text-1' : 'ctrl-soft text-text-2'
+            }`}
+          >
+            <LuScrollText size={13} /> Rules
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          {mode === 'detail' && joined && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+              style={{ color: 'var(--up)', background: 'var(--accent-soft)' }}
+            >
+              <LuCheck size={12} /> Joined
+            </span>
+          )}
+          <button className="glass-menu inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-text-1">
+            {SEASON.label}
+            <LuChevronDown size={13} className="text-text-3" />
+          </button>
         </div>
       </div>
 
-      {/* ---- Economics panel ---- */}
-      <div className="glass-card rise flex flex-col justify-between gap-3 rounded-2xl p-4" style={{ animationDelay: '60ms' }}>
-        <div className="flex flex-col gap-1.5">
-          <span className="eyebrow inline-flex items-center gap-1.5">
-            <LuCoins size={12} style={{ color: ARENA_HUE }} /> {SEASON.label} prize pool
-          </span>
-          <div className="font-mono text-[26px] leading-none tabular-nums text-text-1">
-            {num(PRIZE_POOL, 0)}
-            <span className="ml-1.5 text-[12px] text-text-3">DUSDC</span>
-          </div>
-          <span className="text-[10px] text-text-3">Funded by the 1% Skew fee treasury</span>
-        </div>
+      {/* wordmark */}
+      <div className="relative z-10 mt-4">
+        <h1 className="arena-wordmark text-[32px] font-bold leading-none tracking-[0.16em] sm:text-[46px]">
+          DEGEN ARENA
+        </h1>
+        <p className="mt-2 text-[12px] tracking-wide text-text-2">
+          Welcome to {SEASON.label} — factions clash for the prize pool
+        </p>
+      </div>
+    </div>
+  );
+}
 
-        <div className="hairline-fade" />
+export function PrizeTile({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`glass-card rise flex flex-col justify-center gap-1.5 rounded-2xl p-4 sm:p-5 ${className}`}
+      style={{ animationDelay: '60ms' }}
+    >
+      <span className="eyebrow inline-flex items-center gap-1.5">
+        <LuCoins size={12} style={{ color: ARENA_HUE }} /> {SEASON.label} prize pool
+      </span>
+      <div className="font-mono text-[30px] leading-none tabular-nums text-text-1">
+        {num(PRIZE_POOL, 0)}
+        <span className="ml-1.5 text-[12px] text-text-3">DUSDC</span>
+      </div>
+      <span className="text-[10px] text-text-3">Funded by the 1% Skew fee treasury</span>
+    </div>
+  );
+}
 
-        <div className="flex flex-col gap-1.5">
-          <span className="eyebrow">Season ends in</span>
-          <div className="flex items-baseline gap-1.5 font-mono tabular-nums text-text-1">
-            <CountUnit value={mounted ? parts.d : '--'} unit="d" />
-            <CountUnit value={mounted ? parts.h : '--'} unit="h" />
-            <CountUnit value={mounted ? parts.m : '--'} unit="m" />
-            <CountUnit value={mounted ? parts.s : '--'} unit="s" />
-          </div>
-        </div>
+export function CountdownTile({ className = '' }: { className?: string }) {
+  const mounted = useMounted();
+  const now = useNow(1000);
+  const parts = countdownParts(SEASON.endMs - now);
+  return (
+    <div
+      className={`glass-card rise flex flex-col justify-center gap-2 rounded-2xl p-4 sm:p-5 ${className}`}
+      style={{ animationDelay: '90ms' }}
+    >
+      <span className="eyebrow">Season ends in</span>
+      <div className="flex items-baseline gap-1.5 font-mono tabular-nums text-text-1">
+        <CountUnit value={mounted ? parts.d : '--'} unit="d" />
+        <CountUnit value={mounted ? parts.h : '--'} unit="h" />
+        <CountUnit value={mounted ? parts.m : '--'} unit="m" />
+        <CountUnit value={mounted ? parts.s : '--'} unit="s" />
       </div>
     </div>
   );
