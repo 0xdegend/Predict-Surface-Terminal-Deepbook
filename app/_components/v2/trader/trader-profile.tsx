@@ -1,0 +1,169 @@
+'use client';
+
+/**
+ * V2TraderProfile — a public profile for any trader on the new deployment:
+ * identity + Season-2 standing + their live open positions, each copyable into
+ * the trade ticket. Reached from the leaderboard (a trader's name), so a long
+ * position list gets a full page instead of a cramped overlay.
+ *
+ * Standing (rank / points / volume / trades) comes from the SHARED board
+ * aggregation, so it can never disagree with the leaderboard — but a trader whose
+ * markets have aged out of the indexer's window may not be ranked, while their
+ * positions still load (resolved by account id, which spans all their markets).
+ */
+import { useMemo } from 'react';
+import Link from 'next/link';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { LuArrowLeft, LuExternalLink, LuTrophy, LuCoins, LuActivity, LuLayers } from 'react-icons/lu';
+import type { IconType } from 'react-icons';
+import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
+import { useV2TraderAccount } from '@/lib/hooks/use-v2-trader-account';
+import { useMounted } from '@/lib/hooks/use-mounted';
+import { sortV2Rows } from '@/lib/leaderboard/v2';
+import { num, compact, shortId } from '@/lib/format';
+import { predictV2Config } from '@/config/predict';
+import { HUE, IconChip } from '../../ui/metric';
+import { WalletAvatar } from '../../leaderboard/wallet-avatar';
+import { V2TraderStyleCard } from './trader-style-card';
+import { V2TraderPositionsList } from './trader-positions-list';
+
+const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictV2Config.network}/account/${addr}`;
+
+export function V2TraderProfile({ address }: { address: string }) {
+  const owner = address.toLowerCase();
+  const account = useCurrentAccount();
+  const mounted = useMounted();
+  const isMe = mounted && account?.address?.toLowerCase() === owner;
+
+  // The trader's internal account id (resolved on-chain) → their positions feed.
+  const { accountId, isLoading: accLoading } = useV2TraderAccount(owner);
+
+  // Season-2 standing from the shared board aggregation (ranked by points).
+  const { rows, loading: lbLoading } = useV2Leaderboard();
+  const ranked = useMemo(() => sortV2Rows(rows, 'points'), [rows]);
+  const rank = useMemo(() => {
+    const i = ranked.findIndex((r) => r.owner.toLowerCase() === owner);
+    return i >= 0 ? i + 1 : null;
+  }, [ranked, owner]);
+  const row = useMemo(() => rows.find((r) => r.owner.toLowerCase() === owner) ?? null, [rows, owner]);
+
+  const stat = (v: number, d = 2) => (lbLoading ? '…' : row ? num(v, d) : '—');
+
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-5">
+      <Link
+        href="/v2/leaderboard"
+        className="mb-4 inline-flex items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"
+      >
+        <LuArrowLeft size={14} />
+        Leaderboard
+      </Link>
+
+      {/* Identity header */}
+      <div className="glass-card mb-5 flex flex-wrap items-center gap-x-5 gap-y-4 p-4">
+        <WalletAvatar addr={owner} size={52} ring="color-mix(in srgb, var(--accent) 45%, transparent)" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="eyebrow">Trader</span>
+            {isMe && (
+              <span className="rounded-full bg-(--accent-soft) px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-accent">
+                you
+              </span>
+            )}
+          </div>
+          <a
+            href={EXPLORER(owner)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[15px] text-text-1 transition-colors hover:text-accent"
+            title={owner}
+          >
+            {shortId(owner, 8, 6)}
+            <LuExternalLink size={13} className="text-text-3" />
+          </a>
+        </div>
+
+        <div className="ml-auto flex flex-col items-end gap-1">
+          <span className="eyebrow">Rank</span>
+          <span className="font-mono text-[26px] leading-none text-accent">
+            {lbLoading ? '…' : rank != null ? `#${rank}` : '—'}
+          </span>
+          {!lbLoading && rank != null && (
+            <span className="font-mono text-[10px] tabular-nums text-text-3">of {ranked.length}</span>
+          )}
+        </div>
+      </div>
+
+      {/* Standing stats */}
+      <div className="glass-card mb-6 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
+        <Stat icon={LuTrophy} color={HUE.teal} label="Points" value={stat(row?.points ?? 0, 0)} accent />
+        <Stat
+          icon={LuCoins}
+          color={HUE.amber}
+          label="Volume"
+          value={
+            lbLoading ? '…' : !row ? '—' : (
+              <>
+                <span className="sm:hidden">{compact(row.volume)}</span>
+                <span className="hidden sm:inline">{num(row.volume, 2)}</span>
+              </>
+            )
+          }
+          unit={predictV2Config.quote.symbol}
+        />
+        <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={lbLoading ? '…' : row ? String(row.trades) : '—'} />
+      </div>
+
+      {/* Trading style — derived archetype + the evidence behind it */}
+      <V2TraderStyleCard accountId={accountId} enabled={!accLoading} />
+
+      {/* Open positions — copyable into the trade ticket */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <LuLayers size={14} className="text-text-3" />
+          <h2 className="text-[13px] font-medium text-text-1">Open positions</h2>
+        </div>
+        <span className="text-[10px] text-text-3">Copy any bet into your ticket</span>
+      </div>
+      <V2TraderPositionsList accountId={accountId} enabled={!accLoading} />
+
+      <p className="mt-6 text-[10px] leading-relaxed text-text-3">
+        Positions are public on-chain state, marked at the current price. Copy carries the market only
+        (which market, direction, strike) — you set your own stake and pay the live quote. Authoritative
+        win rate &amp; PnL live on the trader’s own portfolio. Quote asset · {predictV2Config.quote.symbol} ·{' '}
+        {predictV2Config.network}.
+      </p>
+    </div>
+  );
+}
+
+function Stat({
+  icon,
+  color,
+  label,
+  value,
+  unit,
+  accent,
+}: {
+  icon: IconType;
+  color: string;
+  label: string;
+  value: React.ReactNode;
+  unit?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="glass-inset flex min-w-0 flex-col gap-2 p-3 sm:p-4">
+      <div className="flex items-center gap-2">
+        <IconChip icon={icon} color={color} size={22} />
+        <span className="eyebrow">{label}</span>
+      </div>
+      <span
+        className={`whitespace-nowrap text-[16px] leading-none tracking-tight sm:text-[20px] ${accent ? 'text-accent' : 'text-text-1'}`}
+      >
+        {value}
+        {unit && <span className="ml-1 hidden text-[11px] text-text-3 sm:inline">{unit}</span>}
+      </span>
+    </div>
+  );
+}

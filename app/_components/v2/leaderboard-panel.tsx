@@ -5,10 +5,10 @@
  * legacy board: trophy header, frosted totals strip, Points/Volume sort tabs,
  * the gold/silver/bronze podium, and the glass table with pagination.
  *
- * The beta indexer has no per-owner aggregation endpoint yet, so the board runs
- * on clearly-marked SAMPLE rows (lib/leaderboard/v2.ts) — banner up top, no
- * explorer/profile links on fake addresses. Wire the real hook where noted and
- * real rows take over with zero restyle.
+ * Real standings, reconstructed from the per-market order feeds (useV2Leaderboard).
+ * Each trader name links to their profile (/v2/trader/[owner]) — their live open
+ * positions, each copyable into the trade ticket — with a small explorer icon
+ * beside it. An All-traders / Skew scope toggle switches the whole board.
  */
 import { useState } from 'react';
 import Link from 'next/link';
@@ -26,6 +26,7 @@ import {
   LuSparkles,
   LuRefreshCw,
   LuArrowRight,
+  LuLayers,
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { num, compact } from '@/lib/format';
@@ -78,8 +79,10 @@ export function V2LeaderboardPanel() {
   const totals = v2LeaderboardTotals(rows);
   const me = mounted ? (account?.address ?? null) : null;
 
-  // The connected wallet's standing (real rows only — sample rows never match).
+  // The connected wallet's standing — pinned under the podium so a trader finds
+  // themselves without paging. -1 when not connected or not yet on the board.
   const myIndex = me ? sorted.findIndex((r) => r.owner.toLowerCase() === me.toLowerCase()) : -1;
+  const myRow = myIndex >= 0 ? sorted[myIndex] : null;
 
   // Pagination — clamp in render so a shrinking dataset never strands us.
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
@@ -176,8 +179,13 @@ export function V2LeaderboardPanel() {
       {/* Podium — top three for the active ranking */}
       {showPodium && <Podium rows={podiumRows} sort={sort} me={me} />}
 
-      {/* Connected but not on the (active-scope) board yet. */}
-      {me && !loading && myIndex < 0 && <NotRankedHint scope={scope} />}
+      {/* Your standing — pinned under the podium so the connected wallet finds
+          itself instantly; otherwise a nudge to claim a spot. */}
+      {!loading && myRow ? (
+        <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} />
+      ) : !loading && me && sorted.length > 0 ? (
+        <NotRankedHint scope={scope} />
+      ) : null}
 
       {/* Table */}
       <div className="glass-card overflow-hidden">
@@ -214,6 +222,7 @@ export function V2LeaderboardPanel() {
                     <span className="text-right font-semibold text-text-3">{i + 1}</span>
                     <span className="flex min-w-0 items-center gap-2">
                       <TraderLabel row={r} isMe={isMe} />
+                      <ViewPositionsButton owner={r.owner} variant="icon" />
                     </span>
                     <span className="text-right font-semibold text-accent">{num(r.points, 0)}</span>
                     <span className="text-right text-text-1">{num(r.volume, 2)}</span>
@@ -246,7 +255,8 @@ export function V2LeaderboardPanel() {
   );
 }
 
-/** A trader's name cell — explorer-linked, with a "you" tag for the connected wallet. */
+/** A trader's name cell — explorer-linked, with a "you" tag for the connected
+ *  wallet. The profile/copy affordance is the separate ViewPositionsButton. */
 function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
   return (
     <a
@@ -259,6 +269,116 @@ function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
       <TraderName owner={row.owner} />
       {isMe && <span className="ml-1.5 text-[10px] text-accent">you</span>}
     </a>
+  );
+}
+
+/**
+ * Links to a trader's profile (open positions + copy). Two variants, matching the
+ * legacy board exactly: `icon` — a tight icon-only chip for dense table rows;
+ * `label` — a frosted pill (accent layers chip + "View positions") for the podium
+ * and your-rank cards.
+ */
+function ViewPositionsButton({ owner, variant = 'label' }: { owner: string; variant?: 'icon' | 'label' }) {
+  if (variant === 'icon') {
+    return (
+      <Link
+        href={`/v2/trader/${owner}`}
+        aria-label="View trader profile"
+        title="View positions & copy trades"
+        className="group glass-inset inline-flex h-7 w-7 flex-none items-center justify-center text-text-3 transition-all duration-200 hover:border-(--accent-line) hover:text-accent"
+      >
+        <LuLayers size={12} className="transition-transform duration-200 group-hover:scale-110" />
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href={`/v2/trader/${owner}`}
+      className="group glass-inset relative inline-flex items-center gap-2 overflow-hidden px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+    >
+      {/* accent wash — fades in on hover (flat, no shadow) */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-(--accent-soft) opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+      />
+      {/* faint accent sheen along the top edge */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-x-3 top-0 h-px opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        style={{
+          background:
+            'linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 60%, transparent), transparent)',
+        }}
+      />
+      {/* accent layers chip — the bit of colour that makes it read as designed */}
+      <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-md bg-accent/10 text-accent transition-colors duration-200 group-hover:bg-accent/20">
+        <LuLayers size={12} />
+      </span>
+      <span className="relative">View positions</span>
+    </Link>
+  );
+}
+
+/**
+ * Your standing — the connected wallet's own row, lifted out of the list and
+ * pinned under the podium with its live rank + a View-positions action, so a
+ * trader never has to page to find themselves. Accent-tinted to read as "you".
+ * Mirrors the legacy MyRankCard, adapted to the v2 row (points is a plain number).
+ */
+function MyRankCard({ rank, total, row }: { rank: number; total: number; row: V2LeaderboardRow }) {
+  return (
+    <div className="mb-4 flex flex-col gap-3.5 rounded-2xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
+      {/* Identity — rank · avatar · address, kept as one unit so it never splits. */}
+      <div className="flex items-center gap-3 sm:gap-5">
+        <div className="flex flex-col items-center leading-none">
+          <span className="eyebrow mb-1">Your rank</span>
+          <span className="font-mono text-[22px] leading-none text-accent">#{rank}</span>
+        </div>
+        <WalletAvatar addr={row.owner} size={40} ring="color-mix(in srgb, var(--accent) 55%, transparent)" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <a
+            href={EXPLORER(row.owner)}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 font-mono text-[13px] text-text-1 hover:text-accent hover:underline"
+            title={row.owner}
+          >
+            <TraderName owner={row.owner} />
+            <span className="text-[10px] text-accent">you</span>
+          </a>
+          <span className="font-mono text-[10px] tabular-nums text-text-3">of {total} traders</span>
+        </div>
+      </div>
+
+      {/* Stats + action — a 3-up row on mobile with the button below; collapses
+          inline (pushed right) from sm up (sm:contents drops this wrapper). */}
+      <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center sm:gap-5">
+        <div className="flex items-center justify-between gap-x-5 gap-y-2 font-mono tabular-nums sm:justify-end">
+          <RankStat label="Points">
+            <span className="text-accent">{num(row.points, 0)}</span>
+          </RankStat>
+          <RankStat label="Volume">
+            <span className="text-text-1">{num(row.volume, 2)}</span>
+            <span className="ml-1 text-[10px] text-text-3">{predictV2Config.quote.symbol}</span>
+          </RankStat>
+          <RankStat label="Trades">
+            <span className="text-text-2">{row.trades}</span>
+          </RankStat>
+        </div>
+        <div className="flex justify-center sm:contents">
+          <ViewPositionsButton owner={row.owner} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RankStat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="flex flex-col items-end gap-1">
+      <span className="text-[9px] uppercase tracking-wider text-text-3">{label}</span>
+      <span className="text-[13px] leading-none">{children}</span>
+    </span>
   );
 }
 
@@ -428,6 +548,10 @@ function PodiumCard({
             <span className="text-text-2">{s.node}</span>
           </span>
         ))}
+      </div>
+
+      <div className="mt-3 flex w-full justify-center">
+        <ViewPositionsButton owner={row.owner} />
       </div>
     </div>
   );
