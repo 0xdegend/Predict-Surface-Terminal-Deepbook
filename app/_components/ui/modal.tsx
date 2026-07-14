@@ -46,23 +46,34 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const lastFocused = useRef<HTMLElement | null>(null);
 
+  // Read onClose through a ref so the effect below can depend on `open` ALONE.
+  // Callers pass an inline arrow (a fresh identity every render), and if the effect
+  // re-ran on it, then a modal hosted by a component that re-renders often (e.g. the
+  // portfolio's per-second countdown) would re-fire `panelRef.focus()` roughly once
+  // a second — stealing focus back from an <input> mid-keystroke, so the field
+  // "won't accept typing" even though the quick-pick buttons still fill it.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     lastFocused.current = document.activeElement as HTMLElement | null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
     document.addEventListener('keydown', onKey);
-    // Move focus into the dialog for keyboard users.
+    // Move focus into the dialog for keyboard users — once, on open.
     panelRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
       lastFocused.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Closed on first render (SSR/hydrate); only portals after a client open.
   if (!open || typeof document === 'undefined') return null;
