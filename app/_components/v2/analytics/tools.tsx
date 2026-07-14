@@ -38,11 +38,15 @@ export function V2Pulse({
   return (
     <div className="space-y-3">
       <V2KpiStrip kpis={kpis} />
-      <div className="grid gap-3 lg:h-100 lg:grid-cols-3">
-        <div className="lg:col-span-2 lg:h-full">
+      {/* Fixed-height "glance" row. grid-rows-1 (minmax(0,1fr)) pins the row to the
+          container height and min-h-0 lets the items shrink, so the cards' own
+          overflow-hidden actually clips + scrolls instead of spilling onto the
+          "Latest bets" tape below. */}
+      <div className="grid gap-3 lg:h-100 lg:grid-cols-3 lg:grid-rows-1">
+        <div className="min-h-0 lg:col-span-2 lg:h-full">
           <V2HotMarkets cells={cells.slice(0, 8)} className="h-full" />
         </div>
-        <div className="flex flex-col gap-3 lg:col-span-1 lg:h-full">
+        <div className="flex min-h-0 flex-col gap-3 lg:col-span-1 lg:h-full">
           <V2SentimentGauge sentiment={sentiment} className="min-h-0 flex-1" />
           <V2PriceSwing cell={front} className="min-h-0 flex-1" />
         </div>
