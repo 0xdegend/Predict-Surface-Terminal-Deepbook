@@ -354,14 +354,7 @@ export function drawTraderPositionCard(
   ctx.fillText(spaced('DEEPBOOK PREDICT'), venueX, orbCy - 6);
   ctx.font = `500 16px ${sans}`;
   ctx.fillStyle = c.text2;
-  ctx.fillText(`${d.underlying} · binary`, venueX, orbCy + 18);
-  if (isRange) {
-    // overwrite the "binary" label for ranges
-    ctx.fillStyle = c.bg;
-    ctx.fillRect(venueX, orbCy + 4, 220, 20);
-    ctx.fillStyle = c.text2;
-    ctx.fillText(`${d.underlying} · range`, venueX, orbCy + 18);
-  }
+  ctx.fillText(`${d.underlying} · ${isRange ? 'range' : 'binary'}`, venueX, orbCy + 18);
 
   // The market title, big.
   const rightColX = 700;
@@ -387,7 +380,7 @@ export function drawTraderPositionCard(
   // Attribution — whose bet this is.
   ctx.font = `500 16px ${mono}`;
   ctx.fillStyle = c.text3;
-  ctx.fillText(`Trader ${shortId(d.trader, 6, 4)}`, P, leftW > 0 ? 470 : 470);
+  ctx.fillText(`Trader ${shortId(d.trader, 6, 4)}`, P, 470);
 
   // ── Right panel: the pick + cost + odds + to-win ──
   // Vertical divider (echoes the sample's split).

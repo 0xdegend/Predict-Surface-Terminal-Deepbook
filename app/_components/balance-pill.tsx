@@ -9,6 +9,7 @@
  * balance lives one tap away under Portfolio in the bottom dock.
  */
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
@@ -21,8 +22,13 @@ export function BalancePill() {
   const account = useCurrentAccount();
   const client = useCurrentClient();
   const mounted = useMounted();
+  const pathname = usePathname();
   const owner = account?.address ?? null;
   const sym = predictConfig.quote.symbol;
+  // The pill lives in BOTH chromes (shared WalletBar). Point it at the portfolio
+  // of the deployment the user is actually in — otherwise a click from the Latest
+  // (/v2) chrome bounces them to the legacy portfolio.
+  const portfolioHref = pathname?.startsWith('/v2') ? '/v2/portfolio' : '/portfolio';
 
   const { data } = useQuery({
     queryKey: qk.dusdcBalance(owner ?? ''),
@@ -46,7 +52,7 @@ export function BalancePill() {
   // dividers. Hidden below md, where the balance lives under Portfolio.
   return (
     <Link
-      href="/portfolio"
+      href={portfolioHref}
       title="View portfolio"
       aria-label={`Balance ${data === undefined ? '' : fmtQuote(fromQuote(data))} ${sym} — view portfolio`}
       className="hidden h-full items-center gap-1.5 px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] md:inline-flex"
