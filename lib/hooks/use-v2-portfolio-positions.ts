@@ -109,7 +109,10 @@ export function useV2PortfolioPositions(accountId?: string): UseV2PortfolioPosit
     () => [...new Set(normalized.filter((p) => !p.settled && p.marketId).map((p) => p.marketId!))],
     [normalized],
   );
-  const pricers = useV2Pricers(openMarketIds, {});
+  // Poll at 5s (not the 20s default) so an open position's Value/PnL keeps pace
+  // with the trade ticket's own pricer — a 20s mark visibly lagged spot, most
+  // noticeably on short-dated bets. Cheap: only the few markets the trader holds.
+  const pricers = useV2Pricers(openMarketIds, {}, 5_000);
 
   // Recent spot history → the position sparklines (a binary's price is its
   // probability). Shares cache with the price chart's `qkV2.pythHistory`.

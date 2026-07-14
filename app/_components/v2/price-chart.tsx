@@ -8,9 +8,11 @@
  * Mirrors legacy PriceChart's selection overlays: the ticket's strike renders
  * as a dashed price line ("strike ▲/▼") with the winning side shaded (UP =
  * above, DOWN = below), and range mode renders the shaded band between the two
- * edges — all live off the v2 trade store, so dragging the payout slider or the
- * odds curve moves the line/band in real time. The strike/band is resolved
- * against the selected market's admission grid (ATM from the live pricer).
+ * edges — marked with labeled "range start" / "range end" lines so the exact
+ * bounds read off the price axis, plus a lone "range start" line while only the
+ * first edge is picked. All live off the v2 trade store, so dragging the payout
+ * slider or the odds curve moves the line/band in real time. The strike/band is
+ * resolved against the selected market's admission grid (ATM from the live pricer).
  */
 import { useEffect, useRef } from 'react';
 import {
@@ -26,7 +28,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
-import { PriceBandPrimitive, WinZonePrimitive } from '@/app/_components/chart/price-overlays';
+import { PriceBandPrimitive, WinZonePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
 import { getPythHistory, getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
@@ -88,6 +90,12 @@ export function V2PriceChart({
   const strikeLineRef = useRef<IPriceLine | null>(null);
   const bandRef = useRef<PriceBandPrimitive | null>(null);
   const winZoneRef = useRef<WinZonePrimitive | null>(null);
+  // Labeled dashed lines that mark where the range starts and ends (and, while the
+  // band is still open, the lone first-pick anchor) — so the exact edge prices read
+  // off the price axis, not just the shaded band.
+  const anchorLineRef = useRef<IPriceLine | null>(null);
+  const lowerLineRef = useRef<IPriceLine | null>(null);
+  const higherLineRef = useRef<IPriceLine | null>(null);
   // Selection extents, read by the series' autoscaleInfoProvider so the price
   // scale always frames the strike line / band (with padding) even when the
   // pick sits away from spot. Refs so the provider closure sees the latest.
@@ -104,6 +112,9 @@ export function V2PriceChart({
   const strikePrice = useV2TradeStore((s) => s.strikePrice);
   const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
   const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
+  // First-picked edge while a band is being built (null once both edges are set,
+  // or in binary mode) — drives the "range start" line before the band closes.
+  const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
 
   const atm =
     market && pricer
@@ -113,6 +124,8 @@ export function V2PriceChart({
   const strike = atm != null && mode === 'binary' ? strikePrice ?? atm : null;
   const bandLow = mode === 'range' ? rangeLowerPrice : null;
   const bandHigh = mode === 'range' ? rangeHigherPrice : null;
+  // The lone first-pick level, shown while the band is still open (range mode only).
+  const anchor = mode === 'range' ? rangeAnchorPrice : null;
 
   // 500 = the propbook API's cap (~3.6 min of ticks) → a dense, legacy-count line.
   const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 30_000 });
@@ -202,6 +215,9 @@ export function V2PriceChart({
       chartRef.current = null;
       seriesRef.current = null;
       strikeLineRef.current = null;
+      anchorLineRef.current = null;
+      lowerLineRef.current = null;
+      higherLineRef.current = null;
       bandRef.current = null;
       winZoneRef.current = null;
     };
@@ -248,18 +264,25 @@ export function V2PriceChart({
   }, [latestQ.data]);
 
   // Draw the ticket's selection: binary = dashed strike line + win-zone shade;
-  // range = the shaded band between the edges. Tracks the store live.
+  // range = the shaded band between the edges, marked with labeled "range start"
+  // and "range end" lines — or, while only the first edge is picked, a single
+  // dashed "range start" line so the trader sees the range land as they build it
+  // (legacy parity). Tracks the store live.
   useEffect(() => {
     const series = seriesRef.current;
     const band = bandRef.current;
     const winZone = winZoneRef.current;
     if (!series || !band || !winZone) return;
 
-    if (strikeLineRef.current) {
-      series.removePriceLine(strikeLineRef.current);
-      strikeLineRef.current = null;
+    // Clear every selection line up front; redraw only the ones this state needs.
+    for (const ref of [strikeLineRef, anchorLineRef, lowerLineRef, higherLineRef]) {
+      if (ref.current) {
+        series.removePriceLine(ref.current);
+        ref.current = null;
+      }
     }
 
+    // Binary: dashed strike line + win-zone shade on the winning side.
     if (strike != null) {
       strikeLineRef.current = series.createPriceLine({
         price: strike,
@@ -273,15 +296,47 @@ export function V2PriceChart({
     } else {
       winZone.setZone(null, true);
     }
-    strikeRangeRef.current = strike;
 
+    // Range: shaded band + labeled edges once both are set; a lone anchor line
+    // while the band is still open.
     band.setBand(bandLow, bandHigh);
+    if (bandLow != null && bandHigh != null) {
+      lowerLineRef.current = series.createPriceLine({
+        price: bandLow,
+        color: BAND_LINE,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'range start',
+      });
+      higherLineRef.current = series.createPriceLine({
+        price: bandHigh,
+        color: BAND_LINE,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'range end',
+      });
+    } else if (anchor != null) {
+      anchorLineRef.current = series.createPriceLine({
+        price: anchor,
+        color: BAND_LINE,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: 'range start',
+      });
+    }
+
+    // Frame the active selection in the price scale (the autoscale provider reads
+    // these refs): the binary strike, the full band, or the lone anchor line.
+    strikeRangeRef.current = strike != null ? strike : bandLow == null ? anchor : null;
     bandRangeRef.current = bandLow != null && bandHigh != null ? { low: bandLow, high: bandHigh } : null;
 
     // Reframe so the selection is in view; runs only on selection changes, so
     // it doesn't fight the user's zoom mid-view.
     series.priceScale().setAutoScale(true);
-  }, [strike, isUp, bandLow, bandHigh]);
+  }, [strike, isUp, bandLow, bandHigh, anchor]);
 
   // Live spot readout top-right (raw latest, matching the nav tape) — mirrors
   // legacy's "BTC SPOT" chart label.
