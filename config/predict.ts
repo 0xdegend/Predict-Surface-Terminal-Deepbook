@@ -208,6 +208,16 @@ export interface PredictV2Config {
     initialExpiryCash: string;
     windowSize: string;
   }[];
+  /**
+   * Wallets always shown on the v2 leaderboard, regardless of who is connected.
+   * The board is rebuilt from a ~500-market / ~8h retained order window, so a
+   * wallet whose trades have aged out of that window only reappears when IT is
+   * connected (its full account history gets folded in). Listing an address here
+   * folds its complete history in for everyone — the same completeness the
+   * connected wallet gets — so known/demo traders never silently drop off.
+   * See lib/hooks/use-v2-leaderboard.ts.
+   */
+  featuredWallets: string[];
   faucetUrl?: string;
 }
 
@@ -262,6 +272,16 @@ const V2_TESTNET: PredictV2Config = {
     { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
     { id: 2, name: '1h', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '3' },
   ],
+  // Always-on leaderboard entrants. Comma-separated NEXT_PUBLIC_FEATURED_WALLETS
+  // overrides this list without editing the file. Both have traded on this
+  // deployment but their trades age out of the retained window; pinning keeps
+  // them on the board every time (verified accounts, live 2026-07-15).
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [
+        '0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4',
+        '0x22cc7ef79881b98152d9a7c2a50fefe42a468434ddff07e14b08562774a1940f',
+      ],
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
@@ -277,6 +297,8 @@ const V2_MAINNET: PredictV2Config = {
   // owning wallet must sign `create_builder_code` itself; there is no way to
   // reassign it later) and paste the id here.
   builderCodeId: '',
+  // Testnet demo wallets must not leak onto a mainnet board; opt in explicitly.
+  featuredWallets: [],
 };
 
 const V2_CONFIGS: Record<SuiNetwork, PredictV2Config> = {

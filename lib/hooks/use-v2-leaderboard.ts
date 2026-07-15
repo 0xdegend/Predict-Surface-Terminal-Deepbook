@@ -14,17 +14,22 @@
  *
  * One bounded-concurrency fetch inside a single query (legacy's cheap single-shot
  * pattern), NOT 500 live query subscriptions — a busy indexer stays happy and the
- * board can't blow up the render tree. The connected wallet's OWN complete account
- * history is folded in on top, so a trader whose markets have aged out of even the
- * ~8h window still appears with real, complete stats.
+ * board can't blow up the render tree. On top, we fold in the COMPLETE account
+ * history of the connected wallet AND any config `featuredWallets` (resolved
+ * address → account id on-chain), so a trader whose markets have aged out of even
+ * the ~8h window still appears with real, complete stats. Without the pin, only
+ * the connected wallet gets that guarantee — which is why known traders would
+ * otherwise blink off the board once their trades age out of the window.
  *
  * Server-data only (the wallet is just for the "you" merge + highlight), so it
  * renders for any visitor.
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
 import { predictV2Config } from '@/config/predict';
 import { aggregateV2Leaderboard } from '@/lib/leaderboard/v2-aggregate';
 import type { V2LeaderboardRow } from '@/lib/leaderboard/v2';
@@ -74,9 +79,42 @@ export function useV2Leaderboard(): UseV2Leaderboard {
   const acct = usePredictAccountV2();
   const accountId = acct.accountId;
 
+  // Featured wallets get the SAME completeness as the connected wallet: their
+  // full account history is folded in so they never age out of the board.
+  // Resolve address → account id once on-chain (deterministic + stable → cache
+  // forever); the beta indexer files orders under the internal account id.
+  const client = useCurrentClient();
+  const featured = predictV2Config.featuredWallets;
+  const featuredQ = useQuery<string[]>({
+    queryKey: ['v2', 'leaderboard', 'featured-account-ids', ...featured] as const,
+    queryFn: async () => {
+      const ids: string[] = [];
+      for (const owner of featured) {
+        try {
+          const w = await readWrapper(client.core, owner);
+          if (w.exists) ids.push(await readAccountId(client.core, w.wrapperId));
+        } catch {
+          /* an unresolvable/never-traded featured wallet just isn't pinned */
+        }
+      }
+      return ids;
+    },
+    enabled: featured.length > 0,
+    staleTime: Infinity,
+  });
+  const featuredAccountIds = useMemo(() => featuredQ.data ?? [], [featuredQ.data]);
+
+  // Every account whose complete history we fold in: the connected wallet plus
+  // the featured pins, deduped (a featured wallet that's also connected once).
+  const mergeAccountIds = useMemo(
+    () => [...new Set([...(accountId ? [accountId] : []), ...featuredAccountIds])],
+    [accountId, featuredAccountIds],
+  );
+
   const q = useQuery<V2LeaderboardRow[]>({
-    // Account-scoped: connecting a wallet re-runs with its history merged in.
-    queryKey: [...qkV2.markets, 'leaderboard', accountId ?? 'anon'] as const,
+    // Account-scoped: connecting a wallet (or resolving a pin) re-runs with that
+    // history merged in.
+    queryKey: [...qkV2.markets, 'leaderboard', ...mergeAccountIds.sort()] as const,
     queryFn: async ({ signal }) => {
       // 1. The full retained market roster, newest-first, deduped by id.
       const raw = await getV2Markets(MARKET_LIMIT, { signal });
@@ -100,22 +138,25 @@ export function useV2Leaderboard(): UseV2Leaderboard {
         }
       });
 
-      // 3. Fold the connected wallet's complete history into its market buckets
-      //    (creating buckets for markets that aged out of the roster).
-      if (accountId) {
-        try {
-          const mine = await getAccountOrders(accountId, { signal });
-          for (const o of mine) {
-            const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
-            if (!mid) continue;
-            const list = byMarket.get(mid);
-            if (list) list.push(o);
-            else byMarket.set(mid, [o]);
+      // 3. Fold each completeness account's full history into its market buckets
+      //    (connected wallet + featured pins), creating buckets for markets that
+      //    aged out of the roster. One failing fetch can't sink the board.
+      await Promise.all(
+        mergeAccountIds.map(async (id) => {
+          try {
+            const orders = await getAccountOrders(id, { signal });
+            for (const o of orders) {
+              const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
+              if (!mid) continue;
+              const list = byMarket.get(mid);
+              if (list) list.push(o);
+              else byMarket.set(mid, [o]);
+            }
+          } catch {
+            /* the board still stands without this account's merge */
           }
-        } catch {
-          /* the board still stands without the personal merge */
-        }
-      }
+        }),
+      );
 
       // 4. Dedupe each bucket by event identity (a market in both feeds).
       for (const [mid, list] of byMarket) {
