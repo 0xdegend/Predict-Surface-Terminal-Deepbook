@@ -9,10 +9,11 @@
  * parity). The thumb still tracks the strike's live probability, so as the price
  * moves the payout multiple updates while the strike stays put.
  */
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { upFair, type SviFloat } from '@/lib/svi/svi';
 import { strikeForDirectionFair, payoutMultiple } from '@/lib/sui/v2/invert';
-import { toFloat } from '@/config/scale';
+import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
+import { toFloat, fromFloat } from '@/config/scale';
 import { price, num } from '@/lib/format';
 
 // Slider band, in direction-fair probability. Left = safe (~1.07×), right =
@@ -44,6 +45,10 @@ export function V2PayoutSlider({
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // Typed-strike draft: null = not editing (show the live strike). Lets a user
+  // type an exact strike instead of dragging; committed on Enter/blur.
+  const [draft, setDraft] = useState<string | null>(null);
+  const editing = draft !== null;
 
   const strikeFloat = strike;
   const up = upFair(strikeFloat, forward, svi);
@@ -84,6 +89,27 @@ export function V2PayoutSlider({
     if (disabled) return;
     onChange(strikeFloat + dir * admStep);
   }
+  function commitDraft() {
+    if (draft === null) return;
+    const text = draft;
+    setDraft(null); // idempotent — Enter then blur only commits once
+    const parsed = parseFloat(text.replace(/,/g, ''));
+    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    // Snap the typed price onto the admission grid, same grid the nudge uses.
+    const snapped = toFloat(Number(snapStrikeToAdmission(fromFloat(parsed), admissionTickSize)));
+    if (snapped > 0 && snapped !== strikeFloat) onChange(snapped);
+  }
+  function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitDraft();
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setDraft(null); // cancel — revert to the live strike
+      e.currentTarget.blur();
+    }
+  }
   function onKey(e: React.KeyboardEvent) {
     if (disabled) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
@@ -110,7 +136,22 @@ export function V2PayoutSlider({
           <button onClick={() => nudge(-1)} aria-label="Lower strike" className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2">
             −
           </button>
-          <span className="min-w-20 text-center font-mono text-[12px] text-text-1">{price(strikeFloat)}</span>
+          {/* Type an exact strike as an alternative to dragging. */}
+          <input
+            type="text"
+            inputMode="decimal"
+            aria-label="Strike price"
+            disabled={disabled}
+            value={editing ? draft : price(strikeFloat)}
+            onFocus={(e) => {
+              setDraft(String(strikeFloat));
+              e.currentTarget.select();
+            }}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={onInputKey}
+            className="w-24 rounded bg-transparent text-center font-mono text-[12px] text-text-1 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50"
+          />
           <button onClick={() => nudge(1)} aria-label="Raise strike" className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2">
             +
           </button>
