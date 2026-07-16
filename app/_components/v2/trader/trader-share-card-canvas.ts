@@ -324,8 +324,10 @@ export function drawTraderProfileCard(
   // Win-rate trend — fills the open right half and visualizes the strip's WIN
   // RATE number as a curve. Plotted on a fixed 0–100% axis (domain [0,1]) so a
   // flat run (e.g. all wins) sits at its true level — a 100% line rides the top,
-  // not pinned to the floor. Needs ≥2 settled bets to draw a line.
-  if (d.winRateCurve.length >= 2) {
+  // not pinned to the floor. A single settled bet is padded to a flat line so it
+  // still shows; nothing settled → no curve (the strip number carries it).
+  if (d.winRateCurve.length >= 1) {
+    const curve = d.winRateCurve.length >= 2 ? d.winRateCurve : [d.winRateCurve[0], d.winRateCurve[0]];
     const chX = 620;
     const chY = 306;
     const chW = W - P - chX;
@@ -342,7 +344,7 @@ export function drawTraderProfileCard(
       ctx.fillText(wr, W - P, chY - 16);
       ctx.textAlign = 'left';
     }
-    drawSparkline(ctx, d.winRateCurve, chX, chY, chW, chH, accent, c, [0, 1]);
+    drawSparkline(ctx, curve, chX, chY, chW, chH, accent, c, [0, 1]);
     ctx.shadowBlur = 0; // defensive: don't leak the line's glow into the strip
   }
 

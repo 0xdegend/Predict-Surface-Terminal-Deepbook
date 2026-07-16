@@ -67,7 +67,10 @@ export function V2TraderProfile({ address }: { address: string }) {
   // on a fixed 0–100% axis (see the chart below), so a flat run (all wins/all
   // losses) sits at its true level rather than a misleading pinned line.
   const winCurve = useMemo(() => winRateSeries(history), [history]);
-  const showWinTrend = winCurve.length >= 2;
+  const showWinTrend = winCurve.length >= 1;
+  // A single settled bet has no line to draw — pad it to a flat pair so the
+  // chart still renders at its true level on the fixed 0–100% axis.
+  const winCurvePlot = winCurve.length >= 2 ? winCurve : winCurve.length === 1 ? [winCurve[0], winCurve[0]] : [];
 
   // The share dialog: null = closed; else a profile or bet-slip card.
   const [share, setShare] = useState<TraderShareCard | null>(null);
@@ -179,7 +182,7 @@ export function V2TraderProfile({ address }: { address: string }) {
             <span className="text-[10px] text-text-3">{winStats.total} settled bets</span>
           </div>
           <div className="min-w-0 flex-1">
-            <ResponsiveSparkline data={winCurve} height={56} color="var(--accent)" domain={[0, 1]} />
+            <ResponsiveSparkline data={winCurvePlot} height={56} color="var(--accent)" domain={[0, 1]} />
           </div>
         </div>
       )}
