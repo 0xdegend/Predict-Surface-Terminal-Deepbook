@@ -55,7 +55,7 @@ function Kpi({
   valueClass?: string;
 }) {
   return (
-    <div className="glass-inset flex items-center gap-3 p-3">
+    <div className="glass-inset flex items-center gap-2.5 p-3">
       <span
         className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg"
         style={{ color: hue ?? 'var(--accent)', background: `color-mix(in srgb, ${hue ?? 'var(--accent)'} 14%, transparent)` }}
@@ -64,7 +64,8 @@ function Kpi({
       </span>
       <div className="min-w-0">
         <div className="eyebrow flex items-center gap-1.5 text-text-3">{label}</div>
-        <div className={`font-mono text-[17px] font-semibold leading-tight tracking-tight ${valueClass ?? 'text-text-1'}`}>
+        {/* Smaller on mobile so a compact value + unit never spills the half-width card. */}
+        <div className={`font-mono text-[15px] font-semibold leading-tight tracking-tight sm:text-[17px] ${valueClass ?? 'text-text-1'}`}>
           <AnimatedNumber value={value} format={format} />
           {unit && <span className="ml-1 text-[10px] font-normal text-text-3">{unit}</span>}
         </div>

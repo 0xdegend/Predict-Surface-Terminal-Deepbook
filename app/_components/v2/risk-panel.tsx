@@ -30,7 +30,7 @@ import {
 import { useV2Risk } from '@/lib/hooks/use-v2-risk';
 import { useNow } from '@/lib/hooks/use-now';
 import { stressPoint } from '@/lib/risk/v2';
-import { quote as fmtQuote, num, signed, pct, countdown, shortId, ago } from '@/lib/format';
+import { quote as fmtQuote, num, compact, signed, pct, countdown, shortId, ago } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { InfoTip } from '../ui/info-tip';
@@ -122,11 +122,12 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
           sub="worst-case payout"
           info="Pool value ÷ the most it could owe if every open bet won at once. A conservative floor — real payouts net the premiums already in the pool, so true coverage is higher."
         />
-        <Fig label="Total shares" value={fmtQuote(snapshot.totalShares)} sub="PLP outstanding" />
-        <Fig label="Withdrawable now" value={fmtQuote(snapshot.idle)} sub={`${sym} idle`} />
+        <Fig label="Total shares" value={fmtQuote(snapshot.totalShares)} base={snapshot.totalShares} sub="PLP outstanding" />
+        <Fig label="Withdrawable now" value={fmtQuote(snapshot.idle)} base={snapshot.idle} sub={`${sym} idle`} />
         <Fig
           label="At work"
           value={fmtQuote(snapshot.deployed)}
+          base={snapshot.deployed}
           sub={`${sym} backing bets`}
           info="Capital the pool has committed to back open markets. It returns to idle as those markets settle."
         />
@@ -336,14 +337,37 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
   );
 }
 
-function Fig({ label, value, sub, info }: { label: string; value: string; sub: string; info?: React.ReactNode }) {
+function Fig({
+  label,
+  value,
+  base,
+  sub,
+  info,
+}: {
+  label: string;
+  value: string;
+  /** Raw amount — when set, shows a compact form (e.g. 9.59M) on mobile so a big
+   *  figure never overflows the half-width card; the full value shows from sm up. */
+  base?: number;
+  sub: string;
+  info?: React.ReactNode;
+}) {
   return (
-    <div className="glass-inset flex flex-col gap-2 p-4">
+    <div className="glass-inset flex min-w-0 flex-col gap-2 p-4">
       <div className="flex items-center gap-2">
         <span className="eyebrow">{label}</span>
         {info && <InfoTip label={label}>{info}</InfoTip>}
       </div>
-      <span className="text-[20px] leading-none tracking-tight text-text-1">{value}</span>
+      <span className="text-[16px] leading-none tracking-tight text-text-1 sm:text-[20px]">
+        {base != null ? (
+          <>
+            <span className="sm:hidden">{compact(base)}</span>
+            <span className="hidden sm:inline">{value}</span>
+          </>
+        ) : (
+          value
+        )}
+      </span>
       <span className="text-[10px] uppercase tracking-[0.12em] text-text-3">{sub}</span>
     </div>
   );

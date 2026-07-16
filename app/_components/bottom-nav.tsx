@@ -63,6 +63,16 @@ export function BottomNav() {
   // bottom content, which is exactly where the range-pick curve lives).
   const ticketSheetOpen = useSurfaceStore((s) => s.ticketSheetOpen);
 
+  // Close the sheet on any navigation (a primary tab, browser back/forward, …) —
+  // the nav persists across routes, so it would otherwise linger over the new
+  // page. Reset during render (React's "adjust state on change" pattern), not in
+  // an effect, so the sheet never paints over the new route first.
+  const [navPath, setNavPath] = useState(pathname);
+  if (navPath !== pathname) {
+    setNavPath(pathname);
+    setOpen(false);
+  }
+
   const primaryIndex = PRIMARY.findIndex((t) => t.match(pathname));
   const moreActive = MORE.some((m) => pathname.startsWith(m.href));
   // The lens sits under a primary tab, or under "More" (index 4) when on one of
@@ -76,12 +86,6 @@ export function BottomNav() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
-
-  // Close on any navigation — the nav persists across routes, so without this the
-  // sheet would linger over the new page (tapping a primary tab, browser back, …).
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
 
   return (
     // Outer layer positions + centers; pointer-events pass through the gaps so

@@ -536,9 +536,15 @@ export function V2TradeTicket({
   // a low-balance user sees it right away, in binary OR range, on either step.
   // Hidden the instant a grant succeeds this session so a freshly-funded user
   // can't re-tap it before the async balance refetch lands.
+  // Only offer the grant to a GENUINELY NEW wallet: one that has never opened a
+  // trading account (`!wrapperExists`) and is empty across account + wallet. A
+  // returning wallet has already claimed once, so the server would reject the
+  // grant ("already funded") — showing the button there is a guaranteed error.
+  // (The balance check spans account + wallet so leftover funds in either counts.)
   const grantCta =
     acct.walletDusdcBase !== undefined &&
-    acct.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING &&
+    !acct.wrapperExists &&
+    acct.balanceBase + acct.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING &&
     !grant.success ? (
       starterGrant.enabled && !grant.failed ? (
         <button
