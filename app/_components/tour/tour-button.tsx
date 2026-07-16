@@ -3,12 +3,20 @@
 /**
  * Replay affordance for the guided tour — a quiet "?" control in the top chrome.
  * Anyone (not just first-time visitors) can re-run the walkthrough from here.
+ *
+ * Only shown on the Trade screen ("/v2"): the tour's steps anchor to that
+ * screen's sections, so it can't run anywhere else — offering it on
+ * portfolio/leaderboard/vault/etc. would just start a broken, empty tour.
  */
+import { usePathname } from 'next/navigation';
 import { LuCircleHelp } from 'react-icons/lu';
 import { useTourStore } from '@/lib/store/tour-store';
 
 export function TourButton() {
+  const pathname = usePathname();
   const start = useTourStore((s) => s.start);
+
+  if (pathname !== '/v2') return null;
 
   return (
     <button

@@ -17,6 +17,8 @@ import { TOUR_SEEN_KEY } from './tour-overlay';
 export function TourLauncher() {
   const pathname = usePathname();
   const start = useTourStore((s) => s.start);
+  const stop = useTourStore((s) => s.stop);
+  const active = useTourStore((s) => s.active);
 
   useEffect(() => {
     if (pathname !== '/v2') return;
@@ -30,6 +32,12 @@ export function TourLauncher() {
     const t = window.setTimeout(start, 900);
     return () => window.clearTimeout(t);
   }, [pathname, start]);
+
+  // If the tour is running and the user leaves the Trade screen, end it — its
+  // steps anchor to that screen, so it can't continue on another page.
+  useEffect(() => {
+    if (active && pathname !== '/v2') stop();
+  }, [active, pathname, stop]);
 
   return null;
 }
