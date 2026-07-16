@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { derivePortfolioHistory } from './history';
+import { derivePortfolioHistory, winRateSeries } from './history';
 import type { PositionSummary } from '@/lib/api/types';
 
 const Q = 1_000_000; // 6dec
@@ -85,5 +85,26 @@ describe('derivePortfolioHistory', () => {
     const { history, stats } = derivePortfolioHistory([]);
     expect(history).toEqual([]);
     expect(stats).toMatchObject({ total: 0, wins: 0, losses: 0, winRate: 0, streak: null });
+  });
+});
+
+describe('winRateSeries', () => {
+  it('is the running win rate, chronological, ending at the overall rate', () => {
+    const { history, stats } = derivePortfolioHistory([
+      pos({ status: 'lost', total_cost: 3 * Q, last_activity_at: 100 }), // oldest → 0/1
+      pos({ status: 'redeemed', total_cost: 1 * Q, total_payout: 5 * Q, last_activity_at: 200 }), // 1/2
+      pos({ status: 'redeemed', total_cost: 2 * Q, total_payout: 3 * Q, last_activity_at: 300 }), // 2/3
+    ]);
+    const series = winRateSeries(history);
+    expect(series).toHaveLength(3);
+    expect(series[0]).toBeCloseTo(0, 6);
+    expect(series[1]).toBeCloseTo(0.5, 6);
+    expect(series[2]).toBeCloseTo(2 / 3, 6);
+    // The last point must equal the headline win rate — curve and number agree.
+    expect(series[series.length - 1]).toBeCloseTo(stats.winRate, 6);
+  });
+
+  it('is empty-safe', () => {
+    expect(winRateSeries([])).toEqual([]);
   });
 });

@@ -69,6 +69,22 @@ export function equityCurve(history: PastPrediction[]): EquityPoint[] {
   });
 }
 
+/**
+ * Cumulative win-rate curve (each point 0..1) over the settled history, in
+ * chronological order — the running share of bets won after each close. `history`
+ * arrives newest-first, so we re-sort ascending like equityCurve. The FINAL point
+ * equals the overall win rate (WinStats.winRate), so the curve and the headline
+ * number always agree. An empty history → an empty curve.
+ */
+export function winRateSeries(history: PastPrediction[]): number[] {
+  const asc = [...history].sort((a, b) => a.settledAt - b.settledAt);
+  let wins = 0;
+  return asc.map((h, i) => {
+    if (h.result === 'won') wins += 1;
+    return wins / (i + 1);
+  });
+}
+
 export interface WinStats {
   total: number;
   wins: number;

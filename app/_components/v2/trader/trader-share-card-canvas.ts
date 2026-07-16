@@ -6,7 +6,7 @@
  *
  * Two card kinds:
  *   • profile  — the trader's identity (jazzicon + address), Season-2 rank as the
- *                hero, and a Points / Volume / Trades strip. For "share this trader".
+ *                hero, and a Points / Win rate / Volume / Trades strip. For "share this trader".
  *   • position — a bet-slip: the market on the left, and the pick + cost + odds +
  *                to-win on the right (layout inspired by a Polymarket share card,
  *                rendered in our dark "engineered minimalism" theme). For "share a
@@ -22,6 +22,7 @@ import {
   withAlpha,
   fitSize,
   drawTag,
+  drawSparkline,
   roundRect,
   spaced,
   getShareLogo,
@@ -37,6 +38,11 @@ export interface TraderProfileShareData {
   points: number;
   volume: number; // DUSDC
   trades: number;
+  /** Win rate over the trader's SETTLED bets (0..1); null when none have settled. */
+  winRate: number | null;
+  /** Running win-rate curve (each 0..1), chronological; last point = `winRate`.
+   *  Needs ≥2 points to plot — shorter/empty just leaves the region clean. */
+  winRateCurve: number[];
   archetype: string | null; // e.g. "Longshot hunter"
 }
 
@@ -315,9 +321,35 @@ export function drawTraderProfileCard(
     ctx.fillText('Not ranked in the current window', P, 470);
   }
 
+  // Win-rate trend — fills the open right half and visualizes the strip's WIN
+  // RATE number as a curve. Plotted on a fixed 0–100% axis (domain [0,1]) so a
+  // flat run (e.g. all wins) sits at its true level — a 100% line rides the top,
+  // not pinned to the floor. Needs ≥2 settled bets to draw a line.
+  if (d.winRateCurve.length >= 2) {
+    const chX = 620;
+    const chY = 306;
+    const chW = W - P - chX;
+    const chH = 150;
+    ctx.textAlign = 'left';
+    ctx.font = `500 13px ${sans}`;
+    ctx.fillStyle = c.text3;
+    ctx.fillText(spaced('WIN RATE OVER TIME'), chX, chY - 16);
+    if (d.winRate != null) {
+      const wr = pct(d.winRate, 0);
+      ctx.textAlign = 'right';
+      ctx.font = `600 15px ${mono}`;
+      ctx.fillStyle = accent;
+      ctx.fillText(wr, W - P, chY - 16);
+      ctx.textAlign = 'left';
+    }
+    drawSparkline(ctx, d.winRateCurve, chX, chY, chW, chH, accent, c, [0, 1]);
+    ctx.shadowBlur = 0; // defensive: don't leak the line's glow into the strip
+  }
+
   // Stat strip.
   drawStrip(b, [
     ['POINTS', num(d.points, 0), accent],
+    ['WIN RATE', d.winRate != null ? pct(d.winRate, 0) : '—'],
     ['VOLUME', `${compact(d.volume)}`, undefined, 'DUSDC'],
     ['TRADES', num(d.trades, 0)],
   ]);
@@ -484,7 +516,7 @@ function drawKV(b: Base, label: string, value: string, x: number, rightX: number
   ctx.textAlign = 'left';
 }
 
-/** The bottom stat strip (Points / Volume / Trades) — matches the perf card. */
+/** The bottom stat strip (Points / Win rate / Volume / Trades) — matches the perf card. */
 function drawStrip(b: Base, cells: [string, string, string?, string?][]) {
   const { ctx, c, sans, mono } = b;
   ctx.textAlign = 'left';

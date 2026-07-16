@@ -1212,7 +1212,7 @@ function drawStatStrip({ ctx, c, sans, mono, d }: Ctx) {
   });
 }
 
-function drawSparkline(
+export function drawSparkline(
   ctx: CanvasRenderingContext2D,
   data: number[],
   x0: number,
@@ -1221,6 +1221,9 @@ function drawSparkline(
   h: number,
   color: string,
   c: Theme,
+  /** Fixed y-range instead of auto-scaling to the data (e.g. [0,1] for a rate),
+   *  so a flat series plots at its true level rather than pinned to the floor. */
+  domain?: [number, number],
 ) {
   ctx.strokeStyle = c.lineSoft;
   ctx.lineWidth = 1;
@@ -1235,8 +1238,8 @@ function drawSparkline(
   if (data.length < 2) return; // too thin to plot — leave the framed grid
 
   const pad = 6;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  const min = domain ? domain[0] : Math.min(...data);
+  const max = domain ? domain[1] : Math.max(...data);
   const span = max - min || 1;
   const px = (i: number) => x0 + pad + (i / (data.length - 1)) * (w - 2 * pad);
   const py = (v: number) => y0 + h - pad - ((v - min) / span) * (h - 2 * pad);

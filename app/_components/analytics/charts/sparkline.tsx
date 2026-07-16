@@ -18,6 +18,7 @@ export function Sparkline({
   color,
   area = true,
   strokeWidth = 1.4,
+  domain,
 }: {
   data: number[];
   width?: number;
@@ -26,12 +27,15 @@ export function Sparkline({
   color?: string;
   area?: boolean;
   strokeWidth?: number;
+  /** Fixed y-range instead of auto-scaling to the data (e.g. [0,1] for a rate),
+   *  so a flat series sits at its true level rather than pinned to the floor. */
+  domain?: [number, number];
 }) {
   if (data.length < 2) return <svg width={width} height={height} aria-hidden />;
 
   const stroke = color ?? (data[data.length - 1] >= data[0] ? 'var(--up)' : 'var(--down)');
-  const yMin = Math.min(...data);
-  const yMax = Math.max(...data);
+  const yMin = domain ? domain[0] : Math.min(...data);
+  const yMax = domain ? domain[1] : Math.max(...data);
   const PAD = 2;
   const xScale = scaleLinear({ domain: [0, data.length - 1], range: [PAD, width - PAD] });
   const yScale = scaleLinear({ domain: [yMin, yMax], range: [height - PAD, PAD] });
@@ -74,19 +78,29 @@ export function ResponsiveSparkline({
   color,
   area = true,
   strokeWidth = 1.4,
+  domain,
 }: {
   data: number[];
   height?: number;
   color?: string;
   area?: boolean;
   strokeWidth?: number;
+  domain?: [number, number];
 }) {
   return (
     <div style={{ width: '100%', height }}>
       <ParentSize>
         {({ width }) =>
           width > 0 ? (
-            <Sparkline data={data} width={width} height={height} color={color} area={area} strokeWidth={strokeWidth} />
+            <Sparkline
+              data={data}
+              width={width}
+              height={height}
+              color={color}
+              area={area}
+              strokeWidth={strokeWidth}
+              domain={domain}
+            />
           ) : null
         }
       </ParentSize>

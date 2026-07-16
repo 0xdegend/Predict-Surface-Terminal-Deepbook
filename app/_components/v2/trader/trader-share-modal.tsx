@@ -31,8 +31,9 @@ function shareText(card: TraderShareCard): string {
   if (card.kind === 'profile') {
     const d = card.data;
     const rank = d.rank != null ? `ranked #${d.rank}` : 'trading';
+    const wr = d.winRate != null ? ` · ${pct(d.winRate, 0)} win rate` : '';
     return (
-      `Check out ${shortId(d.trader, 6, 4)} on @skew_sui — ${rank} with ${d.trades} bets placed 📊\n\n` +
+      `Check out ${shortId(d.trader, 6, 4)} on @skew_sui — ${rank} with ${d.trades} bets placed${wr} 📊\n\n` +
       `Trade the live volatility surface yourself 👇`
     );
   }

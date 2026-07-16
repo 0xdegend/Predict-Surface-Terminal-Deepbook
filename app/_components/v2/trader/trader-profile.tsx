@@ -14,16 +14,19 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
-import { LuArrowLeft, LuExternalLink, LuTrophy, LuCoins, LuActivity, LuLayers, LuShare } from 'react-icons/lu';
+import { LuArrowLeft, LuExternalLink, LuTrophy, LuCoins, LuActivity, LuLayers, LuShare, LuTarget } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
 import { useV2TraderAccount } from '@/lib/hooks/use-v2-trader-account';
 import { useV2TraderStyle } from '@/lib/hooks/use-v2-trader-style';
+import { useV2History } from '@/lib/hooks/use-v2-history';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { sortV2Rows } from '@/lib/leaderboard/v2';
-import { num, compact, shortId } from '@/lib/format';
+import { derivePortfolioHistory, winRateSeries } from '@/lib/portfolio/history';
+import { num, compact, pct, shortId } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../../ui/metric';
+import { ResponsiveSparkline } from '../../analytics/charts/sparkline';
 import { WalletAvatar } from '../../leaderboard/wallet-avatar';
 import { V2TraderStyleCard } from './trader-style-card';
 import { V2TraderPositionsList } from './trader-positions-list';
@@ -54,6 +57,18 @@ export function V2TraderProfile({ address }: { address: string }) {
   // style card + positions, so it's already loaded, not an extra fetch.
   const { style } = useV2TraderStyle(accLoading ? undefined : accountId);
 
+  // Win rate over settled bets — derived the SAME way as the trader's own
+  // Portfolio (derivePortfolioHistory), and off the same cached account-orders
+  // query as the style card, so it's authoritative and not an extra fetch.
+  const { history, isLoading: histLoading } = useV2History(accLoading ? undefined : accountId);
+  const winStats = useMemo(() => derivePortfolioHistory([], history).stats, [history]);
+  const winRate = winStats.total > 0 ? winStats.winRate : null;
+  // Running win-rate curve for the trend chart (last point = winRate). Plotted
+  // on a fixed 0–100% axis (see the chart below), so a flat run (all wins/all
+  // losses) sits at its true level rather than a misleading pinned line.
+  const winCurve = useMemo(() => winRateSeries(history), [history]);
+  const showWinTrend = winCurve.length >= 2;
+
   // The share dialog: null = closed; else a profile or bet-slip card.
   const [share, setShare] = useState<TraderShareCard | null>(null);
   const shareProfile = () =>
@@ -66,6 +81,8 @@ export function V2TraderProfile({ address }: { address: string }) {
         points: row?.points ?? 0,
         volume: row?.volume ?? 0,
         trades: row?.trades ?? 0,
+        winRate,
+        winRateCurve: winCurve,
         archetype: style?.primary?.label ?? null,
       },
     });
@@ -127,8 +144,14 @@ export function V2TraderProfile({ address }: { address: string }) {
       </div>
 
       {/* Standing stats */}
-      <div className="glass-card mb-6 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
+      <div className="glass-card mb-6 grid grid-cols-2 gap-2.5 p-2.5 font-mono tabular-nums sm:grid-cols-4">
         <Stat icon={LuTrophy} color={HUE.teal} label="Points" value={stat(row?.points ?? 0, 0)} accent />
+        <Stat
+          icon={LuTarget}
+          color={HUE.violet}
+          label="Win rate"
+          value={histLoading ? '…' : winRate != null ? pct(winRate, 0) : '—'}
+        />
         <Stat
           icon={LuCoins}
           color={HUE.amber}
@@ -146,6 +169,21 @@ export function V2TraderProfile({ address }: { address: string }) {
         <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={lbLoading ? '…' : row ? String(row.trades) : '—'} />
       </div>
 
+      {/* Win-rate trend — the running win rate over settled bets, on a fixed
+          0–100% axis so a flat run reads at its true level. */}
+      {showWinTrend && (
+        <div className="glass-card mb-6 flex items-center gap-4 p-4 font-mono tabular-nums">
+          <div className="flex shrink-0 flex-col gap-1">
+            <span className="eyebrow">Win rate over time</span>
+            <span className="text-[22px] leading-none text-accent">{pct(winRate ?? 0, 0)}</span>
+            <span className="text-[10px] text-text-3">{winStats.total} settled bets</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <ResponsiveSparkline data={winCurve} height={56} color="var(--accent)" domain={[0, 1]} />
+          </div>
+        </div>
+      )}
+
       {/* Trading style — derived archetype + the evidence behind it */}
       <V2TraderStyleCard accountId={accountId} enabled={!accLoading} />
 
@@ -161,9 +199,9 @@ export function V2TraderProfile({ address }: { address: string }) {
 
       <p className="mt-6 text-[10px] leading-relaxed text-text-3">
         Positions are public on-chain state, marked at the current price. Copy carries the market only
-        (which market, direction, strike) — you set your own stake and pay the live quote. Authoritative
-        win rate &amp; PnL live on the trader’s own portfolio. Quote asset · {predictV2Config.quote.symbol} ·{' '}
-        {predictV2Config.network}.
+        (which market, direction, strike) — you set your own stake and pay the live quote. Win rate is over
+        settled bets; authoritative PnL lives on the trader’s own portfolio. Quote asset ·{' '}
+        {predictV2Config.quote.symbol} · {predictV2Config.network}.
       </p>
 
       <V2TraderShareModal card={share} onClose={() => setShare(null)} />
