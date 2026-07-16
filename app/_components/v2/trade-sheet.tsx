@@ -20,6 +20,7 @@ import { LuX } from 'react-icons/lu';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { V2TradeTicket } from './trade-ticket';
+import { V2PriceChart } from './price-chart';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -91,7 +92,22 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
           </button>
         </div>
         <div className="scroll-quiet min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
-          <V2TradeTicket market={market} pricer={pricer} serverNow={serverNow} />
+          {/* Mobile: the chart renders inside binary step 1 (read-only — taps scroll
+              the sheet), only mounted while the sheet is open + a market is picked.
+              Its strike/win-zone overlays track the payout slider live. */}
+          <V2TradeTicket
+            market={market}
+            pricer={pricer}
+            serverNow={serverNow}
+            mobile
+            chart={
+              open && market ? (
+                <div className="pointer-events-none mb-3 h-36 overflow-hidden rounded-xl bg-black/20">
+                  <V2PriceChart market={market} pricer={pricer} />
+                </div>
+              ) : null
+            }
+          />
         </div>
       </div>
     </>

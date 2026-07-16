@@ -27,7 +27,7 @@
  * modal (MintSuccessModal), reusing both deployment-agnostic components. No async
  * re-quote step: v2 pricing is synchronous off the live Pricer every render.
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -76,10 +76,16 @@ export function V2TradeTicket({
   market,
   pricer,
   serverNow,
+  mobile = false,
+  chart,
 }: {
   market: V2Market | null;
   pricer?: LivePricer;
   serverNow: number;
+  /** Mobile sheet: stay on step 1 (chart + strike) instead of jumping to the bet
+   *  step on an external pick, and render `chart` at the top of binary step 1. */
+  mobile?: boolean;
+  chart?: ReactNode;
 }) {
   const acct = usePredictAccountV2();
   const now = useNow(serverNow);
@@ -133,11 +139,12 @@ export function V2TradeTicket({
   // stake. Adjusted during render (React's documented "reset state on prop
   // change" pattern, same as legacy's selection sync). Seeding with the current
   // pickSeq means a value already in the store on mount is a leftover from a
-  // prior visit, not a fresh pick — no jump.
+  // prior visit, not a fresh pick — no jump. On mobile we stay on step 1 so the
+  // trader lands on the price chart + strike first (legacy FlowPanel parity).
   const [appliedPick, setAppliedPick] = useState(pickSeq);
   if (pickSeq !== appliedPick) {
     setAppliedPick(pickSeq);
-    if (mode === 'binary') setStep(2);
+    if (mode === 'binary' && !mobile) setStep(2);
   }
 
   // Until mounted, the connected account is unknown (SSR has no wallet, but the
@@ -668,6 +675,9 @@ export function V2TradeTicket({
 
             {step === 1 ? (
               <>
+                {/* Live price of this market (mobile sheet only) — read the movement
+                    before betting. Strike/win-zone overlays track the slider live. */}
+                {chart}
                 <div className="flex gap-2">
                   <DirectionToggle active={isUp} tone="up" onClick={() => setIsUp(true)}>
                     UP
