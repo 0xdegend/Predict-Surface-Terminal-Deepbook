@@ -116,7 +116,7 @@ export function WalletBar() {
           </button>
         </div>
       ) : (
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <NetworkBadge network={network} isTestnet={isTestnet} variant="pill" />
           <button
             onClick={() => setOpen((v) => !v)}
@@ -314,7 +314,9 @@ function NetworkBadge({
   }
   return (
     <span
-      className={`hidden items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider sm:inline-flex ${
+      // h-9 + rounded-lg so it sits flush with the Connect button beside it
+      // (was a shorter px/py pill that floated small between the h-9 controls).
+      className={`hidden h-9 items-center gap-1.5 rounded-lg border px-3 text-[10px] font-medium uppercase tracking-wider sm:inline-flex ${
         isTestnet
           ? 'border-[var(--warn-soft)] bg-[var(--warn-soft)] text-warn'
           : 'border-[var(--line)] text-text-2'
