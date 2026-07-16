@@ -3,6 +3,7 @@ import { LuLandmark } from 'react-icons/lu';
 import { V2VaultOverview } from '@/app/_components/v2/vault-overview';
 import { V2VaultPanel } from '@/app/_components/v2/vault-panel';
 import { V2VaultQueue } from '@/app/_components/v2/vault-queue';
+import { V2VaultHedge } from '@/app/_components/v2/vault-hedge';
 
 export const metadata: Metadata = {
   title: 'Vault',
@@ -34,7 +35,12 @@ export default function V2VaultPage() {
               cancelled before the keeper's flush fills it. */}
           <V2VaultQueue />
         </div>
-        <V2VaultPanel />
+        {/* Right rail: deposit/withdraw, then optional crash protection — sits
+            beside the pool so an LP can hedge the downside they just took on. */}
+        <div className="flex flex-col gap-5">
+          <V2VaultPanel />
+          <V2VaultHedge />
+        </div>
       </div>
     </main>
   );
