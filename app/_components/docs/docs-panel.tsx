@@ -194,7 +194,7 @@ function GettingStarted() {
         </FlowStep>
         <FlowStep n={4} title="Choose your amount and place it">
           Type how much you want to stake, check the cost, and confirm. Your bet
-          then shows up on your <Anchor href="/portfolio">Portfolio</Anchor>{" "}
+          then shows up on your <Anchor href="/v2/portfolio">Portfolio</Anchor>{" "}
           page, where you can watch how it&apos;s doing.
         </FlowStep>
       </Flow>
@@ -333,7 +333,7 @@ function Minting() {
         </FlowStep>
         <FlowStep n={3} title="Watch it live">
           Your open bets appear on your{" "}
-          <Anchor href="/portfolio">Portfolio </Anchor> and update in real time
+          <Anchor href="/v2/portfolio">Portfolio </Anchor> and update in real time
           as the price moves, so you can see whether you&apos;re ahead or
           behind.
         </FlowStep>
@@ -397,24 +397,23 @@ function VaultRisk() {
       </Lead>
       <Cards>
         <Card icon={LuVault} hue={HUE.teal} title="Join the pool">
-          Add DUSDC to the pool and earn a cut whenever people trade. You can
-          take your money back out, depending on how much is available at the
-          time. See <Anchor href="/vault">Vault</Anchor>.
+          Add DUSDC to the pool and earn a cut whenever people trade. Deposits
+          and withdrawals join a short queue and go through at the next pool
+          update, at the price per share at that moment. See{" "}
+          <Anchor href="/v2/vault">Vault</Anchor>.
         </Card>
-        <Card
-          icon={LuShieldAlert}
-          hue={HUE.amber}
-          title="Join with a safety net"
-        >
-          A one-click option that adds you to the pool and also buys a bit of
-          protection in case the market moves sharply against it all in a single
-          step.
+        <Card icon={LuShieldAlert} hue={HUE.amber} title="Crash protection">
+          Being in the pool means a sharp price drop is your worst day. For a
+          small cost you can buy optional protection that pays out if the price
+          falls sharply, softening the loss. It&apos;s a separate one-tap buy,
+          right under the pool on the <Anchor href="/v2/vault">Vault</Anchor>{" "}
+          page.
         </Card>
         <Card icon={LuGauge} hue={HUE.violet} title="Check the health">
           A dashboard showing how busy the pool is, how much can be withdrawn,
           and a &ldquo;what if the price suddenly jumped?&rdquo; simulator so
           you can see how the pool would hold up. See{" "}
-          <Anchor href="/risk">Vault Risk</Anchor>.
+          <Anchor href="/v2/risk">Vault Risk</Anchor>.
         </Card>
       </Cards>
     </Section>
@@ -430,7 +429,7 @@ function Ranks() {
       <Cards>
         <Card icon={LuTrophy} hue={HUE.amber} title="Leaderboard">
           Every trader is ranked by points, updated live. See where you stand on
-          the <Anchor href="/leaderboard">Leaderboard</Anchor>.
+          the <Anchor href="/v2/leaderboard">Leaderboard</Anchor>.
         </Card>
         <Card icon={LuSparkles} hue={HUE.teal} title="Points">
           You earn points for three things: how much you trade, how well your
@@ -438,9 +437,9 @@ function Ranks() {
           hold. It&apos;s all worked out from your real activity.
         </Card>
         <Card icon={LuSwords} hue={HUE.violet} title="Quests & Competitions">
-          <SoonTag /> <Anchor href="/quests">Quests</Anchor> (rewards for
+          <SoonTag /> <Anchor href="/v2/quests">Quests</Anchor> (rewards for
           hitting trading milestones) and seasonal{" "}
-          <Anchor href="/competitions">Competitions</Anchor> (contests with
+          <Anchor href="/v2/competitions">Competitions</Anchor> (contests with
           prize pools) are on the way.
         </Card>
       </Cards>

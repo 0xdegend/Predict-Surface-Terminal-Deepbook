@@ -49,11 +49,12 @@ const VAULT_ITEMS: MenuItem[] = [
 
 /** Secondary destinations — same set as the legacy "More" menu. Quests /
  *  Competitions render the shared showcase panels under the v2 shell; Docs
- *  stays deployment-agnostic. */
+ *  renders the shared manual under the v2 shell too (/v2/docs) so it keeps the
+ *  Latest chrome and its in-page links stay on /v2. */
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
-  { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
+  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
