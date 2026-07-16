@@ -77,6 +77,12 @@ export function BottomNav() {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
+  // Close on any navigation — the nav persists across routes, so without this the
+  // sheet would linger over the new page (tapping a primary tab, browser back, …).
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
   return (
     // Outer layer positions + centers; pointer-events pass through the gaps so
     // only the dock (and, when open, the sheet/backdrop) are interactive.
@@ -166,6 +172,7 @@ export function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
+              onClick={() => setOpen(false)}
               aria-current={active ? 'page' : undefined}
               className={`relative z-10 flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-[10px] font-medium tracking-tight transition-colors ${
                 active ? 'text-text-1' : 'text-text-3 hover:text-text-2'

@@ -77,6 +77,9 @@ export function V2LeaderboardPanel() {
 
   const sorted = sortV2Rows(rows, sort);
   const totals = v2LeaderboardTotals(rows);
+  // First load with nothing cached yet — skeleton the totals strip too (not just
+  // the table), so the header doesn't flash real-looking 0 / 0.00 / 0 zeros.
+  const loadingEmpty = loading && sorted.length === 0;
   const me = mounted ? (account?.address ?? null) : null;
 
   // The connected wallet's standing — pinned under the podium so a trader finds
@@ -148,11 +151,12 @@ export function V2LeaderboardPanel() {
 
       {/* Totals strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">
-        <Stat icon={LuUsers} color={HUE.blue} label="Traders" value={String(totals.traders)} />
+        <Stat icon={LuUsers} color={HUE.blue} label="Traders" loading={loadingEmpty} value={String(totals.traders)} />
         <Stat
           icon={LuCoins}
           color={HUE.amber}
           label="Volume"
+          loading={loadingEmpty}
           value={
             <>
               <span className="sm:hidden">{compact(totals.volume)}</span>
@@ -161,7 +165,7 @@ export function V2LeaderboardPanel() {
           }
           unit={predictV2Config.quote.symbol}
         />
-        <Stat icon={LuActivity} color={HUE.teal} label="Trades" value={num(totals.trades, 0)} />
+        <Stat icon={LuActivity} color={HUE.teal} label="Trades" loading={loadingEmpty} value={num(totals.trades, 0)} />
       </div>
 
       {/* Sort tabs */}
@@ -199,7 +203,7 @@ export function V2LeaderboardPanel() {
         </div>
 
         <div className="rows-divided">
-          {loading && sorted.length === 0 ? (
+          {loadingEmpty ? (
             <TableSkeleton />
           ) : sorted.length === 0 ? (
             <div className="px-4 py-12 text-center text-[13px] text-text-2">
@@ -641,12 +645,14 @@ function Stat({
   label,
   value,
   unit,
+  loading = false,
 }: {
   icon: typeof LuUsers;
   color: string;
   label: string;
   value: React.ReactNode;
   unit?: string;
+  loading?: boolean;
 }) {
   return (
     <div className="glass-inset flex min-w-0 flex-col gap-2 p-3 sm:p-4">
@@ -654,10 +660,16 @@ function Stat({
         <IconChip icon={Icon} color={color} size={22} />
         <span className="eyebrow">{label}</span>
       </div>
-      <span className="whitespace-nowrap text-[16px] leading-none tracking-tight text-text-1 sm:text-[20px]">
-        {value}
-        {unit && <span className="ml-1 hidden text-[11px] text-text-3 sm:inline">{unit}</span>}
-      </span>
+      {loading ? (
+        // h-4/h-5 matches the value's leading-none line box exactly (text-[16px]/
+        // [20px]), so the card doesn't jump when the number replaces it.
+        <span className="h-4 w-14 rounded skeleton sm:h-5 sm:w-20" />
+      ) : (
+        <span className="whitespace-nowrap text-[16px] leading-none tracking-tight text-text-1 sm:text-[20px]">
+          {value}
+          {unit && <span className="ml-1 hidden text-[11px] text-text-3 sm:inline">{unit}</span>}
+        </span>
+      )}
     </div>
   );
 }
