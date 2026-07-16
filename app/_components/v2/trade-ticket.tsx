@@ -66,6 +66,11 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
 const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+// Compact payout multiple: full precision when small, but drop the decimals once
+// it's large enough that they're just noise (and width) — 2.29× stays 2.29×, but
+// 229.00× becomes 229× so a big-leverage ticket can't overflow the summary row.
+const fmtMult = (m: number) =>
+  `${(m >= 100 ? Math.round(m) : Number(m.toFixed(m >= 10 ? 1 : 2))).toLocaleString()}×`;
 
 export function V2TradeTicket({
   market,
@@ -408,19 +413,19 @@ export function V2TradeTicket({
       ) : (
         <div className="flex flex-col">
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">You pay</span>
-              <span className="flex items-baseline gap-1.5">
+              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 <span className="text-[22px] leading-none text-text-1">${payDollars.toFixed(2)}</span>
                 <span className="text-[11px] leading-none text-text-3">{sym}</span>
               </span>
             </div>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="eyebrow">You win</span>
-              <span className="flex items-baseline gap-1.5">
+              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 <span className="text-[22px] leading-none text-up">${winDollars.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 <span className="text-[11px] leading-none text-text-3">{sym}</span>
-                <span className="rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">{mult.toFixed(2)}×</span>
+                <span className="rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">{fmtMult(mult)}</span>
               </span>
             </div>
           </div>
