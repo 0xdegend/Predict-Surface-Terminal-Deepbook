@@ -241,6 +241,16 @@ export function V2TradeTicket({
   const quotable = probOk && stakeBase >= MIN_STAKE_BASE;
   const shortfall = maxCost > acct.balanceBase ? maxCost - acct.balanceBase : 0n;
   const fundedFromAccount = estCostBase < acct.balanceBase ? estCostBase : acct.balanceBase;
+  // Can the trade actually be funded? The mint auto-deposits the shortfall from
+  // the wallet in the same transaction, so the real ceiling is account + wallet
+  // DUSDC. If that's below the (slippage-padded) cost the deposit would revert,
+  // so we block the review up front instead of letting the user walk into a
+  // guaranteed on-chain failure. Only judged once the wallet balance is known
+  // (undefined while loading) so it never flashes on first paint.
+  const insufficientFunds =
+    quotable &&
+    acct.walletDusdcBase !== undefined &&
+    maxCost > acct.balanceBase + acct.walletDusdcBase;
 
   const closingSoon = isClosingSoon(market, now);
   const tooCloseToExpiry = isTooCloseToExpiry(market, now);
@@ -285,7 +295,7 @@ export function V2TradeTicket({
   }
 
   function openReview() {
-    if (!quotable || tooCloseToExpiry || !!acct.busy) return;
+    if (!quotable || tooCloseToExpiry || insufficientFunds || !!acct.busy) return;
     setConfirmOpen(true);
   }
 
@@ -522,7 +532,7 @@ export function V2TradeTicket({
         </div>
       )}
 
-      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} />
+      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} />
       {acct.error && <p className="text-[11px] leading-relaxed text-down">{acct.error}</p>}
       <p className="text-[10px] leading-relaxed text-text-3">
         You’ll preview the trade next; cost is an estimate — your wallet shows the exact amount
@@ -837,6 +847,7 @@ function ActionButton({
   tooCloseToExpiry,
   onReview,
   shortfall,
+  insufficientFunds,
 }: {
   acct: ReturnType<typeof usePredictAccountV2>;
   tone: 'up' | 'down';
@@ -845,6 +856,7 @@ function ActionButton({
   tooCloseToExpiry: boolean;
   onReview: () => void;
   shortfall: bigint;
+  insufficientFunds: boolean;
 }) {
   if (!acct.wrapperExists)
     return (
@@ -853,7 +865,11 @@ function ActionButton({
       </ReviewButton>
     );
   return (
-    <ReviewButton tone={tone} onClick={onReview} disabled={tooCloseToExpiry || !quotable || !!acct.busy}>
+    <ReviewButton
+      tone={tone}
+      onClick={onReview}
+      disabled={tooCloseToExpiry || !quotable || insufficientFunds || !!acct.busy}
+    >
       {tooCloseToExpiry
         ? 'Too close to expiry'
         : stakeTooSmall
@@ -862,9 +878,11 @@ function ActionButton({
             ? 'Adjust your level to quote'
             : acct.busy === 'mint' || acct.busy === 'deposit'
               ? 'Confirming…'
-              : shortfall > 0n
-                ? 'Review deposit & mint'
-                : 'Review'}
+              : insufficientFunds
+                ? 'Insufficient funds'
+                : shortfall > 0n
+                  ? 'Review deposit & mint'
+                  : 'Review'}
     </ReviewButton>
   );
 }
