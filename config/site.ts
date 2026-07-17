@@ -23,8 +23,8 @@ export const siteConfig = {
   ogImage: '/skew-og-image.png',
   ogImageAlt:
     'Skew — a live 3-D SVI volatility-surface trading terminal for DeepBook Predict on Sui.',
-  ogImageWidth: 1635,
-  ogImageHeight: 962,
+  ogImageWidth: 1730,
+  ogImageHeight: 909,
   /** Public routes worth indexing (dynamic /trader/* is excluded). */
   routes: ['', '/portfolio', '/vault', '/leaderboard', '/analytics', '/quests', '/competitions', '/docs', '/risk'] as const,
 } as const;
