@@ -16,6 +16,7 @@
  * (no public cost view in v2); the wallet shows the exact figure at signing.
  */
 import { useEffect, useRef, useState } from 'react';
+import { GlassError } from '../../ui/glass-error';
 import { LuX, LuArrowLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -353,7 +354,7 @@ function BinaryBody({
             onReview={openReview}
             shortfall={shortfall}
           />
-          {acct.error && <p className="text-[10.5px] leading-snug text-down">{acct.error}</p>}
+          {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
       )}
 
@@ -562,7 +563,7 @@ function RangeBody({
             onReview={openReview}
             shortfall={shortfall}
           />
-          {acct.error && <p className="text-[10.5px] leading-snug text-down">{acct.error}</p>}
+          {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
       )}
 

@@ -31,6 +31,7 @@ import { fromQuote, toQuote, toFloat } from '@/config/scale';
 import { quote as fmtQuote, price, pct, countdown } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
+import { GlassError } from '../ui/glass-error';
 
 const QUICK = [5, 10, 25];
 // Skip markets about to settle — no runway for the protection to matter.
@@ -234,11 +235,7 @@ export function V2VaultHedge() {
         </p>
       )}
 
-      {acct.error && (
-        <div className="rounded-lg border border-down/40 bg-down/10 p-2 font-mono text-[12px] text-down">
-          {acct.error}
-        </div>
-      )}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
 
       <ActionButton
         reason={reason}

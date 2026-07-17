@@ -13,6 +13,7 @@
  * opt-in design scaffold, gated behind V2_DEMO_ENABLED (off by default).
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { GlassError } from '../ui/glass-error';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
 import {
@@ -329,11 +330,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         </div>
       </div>
 
-      {acct.error && (
-        <div className="mb-4 rounded border border-down/40 bg-down/10 p-2 font-mono text-[12px] text-down">
-          {acct.error}
-        </div>
-      )}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} className="mb-4" />}
 
       {/* Ready to redeem (settled) — ALWAYS visible; it's claimable money and
           should never sit behind a tab. */}

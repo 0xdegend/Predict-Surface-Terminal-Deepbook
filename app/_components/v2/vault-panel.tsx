@@ -17,6 +17,7 @@ import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
+import { GlassError } from '../ui/glass-error';
 
 type Mode = 'add' | 'remove';
 
@@ -147,11 +148,7 @@ export function V2VaultPanel() {
         </div>
       )}
 
-      {acct.error && (
-        <div className="rounded-lg border border-down/40 bg-down/10 p-2 font-mono text-[12px] text-down">
-          {acct.error}
-        </div>
-      )}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
 
       <ActionButton
         reason={reason}

@@ -15,6 +15,7 @@
  * PLP shares. The column is labelled per row for that reason.
  */
 import { LuClock, LuArrowDownToLine, LuArrowUpFromLine } from 'react-icons/lu';
+import { GlassError } from '../ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useLpQueue } from '@/lib/hooks/use-lp-queue';
 import { useMounted } from '@/lib/hooks/use-mounted';
@@ -140,7 +141,7 @@ export function V2VaultQueue() {
         </div>
       )}
 
-      {acct.error && <span className="text-[11px] leading-relaxed text-down">{acct.error}</span>}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
     </div>
   );
 }

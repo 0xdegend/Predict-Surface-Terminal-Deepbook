@@ -611,6 +611,28 @@ select:focus-visible,
   }
 }
 
+/* Error / alert glass — the down-tinted sibling of `.glass`: a translucent coral
+   wash over the frosted base so the surface behind still reads through, with a
+   hairline down border. Used by the dismissable GlassError banner. */
+.glass-error {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--down) 14%, transparent),
+      color-mix(in srgb, var(--down) 6%, transparent) 60%
+    ),
+    color-mix(in srgb, var(--bg-1) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--down) 32%, var(--line));
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-error {
+    background: color-mix(in srgb, var(--down) 12%, var(--bg-1));
+  }
+}
+
 /* Floating mobile dock — a deeper, more translucent frosted glass than the
    header `.glass`: stronger blur + saturation so the surface behind reads
    through it, a top-light gradient, a crisp hairline, and a soft drop shadow so

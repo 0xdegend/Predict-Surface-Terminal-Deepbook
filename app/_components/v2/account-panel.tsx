@@ -7,6 +7,7 @@
  * Glass; plain copy; no orbs/borders.
  */
 import { useState } from 'react';
+import { GlassError } from '../ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { fromQuote, toQuote } from '@/config/scale';
 
@@ -74,7 +75,7 @@ export function V2AccountPanel() {
           </button>
         </>
       )}
-      {acct.error && <p className="text-[11px] leading-relaxed text-down">{acct.error}</p>}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
     </div>
   );
 }

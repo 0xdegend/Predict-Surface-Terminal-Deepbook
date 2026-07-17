@@ -206,6 +206,8 @@ export function usePredictAccountV2() {
     walletDusdcBase: walletDusdcQ.data,
     busy,
     error,
+    /** Clear the last action error — lets a caller dismiss the error banner. */
+    clearError: () => setError(null),
     /** True for gasless Enoki (Google) accounts — they sign with no wallet
      *  pop-up, so callers can show honest, wallet-aware copy. */
     gasless,

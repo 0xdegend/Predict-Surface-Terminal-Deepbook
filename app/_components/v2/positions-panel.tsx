@@ -13,6 +13,7 @@
  * rail and the full grid can never disagree, and TanStack dedupes the fetches.
  */
 import { useState } from 'react';
+import { GlassError } from '../ui/glass-error';
 import Link from 'next/link';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useMounted } from '@/lib/hooks/use-mounted';
@@ -87,7 +88,7 @@ export function V2PositionsPanel() {
         </>
       )}
 
-      {acct.error && <span className="text-[11px] leading-relaxed text-down">{acct.error}</span>}
+      {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
 
       <V2RedeemModal
         position={redeeming}
