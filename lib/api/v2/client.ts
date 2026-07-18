@@ -22,6 +22,10 @@ import type {
   V2OrderEvent,
   V2VaultServerState,
   V2VaultFlush,
+  V2VaultProfit,
+  V2VaultFlow,
+  V2BuilderFee,
+  V2PositionCashflow,
   V2OpenInterest,
   V2ActivityBucket,
   V2LiquidationBucket,
@@ -80,6 +84,25 @@ export const getVaultState = (vaultId: string, o?: GetOptions) =>
 export const getVaultFlushes = (vaultId: string, limit = 200, o?: GetOptions) =>
   beta<V2VaultFlush[]>(`/vaults/${vaultId}/flushes?limit=${limit}`, o);
 
+/** Realized profit per market settlement (LP + protocol split), newest-first —
+ *  drives the vault performance panel's cumulative LP-profit series. */
+export const getVaultProfit = (vaultId: string, limit = 200, o?: GetOptions) =>
+  beta<V2VaultProfit[]>(`/vaults/${vaultId}/profit?limit=${limit}`, o);
+
+/** Hourly supply/withdraw activity buckets for the vault (`total_supply_after`
+ *  over time = a share-supply series to complement the flush share-price one). */
+export const getVaultFlows = (vaultId: string, limit = 200, o?: GetOptions) =>
+  beta<V2VaultFlow[]>(`/vaults/${vaultId}/flows?limit=${limit}`, o);
+
+/** Builder-fee CLAIM history for a code — sum of `amount` = lifetime swept. */
+export const getBuilderCodeFees = (codeId: string, limit = 200, o?: GetOptions) =>
+  beta<V2BuilderFee[]>(`/builder-codes/${codeId}/fees?limit=${limit}`, o);
+
+/** Authoritative per-position cost/payout roll-up. `null` while still open, so
+ *  callers keep the client-side order derivation as the fallback. */
+export const getPositionCashflow = (marketId: string, positionRootId: string, o?: GetOptions) =>
+  beta<V2PositionCashflow | null>(`/markets/${marketId}/positions/${positionRootId}/cashflow`, o);
+
 /** Open positions + max payout at risk for one market. */
 export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
   beta<V2OpenInterest>(`/markets/${marketId}/open-interest`, o);
@@ -134,6 +157,11 @@ export const qkV2 = {
   accountOrders: (accountId: string) => ['v2', 'account', accountId, 'orders'] as const,
   vaultServerState: ['v2', 'vault', 'server-state'] as const,
   vaultFlushes: ['v2', 'vault', 'flushes'] as const,
+  vaultProfit: ['v2', 'vault', 'profit'] as const,
+  vaultFlows: ['v2', 'vault', 'flows'] as const,
+  builderCodeFees: (id: string) => ['v2', 'builder-code', id, 'fees'] as const,
+  positionCashflow: (marketId: string, root: string) =>
+    ['v2', 'market', marketId, 'position', root, 'cashflow'] as const,
   marketOpenInterest: (id: string) => ['v2', 'market', id, 'open-interest'] as const,
   marketActivity: (id: string) => ['v2', 'market', id, 'activity'] as const,
   marketOrders: (id: string) => ['v2', 'market', id, 'orders'] as const,

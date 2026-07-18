@@ -38,6 +38,7 @@ import { predictV2Config } from '@/config/predict';
 import { ShareCardModal } from '@/app/_components/positions/share-card-modal';
 import type { ShareCardData } from '@/app/_components/positions/share-card-canvas';
 import { positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { usePositionCashflow } from '@/lib/hooks/use-position-cashflow';
 
 const OBJECT_EXPLORER = (id: string) =>
   `https://suiscan.xyz/${predictV2Config.network}/object/${id}`;
@@ -68,6 +69,9 @@ export function V2PositionCard({
   const won = p.settled ? (p.won ?? (p.pnl ?? 0) >= 0) : null;
   const result: Result = p.settled ? (won ? 'won' : 'lost') : settling ? 'settling' : 'live';
   const decided = p.settled;
+  // Authoritative server-aggregated cost/payout for a settled position; null
+  // while open or unavailable, so the derived tiles stay the source of truth.
+  const { data: cashflow } = usePositionCashflow(p.marketId, p.positionRootId, decided && !p.sample);
   const positive = (p.pnl ?? 0) >= 0;
   const isClaim = decided && won === true;
   const worthless = decided && won === false;
@@ -264,6 +268,24 @@ export function V2PositionCard({
             />
           </div>
         </div>
+
+        {/* Authoritative cost/payout from the indexer (settled positions) — the
+            server's ground truth alongside the client-derived tiles above. */}
+        {cashflow && (
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-line bg-white/1.5 px-3 py-2 text-[11px]">
+            <span className="flex items-center gap-1.5 text-text-3">
+              <LuShieldCheck size={12} />
+              Verified cashflow
+            </span>
+            <span className="flex items-center gap-3 font-mono tabular-nums text-text-2">
+              <span>cost {fmtQuote(cashflow.costBasis)}</span>
+              <span>payout {fmtQuote(cashflow.payout)}</span>
+              <span style={{ color: cashflow.netPnl >= 0 ? 'var(--up)' : 'var(--down)' }}>
+                {signed(cashflow.netPnl, 2)} {sym}
+              </span>
+            </span>
+          </div>
+        )}
 
         {/* footer — quiet disclaimer + share + the one action */}
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-3 px-1">

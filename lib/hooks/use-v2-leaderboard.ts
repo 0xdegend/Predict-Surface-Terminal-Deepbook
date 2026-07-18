@@ -25,7 +25,7 @@
  * renders for any visitor.
  */
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
@@ -61,6 +61,25 @@ async function mapPool(items: string[], limit: number, worker: (id: string) => P
   await Promise.all(runners);
 }
 
+/**
+ * Retry a fetch a few times before giving up. The beta indexer occasionally
+ * drops a request under the fan-out; without this a single transient failure
+ * silently evicts that market's — or a pinned trader's — orders for the whole
+ * cycle, which is what made known traders blink on and off the board.
+ */
+async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+  let err: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      err = e;
+      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+    }
+  }
+  throw err;
+}
+
 export interface UseV2Leaderboard {
   rows: V2LeaderboardRow[];
   /** Rows attributable to the Skew app (bets that carried its builder code). */
@@ -89,18 +108,26 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     queryKey: ['v2', 'leaderboard', 'featured-account-ids', ...featured] as const,
     queryFn: async () => {
       const ids: string[] = [];
+      let transient = false;
       for (const owner of featured) {
         try {
           const w = await readWrapper(client.core, owner);
+          // w.exists === false → wallet never traded: a permanent, silent skip.
           if (w.exists) ids.push(await readAccountId(client.core, w.wrapperId));
         } catch {
-          /* an unresolvable/never-traded featured wallet just isn't pinned */
+          // A flaky on-chain read — NOT a permanent "never traded". Flag it so we
+          // reject below and react-query retries, instead of caching a partial
+          // pin set under staleTime:Infinity (which dropped the pin until reload).
+          transient = true;
         }
       }
+      if (transient) throw new Error('featured-wallet resolution incomplete — retrying');
       return ids;
     },
     enabled: featured.length > 0,
     staleTime: Infinity,
+    retry: 4,
+    retryDelay: (n) => Math.min(1000 * 2 ** n, 15_000),
   });
   const featuredAccountIds = useMemo(() => featuredQ.data ?? [], [featuredQ.data]);
 
@@ -132,9 +159,9 @@ export function useV2Leaderboard(): UseV2Leaderboard {
       const byMarket = new Map<string, V2OrderEvent[]>();
       await mapPool(ids, CONCURRENCY, async (id) => {
         try {
-          byMarket.set(id, await getMarketOrders(id, ORDERS_PER_MARKET, { signal }));
+          byMarket.set(id, await withRetry(() => getMarketOrders(id, ORDERS_PER_MARKET, { signal })));
         } catch {
-          /* skip a single unavailable market feed */
+          /* skip a single genuinely-unavailable market feed */
         }
       });
 
@@ -144,7 +171,7 @@ export function useV2Leaderboard(): UseV2Leaderboard {
       await Promise.all(
         mergeAccountIds.map(async (id) => {
           try {
-            const orders = await getAccountOrders(id, { signal });
+            const orders = await withRetry(() => getAccountOrders(id, { signal }));
             for (const o of orders) {
               const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
               if (!mid) continue;
@@ -175,6 +202,10 @@ export function useV2Leaderboard(): UseV2Leaderboard {
       return aggregateV2Leaderboard(byMarket, predictV2Config.builderCodeId, Date.now());
     },
     staleTime: 30_000,
+    // Keep the last good board on screen while a refetch (or a pin resolving,
+    // which changes the query key) is in flight, so a transient shrink never
+    // flashes traders off the board mid-cycle.
+    placeholderData: keepPreviousData,
   });
 
   const rows = useMemo(() => q.data ?? [], [q.data]);

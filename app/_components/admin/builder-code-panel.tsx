@@ -16,8 +16,10 @@
  * asymmetry is the whole treasury story and the copy says so.
  */
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { LuCoins, LuShieldCheck, LuTriangleAlert, LuPlus, LuCopy, LuCheck } from 'react-icons/lu';
 import { predictV2Config, builderCodeEnabled, isAdminAddress } from '@/config/predict';
+import { getBuilderCodeFees, qkV2 } from '@/lib/api/v2/client';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import {
@@ -188,6 +190,17 @@ function Claim() {
   const { owner, claimable, isLoading, refetch } = useBuilderCodeAdmin();
   const [dest, setDest] = useState('');
 
+  // Lifetime swept fees, from the indexer's claim log (complements the on-chain
+  // `claimable`, which only ever shows what's UNclaimed right now).
+  const codeId = predictV2Config.builderCodeId;
+  const feesQ = useQuery({
+    queryKey: qkV2.builderCodeFees(codeId),
+    queryFn: () => getBuilderCodeFees(codeId),
+    enabled: !!codeId,
+    refetchInterval: 60_000,
+  });
+  const claimedToDate = (feesQ.data ?? []).reduce((s, f) => s + fromQuote(f.amount), 0);
+
   const recipient = dest.trim() === '' ? (owner ?? '') : dest.trim();
   const destValid = dest.trim() === '' || ADDR_RE.test(dest.trim());
   const busy = acct.busy === 'claim-builder';
@@ -207,13 +220,22 @@ function Claim() {
   return (
     <div className="flex flex-col gap-4">
       <Card>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <div className="flex flex-col gap-1">
-            <span className="eyebrow">Unclaimed fees</span>
+            <span className="eyebrow">Unclaimed</span>
             <span className="font-mono text-[18px] leading-none tabular-nums text-text-1">
               {isLoading ? '—' : `$${fromQuote(claimable).toFixed(2)}`}
             </span>
-            <span className="text-[10px] text-text-3">DUSDC, accrued on-chain</span>
+            <span className="text-[10px] text-text-3">accrued on-chain</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="eyebrow">Claimed to date</span>
+            <span className="font-mono text-[18px] leading-none tabular-nums text-text-1">
+              {feesQ.isLoading ? '—' : `$${claimedToDate.toFixed(2)}`}
+            </span>
+            <span className="text-[10px] text-text-3">
+              {feesQ.data?.length ? `${feesQ.data.length} claims` : 'no claims yet'}
+            </span>
           </div>
           <div className="flex flex-col gap-1">
             <span className="eyebrow">Code owner</span>

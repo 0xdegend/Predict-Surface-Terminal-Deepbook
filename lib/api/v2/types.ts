@@ -231,3 +231,73 @@ export interface V2LiquidationBucket {
   surplus: string;
   gap: string;
 }
+
+/* ---- Tier-1 endpoints (predict-testnet-6-24 server, live-verified 2026-07-18).
+ * Amounts are 6-dec base units (fromQuote); timestamps are ms numbers. Typed
+ * defensively (index signature) so extra fields from a later deploy are ignored. */
+
+/** `/vaults/:id/profit` — realized profit per market settlement (`expiry_profit_materialized`). */
+export interface V2VaultProfit {
+  checkpoint_timestamp_ms: number;
+  expiry_market_id: string;
+  /** LP share of realized profit (base units). */
+  lp_profit: string;
+  /** Protocol share of realized profit (base units). */
+  protocol_profit: string;
+  /** Running cumulative profit basis after this settlement (base units). */
+  profit_basis_after: string;
+  [k: string]: unknown;
+}
+
+/** `/vaults/:id/flows` — hourly supply/withdraw activity buckets (`vault_flows_1h`). */
+export interface V2VaultFlow {
+  bucket_ms: number;
+  supply_count: number;
+  supply_amount: string;
+  shares_minted: string;
+  withdraw_count: number;
+  withdraw_amount: string;
+  shares_burned: string;
+  /** Total PLP shares outstanding after this bucket (base units). */
+  total_supply_after: string;
+  idle_balance_after: string;
+  [k: string]: unknown;
+}
+
+/** `/builder-codes/:id/fees` — builder-fee CLAIM events for a code (`builder_fees_claimed`). */
+export interface V2BuilderFee {
+  builder_code_id: string;
+  /** Amount swept in this claim (DUSDC base units). */
+  amount: string;
+  checkpoint_timestamp_ms: number;
+  [k: string]: unknown;
+}
+
+/**
+ * `/markets/:expiry_market_id/positions/:position_root_id/cashflow` — the
+ * authoritative per-position cost/payout roll-up (server-aggregated across the
+ * position's mints + redeems). Returns `null` while the position is still open
+ * (nothing settled yet), so callers must tolerate null and fall back to the
+ * client-side order derivation. All amounts are 6-dec base units.
+ */
+export interface V2PositionCashflow {
+  expiry_market_id: string;
+  position_root_id: string;
+  account_id: string;
+  owner: string;
+  /** Max payout the position was opened for. */
+  minted_quantity: string;
+  /** Premium paid to open (cost basis). */
+  net_premium: string;
+  mint_fees: string;
+  /** Proceeds + fees + quantity from any pre-expiry closes. */
+  live_redeem_amount: string;
+  live_redeem_fees: string;
+  live_quantity_closed: string;
+  /** Terminal payout + quantity settled at expiry. */
+  settled_payout: string;
+  settled_quantity_closed: string;
+  /** Quantity knocked out by liquidation (pays 0). */
+  liquidated_quantity_closed: string;
+  [k: string]: unknown;
+}

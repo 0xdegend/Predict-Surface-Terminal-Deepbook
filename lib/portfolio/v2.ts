@@ -74,6 +74,8 @@ export interface V2PortfolioPosition {
   leverage?: number;
   /** When the position was opened (ms epoch). */
   openedAt?: number;
+  /** Joins to the authoritative per-position cashflow endpoint (settled rows). */
+  positionRootId?: string;
 }
 
 /**
@@ -174,6 +176,7 @@ export function normalizeV2Position(
     won: isSettledStatus(p.status) ? wonFromStatus(p.status) : undefined,
     marketId,
     orderId: p.order_id != null ? BigInt(p.order_id) : undefined,
+    positionRootId: p.position_root_id != null ? String(p.position_root_id) : undefined,
     qtyBase,
     floorShares: r.floor_shares != null ? fromQuote(r.floor_shares) : undefined,
     leverage: r.leverage != null ? toFloat(r.leverage) : undefined,
