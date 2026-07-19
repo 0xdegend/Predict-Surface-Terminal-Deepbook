@@ -38,7 +38,10 @@ import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 /** The indexer's own ceiling on `/markets` — request it all; anything beyond is
  *  simply not retained server-side (no older markets exist to scan). */
 const MARKET_LIMIT = 500;
-const ORDERS_PER_MARKET = 200;
+/** Per-market order cap. The server allows ≥500; the busiest single market had
+ *  369 trades, so 200 was dropping ~169 on the hottest markets. Take the full
+ *  budget so no market's traders are truncated (verified live 2026-07-18). */
+const ORDERS_PER_MARKET = 500;
 /** In-flight order fetches. Browsers cap ~6 sockets/host anyway; this just keeps
  *  that pipe full without scheduling 500 requests at once. */
 const CONCURRENCY = 12;
@@ -171,7 +174,7 @@ export function useV2Leaderboard(): UseV2Leaderboard {
       await Promise.all(
         mergeAccountIds.map(async (id) => {
           try {
-            const orders = await withRetry(() => getAccountOrders(id, { signal }));
+            const orders = await withRetry(() => getAccountOrders(id, 500, { signal }));
             for (const o of orders) {
               const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
               if (!mid) continue;

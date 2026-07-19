@@ -69,9 +69,13 @@ export const getV2MarketState = (marketId: string, o?: GetOptions) =>
 export const getAccountPositions = (accountId: string, o?: GetOptions) =>
   beta<V2Position[]>(`/accounts/${accountId}/positions`, o);
 
-/** The account's order EVENT log (mints + redeems) — the source for trade history. */
-export const getAccountOrders = (accountId: string, o?: GetOptions) =>
-  beta<V2OrderEvent[]>(`/accounts/${accountId}/orders`, o);
+/** The account's order EVENT log (mints + redeems) — the source for trade
+ *  history, portfolio positions, and the leaderboard completeness fold. The
+ *  server DEFAULTS to only 50 rows and hard-caps at 500 (verified live
+ *  2026-07-18), so request the full 500 explicitly — the 50-row default was
+ *  silently truncating active wallets' history. */
+export const getAccountOrders = (accountId: string, limit = 500, o?: GetOptions) =>
+  beta<V2OrderEvent[]>(`/accounts/${accountId}/orders?limit=${limit}`, o);
 
 /** Vault NAV + latest flush/fill events — pool_value/total_supply give the live
  *  share price (endpoint shipped ~2026-07, verified live 2026-07-08). */
