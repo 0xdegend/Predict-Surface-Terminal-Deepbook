@@ -8,18 +8,20 @@
  * fanning `/markets/:id/orders` across EVERY market the indexer retains. Its
  * `/markets` endpoint caps server-side at ~500 rows (~8h on a minute-rolling
  * venue) — that 500-market set IS the full indexed universe, so we scan all of
- * it, not a 60-market slice. That captures every wallet that has traded in the
- * retained window (the honest "all trades whether recent or not" the indexer can
- * give us).
+ * it. That captures every wallet that has traded in the retained window (the
+ * honest "all trades whether recent or not" the indexer can give us).
+ *
+ * INTERIM by design: this is the last-8h window + connected/featured-wallet full
+ * history. A complete all-time board needs the indexer's account-list / global
+ * order endpoint (still 404, expected live this week). When it lands, swap the
+ * fan-out for a fetch of that endpoint — the return shape here stays the same.
  *
  * One bounded-concurrency fetch inside a single query (legacy's cheap single-shot
  * pattern), NOT 500 live query subscriptions — a busy indexer stays happy and the
  * board can't blow up the render tree. On top, we fold in the COMPLETE account
  * history of the connected wallet AND any config `featuredWallets` (resolved
  * address → account id on-chain), so a trader whose markets have aged out of even
- * the ~8h window still appears with real, complete stats. Without the pin, only
- * the connected wallet gets that guarantee — which is why known traders would
- * otherwise blink off the board once their trades age out of the window.
+ * the ~8h window still appears with real, complete stats.
  *
  * Server-data only (the wallet is just for the "you" merge + highlight), so it
  * renders for any visitor.
@@ -96,8 +98,7 @@ export interface UseV2Leaderboard {
 export function useV2Leaderboard(): UseV2Leaderboard {
   // The connected wallet's internal account id — folded into the board below so
   // the connected trader always appears with their full cross-market history,
-  // even for markets aged past the retained window. (There's no all-accounts
-  // feed, so only the connected user gets this completeness guarantee.)
+  // even for markets aged past the retained window.
   const acct = usePredictAccountV2();
   const accountId = acct.accountId;
 
@@ -142,8 +143,6 @@ export function useV2Leaderboard(): UseV2Leaderboard {
   );
 
   const q = useQuery<V2LeaderboardRow[]>({
-    // Account-scoped: connecting a wallet (or resolving a pin) re-runs with that
-    // history merged in.
     queryKey: [...qkV2.markets, 'leaderboard', ...mergeAccountIds.sort()] as const,
     queryFn: async ({ signal }) => {
       // 1. The full retained market roster, newest-first, deduped by id.

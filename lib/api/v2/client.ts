@@ -24,6 +24,8 @@ import type {
   V2VaultFlush,
   V2VaultProfit,
   V2VaultFlow,
+  V2VaultSupplyFill,
+  V2VaultWithdrawFill,
   V2BuilderFee,
   V2PositionCashflow,
   V2OpenInterest,
@@ -98,6 +100,14 @@ export const getVaultProfit = (vaultId: string, limit = 200, o?: GetOptions) =>
 export const getVaultFlows = (vaultId: string, limit = 200, o?: GetOptions) =>
   beta<V2VaultFlow[]>(`/vaults/${vaultId}/flows?limit=${limit}`, o);
 
+/** Executed LP deposits (escrowed DUSDC → PLP shares at NAV), newest-first. */
+export const getVaultSupplyFills = (vaultId: string, limit = 30, o?: GetOptions) =>
+  beta<V2VaultSupplyFill[]>(`/vaults/${vaultId}/supply-fills?limit=${limit}`, o);
+
+/** Executed LP withdrawals (PLP shares → DUSDC at NAV), newest-first. */
+export const getVaultWithdrawFills = (vaultId: string, limit = 30, o?: GetOptions) =>
+  beta<V2VaultWithdrawFill[]>(`/vaults/${vaultId}/withdraw-fills?limit=${limit}`, o);
+
 /** Builder-fee CLAIM history for a code — sum of `amount` = lifetime swept. */
 export const getBuilderCodeFees = (codeId: string, limit = 200, o?: GetOptions) =>
   beta<V2BuilderFee[]>(`/builder-codes/${codeId}/fees?limit=${limit}`, o);
@@ -163,6 +173,7 @@ export const qkV2 = {
   vaultFlushes: ['v2', 'vault', 'flushes'] as const,
   vaultProfit: ['v2', 'vault', 'profit'] as const,
   vaultFlows: ['v2', 'vault', 'flows'] as const,
+  vaultFills: (id: string) => ['v2', 'vault', id, 'fills'] as const,
   builderCodeFees: (id: string) => ['v2', 'builder-code', id, 'fees'] as const,
   positionCashflow: (marketId: string, root: string) =>
     ['v2', 'market', marketId, 'position', root, 'cashflow'] as const,

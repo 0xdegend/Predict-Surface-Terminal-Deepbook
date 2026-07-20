@@ -264,6 +264,52 @@ export interface V2VaultFlow {
   [k: string]: unknown;
 }
 
+/**
+ * `/vaults/:id/supply-fills` — an executed LP deposit: escrowed DUSDC converted
+ * to PLP shares at the keeper's flush (NAV). `recipient` is the LP wallet;
+ * `account_id` its internal account. Amounts are 6-dec base units.
+ * (schema verified live 2026-07-19; `kind: 'supply_filled'`).
+ */
+export interface V2VaultSupplyFill {
+  checkpoint_timestamp_ms: number;
+  pool_vault_id: string;
+  account_id: string;
+  recipient: string;
+  request_index: number;
+  /** DUSDC deposited. */
+  dusdc_amount: string;
+  /** PLP shares minted for it. */
+  shares_minted: string;
+  /** Unique per EVENT (the tx `digest` is shared across a flush's many fills). */
+  event_digest?: string;
+  digest?: string;
+  event_index?: number;
+  kind?: string;
+  [k: string]: unknown;
+}
+
+/**
+ * `/vaults/:id/withdraw-fills` — an executed LP withdrawal: PLP shares burned for
+ * DUSDC at the flush (NAV). (`kind: 'withdraw_filled'`).
+ */
+export interface V2VaultWithdrawFill {
+  checkpoint_timestamp_ms: number;
+  pool_vault_id: string;
+  account_id: string;
+  recipient: string;
+  request_index: number;
+  /** PLP shares burned. */
+  shares_burned: string;
+  /** DUSDC returned. */
+  dusdc_amount: string;
+  /** Unique per EVENT (the tx `digest` is shared across a flush's many fills). */
+  event_digest?: string;
+  digest?: string;
+  event_index?: number;
+  kind?: string;
+  [k: string]: unknown;
+}
+
 /** `/builder-codes/:id/fees` — builder-fee CLAIM events for a code (`builder_fees_claimed`). */
 export interface V2BuilderFee {
   builder_code_id: string;

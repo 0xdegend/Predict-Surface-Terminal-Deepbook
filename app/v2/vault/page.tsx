@@ -4,6 +4,7 @@ import { V2VaultOverview } from '@/app/_components/v2/vault-overview';
 import { V2VaultPerformance } from '@/app/_components/v2/vault-performance';
 import { V2VaultPanel } from '@/app/_components/v2/vault-panel';
 import { V2VaultQueue } from '@/app/_components/v2/vault-queue';
+import { V2VaultActivity } from '@/app/_components/v2/vault-activity';
 import { V2VaultHedge } from '@/app/_components/v2/vault-hedge';
 
 export const metadata: Metadata = {
@@ -38,6 +39,9 @@ export default function V2VaultPage() {
               "where did my deposit go", and the only place a queued request can be
               cancelled before the keeper's flush fills it. */}
           <V2VaultQueue />
+          {/* Executed LP flows across all LPs (server feeds) — the history that
+              complements the live pending queue above. */}
+          <V2VaultActivity />
         </div>
         {/* Right rail: deposit/withdraw, then optional crash protection — sits
             beside the pool so an LP can hedge the downside they just took on. */}
