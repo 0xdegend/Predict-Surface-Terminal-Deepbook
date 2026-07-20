@@ -21,9 +21,9 @@ import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
 import { V2MarketPicker } from './market-picker';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
-import { V2OddsPanel } from './odds-panel';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
+import { V2RailTabs } from './rail-tabs';
 import { SurfaceMountV2 } from './surface/surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -112,11 +112,13 @@ export function V2TradeScreen({
           </h2>
           <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
         </div>
-        {selected && (
-          <div data-tour="svi" className="lg:border-t lg:border-line lg:pt-5">
-            <V2OddsPanel market={selected} pricer={pricer} />
-          </div>
-        )}
+        {/* Odds ⇆ Analysis. Odds is the surface's own fair-probability curve;
+            Analysis is the wider-market (Clawby) read + the picked strike's
+            real-world stats. Analysis is mount-gated inside, so its data only
+            loads when a trader opens that tab. */}
+        <div className="lg:border-t lg:border-line lg:pt-5">
+          <V2RailTabs market={selected} pricer={pricer} serverNow={serverNow} />
+        </div>
         <div className="lg:border-t lg:border-line lg:pt-5">
           <V2PositionsPanel />
         </div>
