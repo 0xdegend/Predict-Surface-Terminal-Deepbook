@@ -194,7 +194,7 @@ function AnalysisPreview() {
       {/* Lock scrim + message. */}
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-bg-0/45 px-6 text-center backdrop-blur-[1px]">
         <IconChip icon={LuLock} color={HUE.blue} size={30} />
-        <span className="text-[13px] font-semibold tracking-tight text-text-1">Market analysis — coming soon</span>
+        <span className="text-[13px] font-semibold tracking-tight text-text-1">Market analysis is coming soon</span>
         <span className="max-w-60 text-[11px] leading-snug text-text-3">
           Live BTC insights and per-strike analysis unlock here shortly.
         </span>
