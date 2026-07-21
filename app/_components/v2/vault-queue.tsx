@@ -47,6 +47,18 @@ export function V2VaultQueue() {
     else await acct.cancelWithdraw(r.entry.index);
   }
 
+  // Nothing pending → collapse to a slim one-liner rather than a full card. The
+  // overview's "In the queue · 0 · 0" stat already carries the count; a queued
+  // request (or an error to surface) promotes this back to the full card below.
+  if (!error && !isLoading && rows.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-line-soft px-3.5 py-2.5 text-[11.5px] text-text-3">
+        <LuClock size={13} className="shrink-0" />
+        <span>Nothing queued — deposits and withdrawals appear here until the next vault update.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="glass-card flex flex-col gap-3 p-4">
       <div className="flex items-center gap-2.5">

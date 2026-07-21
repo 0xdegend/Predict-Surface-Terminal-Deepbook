@@ -36,11 +36,14 @@ import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
 import { toFloat, fromFloat } from '@/config/scale';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
-import { price, pct, dateUTC, ttl, timeUTC } from '@/lib/format';
+import { price, pct, signed, dateUTC, ttl, timeUTC } from '@/lib/format';
 import { InfoTip } from '@/app/_components/ui/info-tip';
 import { LuBoxes, LuMoveHorizontal, LuMoveDiagonal, LuMoveVertical } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { SurfaceTradePopoverV2 } from './surface-trade-popover';
+import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
+import type { V2PortfolioPosition } from '@/lib/portfolio/v2';
 import type { V2Market } from '@/lib/api/v2/types';
 
 /**
@@ -169,6 +172,22 @@ export function SurfaceCanvasV2({
   const markPicked = useV2TradeStore((s) => s.markPicked);
   const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
   const clearRange = useV2TradeStore((s) => s.clearRange);
+
+  // The connected account's OPEN bets, pinned onto the surface at their
+  // (market, strike) so a trader watches them ride the landscape. Same query
+  // key as the positions rail → TanStack dedupes it to zero extra fetches.
+  // Only binary, still-open, non-sample rows on a live market get a pin (range
+  // bands + settled bets are excluded; `locate` drops any whose market isn't a
+  // surface row). Gated to the live surface below (not stress/scrub previews).
+  const acct = usePredictAccountV2();
+  const { positions: accountPositions } = useV2PortfolioPositions(acct.accountId);
+  const positionPins = useMemo(
+    () =>
+      accountPositions.filter(
+        (p) => !p.settled && p.qty > 0 && !p.sample && p.direction !== 'Range' && p.marketId != null && p.strike != null,
+      ),
+    [accountPositions],
+  );
 
   // Drop rows at/past expiry: their w is frozen while T clamps to ~0, so
   // IV = √(w/T) explodes and the height/colour normalization pancakes every
@@ -374,6 +393,11 @@ export function SurfaceCanvasV2({
             </>
           )}
           {selection?.kind === 'range' && <RangeBandMarker mesh={mesh} surface={surface} sel={selection} />}
+          {/* Your open bets, living on the surface — only on the real live
+              surface (a stress/scrub preview isn't where your money sits). */}
+          {isLive && !stress && positionPins.length > 0 && (
+            <SurfacePositionPins mesh={mesh} surface={surface} positions={positionPins} />
+          )}
           <FillRipple mesh={mesh} surface={surface} />
           <FirstRunPulse
             mesh={mesh}
@@ -754,6 +778,126 @@ function SelectedMarker({
         <meshBasicMaterial color="#f4f6f8" />
       </mesh>
     </group>
+  );
+}
+
+const PNL_UP = '#4dd6b0'; // winning — teal (matches --up)
+const PNL_DOWN = '#f0796b'; // losing — coral (matches --down)
+const PNL_FLAT = '#9aa3ad'; // break-even / unknown — neutral
+
+/**
+ * SurfacePositionPins — the trader's open bets rendered ON the surface at their
+ * (market, strike). Colour = live PnL (winning teal / losing coral); a small
+ * white chevron caps each pin to show the bet's DIRECTION (up/down), so the two
+ * meanings the app packs into teal/coral never collide. Hover a pin for the full
+ * read. This is the portfolio cockpit: watch your money ride the landscape.
+ */
+function SurfacePositionPins({
+  mesh,
+  surface,
+  positions,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  positions: V2PortfolioPosition[];
+}) {
+  const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
+  return (
+    <group>
+      {positions.map((p) => (
+        <PositionPin key={p.key} mesh={mesh} surface={surface} p={p} reduced={reduced} />
+      ))}
+    </group>
+  );
+}
+
+function PositionPin({
+  mesh,
+  surface,
+  p,
+  reduced,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  p: V2PortfolioPosition;
+  reduced: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const gemRef = useRef<THREE.MeshStandardMaterial>(null);
+  const pos = useMemo(
+    () => (p.marketId && p.strike != null ? locate(mesh, surface, p.marketId, p.strike) : null),
+    [mesh, surface, p.marketId, p.strike],
+  );
+  const pnl = p.pnl ?? 0;
+  const color = p.pnl == null ? PNL_FLAT : pnl >= 0 ? PNL_UP : PNL_DOWN;
+  const up = p.direction === 'Up';
+
+  // A calm "alive" breathe on the emissive (not scale) — reads as live, not busy.
+  useFrame((state) => {
+    if (!gemRef.current) return;
+    const base = hovered ? 0.95 : 0.5;
+    gemRef.current.emissiveIntensity = reduced ? base : base + 0.12 * Math.sin(state.clock.elapsedTime * 2.2);
+  });
+
+  if (!pos) return null;
+  const gemY = pos.y + 0.3; // float the gem above the surface node
+
+  return (
+    <group>
+      {/* Drop-stem anchoring the pin to its point on the surface. */}
+      <mesh position={[pos.x, (pos.y + gemY) / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.004, 0.004, Math.max(gemY - pos.y, 0.01), 6]} />
+        <meshBasicMaterial color={color} transparent opacity={0.4} />
+      </mesh>
+      {/* Base ring on the surface. */}
+      <mesh position={[pos.x, pos.y + 0.015, pos.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.05, 0.078, 28]} />
+        <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
+      </mesh>
+      {/* The gem — the hoverable hit target; colour = PnL. */}
+      <mesh
+        position={[pos.x, gemY, pos.z]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerOut={() => setHovered(false)}
+      >
+        <octahedronGeometry args={[0.078, 0]} />
+        <meshStandardMaterial ref={gemRef} color={color} emissive={color} emissiveIntensity={0.5} roughness={0.3} metalness={0.1} />
+      </mesh>
+      {/* White direction chevron — apex up for UP bets, down for DOWN. */}
+      <mesh position={[pos.x, gemY + 0.14, pos.z]} rotation={[0, 0, up ? 0 : Math.PI]} raycast={() => null}>
+        <coneGeometry args={[0.05, 0.09, 4]} />
+        <meshBasicMaterial color="#eef2f5" />
+      </mesh>
+      {hovered && (
+        <Html position={[pos.x, gemY + 0.34, pos.z]} center occlude zIndexRange={[30, 0]}>
+          <PositionPinLabel p={p} />
+        </Html>
+      )}
+    </group>
+  );
+}
+
+function PositionPinLabel({ p }: { p: V2PortfolioPosition }) {
+  const up = p.direction === 'Up';
+  const dirColor = up ? UP_ACCENT : DOWN_ACCENT;
+  const pnl = p.pnl ?? 0;
+  const pnlColor = p.pnl == null ? 'var(--text-2)' : pnl >= 0 ? PNL_UP : PNL_DOWN;
+  return (
+    <div className="glass pointer-events-none w-max -translate-y-1 rounded-lg px-2.5 py-1.5 text-center shadow-[0_10px_24px_-10px_rgba(0,0,0,0.85)]">
+      <div className="flex items-center justify-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] tabular-nums">
+        <span style={{ color: dirColor }}>{up ? '▲ UP' : '▼ DOWN'}</span>
+        <span className="text-text-3">·</span>
+        <span className="text-text-1">{price(p.strike ?? 0, 0)}</span>
+        {p.leverage != null && p.leverage > 1 && <span className="text-text-3">{p.leverage}×</span>}
+      </div>
+      <div className="mt-0.5 font-mono text-[11.5px] tabular-nums" style={{ color: pnlColor }}>
+        {p.pnl == null ? '—' : `${signed(pnl, 2)} DUSDC`}
+        {p.deltaPp != null && <span className="ml-1 text-[9px] text-text-3">({signed(p.deltaPp, 1)}pt)</span>}
+      </div>
+    </div>
   );
 }
 

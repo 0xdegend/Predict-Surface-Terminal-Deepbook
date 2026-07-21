@@ -7,6 +7,7 @@
  * complement to V2VaultQueue (which shows the connected user's still-pending,
  * cancellable on-chain queue). Server data — renders for any visitor.
  */
+import { useState } from 'react';
 import { LuArrowRightLeft, LuArrowDownToLine, LuArrowUpFromLine } from 'react-icons/lu';
 import { useVaultActivity } from '@/lib/hooks/use-vault-activity';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
@@ -16,12 +17,17 @@ import { quote as fmtQuote, num, signed, shortId, ago } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 
+/** Rows shown before the table asks you to expand it — keeps the page short. */
+const COLLAPSED_ROWS = 5;
+
 export function V2VaultActivity() {
   const { rows, netFlow, loading } = useVaultActivity();
   const acct = usePredictAccountV2();
   const mounted = useMounted();
   const now = useNow(0);
   const sym = predictV2Config.quote.symbol;
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? rows : rows.slice(0, COLLAPSED_ROWS);
 
   return (
     <div className="glass-card flex flex-col gap-3 p-4">
@@ -66,7 +72,7 @@ export function V2VaultActivity() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {shown.map((r) => {
                 const isDeposit = r.side === 'deposit';
                 const mine = mounted && !!acct.accountId && r.accountId === acct.accountId;
                 return (
@@ -103,6 +109,15 @@ export function V2VaultActivity() {
               })}
             </tbody>
           </table>
+          {rows.length > COLLAPSED_ROWS && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-1 w-full rounded-lg py-2 text-center text-[11px] font-medium text-text-3 transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+            >
+              {showAll ? 'Show less' : `Show all ${rows.length}`}
+            </button>
+          )}
         </div>
       )}
     </div>

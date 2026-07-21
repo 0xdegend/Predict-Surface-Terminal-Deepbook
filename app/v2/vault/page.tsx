@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import { LuLandmark } from 'react-icons/lu';
-import { V2VaultOverview } from '@/app/_components/v2/vault-overview';
-import { V2VaultPerformance } from '@/app/_components/v2/vault-performance';
+import { V2VaultTabs } from '@/app/_components/v2/vault-tabs';
 import { V2VaultPanel } from '@/app/_components/v2/vault-panel';
-import { V2VaultQueue } from '@/app/_components/v2/vault-queue';
-import { V2VaultActivity } from '@/app/_components/v2/vault-activity';
 import { V2VaultHedge } from '@/app/_components/v2/vault-hedge';
 
 export const metadata: Metadata = {
@@ -30,19 +27,9 @@ export default function V2VaultPage() {
         </p>
       </header>
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex flex-col gap-5">
-          <V2VaultOverview />
-          {/* Price-per-share history from the indexer — shows LPs the pool is
-              actually earning (server data; the overview stays on-chain). */}
-          <V2VaultPerformance />
-          {/* The queue sits under the pool metrics: it's the read-side answer to
-              "where did my deposit go", and the only place a queued request can be
-              cancelled before the keeper's flush fills it. */}
-          <V2VaultQueue />
-          {/* Executed LP flows across all LPs (server feeds) — the history that
-              complements the live pending queue above. */}
-          <V2VaultActivity />
-        </div>
+        {/* Left: the pool split into Pool / Activity tabs so the secondary
+            history + chart don't stretch the page (V2VaultTabs). */}
+        <V2VaultTabs />
         {/* Right rail: deposit/withdraw, then optional crash protection — sits
             beside the pool so an LP can hedge the downside they just took on. */}
         <div className="flex flex-col gap-5">
