@@ -2,28 +2,29 @@
 
 /**
  * useV2Analytics — REAL analytics for the v2 Analytics page, reconstructed from
- * the per-market feeds (there is no global flow endpoint). For each active market
- * it fans out:
- *   - /markets/:id/orders    → recent mint/redeem events (flow, sentiment, biggest)
- *   - /markets/:id/activity  → hourly rollups (volume, bet counts)
- *   - /markets/:id/open-interest → open bets right now
- * and reuses the shared live pricers for ATM implied vol (the "price swing").
- * The pure lib/analytics/v2-aggregate folds these into the tool shapes.
+ * the per-market feeds (there is no global flow endpoint).
  *
- * Bounded by the active-market count (~a dozen), all queries share TanStack keys
- * so mounting the page twice dedupes, and the OI queries dedupe with the risk page.
+ * TWO market scopes, on purpose:
+ *   - RECENT (active + markets expired in the last ~20 min) drives the order
+ *     pool → flow tape, sentiment, biggest bet, total volume, trader styles.
+ *     A 1-minute market's bets vanish from the active list within a minute, so
+ *     without this window "Latest bets" empties seconds after a bet is placed.
+ *   - ACTIVE (live only) drives the per-market widgets — the markets treemap /
+ *     hottest list, open interest, and the ATM implied-vol "price swing" — where
+ *     an expired market's countdown or IV would be meaningless.
+ *
+ * All per-market reads (orders, OI) come from `/markets/:id/*`; volume/bets are
+ * summed from the ORDERS feed (marketVolumeFromOrders), the same fast source as
+ * the flow tape — NOT the bucketed `/activity` rollups, which lagged behind the
+ * orders and stopped at expiry, so a live bet read as $0 volume. Bounded by the
+ * recent-market cap; all queries share TanStack keys so a double-mount dedupes.
  */
 import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { useV2Markets } from './use-v2-markets';
+import { useV2RecentMarkets } from './use-v2-markets';
 import { useV2Pricers } from './use-v2-pricers';
 import { useNow } from './use-now';
-import {
-  getMarketOrders,
-  getMarketActivity,
-  getMarketOpenInterest,
-  qkV2,
-} from '@/lib/api/v2/client';
+import { getMarketOrders, getMarketOpenInterest, qkV2 } from '@/lib/api/v2/client';
 import { impliedVol, timeToExpiryYears } from '@/lib/svi/svi';
 import {
   flowRows,
@@ -37,7 +38,7 @@ import {
   type Sentiment,
 } from '@/lib/analytics/v2-aggregate';
 import { classifyV2Traders, type V2TraderStyles } from '@/lib/analytics/v2-trader-style';
-import type { V2Market, V2OrderEvent, V2ActivityBucket, V2OpenInterest } from '@/lib/api/v2/types';
+import type { V2Market, V2OrderEvent, V2OpenInterest } from '@/lib/api/v2/types';
 
 export interface UseV2Analytics {
   cells: MarketCell[];
@@ -52,13 +53,21 @@ export interface UseV2Analytics {
 }
 
 const ORDERS_PER_MARKET = 60;
-const ACTIVITY_BUCKETS = 24; // ~last day of hourly rollups
+/** How far past expiry a market's bets stay in the recent window. */
+const RECENT_LOOKBACK_MS = 20 * 60_000;
+/** Cap on the recent-market fan-out (newest first) — bounds the request count. */
+const RECENT_MARKET_CAP = 30;
 
 export function useV2Analytics(initialMarkets: V2Market[], spot: number | null): UseV2Analytics {
-  const markets = useV2Markets(initialMarkets);
+  // Recent window (active + just-expired) for the order pool; the live subset
+  // for the per-market widgets.
+  const markets = useV2RecentMarkets(initialMarkets, RECENT_LOOKBACK_MS, RECENT_MARKET_CAP);
   const now = useNow(0);
   const ids = markets.map((m) => m.expiry_market_id);
+  const activeMarkets = useMemo(() => markets.filter((m) => m.expiry > now), [markets, now]);
+  const activeIds = activeMarkets.map((m) => m.expiry_market_id);
 
+  // Orders across the whole recent window (flow / sentiment / volume / biggest).
   const ordersQ = useQueries({
     queries: ids.map((id) => ({
       queryKey: qkV2.marketOrders(id),
@@ -67,16 +76,9 @@ export function useV2Analytics(initialMarkets: V2Market[], spot: number | null):
       staleTime: 6_000,
     })),
   });
-  const activityQ = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: qkV2.marketActivity(id),
-      queryFn: () => getMarketActivity(id, ACTIVITY_BUCKETS),
-      refetchInterval: 30_000,
-      staleTime: 20_000,
-    })),
-  });
+  // Open interest only for LIVE markets (open bets right now — moot once expired).
   const oiQ = useQueries({
-    queries: ids.map((id) => ({
+    queries: activeIds.map((id) => ({
       queryKey: qkV2.marketOpenInterest(id),
       queryFn: () => getMarketOpenInterest(id),
       refetchInterval: 15_000,
@@ -84,41 +86,48 @@ export function useV2Analytics(initialMarkets: V2Market[], spot: number | null):
     })),
   });
 
-  // Live pricers for ATM IV + forward. Seeded empty; the hook simulates each.
-  const pricers = useV2Pricers(ids, {});
+  // Live pricers for ATM IV + forward, live markets only. Seeded empty.
+  const pricers = useV2Pricers(activeIds, {});
 
   // Stamp the memo on the loaded data (the query arrays are fresh each render).
   const ordersStamp = ordersQ.map((q) => q.dataUpdatedAt).join(',');
-  const activityStamp = activityQ.map((q) => q.dataUpdatedAt).join(',');
   const oiStamp = oiQ.map((q) => q.dataUpdatedAt).join(',');
 
-  const { ordersByMarket, inputs } = useMemo(() => {
+  const { ordersByMarket, activeInputs } = useMemo(() => {
+    // Order pool over the whole recent window — keyed by market id.
     const ordersByMarket = new Map<string, V2OrderEvent[]>();
-    const inputs = new Map<string, MarketInputs>();
     markets.forEach((m, i) => {
+      const orders = ordersQ[i]?.data as V2OrderEvent[] | undefined;
+      if (orders) ordersByMarket.set(m.expiry_market_id, orders);
+    });
+    // Per-market inputs for the LIVE cells (treemap / hottest / IV): volume from
+    // this market's orders, plus its OI and pricer-derived forward + ATM IV.
+    const activeInputs = new Map<string, MarketInputs>();
+    activeMarkets.forEach((m, i) => {
       const id = m.expiry_market_id;
-      const orders = (ordersQ[i]?.data as V2OrderEvent[] | undefined) ?? undefined;
-      const activity = (activityQ[i]?.data as V2ActivityBucket[] | undefined) ?? undefined;
-      const oi = (oiQ[i]?.data as V2OpenInterest | undefined)?.open_order_count ?? 0;
       const pricer = pricers[id];
       const atmIv = pricer
         ? impliedVol(pricer.forward, pricer.forward, pricer.svi, Math.max(1e-9, timeToExpiryYears(m.expiry, now)))
         : null;
-      if (orders) ordersByMarket.set(id, orders);
-      inputs.set(id, { orders, activity, oi, forward: pricer?.forward ?? null, atmIv });
+      activeInputs.set(id, {
+        orders: ordersByMarket.get(id),
+        oi: (oiQ[i]?.data as V2OpenInterest | undefined)?.open_order_count ?? 0,
+        forward: pricer?.forward ?? null,
+        atmIv,
+      });
     });
-    return { ordersByMarket, inputs };
+    return { ordersByMarket, activeInputs };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markets, ordersStamp, activityStamp, oiStamp, pricers, now]);
+  }, [markets, activeMarkets, ordersStamp, oiStamp, pricers, now]);
 
-  const cells = useMemo(() => marketCells(markets, inputs, spot), [markets, inputs, spot]);
+  const cells = useMemo(() => marketCells(activeMarkets, activeInputs, spot), [activeMarkets, activeInputs, spot]);
   const flow = useMemo(() => flowRows(ordersByMarket, markets), [ordersByMarket, markets]);
   const allOrders = useMemo(() => [...ordersByMarket.values()].flat(), [ordersByMarket]);
-  const kpis = useMemo(() => kpisFromData(cells, allOrders, markets.length), [cells, allOrders, markets.length]);
+  const kpis = useMemo(() => kpisFromData(allOrders, activeMarkets.length), [allOrders, activeMarkets.length]);
   const sentiment = useMemo(() => sentimentFromOrders(allOrders), [allOrders]);
   const traderStyles = useMemo(() => classifyV2Traders(ordersByMarket), [ordersByMarket]);
 
-  const anyLoading = ordersQ.some((q) => q.isLoading) || activityQ.some((q) => q.isLoading);
+  const anyLoading = ordersQ.some((q) => q.isLoading);
   return {
     cells,
     kpis,

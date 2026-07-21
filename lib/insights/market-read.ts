@@ -165,16 +165,16 @@ function headlineFor(lean: number, hasBet: boolean, isUp: boolean): { stance: Ma
   const bullish = lean > 0;
 
   if (!hasBet) {
-    if (!strong) return { stance: 'neutral', headline: 'The wider tape is mixed right now.' };
+    if (!strong) return { stance: 'neutral', headline: "Right now the overall market is pulling both ways." };
     return bullish
-      ? { stance: 'neutral', headline: 'The wider tape is leaning higher right now.' }
-      : { stance: 'neutral', headline: 'The wider tape is leaning lower right now.' };
+      ? { stance: 'neutral', headline: 'Right now the overall market is leaning up.' }
+      : { stance: 'neutral', headline: 'Right now the overall market is leaning down.' };
   }
-  if (!strong) return { stance: 'mixed', headline: 'The wider tape is mixed on this bet.' };
+  if (!strong) return { stance: 'mixed', headline: "The overall market doesn't clearly back either side of this bet." };
   const agrees = bullish === isUp;
   return agrees
-    ? { stance: 'aligned', headline: 'The wider tape is leaning your way.' }
-    : { stance: 'against', headline: 'The wider tape is leaning against this bet.' };
+    ? { stance: 'aligned', headline: 'The overall market is leaning the same way as your bet.' }
+    : { stance: 'against', headline: 'The overall market is leaning against your bet.' };
 }
 
 export function buildMarketRead(input: MarketReadInput): MarketRead | null {
@@ -184,15 +184,20 @@ export function buildMarketRead(input: MarketReadInput): MarketRead | null {
   const lines: ReadLine[] = [];
   const hasBet = strike != null && strikePrice != null;
 
-  // Strike sentence leads when there's a bet — it's the most specific read.
-  if (hasBet) lines.push(strikeLine(strike, isUp, strikePrice, timeLeftLabel ?? 'the time left'));
-
-  const t = trendLine(ctx);
-  if (t) lines.push(t);
-  const l = liquidationLine(ctx);
-  if (l) lines.push(l);
-  const s = sentimentLine(ctx);
-  if (s) lines.push(s);
+  if (hasBet) {
+    // A bet is picked → the read is ABOUT the bet. Just the strike sentence;
+    // the general-market lines (trend/liquidations/sentiment) belong to the
+    // no-bet "market read" and are dropped here so the view stays focused.
+    lines.push(strikeLine(strike, isUp, strikePrice, timeLeftLabel ?? 'the time left'));
+  } else {
+    // No bet → read the wider market on its own.
+    const t = trendLine(ctx);
+    if (t) lines.push(t);
+    const l = liquidationLine(ctx);
+    if (l) lines.push(l);
+    const s = sentimentLine(ctx);
+    if (s) lines.push(s);
+  }
 
   if (lines.length === 0) return null;
 

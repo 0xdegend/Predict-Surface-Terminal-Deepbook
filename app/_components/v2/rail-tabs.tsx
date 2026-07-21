@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { LuChartSpline, LuBrain } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { V2OddsPanel } from './odds-panel';
-import { V2MarketAnalysis } from './btc-market-context';
+import { V2MarketAnalysis, ANALYSIS_ACTIVE } from './btc-market-context';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -35,8 +35,9 @@ export function V2RailTabs({
   const [tab, setTab] = useState<Tab>('odds');
   const mode = useV2TradeStore((s) => s.mode);
   const strikePrice = useV2TradeStore((s) => s.strikePrice);
-  // Nudge toward the Analysis tab when a binary strike is picked but unseen.
-  const strikeUnseen = tab !== 'analysis' && mode === 'binary' && strikePrice != null;
+  // Nudge toward the Analysis tab when a binary strike is picked but unseen —
+  // only while the feature is live (nothing to see there while it's dark).
+  const strikeUnseen = ANALYSIS_ACTIVE && tab !== 'analysis' && mode === 'binary' && strikePrice != null;
 
   return (
     <div className="flex flex-col gap-3">

@@ -18,7 +18,7 @@
  * MOUNT-GATED behind the Analysis tab, so nothing here fetches until it's opened.
  */
 import { useMemo } from 'react';
-import { LuSparkles } from 'react-icons/lu';
+import { LuSparkles, LuLock } from 'react-icons/lu';
 import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useStrikeAnalysis } from '@/lib/hooks/use-strike-analysis';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -28,8 +28,17 @@ import { num, compact, signed } from '@/lib/format';
 import { buildMarketRead, type ReadTone } from '@/lib/insights/market-read';
 import { strikeVerdict, type StrikeAnalysis } from '@/lib/insights/strike-analysis';
 import { InfoTip } from '@/app/_components/ui/info-tip';
+import { HUE, IconChip } from '../ui/metric';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
+
+/**
+ * Feature gate for the whole Analysis tab. OFF ships a blurred "coming soon"
+ * preview built from STATIC sample data that fetches NOTHING — so no Clawby
+ * credits are spent while the feature is dark. Flip to ON (env below) to serve
+ * the real, live analysis. Inlined at build time, so activating needs a redeploy.
+ */
+export const ANALYSIS_ACTIVE = process.env.NEXT_PUBLIC_ANALYSIS_ACTIVE === 'true';
 
 const UP = 'var(--up)';
 const DOWN = 'var(--down)';
@@ -44,7 +53,18 @@ function sentimentColor(v: number): string {
   return 'var(--warn)';
 }
 
-export function V2MarketAnalysis({
+/**
+ * V2MarketAnalysis — the tab entry point. While the feature is dark it renders
+ * the blurred preview (NO hooks, NO fetches, so zero Clawby spend); once
+ * activated it renders the live analysis. The branch is at the component
+ * boundary, so the live component's data hooks only ever run when active.
+ */
+export function V2MarketAnalysis(props: { market?: V2Market | null; pricer?: LivePricer; serverNow?: number }) {
+  if (!ANALYSIS_ACTIVE) return <AnalysisPreview />;
+  return <LiveMarketAnalysis {...props} />;
+}
+
+function LiveMarketAnalysis({
   market,
   pricer,
   serverNow = 0,
@@ -104,11 +124,14 @@ export function V2MarketAnalysis({
     );
   }
 
+  // A picked strike focuses the view on THAT bet; without one, we show the
+  // wider-market read. The two never stack — picking a strike swaps the general
+  // BTC breakdown (stat tiles + sentiment) out for the strike's own analysis.
   return (
     <div className="flex flex-col gap-3">
       {read && <MarketReadout headline={read.headline} lines={read.lines} change24hPct={data.change24hPct} />}
 
-      {activeStrike != null && (
+      {activeStrike != null ? (
         <StrikeCard
           analysis={analysis}
           strikePrice={activeStrike}
@@ -116,11 +139,66 @@ export function V2MarketAnalysis({
           timeLeft={timeLeft}
           settling={settling}
         />
+      ) : (
+        <MarketContextStats data={data} />
       )}
 
-      <MarketContextStats data={data} />
-
       <p className="text-center text-[9.5px] text-text-3">live · Clawby data · refreshes every 60s</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Preview (feature dark) — the real layout rendered from STATIC sample
+ * data, blurred and locked. It calls no hooks and hits no endpoint, so
+ * it costs zero Clawby credits no matter how many traders open the tab.
+ * ------------------------------------------------------------------ */
+
+/** Plausible-looking placeholder — clearly a teaser, never presented as live. */
+const SAMPLE_INSIGHTS: BtcInsights = {
+  available: true,
+  asOf: 0,
+  spot: 65_000,
+  change24hPct: 1.24,
+  oiUsd: 50.9e9,
+  funding: { binancePct: 0.006, avgPct: 0.004 },
+  liq24h: { totalUsd: 24.5e6, longUsd: 8.2e6, shortUsd: 16.3e6 },
+  maxPain: { strike: 65_500, date: '2026-07-22' },
+  sentiment: { value: 38, label: 'Fear' },
+};
+
+function AnalysisPreview() {
+  // Pure + memoized: buildMarketRead never fetches, so the teaser text is
+  // generated the same way the live one is, just from the sample above.
+  const read = useMemo(
+    () =>
+      buildMarketRead({
+        ctx: SAMPLE_INSIGHTS,
+        strike: null,
+        isUp: true,
+        strikePrice: null,
+        spot: SAMPLE_INSIGHTS.spot,
+      }),
+    [],
+  );
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      {/* The real layout, blurred and made completely inert (no pointer, no
+          selection, hidden from the a11y tree) — it's decorative here. */}
+      <div aria-hidden className="pointer-events-none select-none flex flex-col gap-3 blur-sm">
+        {read && <MarketReadout headline={read.headline} lines={read.lines} change24hPct={SAMPLE_INSIGHTS.change24hPct} />}
+        <MarketContextStats data={SAMPLE_INSIGHTS} />
+      </div>
+
+      {/* Lock scrim + message. */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-bg-0/45 px-6 text-center backdrop-blur-[1px]">
+        <IconChip icon={LuLock} color={HUE.blue} size={30} />
+        <span className="text-[13px] font-semibold tracking-tight text-text-1">Market analysis — coming soon</span>
+        <span className="max-w-60 text-[11px] leading-snug text-text-3">
+          Live BTC insights and per-strike analysis unlock here shortly.
+        </span>
+      </div>
     </div>
   );
 }
@@ -173,6 +251,9 @@ function MarketReadout({
 
 /* ------------------------------------------------------------------ *
  * Your strike — the per-strike numbers behind the read's first line.
+ * Both percentages are the SAME thing — the chance this bet wins — from two
+ * independent sources, so the card frames them that way and says which is
+ * higher. That framing is what makes the two numbers legible side by side.
  * ------------------------------------------------------------------ */
 function StrikeCard({
   analysis,
@@ -187,37 +268,80 @@ function StrikeCard({
   timeLeft: string;
   settling: boolean;
 }) {
+  const pos = analysis ? positionLine(analysis, isUp, timeLeft) : null;
+  const verdict = analysis ? strikeVerdict(analysis) : null;
+
   return (
     <div
       className="glass-inset flex flex-col gap-2.5 p-2.5 transition-opacity duration-200"
       style={{ opacity: settling ? 0.45 : 1, borderColor: `color-mix(in srgb, ${isUp ? UP : DOWN} 18%, transparent)` }}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[9.5px] uppercase tracking-[0.12em] text-text-3">Your strike</span>
+        <span className="flex items-center gap-1 text-[9.5px] uppercase tracking-[0.12em] text-text-3">
+          Your bet
+          <InfoTip label="your bet">
+            The price and direction you picked. <b>UP</b> wins if BTC settles above your strike at the
+            countdown; <b>DOWN</b> wins if it settles below.
+          </InfoTip>
+        </span>
         <span className="font-mono text-[11px] tabular-nums" style={{ color: isUp ? UP : DOWN }}>
           ${num(strikePrice, 0)} · {isUp ? 'UP' : 'DOWN'}
         </span>
       </div>
 
-      {analysis ? (
+      {analysis && pos ? (
         <>
-          <div className="font-mono text-[11px] leading-relaxed tabular-nums text-text-2">
-            Needs <span className="text-text-1">{signed(analysis.requiredMovePct, 2)}%</span>{' '}
-            <span className="text-text-3">(${num(Math.abs(analysis.requiredMoveUsd), 0)})</span> in{' '}
-            <span className="text-text-1">{timeLeft}</span>
+          {/* Where it stands right now, in plain words (winning / needs a move). */}
+          <div className="text-[11px] leading-snug" style={{ color: toneColor(pos.tone) === 'var(--text-3)' ? 'var(--text-2)' : toneColor(pos.tone) }}>
+            {pos.text}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <MiniStat
-              label="Happened lately"
-              value={analysis.empirical ? `${(analysis.empirical.prob * 100).toFixed(0)}%` : '—'}
-              sub={analysis.empirical ? `${num(analysis.empirical.samples, 0)} past windows` : 'too few samples'}
-            />
-            <MiniStat
-              label="Surface price"
-              value={analysis.implied != null ? `${(analysis.implied * 100).toFixed(0)}%` : '—'}
-              sub="fair odds now"
-            />
+
+          <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2">
+            <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest text-text-3">
+              Chance this bet wins
+              <InfoTip label="chance this bet wins">
+                Two takes on the very same thing — how likely this bet is to win. One counts what BTC
+                actually did recently; the other is the live price you&apos;d pay. When they disagree,
+                that gap is the whole point.
+              </InfoTip>
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <MiniStat
+                label="From history"
+                value={analysis.empirical ? `${(analysis.empirical.prob * 100).toFixed(0)}%` : '—'}
+                sub={analysis.empirical ? `${num(analysis.empirical.samples, 0)} recent windows` : 'too few samples'}
+                tip={
+                  <>
+                    Over the last ~33 hours we looked at every {timeLeft}-long window of BTC prices and
+                    counted how often it ended on your winning side. Recent history, not a forecast.
+                  </>
+                }
+              />
+              <MiniStat
+                label="From the price"
+                value={analysis.implied != null ? `${(analysis.implied * 100).toFixed(0)}%` : '—'}
+                sub="live surface odds"
+                tip={
+                  <>
+                    What the surface charges for this bet right now — the market&apos;s own view of the
+                    odds, and effectively what you pay.
+                  </>
+                }
+              />
+            </div>
           </div>
+
+          {/* The takeaway: which is higher, in one plain line. */}
+          {verdict && verdict.tone !== 'none' && (
+            <div className="flex items-start gap-1.5 border-t border-white/5 pt-2">
+              <span
+                aria-hidden
+                className="mt-1 h-1 w-1 shrink-0 rounded-full"
+                style={{ background: verdict.tone === 'rich' ? DOWN : verdict.tone === 'cheap' ? UP : 'var(--text-3)' }}
+              />
+              <span className="text-[10.5px] leading-snug text-text-2">{verdict.text}</span>
+            </div>
+          )}
         </>
       ) : (
         <div className="font-mono text-[10.5px] text-text-3">Reading recent moves…</div>
@@ -226,10 +350,40 @@ function StrikeCard({
   );
 }
 
-function MiniStat({ label, value, sub }: { label: string; value: string; sub: string }) {
+/**
+ * Where the bet stands right now, direction-aware. "Needs -0.01%" is meaningless
+ * to a trader — a negative required move means the strike is already on the
+ * WINNING side. So we say that instead: already winning (with the cushion), needs
+ * a move (with the direction), or sitting right on the strike (a coin flip).
+ */
+function positionLine(a: StrikeAnalysis, isUp: boolean, timeLeft: string): { text: string; tone: ReadTone } {
+  const usd = Math.abs(a.requiredMoveUsd);
+  // Essentially on the line — the sign of a few dollars on $65k is noise.
+  if (Math.abs(a.requiredMovePct) < 0.05) {
+    return { tone: 'neutral', text: `Sitting right on your strike — close to a coin flip on where it lands in ${timeLeft}.` };
+  }
+  // requiredMoveUsd = strike − spot. UP wins above the strike, so it's already
+  // winning when the strike sits below spot (negative); mirror for DOWN.
+  const winningNow = isUp ? a.requiredMoveUsd < 0 : a.requiredMoveUsd > 0;
+  if (winningNow) {
+    return {
+      tone: 'up',
+      text: `Winning right now — BTC is $${num(usd, 0)} ${isUp ? 'above' : 'below'} your strike and just needs to hold for ${timeLeft}.`,
+    };
+  }
+  return {
+    tone: 'neutral',
+    text: `Needs BTC to ${isUp ? 'rise' : 'fall'} $${num(usd, 0)} (${signed(a.requiredMovePct, 2)}%) within ${timeLeft}.`,
+  };
+}
+
+function MiniStat({ label, value, sub, tip }: { label: string; value: string; sub: string; tip?: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="truncate text-[9px] uppercase tracking-widest text-text-3">{label}</span>
+      <span className="flex items-center gap-1 truncate text-[9px] uppercase tracking-widest text-text-3">
+        {label}
+        {tip && <InfoTip label={label}>{tip}</InfoTip>}
+      </span>
       <span className="font-mono text-[15px] leading-none tabular-nums text-text-1">{value}</span>
       <span className="truncate text-[9px] text-text-3">{sub}</span>
     </div>

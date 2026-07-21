@@ -16,7 +16,7 @@
 import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
 import { fromQuote, toFloat } from '@/config/scale';
 import { cadenceOf, type V2Cadence } from '@/lib/markets/v2-discovery';
-import type { V2Market, V2OrderEvent, V2ActivityBucket } from '@/lib/api/v2/types';
+import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 export type Side = 'up' | 'down' | 'range';
 
@@ -146,20 +146,28 @@ export interface MarketCell {
   upShare: number;
 }
 
-/** Sum mint premium + count over a market's activity buckets (DUSDC / count). */
-export function marketVolume(activity: V2ActivityBucket[] | undefined): { volume: number; bets: number } {
-  if (!activity) return { volume: 0, bets: 0 };
+/**
+ * Sum minted premium + count from a market's ORDER events (DUSDC / count).
+ *
+ * The orders feed is the same fast source that powers the flow tape and the
+ * biggest-bet stat, so a bet lands in volume the instant it appears in "Latest
+ * bets". The bucketed `/activity` rollups we used before lagged behind orders
+ * AND stopped at market expiry, so a live bet read as $0 volume until (if ever)
+ * the bucket caught up — which is exactly the mismatch this replaces.
+ */
+export function marketVolumeFromOrders(orders: V2OrderEvent[] | undefined): { volume: number; bets: number } {
+  if (!orders) return { volume: 0, bets: 0 };
   let volume = 0;
   let bets = 0;
-  for (const b of activity) {
-    volume += fromQuote(Number(b.mint_premium ?? 0));
-    bets += b.mint_count ?? 0;
+  for (const o of orders) {
+    if (!isMint(o)) continue;
+    volume += fromQuote(Number(o.net_premium ?? 0));
+    bets += 1;
   }
   return { volume, bets };
 }
 
 export interface MarketInputs {
-  activity?: V2ActivityBucket[];
   orders?: V2OrderEvent[];
   oi?: number;
   forward?: number | null;
@@ -168,7 +176,7 @@ export interface MarketInputs {
 
 /** Assemble one market's cell from its feeds. `spot` is the page-wide fallback forward. */
 export function marketCell(market: V2Market, input: MarketInputs, spot: number | null): MarketCell {
-  const { volume, bets } = marketVolume(input.activity);
+  const { volume, bets } = marketVolumeFromOrders(input.orders);
   const { upShare } = sentimentFromOrders(input.orders ?? []);
   return {
     market,
@@ -216,21 +224,23 @@ export interface Kpis {
 }
 
 /**
- * Top-line reads. Volume/upShare come from the cells + the pooled recent orders
- * (so the strip agrees with the market list and the sentiment gauge); biggestBet
- * is the largest single mint premium in the recent flow.
+ * Top-line reads, all from the pooled recent orders — the SAME feed as the flow
+ * tape — so the strip, the "Latest bets" list, and the sentiment gauge can never
+ * disagree: a bet counts in total volume the instant it shows in the tape.
+ * `activeMarkets` is the live-market count, passed in (the order pool spans a
+ * wider recent window, so it isn't the market count).
  */
-export function kpisFromData(
-  cells: MarketCell[],
-  allOrders: Iterable<V2OrderEvent>,
-  activeMarkets: number,
-): Kpis {
-  const totalBet = cells.reduce((s, c) => s + c.volume, 0);
+export function kpisFromData(allOrders: Iterable<V2OrderEvent>, activeMarkets: number): Kpis {
+  let totalBet = 0;
   let biggestBet = 0;
   const orderList: V2OrderEvent[] = [];
   for (const o of allOrders) {
     orderList.push(o);
-    if (isMint(o)) biggestBet = Math.max(biggestBet, fromQuote(Number(o.net_premium ?? 0)));
+    if (isMint(o)) {
+      const stake = fromQuote(Number(o.net_premium ?? 0));
+      totalBet += stake;
+      biggestBet = Math.max(biggestBet, stake);
+    }
   }
   return {
     totalBet,

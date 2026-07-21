@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   cadenceOf,
   activeMarkets,
+  recentMarkets,
   groupByCadence,
   strikeGrid,
   maxLeverageX,
@@ -63,6 +64,31 @@ describe('activeMarkets', () => {
     ];
     const out = activeMarkets(ms, now);
     expect(out.map((m) => m.expiry_market_id)).toEqual(['future1', 'future2']);
+    expect(out[0].expiry).toBe(now + 2 * MIN); // fresher event kept
+  });
+});
+
+describe('recentMarkets', () => {
+  const now = 10_000_000;
+  const lookback = 20 * MIN;
+  it('keeps live markets PLUS those expired within the lookback, newest-expiry-first', () => {
+    const ms = [
+      mkt({ expiry_market_id: 'live', checkpoint_timestamp_ms: now - MIN, expiry: now + 5 * MIN }),
+      mkt({ expiry_market_id: 'justExpired', checkpoint_timestamp_ms: now - 5 * MIN, expiry: now - 2 * MIN }),
+      mkt({ expiry_market_id: 'tooOld', checkpoint_timestamp_ms: now - 40 * MIN, expiry: now - 25 * MIN }),
+    ];
+    const out = recentMarkets(ms, lookback, now);
+    // 'tooOld' expired before the cutoff → dropped; newest expiry first.
+    expect(out.map((m) => m.expiry_market_id)).toEqual(['live', 'justExpired']);
+  });
+
+  it('dedupes by id (freshest event wins), like activeMarkets', () => {
+    const ms = [
+      mkt({ expiry_market_id: 'x', checkpoint_timestamp_ms: now - MIN, expiry: now + 2 * MIN }),
+      mkt({ expiry_market_id: 'x', checkpoint_timestamp_ms: now - 9 * MIN, expiry: now + 99 * MIN }),
+    ];
+    const out = recentMarkets(ms, lookback, now);
+    expect(out).toHaveLength(1);
     expect(out[0].expiry).toBe(now + 2 * MIN); // fresher event kept
   });
 });

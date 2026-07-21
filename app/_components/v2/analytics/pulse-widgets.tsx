@@ -21,7 +21,7 @@ export function V2KpiStrip({ kpis }: { kpis: Kpis }) {
   const leadUp = kpis.upShare >= 0.5;
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · 24h" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" />
+      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · recent" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" />
       <Kpi icon={LuLayers} hue={HUE.blue} label="Live markets" value={kpis.activeMarkets} format={(n) => String(Math.round(n))} />
       <Kpi
         icon={LuScale}
@@ -85,7 +85,7 @@ export function V2HotMarkets({ cells, className = '' }: { cells: MarketCell[]; c
       <div className="head-divider flex items-center gap-2 px-4 py-3">
         <LuFlame size={15} className="text-accent" />
         <span className="text-[13px] font-semibold tracking-tight text-text-1">Hottest markets</span>
-        <span className="eyebrow text-text-3">most bet · 24h</span>
+        <span className="eyebrow text-text-3">most bet · recent</span>
       </div>
 
       {cells.length === 0 ? (

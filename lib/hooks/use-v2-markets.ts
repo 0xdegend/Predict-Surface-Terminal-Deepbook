@@ -20,9 +20,10 @@
  * backgrounded tab refills the instant it's foregrounded (TanStack pauses the
  * interval while hidden) — the live list then behaves like a fresh reload.
  */
+import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getV2Markets, qkV2 } from '@/lib/api/v2/client';
-import { activeMarkets } from '@/lib/markets/v2-discovery';
+import { activeMarkets, recentMarkets } from '@/lib/markets/v2-discovery';
 import type { V2Market } from '@/lib/api/v2/types';
 
 // Fast churn → fast poll: keep the refill window well under the per-tick expiry
@@ -47,4 +48,25 @@ export function useV2Markets(initial: V2Market[]): V2Market[] {
     retry: 1,
   });
   return data ?? initial;
+}
+
+/**
+ * useV2RecentMarkets — the analytics window: active markets PLUS those that
+ * expired within `lookbackMs`, newest-expiry-first, capped at `cap` to bound the
+ * per-market fan-out. Lets the flow tape / recent-volume keep showing a fast
+ * market's bets for a while after it settles (the market itself is gone from the
+ * live `useV2Markets` list within a minute). Its own query key, so it doesn't
+ * disturb the active-only list the pickers depend on.
+ */
+export function useV2RecentMarkets(initial: V2Market[], lookbackMs: number, cap: number): V2Market[] {
+  const { data } = useQuery({
+    queryKey: [...qkV2.markets, 'recent', lookbackMs] as const,
+    queryFn: async () => recentMarkets(await getV2Markets(200), lookbackMs),
+    initialData: initial,
+    refetchInterval: POLL_MS,
+    refetchOnWindowFocus: true,
+    placeholderData: keepPreviousData,
+    retry: 1,
+  });
+  return useMemo(() => (data ?? initial).slice(0, cap), [data, initial, cap]);
 }

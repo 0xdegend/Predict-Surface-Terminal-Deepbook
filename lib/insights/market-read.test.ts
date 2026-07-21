@@ -57,6 +57,19 @@ describe('buildMarketRead', () => {
     expect(r.lines[0].text).toContain('42%'); // surface price
   });
 
+  it('stays focused on the strike — drops the general-market lines once a bet is set', () => {
+    const withBet = buildMarketRead({ ctx: ctx(), strike: strike(), isUp: true, strikePrice: 64_090, spot: 64_000, timeLeftLabel: '4 min' })!;
+    const noBet = buildMarketRead({ ctx: ctx(), strike: null, isUp: true, strikePrice: null, spot: 64_000 })!;
+    // A bet ⇒ exactly one line (the strike sentence); no trend/liquidation/sentiment.
+    expect(withBet.lines).toHaveLength(1);
+    const betText = withBet.lines.map((l) => l.text).join(' ').toLowerCase();
+    expect(betText).not.toContain('liquidat');
+    expect(betText).not.toContain('24h');
+    // No bet ⇒ the general market lines come back.
+    expect(noBet.lines.length).toBeGreaterThan(1);
+    expect(noBet.lines.map((l) => l.text).join(' ').toLowerCase()).toContain('liquidat');
+  });
+
   it('flags a rich strike as a down-tone line', () => {
     const r = buildMarketRead({ ctx: ctx(), strike: strike({ edgePts: 8 }), isUp: true, strikePrice: 64_090, spot: 64_000 })!;
     expect(r.lines[0].tone).toBe('down');
@@ -73,7 +86,7 @@ describe('buildMarketRead', () => {
     const down = buildMarketRead({ ctx: bull, strike: strike(), isUp: false, strikePrice: 63_900, spot: 64_000 })!;
     expect(up.stance).toBe('aligned');
     expect(down.stance).toBe('against');
-    expect(up.headline).toContain('your way');
+    expect(up.headline).toContain('same way as your bet');
   });
 
   it('calls a conflicted tape mixed', () => {
@@ -98,7 +111,7 @@ describe('buildMarketRead', () => {
   it('never emits jargon a first-timer would trip on', () => {
     const r = buildMarketRead({ ctx: ctx(), strike: strike(), isUp: true, strikePrice: 64_090, spot: 64_000, timeLeftLabel: '4 min' })!;
     const all = (r.headline + ' ' + r.lines.map((l) => l.text).join(' ')).toLowerCase();
-    for (const banned of ['edge', 'basis point', 'sigma', 'implied vol', 'skew', 'delta', 'gamma']) {
+    for (const banned of ['edge', 'basis point', 'sigma', 'implied vol', 'skew', 'delta', 'gamma', 'tape']) {
       expect(all).not.toContain(banned);
     }
   });

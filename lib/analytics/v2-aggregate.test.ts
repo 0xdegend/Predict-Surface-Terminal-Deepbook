@@ -3,12 +3,12 @@ import {
   orderSide,
   flowRows,
   sentimentFromOrders,
-  marketVolume,
+  marketVolumeFromOrders,
   marketCell,
   marketCells,
   kpisFromData,
 } from './v2-aggregate';
-import type { V2Market, V2OrderEvent, V2ActivityBucket } from '@/lib/api/v2/types';
+import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 const POS_INF = 1073741823;
 
@@ -93,29 +93,30 @@ describe('flowRows', () => {
   });
 });
 
-describe('marketVolume', () => {
-  it('sums mint premium (DUSDC) and mint count across activity buckets', () => {
-    const buckets: V2ActivityBucket[] = [
-      { mint_premium: '260946172', mint_count: 30 } as V2ActivityBucket,
-      { mint_premium: '372393247', mint_count: 41 } as V2ActivityBucket,
+describe('marketVolumeFromOrders', () => {
+  it('sums minted premium (DUSDC) and mint count from the orders feed', () => {
+    const orders = [
+      mint({ net_premium: '30000000' }), // $30
+      mint({ net_premium: '12000000' }), // $12
+      { kind: 'settled_order_redeemed', net_premium: '99000000' } as V2OrderEvent, // not a mint
     ];
-    const { volume, bets } = marketVolume(buckets);
-    expect(volume).toBeCloseTo(633.339419, 5);
-    expect(bets).toBe(71);
+    const { volume, bets } = marketVolumeFromOrders(orders);
+    expect(volume).toBeCloseTo(42, 6);
+    expect(bets).toBe(2); // redeem excluded
   });
 
-  it('is zero for a market with no activity', () => {
-    expect(marketVolume(undefined)).toEqual({ volume: 0, bets: 0 });
+  it('is zero for a market with no orders', () => {
+    expect(marketVolumeFromOrders(undefined)).toEqual({ volume: 0, bets: 0 });
   });
 });
 
 describe('marketCell / marketCells', () => {
   const market = mkt('0xA', 5_000_000);
+  // Volume + sentiment both come from the ORDERS feed now (no activity rollups).
   const inputs = {
-    activity: [{ mint_premium: '100000000', mint_count: 10 } as V2ActivityBucket],
     orders: [
-      mint({ higher_tick: POS_INF, net_premium: '30000000' }),
-      mint({ lower_tick: 0, higher_tick: 6_380_200, net_premium: '10000000' }),
+      mint({ higher_tick: POS_INF, net_premium: '30000000' }), // UP $30
+      mint({ lower_tick: 0, higher_tick: 6_380_200, net_premium: '10000000' }), // DOWN $10
     ],
     oi: 6,
     forward: 63_800,
@@ -124,8 +125,8 @@ describe('marketCell / marketCells', () => {
 
   it('folds a market’s feeds into a cell with real metrics', () => {
     const c = marketCell(market, inputs, 63_000);
-    expect(c.volume).toBeCloseTo(100, 6);
-    expect(c.bets).toBe(10);
+    expect(c.volume).toBeCloseTo(40, 6); // 30 + 10 from the orders
+    expect(c.bets).toBe(2);
     expect(c.oi).toBe(6);
     expect(c.forward).toBe(63_800); // pricer forward wins over spot
     expect(c.atmIv).toBe(0.42);
@@ -142,8 +143,8 @@ describe('marketCell / marketCells', () => {
     const cells = marketCells(
       [mkt('0xA', 5_000_000), mkt('0xB', 5_000_000)],
       new Map([
-        ['0xA', { activity: [{ mint_premium: '50000000', mint_count: 1 } as V2ActivityBucket] }],
-        ['0xB', { activity: [{ mint_premium: '90000000', mint_count: 1 } as V2ActivityBucket] }],
+        ['0xA', { orders: [mint({ net_premium: '50000000' })] }],
+        ['0xB', { orders: [mint({ expiry_market_id: '0xB', net_premium: '90000000' })] }],
       ]),
       63_000,
     );
@@ -152,19 +153,15 @@ describe('marketCell / marketCells', () => {
 });
 
 describe('kpisFromData', () => {
-  it('totals volume from cells and finds the biggest single stake', () => {
-    const cells = marketCells(
-      [mkt('0xA', 5_000_000)],
-      new Map([['0xA', { activity: [{ mint_premium: '200000000', mint_count: 4 } as V2ActivityBucket] }]]),
-      63_000,
-    );
+  it('totals volume + biggest stake from the recent order pool (one feed)', () => {
     const orders = [
       mint({ net_premium: '5000000' }),
       mint({ net_premium: '80000000' }), // the biggest — $80
       mint({ lower_tick: 0, higher_tick: 6_380_200, net_premium: '20000000' }),
+      { kind: 'settled_order_redeemed', net_premium: '99000000' } as V2OrderEvent, // ignored
     ];
-    const k = kpisFromData(cells, orders, 1);
-    expect(k.totalBet).toBeCloseTo(200, 6);
+    const k = kpisFromData(orders, 1);
+    expect(k.totalBet).toBeCloseTo(105, 6); // 5 + 80 + 20, redeem ignored
     expect(k.activeMarkets).toBe(1);
     expect(k.biggestBet).toBeCloseTo(80, 6);
     expect(k.upShare).toBeCloseTo(85 / 105, 6); // (5+80) UP / (5+80+20)

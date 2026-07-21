@@ -50,6 +50,25 @@ export function activeMarkets(markets: V2Market[], now: number = Date.now()): V2
   return [...byId.values()].filter((m) => m.expiry > now).sort((a, b) => a.expiry - b.expiry);
 }
 
+/**
+ * The analytics window: live markets PLUS those that expired within `lookbackMs`.
+ * A 1-minute market's bets would otherwise vanish from "recent activity" the
+ * instant it settles (often seconds after the bet); this keeps them visible for
+ * a bounded window. Deduped (freshest event wins), sorted newest-expiry-first so
+ * a `.slice(0, cap)` keeps the most recent markets. `now` is injectable for tests.
+ */
+export function recentMarkets(markets: V2Market[], lookbackMs: number, now: number = Date.now()): V2Market[] {
+  const byId = new Map<string, V2Market>();
+  for (const m of markets) {
+    const prev = byId.get(m.expiry_market_id);
+    if (!prev || m.checkpoint_timestamp_ms > prev.checkpoint_timestamp_ms) {
+      byId.set(m.expiry_market_id, m);
+    }
+  }
+  const cutoff = now - lookbackMs;
+  return [...byId.values()].filter((m) => m.expiry > cutoff).sort((a, b) => b.expiry - a.expiry);
+}
+
 /** Group active markets by cadence, preserving soonest-first order within each. */
 export function groupByCadence(markets: V2Market[]): Record<V2Cadence, V2Market[]> {
   const out: Record<V2Cadence, V2Market[]> = { '1m': [], '5m': [], '1h': [] };
