@@ -177,6 +177,19 @@ function headlineFor(lean: number, hasBet: boolean, isUp: boolean): { stance: Ma
     : { stance: 'against', headline: 'The overall market is leaning against your bet.' };
 }
 
+/**
+ * How the wider market leans relative to a chosen direction — the co-pilot uses
+ * this to say "the market is leaning your way / against you" for a suggested bet.
+ * Reuses the same soft blend + threshold as the headline, so the two never
+ * disagree. 'mixed' when there's no clear lean (or no data).
+ */
+export function directionStance(ctx: BtcInsights | null, isUp: boolean): MarketRead['stance'] {
+  if (!ctx || !ctx.available) return 'mixed';
+  const lean = marketLean(ctx);
+  if (Math.abs(lean) < 0.28) return 'mixed';
+  return lean > 0 === isUp ? 'aligned' : 'against';
+}
+
 export function buildMarketRead(input: MarketReadInput): MarketRead | null {
   const { ctx, strike, isUp, strikePrice, timeLeftLabel } = input;
   if (!ctx || !ctx.available) return null;

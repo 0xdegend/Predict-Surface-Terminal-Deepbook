@@ -1011,3 +1011,22 @@ select:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Co-pilot chat: after a short typing-dots beat, the reply reveals line-by-line
+   (each line rises in, staggered by inline animation-delay) so it reads as being
+   "typed out" rather than pasted in. The bubble fades (opacity only, so it never
+   fights the lines' translate); the bet card rises in after the last line. All of
+   it is clamped to nothing by the reduced-motion block above. */
+.msg-fade {
+  animation: fadeIn 0.2s ease both;
+}
+.msg-line {
+  animation: riseIn 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes typingBounce {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 0.9; transform: translateY(-3px); }
+}
+.typing-dot {
+  animation: typingBounce 1.2s ease-in-out infinite;
+}

@@ -811,6 +811,24 @@ function SurfacePositionPins({
   );
 }
 
+/** Time-to-expiry (ms) under which a pin starts ramping up its urgency and shows
+ *  an always-on countdown. Most trading is on 1–5m markets, where a small calm
+ *  gem goes unnoticed — so the closer to expiry, the louder the pin gets. */
+const PIN_NEAR_MS = 10 * 60_000; // start reacting under 10 minutes
+const PIN_PEAK_MS = 20_000; //     fully urgent at 20 seconds
+
+/** Compact, glanceable countdown: `47s`, `4:03`, or `2h 10m` further out. */
+function countdownLabel(ms: number): string {
+  if (ms <= 0) return 'settling';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return `${m}:${String(rem).padStart(2, '0')}`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 function PositionPin({
   mesh,
   surface,
@@ -823,7 +841,10 @@ function PositionPin({
   reduced: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const gemRef = useRef<THREE.MeshStandardMaterial>(null);
+  const now = useNow(0); // shared 1s clock — ticks the countdown + urgency ramp
+  const gemMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const gemMeshRef = useRef<THREE.Mesh>(null);
+  const haloMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const pos = useMemo(
     () => (p.marketId && p.strike != null ? locate(mesh, surface, p.marketId, p.strike) : null),
     [mesh, surface, p.marketId, p.strike],
@@ -832,11 +853,30 @@ function PositionPin({
   const color = p.pnl == null ? PNL_FLAT : pnl >= 0 ? PNL_UP : PNL_DOWN;
   const up = p.direction === 'Up';
 
-  // A calm "alive" breathe on the emissive (not scale) — reads as live, not busy.
+  // Urgency 0→1 as the market nears expiry — a 1–5m bet lives almost entirely in
+  // this band, so it drives a bigger, faster-pulsing, glowing gem that a trader
+  // watching the ticket can't miss. Bets far from expiry stay a calm dot.
+  const ttlMs = p.expiry != null ? p.expiry - now : Number.POSITIVE_INFINITY;
+  const urgency = Number.isFinite(ttlMs)
+    ? Math.max(0, Math.min(1, (PIN_NEAR_MS - ttlMs) / (PIN_NEAR_MS - PIN_PEAK_MS)))
+    : 0;
+  const nearExpiry = ttlMs < PIN_NEAR_MS;
+
+  // Live "breathe" whose depth, speed, size, and glow all scale with urgency
+  // (mutated per frame — no re-render). `urgency` refreshes each 1s tick and
+  // useFrame always runs the latest closure, so this stays current without a ref.
+  // Reduced motion → no throb, steady glow.
   useFrame((state) => {
-    if (!gemRef.current) return;
-    const base = hovered ? 0.95 : 0.5;
-    gemRef.current.emissiveIntensity = reduced ? base : base + 0.12 * Math.sin(state.clock.elapsedTime * 2.2);
+    const u = urgency;
+    const t = state.clock.elapsedTime;
+    const freq = 2.2 + u * 7; // heartbeat quickens as the deadline closes in
+    const wave = reduced ? 0 : Math.sin(t * freq);
+    const emissiveBase = (hovered ? 0.95 : 0.5) + u * 0.6;
+    if (gemMatRef.current) gemMatRef.current.emissiveIntensity = emissiveBase + (0.12 + u * 0.5) * wave;
+    const throb = 0.12 * u * wave;
+    if (gemMeshRef.current) gemMeshRef.current.scale.setScalar(1 + u * 0.55 + throb);
+    // Halo only blooms as the bet gets urgent — keeps the surface calm otherwise.
+    if (haloMatRef.current) haloMatRef.current.opacity = (0.1 + u * 0.32) * (0.75 + 0.25 * (wave + 1) * 0.5);
   });
 
   if (!pos) return null;
@@ -854,29 +894,86 @@ function PositionPin({
         <ringGeometry args={[0.05, 0.078, 28]} />
         <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
       </mesh>
-      {/* The gem — the hoverable hit target; colour = PnL. */}
+      {/* Glow halo — invisible at rest, blooms as expiry nears (opacity in frame). */}
+      <mesh position={[pos.x, gemY, pos.z]} raycast={() => null} scale={2.4}>
+        <sphereGeometry args={[0.078, 16, 16]} />
+        <meshBasicMaterial
+          ref={haloMatRef}
+          color={color}
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {/* The gem — the hoverable hit target; colour = PnL. Flip the cursor to a
+          pointer (same convention as a tradeable surface node) so it reads as
+          "hover me — there's more here". */}
       <mesh
+        ref={gemMeshRef}
         position={[pos.x, gemY, pos.z]}
         onPointerOver={(e) => {
           e.stopPropagation();
           setHovered(true);
+          if (typeof document !== 'undefined') document.body.style.cursor = 'pointer';
         }}
-        onPointerOut={() => setHovered(false)}
+        onPointerOut={() => {
+          setHovered(false);
+          if (typeof document !== 'undefined') document.body.style.cursor = '';
+        }}
       >
         <octahedronGeometry args={[0.078, 0]} />
-        <meshStandardMaterial ref={gemRef} color={color} emissive={color} emissiveIntensity={0.5} roughness={0.3} metalness={0.1} />
+        <meshStandardMaterial ref={gemMatRef} color={color} emissive={color} emissiveIntensity={0.5} roughness={0.3} metalness={0.1} />
       </mesh>
       {/* White direction chevron — apex up for UP bets, down for DOWN. */}
       <mesh position={[pos.x, gemY + 0.14, pos.z]} rotation={[0, 0, up ? 0 : Math.PI]} raycast={() => null}>
         <coneGeometry args={[0.05, 0.09, 4]} />
         <meshBasicMaterial color="#eef2f5" />
       </mesh>
-      {hovered && (
+      {/* Hover → full read; otherwise, a near-expiry bet keeps a live countdown
+          on the surface so it registers even from a passing glance. */}
+      {hovered ? (
         <Html position={[pos.x, gemY + 0.34, pos.z]} center occlude zIndexRange={[30, 0]}>
           <PositionPinLabel p={p} />
         </Html>
-      )}
+      ) : nearExpiry ? (
+        <Html position={[pos.x, gemY + 0.26, pos.z]} center zIndexRange={[20, 0]}>
+          <PinCountdownChip up={up} countdown={countdownLabel(ttlMs)} pnl={p.pnl ?? null} urgent={urgency > 0.6} />
+        </Html>
+      ) : null}
     </group>
+  );
+}
+
+/** Always-on chip for a near-expiry bet — direction, live countdown, and live
+ *  PnL right on the gem, so a fast-market trader reads "which way, how long, am I
+ *  ahead" at a glance without hovering. A moving clock + colour-swinging PnL catch
+ *  the eye far better than a static gem; hover still opens the full read (strike,
+ *  leverage, delta). Brightens as the clock runs down. */
+function PinCountdownChip({
+  up,
+  countdown,
+  pnl,
+  urgent,
+}: {
+  up: boolean;
+  countdown: string;
+  pnl: number | null;
+  urgent: boolean;
+}) {
+  const dirColor = up ? UP_ACCENT : DOWN_ACCENT;
+  const pnlColor = pnl == null ? 'var(--text-2)' : pnl >= 0 ? PNL_UP : PNL_DOWN;
+  return (
+    <div
+      className={`glass pointer-events-none flex w-max -translate-y-1 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-[10px] tabular-nums shadow-[0_8px_20px_-10px_rgba(0,0,0,0.85)] ${
+        urgent ? 'ring-1 ring-white/20' : ''
+      }`}
+    >
+      <span style={{ color: dirColor }}>{up ? '▲' : '▼'}</span>
+      <span className={urgent ? 'text-text-1' : 'text-text-2'}>{countdown}</span>
+      <span className="text-text-3">·</span>
+      <span style={{ color: pnlColor }}>{pnl == null ? '—' : signed(pnl, 2)}</span>
+    </div>
   );
 }
 
