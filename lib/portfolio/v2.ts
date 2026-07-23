@@ -14,6 +14,7 @@
  *    state instead). Real rows always take priority when present.
  */
 import { fromQuote, toFloat } from '@/config/scale';
+import { num } from '@/lib/format';
 import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import type { V2Position, V2Market, V2OrderEvent } from '@/lib/api/v2/types';
@@ -548,6 +549,62 @@ function demoTrade(
     pnl,
     roi: cost > 0 ? pnl / cost : 0,
     entryPrice,
+  };
+}
+
+/* ─────────────────────────── co-pilot summary ─────────────────────────── */
+
+/** A one-glance roll-up of the trader's positions, for the co-pilot's "how is my
+ *  portfolio doing?" answer. Mirrors the portfolio panel's own open / claimable /
+ *  settled split so the two never disagree. */
+export interface PortfolioSummary {
+  openCount: number; // live (unsettled) bets
+  openValue: number; // their current mark value (DUSDC)
+  openExposure: number; // all-in cost staked in them (DUSDC)
+  unrealized: number; // signed PnL on the open bets (DUSDC)
+  unrealizedPct: number; // unrealized ÷ exposure
+  claimable: number; // settled winners' value waiting to redeem (DUSDC)
+  claimableCount: number;
+  settledLostCount: number; // settled losers not yet cleared
+  best?: { label: string; pnl: number }; // best / worst open bet by PnL
+  worst?: { label: string; pnl: number };
+}
+
+/** A short plain label for a position: "UP $65,427" / "DOWN $64,900" / "Range …". */
+function positionLabel(p: V2PortfolioPosition): string {
+  if (p.direction === 'Range' && p.band) return `Range $${num(p.band.lower, 0)}–$${num(p.band.higher, 0)}`;
+  const dir = p.direction === 'Down' ? 'DOWN' : 'UP';
+  return p.strike != null ? `${dir} $${num(p.strike, 0)}` : dir;
+}
+
+/** Roll a set of enriched positions into the co-pilot summary. Pure — the same
+ *  live/redeemable/settledLost split the portfolio panel uses, so "how am I doing?"
+ *  in chat matches the numbers on the Portfolio screen. */
+export function summarizePositions(positions: V2PortfolioPosition[]): PortfolioSummary {
+  const live = positions.filter((p) => !p.settled && p.qty > 0);
+  const redeemable = positions.filter((p) => p.settled && p.qty > 0 && p.won !== false);
+  const settledLost = positions.filter((p) => p.settled && p.qty > 0 && p.won === false);
+
+  const openValue = live.reduce((s, p) => s + (p.markValue ?? p.cost ?? 0), 0);
+  const openExposure = live.reduce((s, p) => s + (p.cost ?? 0), 0);
+  const unrealized = live.reduce((s, p) => s + (p.pnl ?? 0), 0);
+  const claimable = redeemable.reduce((s, p) => s + (p.markValue ?? 0), 0);
+
+  const ranked = live.filter((p) => p.pnl != null).sort((a, b) => (b.pnl ?? 0) - (a.pnl ?? 0));
+  const best = ranked.length ? { label: positionLabel(ranked[0]), pnl: ranked[0].pnl! } : undefined;
+  const worst = ranked.length > 1 ? { label: positionLabel(ranked[ranked.length - 1]), pnl: ranked[ranked.length - 1].pnl! } : undefined;
+
+  return {
+    openCount: live.length,
+    openValue,
+    openExposure,
+    unrealized,
+    unrealizedPct: openExposure > 0 ? unrealized / openExposure : 0,
+    claimable,
+    claimableCount: redeemable.length,
+    settledLostCount: settledLost.length,
+    best,
+    worst,
   };
 }
 

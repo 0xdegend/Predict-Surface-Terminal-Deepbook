@@ -27,17 +27,20 @@ export type BetTarget = { kind: 'prob'; value: number } | { kind: 'payout'; mult
 
 export type CopilotIntent =
   | { kind: 'analyze' }
+  | { kind: 'analyze_strike' }
   | { kind: 'next_market' }
   | { kind: 'start_trade' }
   | { kind: 'metric'; metric: MetricKind }
   | { kind: 'recommend' }
   | { kind: 'balance' }
+  | { kind: 'portfolio' }
   | { kind: 'odds'; level: OddsLevel; dir?: BetDirection }
   | { kind: 'reality_check'; level?: OddsLevel; dir?: BetDirection }
   | { kind: 'volatility' }
   | { kind: 'skew' }
   | { kind: 'term_structure'; dir?: BetDirection }
   | { kind: 'no_arb' }
+  | { kind: 'busiest_strike'; scope: 'now' | 'all' }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
   | { kind: 'help' };
 
@@ -124,6 +127,43 @@ function wantsBalance(text: string): boolean {
   return /\bbalance\b|how much (?:dusdc|money|funds|do i have)|\bmy (?:wallet|funds|dusdc)\b|how much.*\bwallet\b/.test(text);
 }
 
+/** "How is my portfolio / how are my bets doing / am I up?" — a performance +
+ *  balances roll-up (broader than the funds-only `balance`). Checked before the
+ *  directional branch so "am I up" isn't read as an UP bet. */
+function wantsPortfolio(text: string): boolean {
+  return (
+    /\bportfolio\b|\bmy (?:positions?|bets?|trades?|holdings?|pnl|p&l|profit|performance|book|gains?|losses?)\b|how (?:am i|'?m i|are (?:my|things)|is my (?:portfolio|book|account|trading))|am i (?:up|down|winning|losing|in profit|making money|losing money)|how('?s| is| are) (?:my|the) (?:portfolio|bets?|trades?|positions?)|how are (?:my )?(?:bets?|trades?|positions?) (?:doing|performing|going)/.test(
+      text,
+    )
+  );
+}
+
+/** "Analyse this / the current live strike" — a focused read of the strike the
+ *  ticket is currently on (surface odds + reality check + market context), not the
+ *  whole-market `analyze`. Needs a strike/this-bet cue AND an analysis cue. */
+function wantsStrikeAnalysis(text: string): boolean {
+  if (!/\bstrike\b|\bthis (?:bet|trade|level|price|position|market)\b|\bcurrent (?:bet|trade|level|price)\b/.test(text)) return false;
+  return /analy|\bread\b|break ?down|explain|assess|evaluate|thoughts?|\bhow('?s| is)\b|good (?:bet|strike|call|idea)|worth (?:it|trading|a bet)|is this|\blook(?:s|ing)?\b|\bcheck\b|\brate\b/.test(text);
+}
+
+/**
+ * A short "place the bet now" confirmation ("trade it", "place it", "yes", "do it")
+ * — the typed equivalent of tapping the review card's Trade it / Place this bet
+ * button. The screen only acts on it when a bet is actually pending, so a lone
+ * "yes" with nothing set up just falls through. A parameter-packed message (a NEW
+ * trade spec) or a long sentence is never a confirmation.
+ */
+export function isPlaceConfirmation(message: string): boolean {
+  const t = message.toLowerCase().trim().replace(/[’]/g, "'").replace(/[.!]+$/, '');
+  if (!t || TRADE_PARAM.test(t)) return false;
+  if (t.split(/\s+/).length > 6) return false; // confirmations are short
+  // "<verb> it/this/that/(the|my) bet/trade/position" — the object keeps a bare
+  // "trade 66000" (a new spec) from matching.
+  if (/\b(?:trade|place|open|send|do|lock)\s+(?:it|this|that|(?:the |my )?(?:bet|trade|position|order))\b/.test(t)) return true;
+  // Standalone affirmations.
+  return /^(?:yes|yep|yeah|yup|ok|okay|sure|confirm|do it|go|go for it|let'?s go|lets go|send it|lock it in|place it|trade it|open it)$/.test(t);
+}
+
 /** "What are the odds BTC is above $67k / of a 1% move up?" — a question about the
  *  chance at a specific level or move. Needs an odds cue AND a number. */
 /** Pull a price level from text: a % MOVE ("1% move up") or an absolute strike
@@ -180,6 +220,21 @@ function wantsNoArb(text: string): boolean {
   return /arbitrage|no[- ]?arb|arb[- ]?free|mispric|is the surface (?:ok|healthy|clean|arb|fair|right)|surface (?:healthy|clean|broken|glitch)/.test(text);
 }
 
+/** "Which strike has the most volume? / busiest strike? / where's the action?" —
+ *  needs a volume/activity cue AND a strike/level (or surface) cue, so it doesn't
+ *  fire on "biggest move" (that's volatility) or a bare "volume". */
+function wantsBusiestStrike(text: string): boolean {
+  const volumeCue = /\bbusiest\b|\bhottest\b|most (?:traded|active|popular|bet on|volume|action|bets)|\bmost volume\b|where.{0,20}(?:action|money|volume|bets|flow)|\bmost bets?\b/.test(text);
+  const strikeCue = /\bstrikes?\b|\bprice level\b|which (?:strike|level|price)|on the surface|\bfrom the surface\b/.test(text);
+  return volumeCue && strikeCue;
+}
+
+/** "Right now / currently / live" → the single live market; otherwise every open
+ *  expiry. (The user's rule: a "now"-style cue scopes to the current market.) */
+function busiestScope(text: string): 'now' | 'all' {
+  return /\bnow\b|right now|currently|at the moment|\blive\b|at present/.test(text) ? 'now' : 'all';
+}
+
 /** "1-minute or 5-minute? / which expiry? / wait for the hour?" — the Y-axis. */
 function wantsTermStructure(text: string): boolean {
   if (/\bterm structure\b|\bexpir(?:y|ies|es)\b/.test(text)) return true;
@@ -233,6 +288,10 @@ export function parseIntent(message: string): CopilotIntent {
   const odds = oddsFrom(text);
   if (odds) return { kind: 'odds', ...odds };
 
+  // "Which strike has the most volume?" — a distinct volume-by-strike ask. Before
+  // the other surface questions so "most volume" isn't misread as "biggest move".
+  if (wantsBusiestStrike(text)) return { kind: 'busiest_strike', scope: busiestScope(text) };
+
   // Surface-native analysis (vol / skew / term / no-arb / reality check). Before
   // the directional branch too — "crash or pump" carries both sides, "1m or 5m for
   // up" and "how often does a 1% move up happen" carry one.
@@ -241,10 +300,15 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsVolatility(text)) return { kind: 'volatility' };
   if (wantsTermStructure(text)) return { kind: 'term_structure', dir: dirFrom(text) };
   if (wantsRealityCheck(text)) return { kind: 'reality_check', level: levelFrom(text) ?? undefined, dir: dirFrom(text) };
+  // "Analyse the current/this strike" — a focused read of the selected strike,
+  // before the plain analyze cue (which "analyse" would otherwise trigger).
+  if (wantsStrikeAnalysis(text)) return { kind: 'analyze_strike' };
 
-  // Focused data questions — a single metric ("fear & greed", "how much is BTC up
-  // today") or the balance. BEFORE the directional branch, since "up today" /
-  // "down today" carry a direction word that isn't a bet.
+  // Focused data questions — how the trader's own book is doing, a single metric
+  // ("fear & greed", "how much is BTC up today"), or the balance. BEFORE the
+  // directional branch, since "am I up" / "up today" carry a direction word that
+  // isn't a bet. Portfolio (performance + funds) beats the funds-only balance.
+  if (wantsPortfolio(text)) return { kind: 'portfolio' };
   const metric = metricFrom(text);
   if (metric) return { kind: 'metric', metric };
   if (wantsBalance(text)) return { kind: 'balance' };

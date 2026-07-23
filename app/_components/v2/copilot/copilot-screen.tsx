@@ -13,7 +13,7 @@
  * pattern: selectMarket + setMode + setIsUp + setStrikePrice + markPicked). The
  * surface + ticket are the existing components, unchanged.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { LuSparkles } from 'react-icons/lu';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -29,13 +29,18 @@ import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2PositionsPanel } from '../positions-panel';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
-import { parseIntent } from '@/lib/copilot/intents';
+import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
-import { pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { summarizePositions, type PortfolioSummary } from '@/lib/portfolio/v2';
+import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
+import { aggregateStrikeVolume, busiestStrikeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
+import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { num } from '@/lib/format';
+import { pythSpot, qkV2, getMarketOrders } from '@/lib/api/v2/client';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
-import type { V2Market, PythObservation } from '@/lib/api/v2/types';
+import type { V2Market, PythObservation, V2OrderEvent } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
 const GREETING: ChatMessage = {
@@ -109,9 +114,11 @@ export function V2CopilotScreen({
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
   const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
   const markPicked = useV2TradeStore((s) => s.markPicked);
+  const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
   const setStake = useV2TradeStore((s) => s.setStake);
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
+  const pulseFill = useV2TradeStore((s) => s.pulseFill);
 
   const { data: insights } = useBtcInsights();
   // Read the live spot the SAME way the top tape does — but imperatively from the
@@ -172,6 +179,14 @@ export function V2CopilotScreen({
   const [thinking, setThinking] = useState(false);
   // The guided step-by-step wizard's state (null = not in a guided flow).
   const [flow, setFlow] = useState<TradeFlow | null>(null);
+  // The bet currently set up + shown on a card (wizard review or a one-shot
+  // suggestion). Lets a typed "trade it" open the ticket, like tapping the button.
+  // A ref (not state) so tracking it never re-renders the heavy surface.
+  const pendingBetRef = useRef<BetSuggestion | null>(null);
+  // Latest roll-up of the trader's own positions, written by the open-bets tray
+  // (which already subscribes to them) so "how's my portfolio?" reads it without
+  // this screen subscribing — keeps the surface out of the per-tick re-render.
+  const portfolioRef = useRef<PortfolioSummary | null>(null);
   const idRef = useRef(0);
   const nextId = () => `m${idRef.current++}`;
   const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,12 +206,31 @@ export function V2CopilotScreen({
     markPicked();
   }
 
+  // Light a strike up on the surface (+ pre-fill the ticket selection) without
+  // suggesting a full bet — used by "busiest strike" so the answer's top strike
+  // appears on the surface. Same store path as applyBet: selectMarket resets the
+  // strike, so set it AFTER. A range bucket seeds both band edges.
+  function highlightStrike(b: StrikeVolume) {
+    selectMarket(b.marketId);
+    if (b.direction === 'range' && b.band) {
+      setMode('range');
+      pickRangeLevel(b.band.lower);
+      pickRangeLevel(b.band.higher);
+    } else if (b.strike != null) {
+      setMode('binary');
+      setIsUp(b.direction === 'up');
+      setStrikePrice(b.strike);
+    }
+    markPicked();
+  }
+
   // "Place this bet" / "Trade it" → re-apply it (in case the selection drifted to
   // a newer market since) and pop the ticket modal to trade it. Ends any wizard.
   function handlePlaceBet(bet: BetSuggestion) {
     applyBet(bet);
     openTicketSheet();
     setFlow(null);
+    pendingBetRef.current = null; // it's placed — a later "trade it" shouldn't re-open it
   }
 
   // Every open market we can price — shared by the one-shot responder and the
@@ -210,9 +244,143 @@ export function V2CopilotScreen({
 
   // "Edit" on the review card → restart the wizard from the first question.
   function handleEditBet() {
+    pendingBetRef.current = null; // re-building — don't let a stray "trade it" fire the old one
     const res = startFlow({ candidates: liveCandidates(), now: Date.now(), spot: readSpot() });
     setFlow(res.flow);
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: res.reply.text }]);
+  }
+
+  const pushUser = (t: string) => setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: [t] }]);
+  const pushBot = (text: string[]) => setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text }]);
+
+  // Echo the user's line, then reveal the co-pilot's reply after a short "typing"
+  // beat so it reads as processed, not pasted in.
+  function pushExchange(userText: string, reply: CopilotReply) {
+    pushUser(userText);
+    setThinking(true);
+    replyTimer.current = setTimeout(() => {
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet }]);
+      setThinking(false);
+    }, 600);
+  }
+
+  // Typed "trade it" → place the bet directly (no in-app confirm step) using the
+  // SAME budget mint the ticket runs. The "Trade it" BUTTON still opens the ticket
+  // for anyone who wants to review first. External wallets still show their own
+  // signing prompt (that's the wallet's, and we don't bypass it); gasless (Google)
+  // accounts place with no extra tap. Anything that needs the tested ticket UI —
+  // first-run account creation, low funds, an expiring market — falls back to
+  // opening the ticket so the trader is never left stuck or silently failing.
+  async function placeBetDirect(bet: BetSuggestion, userText: string) {
+    pushUser(userText);
+    // Confirming "trade it" ends the wizard — whether it places directly or hands
+    // off to the ticket. Without this the flow stays active and every following
+    // question gets swallowed by the wizard (re-showing the review / asking for a
+    // strike) instead of being answered normally.
+    setFlow(null);
+    const now = Date.now();
+    const market = markets.find((m) => m.expiry_market_id === bet.marketId);
+    const pricer = market ? pricers[bet.marketId] : undefined;
+    const st0 = useV2TradeStore.getState();
+    const stake = bet.amount ?? st0.stake;
+    const leverage = bet.leverage ?? st0.leverage;
+    const plan =
+      market && pricer
+        ? planBinaryBudgetMint({ market, forward: pricer.forward, svi: pricer.svi, strikePrice: bet.strikePrice, isUp: bet.isUp, stake, leverage })
+        : null;
+
+    const expired = !market || bet.expiry <= now || isTooCloseToExpiry(market, now);
+    const walletKnown = acct.walletDusdcBase !== undefined;
+    const fundable = !!plan && walletKnown && plan.maxCost <= acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+    const canAutoPlace = !!plan && !expired && plan.probOk && plan.stakeOk && acct.wrapperExists && fundable && !acct.busy;
+
+    if (!canAutoPlace) {
+      // Hand off to the ticket to finish (connect / create account / add funds /
+      // pick another market), and say why.
+      handlePlaceBet(bet);
+      const why = !acct.owner
+        ? 'connect your wallet and place it there'
+        : expired
+          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          : !acct.wrapperExists
+            ? 'let’s set up your trading account in the ticket first'
+            : !walletKnown
+              ? 'I’m still loading your balance — place it from the ticket'
+              : !fundable
+                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                : 'finish placing it from the ticket';
+      setThinking(true);
+      replyTimer.current = setTimeout(() => {
+        pushBot([`I’ve opened your ticket — ${why}.`]);
+        setThinking(false);
+      }, 500);
+      return;
+    }
+
+    applyBet(bet); // light it up on the surface while it lands
+    pendingBetRef.current = null;
+    const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
+    setThinking(true);
+    try {
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      if (digest) {
+        pulseFill({ marketId: bet.marketId, strike: plan!.strike, isUp: bet.isUp });
+        pushBot([`Done — your ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+      } else {
+        // It didn't place — keep the bet pending so "trade it" can retry it.
+        pendingBetRef.current = bet;
+        pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or open the ticket to place it yourself.']);
+      }
+    } catch {
+      pendingBetRef.current = bet;
+      pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or open the ticket to place it yourself.']);
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  // "Which strike has the most volume?" — the surface holds pricing, not volume,
+  // so pull the recent bets from the ORDERS feed and bucket them by strike. Scope:
+  // 'now' = the single live market, 'all' = every open expiry (capped so the
+  // fan-out stays bounded). Lazy + cached (fetchQuery dedupes with the analytics
+  // hook), so it costs nothing until asked and repeat asks are cheap.
+  async function answerBusiestStrike(scope: 'now' | 'all', userText: string) {
+    pushUser(userText);
+    setThinking(true);
+    try {
+      const now = Date.now();
+      const open = markets.filter((m) => m.expiry > now).sort((a, b) => a.expiry - b.expiry);
+      if (open.length === 0) {
+        pushBot(["There's no live market right now — a new one opens about every minute, so check back in a moment."]);
+        return;
+      }
+      const targets = scope === 'now' ? open.slice(0, 1) : open.slice(0, 12);
+      const results = await Promise.all(
+        targets.map((m) =>
+          queryClient
+            .fetchQuery({
+              queryKey: qkV2.marketOrders(m.expiry_market_id),
+              queryFn: () => getMarketOrders(m.expiry_market_id, 60),
+              staleTime: 8_000,
+            })
+            .then((orders) => ({ market: m, orders: (orders as V2OrderEvent[]) ?? [] }))
+            .catch(() => ({ market: m, orders: [] as V2OrderEvent[] })),
+        ),
+      );
+      const buckets = aggregateStrikeVolume(results);
+      const base = busiestStrikeReply(buckets, { scope, now }).text;
+      const top = buckets[0];
+      if (top && top.volume > 0) {
+        highlightStrike(top); // light the busiest strike up on the surface
+        pushBot([base[0], 'I’ve highlighted it on the surface.', ...base.slice(1)]);
+      } else {
+        pushBot(base);
+      }
+    } catch {
+      pushBot(["I couldn't read the recent bets just now — give it a moment and ask again."]);
+    } finally {
+      setThinking(false);
+    }
   }
 
   function handleSend(text: string) {
@@ -222,6 +390,15 @@ export function V2CopilotScreen({
     const now = Date.now();
     const spot = readSpot();
     const candidates = liveCandidates();
+
+    // "Trade it" / "place it" / "yes" once a bet is set up → place it directly (no
+    // in-app confirm step), reusing the ticket's exact budget mint. The review
+    // card's "Trade it" BUTTON still opens the ticket for anyone who wants to
+    // check it first. Only fires when a bet is actually pending.
+    if (pendingBetRef.current && isPlaceConfirmation(text)) {
+      void placeBetDirect(pendingBetRef.current, text);
+      return;
+    }
 
     // A guided flow (if active) intercepts the reply; otherwise parse the intent —
     // "set up a trade" starts the wizard, everything else is a one-shot answer.
@@ -233,6 +410,12 @@ export function V2CopilotScreen({
       nextFlow = res.flow;
     } else {
       const intent = parseIntent(text);
+      if (intent.kind === 'busiest_strike') {
+        // Needs the orders feed (not in the surface's pricing data) — fetch it on
+        // demand and answer async, so there's no standing cost when it's not asked.
+        void answerBusiestStrike(intent.scope, text);
+        return;
+      }
       if (intent.kind === 'start_trade') {
         // Pass the raw message so any inline params (strike/amount/leverage/side)
         // pre-fill the wizard and only the missing pieces get asked.
@@ -240,21 +423,37 @@ export function V2CopilotScreen({
         reply = res.reply;
         nextFlow = res.flow;
       } else {
-        reply = respondToIntent(intent, { insights: insights ?? null, candidates, now, spot, wallet: readWallet(), surfaceInputs, closes: candles?.closes ?? null });
+        // Read the store imperatively (getState, not a subscription) for the
+        // current selection so "analyse the current strike" reads the ticket's
+        // strike without this screen re-rendering on every store change.
+        const st = useV2TradeStore.getState();
+        const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp } : null;
+        reply = respondToIntent(intent, {
+          insights: insights ?? null,
+          candidates,
+          now,
+          spot,
+          wallet: readWallet(),
+          surfaceInputs,
+          closes: candles?.closes ?? null,
+          portfolio: portfolioRef.current,
+          selection,
+        });
         nextFlow = null;
       }
     }
 
-    // The surface reacts immediately; the co-pilot's words follow after a short
-    // "typing" beat so the reply reads as processed, not pasted in.
-    if (reply.bet) applyBet(reply.bet);
+    // The surface reacts immediately; remember a fresh bet as the one "trade it"
+    // will place. A non-bet reply mid-wizard clears it (we're still collecting
+    // slots); a plain answer keeps the last suggestion so "trade it" still works.
+    if (reply.bet) {
+      applyBet(reply.bet);
+      pendingBetRef.current = reply.bet;
+    } else if (nextFlow) {
+      pendingBetRef.current = null;
+    }
     setFlow(nextFlow);
-    setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: [text] }]);
-    setThinking(true);
-    replyTimer.current = setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet }]);
-      setThinking(false);
-    }, 600);
+    pushExchange(text, reply);
   }
 
   if (markets.length === 0) {
@@ -300,7 +499,7 @@ export function V2CopilotScreen({
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
             busy={thinking}
-            threadEnd={<CopilotOpenBets />}
+            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} />}
           />
         </aside>
       </main>
@@ -390,10 +589,17 @@ function CopilotComingSoon({
  * the empty thread; its own re-renders (live PnL every tick) stay isolated to
  * this subtree and never reach the heavy surface. A hairline sets it apart from
  * the message bubbles above; the thread's own padding frames it.
+ *
+ * It also mirrors the current positions roll-up into `summaryRef` (it already has
+ * the positions), so the screen can answer "how's my portfolio?" imperatively
+ * without subscribing to positions itself — keeping the surface off that path.
  */
-function CopilotOpenBets() {
+function CopilotOpenBets({ summaryRef }: { summaryRef: MutableRefObject<PortfolioSummary | null> }) {
   const acct = usePredictAccountV2();
   const { positions } = useV2PortfolioPositions(acct.accountId);
+  useEffect(() => {
+    summaryRef.current = summarizePositions(positions);
+  }, [positions, summaryRef]);
   const hasOpen = positions.some((p) => p.qty > 0);
   if (!hasOpen) return null;
   return (

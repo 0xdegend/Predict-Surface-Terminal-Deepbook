@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIntent } from './intents';
+import { parseIntent, isPlaceConfirmation } from './intents';
 
 describe('parseIntent', () => {
   it('empty / greeting → help', () => {
@@ -66,6 +66,39 @@ describe('parseIntent', () => {
     ]) {
       expect(parseIntent(m).kind, m).toBe('balance');
     }
+  });
+
+  it('a portfolio / performance question → portfolio (not the funds-only balance)', () => {
+    for (const m of [
+      'How is my portfolio now?',
+      'how are my bets doing',
+      'my positions',
+      'how am I doing',
+      'am I up or down',
+      "what's my pnl",
+      'how is my portfolio',
+      'how are my trades performing',
+    ]) {
+      expect(parseIntent(m).kind, m).toBe('portfolio');
+    }
+    // A plain funds question is still the focused balance answer.
+    expect(parseIntent("what's my balance").kind).toBe('balance');
+  });
+
+  it('"analyse the current / this strike" → analyze_strike (not the whole-market read)', () => {
+    for (const m of [
+      'Analyse the current live strike for me',
+      'analyze this strike',
+      'read this strike',
+      "how's this strike looking",
+      'is this strike a good bet',
+      'break down the current strike',
+    ]) {
+      expect(parseIntent(m).kind, m).toBe('analyze_strike');
+    }
+    // "analyze BTC" / "analyse the market" (no strike) stay the general read.
+    expect(parseIntent('analyze BTC').kind).toBe('analyze');
+    expect(parseIntent('analyse the market').kind).toBe('analyze');
   });
 
   it('a clear single direction still wins over a recommendation ask', () => {
@@ -139,6 +172,17 @@ describe('parseIntent', () => {
     expect(parseIntent('is the surface arbitrage free').kind).toBe('no_arb');
   });
 
+  it('"which strike has the most volume" → busiest_strike, scoped by a now-cue', () => {
+    // A "now"-style cue scopes to the current live market; otherwise all expiries.
+    expect(parseIntent('which strike has the most volume right now from the surface?')).toMatchObject({ kind: 'busiest_strike', scope: 'now' });
+    expect(parseIntent('busiest strike right now')).toMatchObject({ kind: 'busiest_strike', scope: 'now' });
+    expect(parseIntent('which strike has the most volume')).toMatchObject({ kind: 'busiest_strike', scope: 'all' });
+    expect(parseIntent('where is the most action on the surface')).toMatchObject({ kind: 'busiest_strike', scope: 'all' });
+    expect(parseIntent('most traded strike')).toMatchObject({ kind: 'busiest_strike', scope: 'all' });
+    // "biggest move" is volatility, not volume-by-strike.
+    expect(parseIntent('how big a move is priced in').kind).toBe('volatility');
+  });
+
   it('reality-check questions route to reality_check (with the level when given)', () => {
     expect(parseIntent('how often does a 1% move up actually happen')).toMatchObject({ kind: 'reality_check', level: { kind: 'move', pct: 1 }, dir: 'up' });
     expect(parseIntent('has btc really moved above 66500 lately')).toMatchObject({ kind: 'reality_check', level: { kind: 'strike', price: 66500 } });
@@ -195,5 +239,27 @@ describe('parseIntent', () => {
   it('does not fire a bet on direction-word substrings (whole-word matching)', () => {
     // "understand" contains "under" (a DOWN word) but must NOT read as a bet.
     expect(parseIntent('help me understand bitcoin').kind).not.toBe('directional_bet');
+  });
+});
+
+describe('isPlaceConfirmation', () => {
+  it('recognizes a short "place the bet now" confirmation', () => {
+    for (const m of ['trade it', 'Trade it.', 'place it', 'place this bet', 'open it', 'do it', 'confirm', 'yes', 'sure', "let's go", 'let’s go', 'send it', 'trade this']) {
+      expect(isPlaceConfirmation(m), m).toBe(true);
+    }
+  });
+
+  it('does NOT treat a new trade spec, a bare verb, or unrelated text as a confirmation', () => {
+    for (const m of [
+      'trade 66000 strike', // a new spec (start_trade), not a confirm
+      'set up a trade',
+      'trade', // too bare
+      'I want to place a bet at 65000 with 2x leverage',
+      'what are the odds',
+      'analyze BTC',
+      'no',
+    ]) {
+      expect(isPlaceConfirmation(m), m).toBe(false);
+    }
   });
 });

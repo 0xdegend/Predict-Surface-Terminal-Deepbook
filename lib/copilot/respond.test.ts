@@ -334,6 +334,81 @@ describe('respondToIntent — surface-native analysis', () => {
   });
 });
 
+describe('respondToIntent — portfolio (how am I doing + balances)', () => {
+  const funded = { connected: true, hasAccount: true, accountBase: 250_000_000n, walletBase: 40_000_000n };
+  const PF = {
+    openCount: 2,
+    openValue: 120,
+    openExposure: 100,
+    unrealized: 20,
+    unrealizedPct: 0.2,
+    claimable: 0,
+    claimableCount: 0,
+    settledLostCount: 0,
+    best: { label: 'UP $65,000', pnl: 15 },
+    worst: { label: 'DOWN $64,000', pnl: 5 },
+  };
+
+  it('summarizes open bets, their PnL, and the free balance', () => {
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: PF }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/2 open bets/);
+    expect(blob).toMatch(/\$120\.00/); // current value
+    expect(blob).toMatch(/\+\$20\.00/); // unrealized PnL
+    expect(blob).toMatch(/\$290\.00/); // free balance total (account + wallet)
+  });
+
+  it('surfaces claimable winnings when there are settled wins', () => {
+    const r = respondToIntent(
+      { kind: 'portfolio' },
+      ctx({ wallet: funded, portfolio: { ...PF, claimable: 33, claimableCount: 1 } }),
+    );
+    expect(r.text.join(' ')).toMatch(/waiting to be claimed/i);
+  });
+
+  it('no open bets → says so and shows the balance', () => {
+    const r = respondToIntent(
+      { kind: 'portfolio' },
+      ctx({ wallet: funded, portfolio: { ...PF, openCount: 0, openValue: 0, openExposure: 0, unrealized: 0, best: undefined, worst: undefined } }),
+    );
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/don't have any open bets/i);
+    expect(blob).toMatch(/\$290\.00|ready to trade/);
+  });
+
+  it('not connected → asks them to connect', () => {
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: { connected: false, hasAccount: false, accountBase: 0n, walletBase: undefined } }));
+    expect(r.text.join(' ')).toMatch(/connect/i);
+  });
+});
+
+describe('respondToIntent — analyze the current strike', () => {
+  const CLOSES = Array.from({ length: 300 }, (_, i) => 65_000 * (1 + 0.0004 * i)); // upward drift
+  const selection = { marketId: 'm-soon', strikePrice: 65_325, isUp: true }; // a ~0.5% up move
+
+  it('reads the selected strike: surface odds, payout, reality check, market context', () => {
+    const r = respondToIntent({ kind: 'analyze_strike' }, ctx({ selection, spot: 65_000, closes: CLOSES }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/UP \$65,325/);
+    expect(blob).toMatch(/surface prices it at about \d+%/);
+    expect(blob).toMatch(/paying ~\d/);
+    expect(blob).toMatch(/landed there about \d+% of the time/);
+    expect(blob).toMatch(/not financial advice/i);
+    expect(r.bet).toBeUndefined(); // a read, not a loaded bet
+  });
+
+  it('falls back to the at-the-money strike when nothing is selected', () => {
+    const r = respondToIntent({ kind: 'analyze_strike' }, ctx({ selection: null, spot: 65_000 }));
+    expect(r.text.join(' ')).toMatch(/UP \$/);
+    expect(r.text.join(' ')).toMatch(/surface prices it/);
+  });
+
+  it('no live market → honest fallback', () => {
+    const r = respondToIntent({ kind: 'analyze_strike' }, ctx({ candidates: [] }));
+    expect(r.text.join(' ')).toMatch(/no live market/i);
+  });
+});
+
 describe('respondToIntent — help', () => {
   it('returns guidance, no bet', () => {
     const r = respondToIntent({ kind: 'help' }, ctx());
@@ -366,6 +441,17 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'reality_check', level: { kind: 'move', pct: 0.5 }, dir: 'up' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })),
       respondToIntent({ kind: 'recommend' }, ctx()),
       respondToIntent({ kind: 'balance' }, ctx({ wallet: { connected: true, hasAccount: true, accountBase: 250_000_000n, walletBase: 40_000_000n } })),
+      respondToIntent(
+        { kind: 'portfolio' },
+        ctx({
+          wallet: { connected: true, hasAccount: true, accountBase: 250_000_000n, walletBase: 40_000_000n },
+          portfolio: { openCount: 2, openValue: 120, openExposure: 100, unrealized: 20, unrealizedPct: 0.2, claimable: 33, claimableCount: 1, settledLostCount: 0, best: { label: 'UP $65,000', pnl: 15 }, worst: { label: 'DOWN $64,000', pnl: 5 } },
+        }),
+      ),
+      respondToIntent(
+        { kind: 'analyze_strike' },
+        ctx({ selection: { marketId: 'm-soon', strikePrice: 65_325, isUp: true }, spot: 65_000, closes: Array.from({ length: 300 }, (_, i) => 65_000 * (1 + 0.0004 * i)) }),
+      ),
       respondToIntent({ kind: 'help' }, ctx()),
     ];
     for (const r of replies) {

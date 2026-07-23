@@ -24,6 +24,7 @@ import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { upFair, totalVariance } from '@/lib/svi/svi';
 import { buildSurface, type SmileInput } from '@/lib/svi/surface';
 import { directionFair, payoutMultiple } from '@/lib/svi/invert';
+import type { PortfolioSummary } from '@/lib/portfolio/v2';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -61,6 +62,12 @@ export interface CopilotContext {
   surfaceInputs?: SmileInput[];
   /** 1-minute BTC closes (oldest → newest), for the empirical reality check. */
   closes?: number[] | null;
+  /** The trader's own book roll-up, for "how is my portfolio doing?" — computed
+   *  from the SAME positions the Portfolio screen shows. Null until it loads. */
+  portfolio?: PortfolioSummary | null;
+  /** What the ticket is currently on, for "analyse the current strike". The
+   *  responder finds this market in `candidates` for its pricer. */
+  selection?: { marketId: string; strikePrice: number; isUp: boolean } | null;
 }
 
 /** The "current BTC price" to SHOW the trader — the tape's spot when we have it,
@@ -305,6 +312,63 @@ function realityCheckReply(level: OddsLevel | undefined, dir: BetDirection | und
       'Not financial advice — history is a guide, not a guarantee. Want it? Say “up bet” / “down bet”, or “set up a trade”.',
     ],
   };
+}
+
+/** "Analyse the current / this strike" — a focused read of the strike the ticket
+ *  is on: the surface's odds + payout, the recent reality check, and the Clawby
+ *  market context for that side. Falls back to the at-the-money strike on the
+ *  soonest market when nothing's selected yet. */
+function analyzeStrikeReply(ctx: CopilotContext): CopilotReply {
+  const sel = ctx.selection;
+  const cand =
+    (sel && ctx.candidates.find((c) => c.market.expiry_market_id === sel.marketId)) ??
+    pickCandidate(ctx.candidates, 'soonest', ctx.now);
+  if (!cand) return NO_MARKET;
+  const { market, pricer } = cand;
+  const label = timeLeftLabel(market.expiry, ctx.now);
+  const spotNow = ctx.spot ?? pricer.forward;
+  const isUp = sel ? sel.isUp : true;
+
+  // The strike being looked at: the selected one if set, else at-the-money.
+  const rawStrike = sel && sel.strikePrice > 0 ? sel.strikePrice : spotNow;
+  const strike = toFloat(snapStrikeToAdmission(fromFloat(rawStrike), market.admission_tick_size));
+  const up = upFair(strike, pricer.forward, pricer.svi);
+  if (up <= 0.005 || up >= 0.995) {
+    return {
+      text: [
+        `$${num(strike, 0)} is so far from the current $${num(spotNow, 0)} that it's almost ${up >= 0.5 ? 'certain' : 'impossible'} on this ${label} market — too lopsided to read. Pick a strike nearer $${num(spotNow, 0)}.`,
+      ],
+    };
+  }
+  const prob = isUp ? up : 1 - up;
+  const payoutMult = payoutMultiple(prob);
+  const movePct = spotNow > 0 ? ((strike - spotNow) / spotNow) * 100 : 0;
+
+  const text: string[] = [
+    `Looking at ${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)} on the market settling ${label} — BTC is around $${num(spotNow, 0)} now (${signed(movePct, 2)}% away).`,
+    `The surface prices it at about ${pct(prob, 0)} to win, paying ~${payoutMult.toFixed(2)}× your stake.`,
+  ];
+
+  // The empirical reality check from the recent tape, when we have enough history.
+  const minutesToExpiry = Math.max(1, Math.round((market.expiry - ctx.now) / 60_000));
+  if (ctx.closes && ctx.closes.length >= 30) {
+    const a = analyzeStrike({ closes: ctx.closes, spot: spotNow, strike, isUp, minutesToExpiry, impliedProb: prob });
+    if (a?.empirical) {
+      text.push(
+        `Looking back, BTC has actually landed there about ${pct(a.empirical.prob, 0)} of the time across ${a.empirical.samples.toLocaleString()} past ${minutesToExpiry}-minute windows.`,
+      );
+      text.push(strikeVerdict(a).text);
+    }
+  }
+
+  // Clawby market context for this side.
+  const stance = directionStance(ctx.insights, isUp);
+  if (stance === 'aligned') text.push('The wider market (funding, sentiment, recent liquidations) is leaning the same way — a small tailwind for this side.');
+  else if (stance === 'against') text.push('Worth knowing: the wider market (funding, sentiment, recent liquidations) is leaning against this side right now.');
+  else if (ctx.insights?.available) text.push("The wider market isn't leaning strongly either way right now.");
+
+  text.push('Not financial advice — just how the surface and the data read. Want it? Say “set up a trade”, or place it from the ticket.');
+  return { text };
 }
 
 /** "How big a move is priced in?" — the ATM ±1σ band over the tenor (kept in
@@ -616,6 +680,66 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
   };
 }
 
+/* ------------------------------ my portfolio ----------------------------- */
+
+/** "How is my portfolio doing?" — how the trader's own bets are performing plus
+ *  their balances, from the SAME positions the Portfolio screen shows. */
+function portfolioReply(ctx: CopilotContext): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return { text: ['Connect your wallet (top-right) and I’ll show how your bets are doing and your DUSDC balance.'] };
+  }
+  const walletLoading = w.walletBase === undefined;
+  const account = fromQuote(w.accountBase);
+  const wallet = walletLoading ? 0 : fromQuote(w.walletBase!);
+  const free = account + wallet;
+  const p = ctx.portfolio;
+  const fmt = (n: number) => `$${num(n, 2)}`;
+  const signedUsd = (n: number) => `${n >= 0 ? '+' : '−'}$${num(Math.abs(n), 2)}`;
+  const freeLine = () =>
+    walletLoading
+      ? `You've also got ${fmt(account)} free in your trading account.`
+      : account > 0 && wallet > 0
+        ? `You've also got ${fmt(free)} DUSDC free to trade — ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
+        : `You've also got ${fmt(free)} DUSDC free to trade.`;
+
+  // Still loading positions, or genuinely none open.
+  const nothingOpen = !p || (p.openCount === 0 && p.claimableCount === 0 && p.settledLostCount === 0);
+  if (nothingOpen) {
+    return {
+      text: [
+        "You don't have any open bets right now.",
+        free > 0
+          ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
+          : 'Your DUSDC balance is $0.00 — grab some testnet DUSDC from the faucet to place your first bet.',
+        'Say “set up a trade” or tell me a direction whenever you’re ready.',
+      ],
+    };
+  }
+
+  const text: string[] = [];
+  if (p!.openCount > 0) {
+    const dirWord = p!.unrealized > 0 ? 'up' : p!.unrealized < 0 ? 'down' : 'flat';
+    const one = p!.openCount === 1;
+    text.push(
+      `You've got ${p!.openCount} open ${one ? 'bet' : 'bets'} worth ${fmt(p!.openValue)} right now, and you're ${dirWord} ${signedUsd(p!.unrealized)} on ${one ? 'it' : 'them'} (${signed(p!.unrealizedPct * 100, 1)}%).`,
+    );
+    if (p!.best && p!.worst) {
+      text.push(`Best: ${p!.best.label} (${signedUsd(p!.best.pnl)}). Weakest: ${p!.worst.label} (${signedUsd(p!.worst.pnl)}).`);
+    }
+  }
+  if (p!.claimableCount > 0) {
+    const one = p!.claimableCount === 1;
+    text.push(`${fmt(p!.claimable)} is waiting to be claimed from ${p!.claimableCount} settled ${one ? 'win' : 'wins'} — open Portfolio to redeem ${one ? 'it' : 'them'}.`);
+  }
+  if (p!.settledLostCount > 0 && p!.openCount === 0 && p!.claimableCount === 0) {
+    text.push(`${p!.settledLostCount} settled ${p!.settledLostCount === 1 ? 'bet' : 'bets'} didn't win this time.`);
+  }
+  text.push(freeLine());
+  text.push('Want to add another? Say “set up a trade”, or “analyze BTC” for a read.');
+  return { text };
+}
+
 function helpReply(): CopilotReply {
   return {
     text: [
@@ -629,6 +753,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
   switch (intent.kind) {
     case 'analyze':
       return analyzeReply(ctx);
+    case 'analyze_strike':
+      return analyzeStrikeReply(ctx);
     case 'next_market':
       return nextMarketReply(ctx);
     case 'metric':
@@ -637,6 +763,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return recommendReply(ctx);
     case 'balance':
       return balanceReply(ctx);
+    case 'portfolio':
+      return portfolioReply(ctx);
     case 'odds':
       return oddsReply(intent.level, intent.dir, ctx);
     case 'volatility':
@@ -651,9 +779,11 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return realityCheckReply(intent.level, intent.dir, ctx);
     case 'directional_bet':
       return betReply(intent.dir, intent.conviction, intent.horizon, ctx, intent.target);
-    // The screen intercepts start_trade to run the guided wizard (lib/copilot/flow)
-    // before it ever reaches here; handled defensively so the switch stays total.
+    // The screen intercepts these before they reach here — start_trade runs the
+    // guided wizard (lib/copilot/flow); busiest_strike fetches the orders feed and
+    // answers via lib/copilot/strike-volume. Handled defensively for a total switch.
     case 'start_trade':
+    case 'busiest_strike':
     case 'help':
       return helpReply();
   }
