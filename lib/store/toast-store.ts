@@ -38,12 +38,23 @@ export const useToastStore = create<ToastState>((set) => ({
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })),
 }));
 
+/** Errors never linger: whatever a caller asks for, an error toast auto-dismisses
+ *  within 3s. A sticky (ttl:0) or longer ttl is capped — an error should clear
+ *  itself fast if the user hasn't already dismissed it. Callers may still make it
+ *  shorter. */
+const ERROR_TTL_MAX = 3000;
+
 /** Imperative API — callable anywhere, inside React or not. */
 export const toast = {
   success: (title: string, opts?: { desc?: string; href?: string; ttl?: number }) =>
     useToastStore.getState().push({ kind: 'success', title, ttl: 6000, ...opts }),
   error: (title: string, opts?: { desc?: string; href?: string; ttl?: number }) =>
-    useToastStore.getState().push({ kind: 'error', title, ttl: 8000, ...opts }),
+    useToastStore.getState().push({
+      kind: 'error',
+      title,
+      ...opts,
+      ttl: opts?.ttl && opts.ttl > 0 ? Math.min(opts.ttl, ERROR_TTL_MAX) : ERROR_TTL_MAX,
+    }),
   info: (title: string, opts?: { desc?: string; href?: string; ttl?: number }) =>
     useToastStore.getState().push({ kind: 'info', title, ttl: 5000, ...opts }),
 };
