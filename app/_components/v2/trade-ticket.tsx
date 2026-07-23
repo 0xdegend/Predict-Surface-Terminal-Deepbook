@@ -253,6 +253,13 @@ export function V2TradeTicket({
     acct.walletDusdcBase !== undefined &&
     maxCost > acct.balanceBase + acct.walletDusdcBase;
 
+  // The trader's spendable DUSDC = trading account + wallet (the mint auto-deposits
+  // any wallet shortfall), i.e. exactly what they can stake. Undefined until the
+  // wallet balance loads, so the readout waits rather than flash an account-only
+  // figure that then jumps.
+  const spendableBase =
+    acct.walletDusdcBase !== undefined ? acct.balanceBase + acct.walletDusdcBase : undefined;
+
   const closingSoon = isClosingSoon(market, now);
   const tooCloseToExpiry = isTooCloseToExpiry(market, now);
 
@@ -356,6 +363,19 @@ export function V2TradeTicket({
           <span className="text-[10px] text-text-3">{sym}</span>
         </div>
       </Row>
+      {/* How much the trader has to bet with — trading account + wallet, since the
+          mint auto-deposits any wallet shortfall. Only shown once connected. */}
+      {acct.owner && (
+        <div className="-mt-0.5 flex justify-end text-[10px] tabular-nums text-text-3">
+          <span>
+            Balance{' '}
+            <span className="text-text-2">
+              {spendableBase !== undefined ? fromQuote(spendableBase).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '···'}
+            </span>{' '}
+            {sym}
+          </span>
+        </div>
+      )}
       <div className="flex gap-1.5">
         {AMOUNT_PRESETS.map((n) => (
           <button
