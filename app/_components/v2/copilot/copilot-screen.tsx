@@ -121,7 +121,11 @@ export function V2CopilotScreen({
   const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
 
-  const { data: insights } = useBtcInsights();
+  // Both Clawby-backed fetches are gated on COPILOT_LIVE: while the co-pilot ships
+  // behind the coming-soon overlay (prod), the page does ZERO Clawby work — no
+  // sweep, no 60s polling. It only starts spending once the feature is live
+  // (locally, where NEXT_PUBLIC_COPILOT_LIVE=1). See the gate at the render tail.
+  const { data: insights } = useBtcInsights({ enabled: COPILOT_LIVE });
   // Read the live spot the SAME way the top tape does — but imperatively from the
   // query cache at send-time (the tape's query already keeps it fresh), NOT via a
   // hook subscription, so this screen doesn't re-render every 1.5s and drag the
@@ -151,6 +155,7 @@ export function V2CopilotScreen({
       if (!r.ok) throw new Error(`candles ${r.status}`);
       return (await r.json()) as BtcCandles;
     },
+    enabled: COPILOT_LIVE,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
