@@ -32,9 +32,10 @@ import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
-import { summarizePositions, type PortfolioSummary } from '@/lib/portfolio/v2';
+import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
 import { aggregateStrikeVolume, busiestStrikeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
+import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-match';
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import { num } from '@/lib/format';
 import { pythSpot, qkV2, getMarketOrders } from '@/lib/api/v2/client';
@@ -187,6 +188,8 @@ export function V2CopilotScreen({
   // (which already subscribes to them) so "how's my portfolio?" reads it without
   // this screen subscribing — keeps the surface out of the per-tick re-render.
   const portfolioRef = useRef<PortfolioSummary | null>(null);
+  // The full position list (same source), so "close my bet" can match + redeem.
+  const positionsRef = useRef<V2PortfolioPosition[]>([]);
   const idRef = useRef(0);
   const nextId = () => `m${idRef.current++}`;
   const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -383,6 +386,72 @@ export function V2CopilotScreen({
     }
   }
 
+  // "Close my up bet / redeem my winnings / cash out the 65k" → close the matching
+  // position(s) directly, the same redeem the Portfolio panel runs (external wallets
+  // still show their own signing prompt). Ambiguous or not-found falls back to
+  // listing what's open so the trader is never stuck.
+  async function answerClosePosition(sel: { all?: boolean; winnings?: boolean; dir?: 'up' | 'down'; strike?: number }, userText: string) {
+    pushUser(userText);
+    if (!acct.owner) {
+      botAfterBeat(['Connect your wallet (top-right) and I can close a bet for you.']);
+      return;
+    }
+    // Real, redeemable rows only (a live/settled position with a quantity left).
+    const closeable = positionsRef.current.filter((p) => !p.sample && p.marketId && p.orderId != null && (p.qtyBase ?? 0n) > 0n && p.qty > 0);
+    if (closeable.length === 0) {
+      botAfterBeat(["You don't have any open bets to close right now. Say “set up a trade” whenever you want to place one."]);
+      return;
+    }
+    const match = matchPositionsToClose(closeable, sel);
+    if (match.action === 'none') {
+      botAfterBeat([
+        sel.winnings ? "You don't have any settled winnings to redeem yet." : "I couldn't find a bet matching that. Here's what you have open:",
+        ...(sel.winnings ? [] : closeable.map((p) => `• ${positionCloseLabel(p)}`)),
+      ]);
+      return;
+    }
+    if (match.action === 'ask') {
+      botAfterBeat(['You have a few open — which one?', ...match.positions.map((p) => `• ${positionCloseLabel(p)}`), 'Tell me the side or strike (e.g. “close the up one” or “close the 65k”), or say “close all”.']);
+      return;
+    }
+
+    setThinking(true);
+    try {
+      let done = 0;
+      let proceeds = 0;
+      for (const p of match.positions) {
+        const args = { marketId: p.marketId!, orderId: p.orderId!, closeQuantity: p.qtyBase! };
+        const digest = p.settled ? await acct.redeemSettled(args, { silentSuccess: true }) : await acct.redeemLive(args, { silentSuccess: true });
+        if (digest) {
+          done += 1;
+          proceeds += winningClaimPayout(p, p.qtyBase!) ?? p.markValue ?? 0;
+        }
+      }
+      if (done === 0) {
+        pushBot(['That didn’t go through, so nothing was closed. You can try again, or use the Portfolio panel.']);
+      } else if (done === 1) {
+        const p = match.positions[0];
+        const gained = winningClaimPayout(p, p.qtyBase!) ?? p.markValue ?? 0;
+        pushBot([`Closed your ${positionCloseLabel(p).split(' · ')[0]} bet${gained > 0 ? ` — ${'$' + num(gained, 2)} back in your account` : ''}.`]);
+      } else {
+        pushBot([`Closed ${done} bets${proceeds > 0 ? ` — about $${num(proceeds, 2)} back in your account` : ''}. Nice.`]);
+      }
+    } catch {
+      pushBot(['That didn’t go through, so nothing was closed. You can try again, or use the Portfolio panel.']);
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  // A short "typing" beat, then a bot line — for non-executing answers.
+  function botAfterBeat(text: string[]) {
+    setThinking(true);
+    replyTimer.current = setTimeout(() => {
+      pushBot(text);
+      setThinking(false);
+    }, 500);
+  }
+
   function handleSend(text: string) {
     if (thinking) return; // one at a time (the input is disabled too)
     // Date.now() + the cached spot read in an event handler (not render) — keeps
@@ -416,6 +485,11 @@ export function V2CopilotScreen({
         void answerBusiestStrike(intent.scope, text);
         return;
       }
+      if (intent.kind === 'close_position') {
+        // On-chain redeem — handled async against the trader's live positions.
+        void answerClosePosition(intent, text);
+        return;
+      }
       if (intent.kind === 'start_trade') {
         // Pass the raw message so any inline params (strike/amount/leverage/side)
         // pre-fill the wizard and only the missing pieces get asked.
@@ -427,7 +501,7 @@ export function V2CopilotScreen({
         // current selection so "analyse the current strike" reads the ticket's
         // strike without this screen re-rendering on every store change.
         const st = useV2TradeStore.getState();
-        const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp } : null;
+        const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp, stake: st.stake, leverage: st.leverage } : null;
         reply = respondToIntent(intent, {
           insights: insights ?? null,
           candidates,
@@ -449,6 +523,14 @@ export function V2CopilotScreen({
     if (reply.bet) {
       applyBet(reply.bet);
       pendingBetRef.current = reply.bet;
+    } else if (reply.highlight) {
+      // "Find me the $X strike" → light it up on the surface (no bet suggested).
+      const h = reply.highlight;
+      selectMarket(h.marketId);
+      setMode('binary');
+      setIsUp(h.isUp);
+      setStrikePrice(h.strikePrice);
+      markPicked();
     } else if (nextFlow) {
       pendingBetRef.current = null;
     }
@@ -499,7 +581,7 @@ export function V2CopilotScreen({
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
             busy={thinking}
-            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} />}
+            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} />}
           />
         </aside>
       </main>
@@ -594,12 +676,13 @@ function CopilotComingSoon({
  * the positions), so the screen can answer "how's my portfolio?" imperatively
  * without subscribing to positions itself — keeping the surface off that path.
  */
-function CopilotOpenBets({ summaryRef }: { summaryRef: MutableRefObject<PortfolioSummary | null> }) {
+function CopilotOpenBets({ summaryRef, positionsRef }: { summaryRef: MutableRefObject<PortfolioSummary | null>; positionsRef: MutableRefObject<V2PortfolioPosition[]> }) {
   const acct = usePredictAccountV2();
   const { positions } = useV2PortfolioPositions(acct.accountId);
   useEffect(() => {
     summaryRef.current = summarizePositions(positions);
-  }, [positions, summaryRef]);
+    positionsRef.current = positions;
+  }, [positions, summaryRef, positionsRef]);
   const hasOpen = positions.some((p) => p.qty > 0);
   if (!hasOpen) return null;
   return (

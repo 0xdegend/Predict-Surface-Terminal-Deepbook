@@ -24,6 +24,8 @@ export type MetricKind = 'fear_greed' | 'funding' | 'liquidations' | 'max_pain' 
 export type OddsLevel = { kind: 'strike'; price: number } | { kind: 'move'; pct: number };
 /** An explicit target on a directional bet: a win-chance (70%) or a payout (3×). */
 export type BetTarget = { kind: 'prob'; value: number } | { kind: 'payout'; mult: number };
+/** A "how does X work?" topic the co-pilot can explain in plain language. */
+export type ExplainTopic = 'leverage' | 'range' | 'binary' | 'settlement' | 'loss' | 'fees' | 'funds' | 'payout' | 'predict';
 
 export type CopilotIntent =
   | { kind: 'analyze' }
@@ -41,6 +43,11 @@ export type CopilotIntent =
   | { kind: 'term_structure'; dir?: BetDirection }
   | { kind: 'no_arb' }
   | { kind: 'busiest_strike'; scope: 'now' | 'all' }
+  | { kind: 'find_strike'; price: number; dir?: BetDirection }
+  | { kind: 'explain'; topic: ExplainTopic }
+  | { kind: 'best_value' }
+  | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
+  | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
   | { kind: 'help' };
 
@@ -78,7 +85,7 @@ function has(haystack: string, needles: string[]): boolean {
 /** Phrases where "up"/"down" isn't a market direction — neutralized before we
  *  read a side, so "what's coming up" or "set up a bet" don't become an UP bet.
  *  Exported so the trade wizard's slot parser applies the SAME guard. */
-export const NON_DIRECTIONAL = /\b(coming up|up next|what'?s up|whats up|set up|give up|line up|heads up|back up|sign up)\b/g;
+export const NON_DIRECTIONAL = /\b(coming up|up next|what'?s up|whats up|set up|give up|line up|heads up|back up|sign up|how long|so long)\b/g;
 
 function convictionFrom(text: string): Conviction {
   if (has(text, SAFE_WORDS)) return 'safe';
@@ -229,10 +236,103 @@ function wantsBusiestStrike(text: string): boolean {
   return volumeCue && strikeCue;
 }
 
+/** "Close my up bet / cash out / redeem my winnings / close the 65k one" — a
+ *  request to close or redeem one of the trader's own positions. Needs a close/
+ *  redeem cue AND a reference to a position (so "how long until it closes" — no
+ *  imperative "close" — doesn't fire). */
+function wantsClose(text: string): { all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number } | null {
+  // "close" as the close-VERB, not the adjective ("how close is it", "close to X").
+  const closeVerb = /\bclose\b/.test(text) && !/\bhow close\b|\bclose (?:to|is|are|enough|call|by)\b/.test(text);
+  const cue = closeVerb || /\bredeem\b|cash ?out|\bclaim\b|\bsell\b|\bcollect\b|\bexit\b|get out|take (?:my )?(?:profit|winnings|money)|take profits?/.test(text);
+  if (!cue) return null;
+  // Standalone claim verbs imply "my stuff"; "close"/"sell"/"exit" need a position
+  // reference (a strike, a side, or my/it/this/bet/…) so "close to the money" or
+  // "how close is it" don't fire.
+  const strong = /\bredeem\b|\bclaim\b|cash ?out|\bcollect\b/.test(text);
+  const level = levelFrom(text);
+  const strike = level?.kind === 'strike' ? level.price : undefined;
+  const dir = dirFrom(text);
+  const ref = strong || strike != null || dir != null || /\b(my|it|this|that)\b|\bposition|\bbet\b|\btrade\b|winnings?|\ball\b|everything|\bwins?\b|profits?/.test(text);
+  if (!ref) return null;
+  const winnings = /winnings?|\bwins?\b|\bprofits?\b|\bwinners?\b|what i won|my gains?/.test(text) || undefined;
+  const all = /\ball\b|everything|every (?:bet|position|trade)/.test(text) || undefined;
+  return { winnings, all, dir, strike };
+}
+
+/** Conversational tweak to the CURRENT bet — "make it $10", "use 3x", "change the
+ *  strike to 65,500", "flip to down", "other side". Returns the fields to change,
+ *  or null when there's no modification cue. Checked between the explicit "set up a
+ *  trade" phrases and the trade-param branch, so "make it 3x" edits (not restarts).
+ *  A number with an `x` reads as leverage; `$`/`dusdc` as stake; a strike-word or a
+ *  4+ digit "move it to N" as the strike. */
+function adjustFrom(raw: string): { stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean } | null {
+  const out: { stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean } = {};
+
+  if (/\bflip\b|other side|opposite side|switch sides/.test(raw)) out.flip = true;
+  const toDir = raw.match(/\b(?:flip|switch|change|make|go)\b[^.?!]{0,12}\b(up|down)\b/) ?? raw.match(/\b(up|down)\b(?: bet)? instead/);
+  if (toDir) out.dir = toDir[1] === 'up' ? 'up' : 'down';
+
+  const lev = raw.match(/\b(?:leverage|lev)\s*(?:to|of|is|=|:|at)?\s*(\d+(?:\.\d+)?)\s*x?\b/) ?? raw.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
+  if (lev) out.leverage = parseFloat(lev[1]);
+
+  const strike = raw.match(/\bstrike\s*(?:to|=|:|at|of)?\s*\$?(\d[\d,]{3,}(?:\.\d+)?)/) ?? raw.match(/\bmove (?:it|the strike|this) to \$?(\d[\d,]{3,}(?:\.\d+)?)/);
+  if (strike) out.strike = parseFloat(strike[1].replace(/,/g, ''));
+
+  // Stake — not a strike number (4+ digits already taken), not the leverage number.
+  const stakeM =
+    raw.match(/\b(?:make it|bet|stake|amount|wager|risk|size)\s*(?:to|of|=|:)?\s*\$(\d[\d,]*(?:\.\d+)?)/) ??
+    raw.match(/\b(?:make it|stake|amount|wager|risk|bet)\s*(?:to|of|=|:)?\s*(\d[\d,]*(?:\.\d+)?)\b(?!\s*x)/) ??
+    raw.match(/\$(\d[\d,]*(?:\.\d+)?)\b/) ??
+    raw.match(/\b(\d[\d,]*(?:\.\d+)?)\s*dusdc\b/);
+  if (stakeM && out.strike == null) {
+    const n = parseFloat(stakeM[1].replace(/,/g, ''));
+    if (!(out.leverage != null && n === out.leverage)) out.stake = n;
+  }
+
+  const cue = /\bmake it\b|\bchange\b|\bset\b|\bswitch\b|\bflip\b|\buse\b|\bmove\b|\binstead\b|\bbump\b|\bincrease\b|\bdecrease\b|\blower\b|\braise\b|other side|make the/.test(raw);
+  const has = out.flip || out.dir != null || out.leverage != null || out.strike != null || out.stake != null;
+  return cue && has ? out : null;
+}
+
+/** "What's the best value? / where's the value? / which strike is underpriced?" —
+ *  find where the surface's price underrates the real chance. Keyed on value words
+ *  only (not "best odds", which is the term-structure "which market" question). */
+function wantsBestValue(text: string): boolean {
+  return /\bbest value\b|\bgood value\b|\bvalue (?:bet|play|strike|pick)\b|where('?s| is) (?:the )?value|\bunder ?priced\b|\bover ?priced\b|\bbest bet\b|\bmost value\b|\bcheapest (?:bet|strike)\b/.test(text);
+}
+
 /** "Right now / currently / live" → the single live market; otherwise every open
  *  expiry. (The user's rule: a "now"-style cue scopes to the current market.) */
 function busiestScope(text: string): 'now' | 'all' {
   return /\bnow\b|right now|currently|at the moment|\blive\b|at present/.test(text) ? 'now' : 'all';
+}
+
+/** "How does X work? / what's a range bet? / what if I lose?" — a conceptual
+ *  question we answer from a plain-language glossary (no live data). Needs a
+ *  question frame AND a known topic keyword, so it never swallows a data question
+ *  ("what's the funding rate" stays a metric). */
+function explainTopic(text: string): ExplainTopic | null {
+  if (!/\bwhat\b|\bhow\b|\bexplain\b|tell me|\bwhy\b|meaning|difference|point of|what if|\bdo you\b|\bcan (?:i|you)\b|\bis (?:this|it|there)\b|\bdo i\b|\bare (?:there|the|these)\b/.test(text)) return null;
+  if (/\bleverage\b|knock ?out/.test(text)) return 'leverage';
+  if (/\brange bet\b|\ba range\b|range market|range work/.test(text)) return 'range';
+  if (/(?:up|down) bet (?:mean|work|is|do)|what.{0,14}(?:up|down) bet|\bbinary\b|up ?\/ ?down/.test(text)) return 'binary';
+  if (/settl(?:e|es|ed|ing|ement|ements)|how.{0,14}(?:expir|close)|when.{0,14}(?:it |they )?(?:pay|resolve)/.test(text)) return 'settlement';
+  if (/if i lose|lose more|lose my|can i lose|what.{0,10}(?:happens|the).{0,14}los|\blosing\b/.test(text)) return 'loss';
+  if (/\bfees?\b|\bcommission\b|how do you (?:make|earn) money|(?:make|makes) money|\brevenue\b|cost to (?:trade|bet)|\bcharge/.test(text)) return 'fees';
+  if (/\bdusdc\b|\bfaucet\b|testnet (?:funds|money|tokens|dusdc)|get (?:some )?(?:dusdc|funds|tokens|test)|free (?:dusdc|tokens|money)|what.{0,10}currency|real money/.test(text)) return 'funds';
+  if (/\bpayout\b|how.{0,14}(?:win|paid|payout)|how much.{0,16}win|what do i win|\bodds mean\b/.test(text)) return 'payout';
+  if (/what (?:is|'s) (?:this|predict|deepbook)|how does (?:this|it|predict) work|what can you do|how do i (?:start|begin|bet|trade)/.test(text)) return 'predict';
+  return null;
+}
+
+/** "Find / show / locate the $64,730 strike on the surface" — a request to LOCATE
+ *  a specific strike (so we can light it up), not build or analyze one. Needs a
+ *  find-style cue AND a concrete strike price. */
+function wantsFindStrike(text: string): { price: number; dir?: BetDirection } | null {
+  if (!/\bfind\b|\bshow\b|\blocate\b|\bhighlight\b|\bwhere('?s| is)\b|point (?:me )?(?:to|out|at)|take me to|\bgo to\b|\bmark\b|pull up|bring up|\bdisplay\b/.test(text)) return null;
+  const level = levelFrom(text);
+  if (!level || level.kind !== 'strike') return null;
+  return { price: level.price, dir: dirFrom(text) };
 }
 
 /** "1-minute or 5-minute? / which expiry? / wait for the hour?" — the Y-axis. */
@@ -270,11 +370,20 @@ function targetFrom(text: string): BetTarget | null {
 export function parseIntent(message: string): CopilotIntent {
   const raw = message.toLowerCase().trim();
   if (!raw) return { kind: 'help' };
-  // Start the guided wizard FIRST, on raw text — "set up a trade" must beat the
-  // NON_DIRECTIONAL strip (which would otherwise remove "set up") and the "up".
-  // Explicit trade params (strike/leverage/amount) also route here, so a
-  // parameter-packed message is understood as building a trade however it's worded.
-  if (has(raw, START_TRADE_PHRASES) || TRADE_PARAM.test(raw)) return { kind: 'start_trade' };
+  // "Find/show me the X strike" → locate it on the surface. Checked BEFORE the
+  // trade-param branch so "find the strike at 64,730" isn't read as building one.
+  const find = wantsFindStrike(raw);
+  if (find) return { kind: 'find_strike', price: find.price, dir: find.dir };
+  // Start the guided wizard on an explicit "set up a trade"-style phrase, on raw
+  // text — it must beat the NON_DIRECTIONAL strip (which would remove "set up").
+  if (has(raw, START_TRADE_PHRASES)) return { kind: 'start_trade' };
+  // A tweak to the CURRENT bet ("make it $10", "use 3x", "flip to down") — between
+  // the explicit-phrase check and TRADE_PARAM, so "make it 3x" edits rather than
+  // restarting the wizard (TRADE_PARAM would otherwise claim the "3x").
+  const adjust = adjustFrom(raw);
+  if (adjust) return { kind: 'adjust_ticket', ...adjust };
+  // Explicit trade params ("strike 66000, 2x, 6 dusdc") → build a fresh trade.
+  if (TRADE_PARAM.test(raw)) return { kind: 'start_trade' };
 
   const text = raw.replace(NON_DIRECTIONAL, ' ');
 
@@ -291,6 +400,9 @@ export function parseIntent(message: string): CopilotIntent {
   // "Which strike has the most volume?" — a distinct volume-by-strike ask. Before
   // the other surface questions so "most volume" isn't misread as "biggest move".
   if (wantsBusiestStrike(text)) return { kind: 'busiest_strike', scope: busiestScope(text) };
+  // "What's the best value?" — before term_structure so "which is the best value"
+  // isn't caught by its "which market … best" pattern.
+  if (wantsBestValue(text)) return { kind: 'best_value' };
 
   // Surface-native analysis (vol / skew / term / no-arb / reality check). Before
   // the directional branch too — "crash or pump" carries both sides, "1m or 5m for
@@ -304,6 +416,12 @@ export function parseIntent(message: string): CopilotIntent {
   // before the plain analyze cue (which "analyse" would otherwise trigger).
   if (wantsStrikeAnalysis(text)) return { kind: 'analyze_strike' };
 
+  // "Close my up bet / redeem my winnings / cash out the 65k" — act on the trader's
+  // own positions. Before the directional branch, since "close my up bet" carries a
+  // side word that isn't a new bet.
+  const close = wantsClose(text);
+  if (close) return { kind: 'close_position', ...close };
+
   // Focused data questions — how the trader's own book is doing, a single metric
   // ("fear & greed", "how much is BTC up today"), or the balance. BEFORE the
   // directional branch, since "am I up" / "up today" carry a direction word that
@@ -312,6 +430,12 @@ export function parseIntent(message: string): CopilotIntent {
   const metric = metricFrom(text);
   if (metric) return { kind: 'metric', metric };
   if (wantsBalance(text)) return { kind: 'balance' };
+
+  // "How does leverage work? / what's a range bet? / what if I lose?" — a glossary
+  // answer. AFTER the specific data questions (so "how much dusdc do I have" stays
+  // balance) but before the plain analyze read (which "what is" would trigger).
+  const topic = explainTopic(text);
+  if (topic) return { kind: 'explain', topic };
 
   // Exactly one direction → a directional bet (a bet verb isn't required:
   // "give me a safe up" or "I think BTC goes up" both clearly want a side). An

@@ -172,6 +172,20 @@ describe('parseIntent', () => {
     expect(parseIntent('is the surface arbitrage free').kind).toBe('no_arb');
   });
 
+  it('"find/show me the $X strike" → find_strike (locate it), with the price', () => {
+    expect(parseIntent('Find me the 64,730 strike on the surface?')).toMatchObject({ kind: 'find_strike', price: 64730 });
+    expect(parseIntent('show me 65,200 on the surface')).toMatchObject({ kind: 'find_strike', price: 65200 });
+    expect(parseIntent('where is 66,000 on the surface')).toMatchObject({ kind: 'find_strike', price: 66000 });
+    expect(parseIntent('highlight the 64,900 strike')).toMatchObject({ kind: 'find_strike', price: 64900 });
+    // A find-cue beats the trade-param branch ("strike at 64,730" alone → wizard).
+    expect(parseIntent('find the strike at 64,730')).toMatchObject({ kind: 'find_strike', price: 64730 });
+    // A direction carries through when named.
+    expect(parseIntent('find the 64,730 down strike')).toMatchObject({ kind: 'find_strike', price: 64730, dir: 'down' });
+    // No price → not a find; "most volume on the surface" stays busiest_strike.
+    expect(parseIntent('find me a safe up bet').kind).not.toBe('find_strike');
+    expect(parseIntent('where is the most volume on the surface').kind).toBe('busiest_strike');
+  });
+
   it('"which strike has the most volume" → busiest_strike, scoped by a now-cue', () => {
     // A "now"-style cue scopes to the current live market; otherwise all expiries.
     expect(parseIntent('which strike has the most volume right now from the surface?')).toMatchObject({ kind: 'busiest_strike', scope: 'now' });
@@ -239,6 +253,52 @@ describe('parseIntent', () => {
   it('does not fire a bet on direction-word substrings (whole-word matching)', () => {
     // "understand" contains "under" (a DOWN word) but must NOT read as a bet.
     expect(parseIntent('help me understand bitcoin').kind).not.toBe('directional_bet');
+    // "how long" no longer trips the UP word "long".
+    expect(parseIntent('how long until it settles').kind).not.toBe('directional_bet');
+  });
+
+  it('"how does X work / what if I lose" → explain (glossary), not the market read', () => {
+    expect(parseIntent('what does leverage do?')).toMatchObject({ kind: 'explain', topic: 'leverage' });
+    expect(parseIntent('what is a range bet')).toMatchObject({ kind: 'explain', topic: 'range' });
+    expect(parseIntent('what happens if I lose')).toMatchObject({ kind: 'explain', topic: 'loss' });
+    expect(parseIntent('how do you make money')).toMatchObject({ kind: 'explain', topic: 'fees' });
+    expect(parseIntent('what is dusdc')).toMatchObject({ kind: 'explain', topic: 'funds' });
+    expect(parseIntent('how do payouts work')).toMatchObject({ kind: 'explain', topic: 'payout' });
+    expect(parseIntent('how does this work')).toMatchObject({ kind: 'explain', topic: 'predict' });
+    // Data questions stay data questions.
+    expect(parseIntent('how much dusdc do I have').kind).toBe('balance');
+    expect(parseIntent('how are liquidations looking').kind).toBe('metric');
+  });
+
+  it('"what\'s the best value / underpriced?" → best_value', () => {
+    for (const m of ["what's the best value right now?", 'where is the value', 'which strike is underpriced', 'best bet right now', 'good value bet']) {
+      expect(parseIntent(m).kind, m).toBe('best_value');
+    }
+    // "which market has better odds" stays term_structure (not value).
+    expect(parseIntent('which expiry has better odds').kind).toBe('term_structure');
+  });
+
+  it('"make it $10 / use 3x / flip to down" → adjust_ticket (edit, not a new trade)', () => {
+    expect(parseIntent('make it $10')).toMatchObject({ kind: 'adjust_ticket', stake: 10 });
+    expect(parseIntent('use 3x')).toMatchObject({ kind: 'adjust_ticket', leverage: 3 });
+    expect(parseIntent('make it 3x')).toMatchObject({ kind: 'adjust_ticket', leverage: 3 });
+    expect(parseIntent('change the strike to 65,500')).toMatchObject({ kind: 'adjust_ticket', strike: 65500 });
+    expect(parseIntent('flip to down')).toMatchObject({ kind: 'adjust_ticket', dir: 'down' });
+    expect(parseIntent('other side')).toMatchObject({ kind: 'adjust_ticket', flip: true });
+    expect(parseIntent('make it $20 at 2x')).toMatchObject({ kind: 'adjust_ticket', stake: 20, leverage: 2 });
+    // A fresh param-packed spec still builds a new trade (no modification cue).
+    expect(parseIntent('strike 66000, 2x, 6 dusdc').kind).toBe('start_trade');
+    expect(parseIntent('set up a trade, strike 66000, 2x').kind).toBe('start_trade');
+  });
+
+  it('"close my up bet / redeem winnings / cash out the 65k" → close_position', () => {
+    expect(parseIntent('close my up bet')).toMatchObject({ kind: 'close_position', dir: 'up' });
+    expect(parseIntent('redeem my winnings')).toMatchObject({ kind: 'close_position', winnings: true });
+    expect(parseIntent('cash out').kind).toBe('close_position');
+    expect(parseIntent('close the 65k one')).toMatchObject({ kind: 'close_position', strike: 65000 });
+    expect(parseIntent('close all')).toMatchObject({ kind: 'close_position', all: true });
+    // "close" as an adjective is NOT a close request.
+    expect(parseIntent('how close is BTC to 65k').kind).not.toBe('close_position');
   });
 });
 

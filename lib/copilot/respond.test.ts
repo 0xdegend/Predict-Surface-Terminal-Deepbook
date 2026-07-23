@@ -10,7 +10,7 @@ const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
 const NOW = 1_700_000_000_000;
 
 function candidate(id: string, minutesOut: number, forward = 65_000): BetCandidate {
-  const market = { expiry_market_id: id, expiry: NOW + minutesOut * 60_000, admission_tick_size: '1000000000' } as unknown as V2Market;
+  const market = { expiry_market_id: id, expiry: NOW + minutesOut * 60_000, admission_tick_size: '1000000000', tick_size: '1', max_admission_leverage: 3_000_000_000, base_fee: '0' } as unknown as V2Market;
   const pricer: LivePricer = { expiryMarketId: id, forward, svi: SVI };
   return { market, pricer };
 }
@@ -409,6 +409,86 @@ describe('respondToIntent — analyze the current strike', () => {
   });
 });
 
+describe('respondToIntent — find a strike on the surface', () => {
+  it('snaps the strike, returns a highlight, and quotes both sides', () => {
+    const r = respondToIntent({ kind: 'find_strike', price: 65_200 }, ctx());
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/Found it — \$65,200/);
+    expect(blob).toMatch(/highlighted it on the surface/i);
+    expect(blob).toMatch(/Above — about \d+%/);
+    expect(r.highlight).toBeDefined();
+    expect(r.highlight!.marketId).toBe('m-soon');
+    expect(r.highlight!.strikePrice).toBeCloseTo(65_200, -1);
+    expect(r.bet).toBeUndefined(); // a locate, not a bet suggestion
+  });
+
+  it('carries the named direction into the highlight', () => {
+    expect(respondToIntent({ kind: 'find_strike', price: 65_200, dir: 'up' }, ctx()).highlight!.isUp).toBe(true);
+    // Default (no direction): the more-likely side — a strike above spot leans DOWN.
+    expect(respondToIntent({ kind: 'find_strike', price: 65_200 }, ctx()).highlight!.isUp).toBe(false);
+  });
+
+  it('a strike far from spot is still highlighted, with a heads-up', () => {
+    const r = respondToIntent({ kind: 'find_strike', price: 90_000 }, ctx());
+    expect(r.highlight).toBeDefined();
+    expect(r.text.join(' ')).toMatch(/highlighted it on the surface|far out|long shot|almost/i);
+  });
+
+  it('no live market → honest fallback, no highlight', () => {
+    const r = respondToIntent({ kind: 'find_strike', price: 65_200 }, ctx({ candidates: [] }));
+    expect(r.highlight).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/no live market/i);
+  });
+});
+
+describe('respondToIntent — explain (glossary)', () => {
+  it('answers each topic with plain text, no bet or highlight', () => {
+    for (const topic of ['leverage', 'range', 'binary', 'settlement', 'loss', 'fees', 'funds', 'payout', 'predict'] as const) {
+      const r = respondToIntent({ kind: 'explain', topic }, ctx());
+      expect(r.text.length, topic).toBeGreaterThan(0);
+      expect(r.bet, topic).toBeUndefined();
+    }
+    expect(respondToIntent({ kind: 'explain', topic: 'leverage' }, ctx()).text.join(' ')).toMatch(/leverage/i);
+    expect(respondToIntent({ kind: 'explain', topic: 'fees' }, ctx()).text.join(' ')).toMatch(/fee|2%/i);
+  });
+});
+
+describe('respondToIntent — best value', () => {
+  const CLOSES = Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)); // steady upward drift
+
+  it('with price history → a value read (highlights a strike, or says nothing stands out)', () => {
+    const r = respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: CLOSES }));
+    expect(r.text.join(' ')).toMatch(/value/i);
+    if (r.highlight) expect(r.highlight.marketId).toBe('m-soon');
+  });
+
+  it('without price history → asks to wait', () => {
+    expect(respondToIntent({ kind: 'best_value' }, ctx({ closes: null })).text.join(' ')).toMatch(/history|moment/i);
+  });
+});
+
+describe('respondToIntent — adjust the current bet', () => {
+  const sel = { marketId: 'm-soon', strikePrice: 65_000, isUp: true, stake: 5, leverage: 1 };
+
+  it('changes the stake and re-quotes into an updated bet', () => {
+    const r = respondToIntent({ kind: 'adjust_ticket', stake: 20 }, ctx({ selection: sel }));
+    expect(r.text.join(' ')).toMatch(/Updated/);
+    expect(r.bet).toBeDefined();
+    expect(r.bet!.amount).toBe(20);
+  });
+
+  it('flips the direction', () => {
+    const r = respondToIntent({ kind: 'adjust_ticket', flip: true }, ctx({ selection: sel }));
+    expect(r.bet!.isUp).toBe(false);
+  });
+
+  it('with no bet set up → guides to set one up first (no bet)', () => {
+    const r = respondToIntent({ kind: 'adjust_ticket', stake: 20 }, ctx({ selection: null }));
+    expect(r.bet).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/set up a bet|set up a trade/i);
+  });
+});
+
 describe('respondToIntent — help', () => {
   it('returns guidance, no bet', () => {
     const r = respondToIntent({ kind: 'help' }, ctx());
@@ -452,6 +532,12 @@ describe('plain language (no trader jargon)', () => {
         { kind: 'analyze_strike' },
         ctx({ selection: { marketId: 'm-soon', strikePrice: 65_325, isUp: true }, spot: 65_000, closes: Array.from({ length: 300 }, (_, i) => 65_000 * (1 + 0.0004 * i)) }),
       ),
+      respondToIntent({ kind: 'find_strike', price: 65_200 }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'leverage' }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'fees' }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'predict' }, ctx()),
+      respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)) })),
+      respondToIntent({ kind: 'adjust_ticket', stake: 20, leverage: 2 }, ctx({ selection: { marketId: 'm-soon', strikePrice: 65_000, isUp: true, stake: 5, leverage: 1 } })),
       respondToIntent({ kind: 'help' }, ctx()),
     ];
     for (const r of replies) {

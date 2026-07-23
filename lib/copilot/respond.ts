@@ -16,7 +16,8 @@
  * the trader still reviews and signs. Plain language is a hard rule (no jargon).
  */
 import { num, pct, signed, compact } from '@/lib/format';
-import { toFloat, fromFloat, fromQuote } from '@/config/scale';
+import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
+import { quantityForStake, winPayout, leverageSliderMax } from '@/lib/sui/v2/quote';
 import { buildMarketRead, directionStance, recommendation } from '@/lib/insights/market-read';
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { strikeForDirectionFair } from '@/lib/sui/v2/invert';
@@ -28,7 +29,7 @@ import type { PortfolioSummary } from '@/lib/portfolio/v2';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
-import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget } from './intents';
+import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget, ExplainTopic } from './intents';
 
 const usd = (v: number) => `$${compact(v)}`;
 
@@ -65,9 +66,10 @@ export interface CopilotContext {
   /** The trader's own book roll-up, for "how is my portfolio doing?" — computed
    *  from the SAME positions the Portfolio screen shows. Null until it loads. */
   portfolio?: PortfolioSummary | null;
-  /** What the ticket is currently on, for "analyse the current strike". The
-   *  responder finds this market in `candidates` for its pricer. */
-  selection?: { marketId: string; strikePrice: number; isUp: boolean } | null;
+  /** What the ticket is currently on, for "analyse the current strike" and for
+   *  conversational tweaks ("make it $10"). The responder finds this market in
+   *  `candidates` for its pricer. `stake`/`leverage` are the current ticket values. */
+  selection?: { marketId: string; strikePrice: number; isUp: boolean; stake?: number; leverage?: number } | null;
 }
 
 /** The "current BTC price" to SHOW the trader — the tape's spot when we have it,
@@ -99,6 +101,9 @@ export interface BetSuggestion {
 export interface CopilotReply {
   text: string[];
   bet?: BetSuggestion;
+  /** A strike to light up on the surface WITHOUT suggesting a full bet — the screen
+   *  loads it into the store selection. Used by "find me the $X strike". */
+  highlight?: { marketId: string; strikePrice: number; isUp: boolean };
 }
 
 /** Target win-chance per conviction — kept inside the quotable band so the
@@ -369,6 +374,160 @@ function analyzeStrikeReply(ctx: CopilotContext): CopilotReply {
 
   text.push('Not financial advice — just how the surface and the data read. Want it? Say “set up a trade”, or place it from the ticket.');
   return { text };
+}
+
+/** "Find / show me the $X strike on the surface" — snap it to a real tradeable
+ *  strike, hand back a `highlight` the screen lights up, and quote both sides so
+ *  the trader can act. A strike far outside the quotable band is still highlighted,
+ *  with a heads-up that it's too lopsided to trade here. */
+function findStrikeReply(price: number, dir: BetDirection | undefined, ctx: CopilotContext): CopilotReply {
+  const cand =
+    (ctx.selection && ctx.candidates.find((c) => c.market.expiry_market_id === ctx.selection!.marketId)) ??
+    pickCandidate(ctx.candidates, 'soonest', ctx.now);
+  if (!cand) return NO_MARKET;
+  const { market, pricer } = cand;
+  const label = timeLeftLabel(market.expiry, ctx.now);
+  const spotNow = ctx.spot ?? pricer.forward;
+  const strike = toFloat(snapStrikeToAdmission(fromFloat(price), market.admission_tick_size));
+  const up = upFair(strike, pricer.forward, pricer.svi);
+  const movePct = spotNow > 0 ? ((strike - spotNow) / spotNow) * 100 : 0;
+  const isUp = dir ?? (strike > spotNow ? 'down' : 'up'); // default to the more-likely side
+  const snapNote = Math.abs(strike - price) >= 1 ? ` (nearest tradeable strike to $${num(price, 0)})` : '';
+  const highlight = { marketId: market.expiry_market_id, strikePrice: strike, isUp: isUp === 'up' };
+
+  if (up <= 0.005 || up >= 0.995) {
+    return {
+      text: [
+        `Here's $${num(strike, 0)}${snapNote} — I've highlighted it on the surface. It's ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}, so far out it's almost ${up >= 0.5 ? 'certain' : 'a long shot'} on this ${label} market.`,
+        'Pick a strike nearer the current price for a tradeable bet, or say “analyze this strike”.',
+      ],
+      highlight,
+    };
+  }
+  return {
+    text: [
+      `Found it — $${num(strike, 0)}${snapNote}, ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}. I've highlighted it on the surface for the market settling ${label}.`,
+      `Above — about ${pct(up, 0)} chance, pays ~${payoutMultiple(up).toFixed(2)}×. At or below — about ${pct(1 - up, 0)} chance, pays ~${payoutMultiple(1 - up).toFixed(2)}×.`,
+      'Say “up bet” or “down bet” to trade it, or “analyze this strike” for the full read.',
+    ],
+    highlight,
+  };
+}
+
+/** A conversational tweak to the current bet — "make it $10", "use 3x", "flip to
+ *  down", "change the strike to 65,500". Merges the change onto the current ticket
+ *  selection, re-quotes, and returns an updated bet the screen loads (so "trade it"
+ *  works on the new numbers). Guides the trader to set one up first if there's none. */
+function adjustReply(adj: { stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }, ctx: CopilotContext): CopilotReply {
+  const sel = ctx.selection;
+  const cand =
+    (sel && ctx.candidates.find((c) => c.market.expiry_market_id === sel.marketId)) ??
+    pickCandidate(ctx.candidates, 'soonest', ctx.now);
+  if (!cand) return NO_MARKET;
+  const { market, pricer } = cand;
+  const spotNow = ctx.spot ?? pricer.forward;
+
+  const haveStrike = adj.strike != null || (sel?.strikePrice != null && sel.strikePrice > 0);
+  if (!haveStrike) {
+    return { text: ['Set up a bet first and I’ll tweak it from there — say “safe up bet” or “set up a trade”, then tell me to change the amount, leverage, strike, or side.'] };
+  }
+  const isUp = adj.flip ? !(sel?.isUp ?? true) : adj.dir ? adj.dir === 'up' : (sel?.isUp ?? true);
+  const strike = toFloat(snapStrikeToAdmission(fromFloat(adj.strike ?? sel!.strikePrice), market.admission_tick_size));
+  const entryProb = directionFair(strike, pricer.forward, pricer.svi, isUp);
+  if (entryProb <= 0.005 || entryProb >= 0.995) {
+    return { text: [`$${num(strike, 0)} is too far from the current $${num(spotNow, 0)} to trade on this market — pick a strike nearer the price.`] };
+  }
+  const stake = adj.stake ?? sel?.stake ?? 5;
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  const leverage = Math.min(Math.max(1, adj.leverage ?? sel?.leverage ?? 1), maxLev);
+  const win = fromQuote(winPayout(quantityForStake(toQuote(stake), entryProb, leverage), entryProb, leverage));
+  const payoutMult = stake > 0 ? win / stake : 1;
+  const label = timeLeftLabel(market.expiry, ctx.now);
+
+  const changed: string[] = [];
+  if (adj.strike != null) changed.push(`strike $${num(strike, 0)}`);
+  if (adj.flip || adj.dir != null) changed.push(isUp ? 'UP' : 'DOWN');
+  if (adj.stake != null) changed.push(`$${num(stake, 0)} stake`);
+  if (adj.leverage != null) changed.push(`${num(leverage, 1)}× leverage`);
+  const capNote = adj.leverage != null && adj.leverage > maxLev ? ` (capped at ${num(maxLev, 1)}× for this strike)` : '';
+
+  return {
+    text: [
+      `Updated — ${changed.join(', ') || 'your bet'}${capNote}.`,
+      `${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)}, $${num(stake, 0)} at ${num(leverage, 1)}× — about ${pct(entryProb, 0)} to win, could win ~$${num(win, 0)}.`,
+      'Say “trade it” to place it, or tell me another change.',
+    ],
+    bet: {
+      marketId: market.expiry_market_id,
+      expiry: market.expiry,
+      dir: isUp ? 'up' : 'down',
+      isUp,
+      strikePrice: strike,
+      prob: entryProb,
+      payoutMult,
+      conviction: entryProb > 0.6 ? 'safe' : entryProb < 0.35 ? 'longshot' : 'even',
+      timeLeftLabel: label,
+      amount: stake,
+      leverage,
+    },
+  };
+}
+
+/** "What's the best value right now?" — scan the strikes around spot on the live
+ *  market and find where the surface's price most underrates how often BTC has
+ *  actually landed there (empirical > implied = good value for the buyer). Reuses
+ *  the reality-check machinery; highlights the winner. Needs the candle tape. */
+function bestValueReply(ctx: CopilotContext): CopilotReply {
+  const cand =
+    (ctx.selection && ctx.candidates.find((c) => c.market.expiry_market_id === ctx.selection!.marketId)) ??
+    pickCandidate(ctx.candidates, 'soonest', ctx.now);
+  if (!cand) return NO_MARKET;
+  const { market, pricer } = cand;
+  const closes = ctx.closes;
+  if (!closes || closes.length < 30) {
+    return { text: ["I need a bit more price history to judge value — give it a moment and ask again."] };
+  }
+  const label = timeLeftLabel(market.expiry, ctx.now);
+  const spotNow = ctx.spot ?? pricer.forward;
+  const minutesToExpiry = Math.max(1, Math.round((market.expiry - ctx.now) / 60_000));
+
+  // Scan a band of strikes both sides of spot; keep the reasonably tradeable ones
+  // (implied 10-90%), dedup after snapping, and rank by empirical − implied.
+  type ValueCand = { strike: number; isUp: boolean; implied: number; empirical: number; samples: number; value: number };
+  const seen = new Set<string>();
+  const cands: ValueCand[] = [];
+  for (let p = -2.5; p <= 2.5 + 1e-9; p += 0.25) {
+    if (Math.abs(p) < 0.1) continue;
+    const strike = toFloat(snapStrikeToAdmission(fromFloat(spotNow * (1 + p / 100)), market.admission_tick_size));
+    for (const isUp of [true, false] as const) {
+      const key = `${strike}:${isUp}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const implied = directionFair(strike, pricer.forward, pricer.svi, isUp);
+      if (implied <= 0.1 || implied >= 0.9) continue;
+      const a = analyzeStrike({ closes, spot: spotNow, strike, isUp, minutesToExpiry, impliedProb: implied });
+      if (!a?.empirical || a.empirical.samples < 20) continue;
+      cands.push({ strike, isUp, implied, empirical: a.empirical.prob, samples: a.empirical.samples, value: a.empirical.prob - implied });
+    }
+  }
+  cands.sort((a, b) => b.value - a.value);
+  const best = cands[0];
+  if (!best || best.value <= 0.03) {
+    return {
+      text: [
+        "Nothing jumps out as clear value on this market right now — the surface is pricing moves about as often as they've actually happened lately. That's a fair, efficient market.",
+        'If you just want a solid bet, say “safe up bet”; or ask me to “analyze this strike”.',
+      ],
+    };
+  }
+  return {
+    text: [
+      `Best value I can find on the ${label} market: ${best.isUp ? 'UP' : 'DOWN'} $${num(best.strike, 0)}.`,
+      `The surface gives it about ${pct(best.implied, 0)} to win (pays ~${payoutMultiple(best.implied).toFixed(2)}×), but across the last ${best.samples.toLocaleString()} similar ${minutesToExpiry}-minute windows BTC actually landed there about ${pct(best.empirical, 0)} of the time — better odds than the price is asking for.`,
+      'Not financial advice, and past moves are only a guide. I’ve highlighted it on the surface — say “up bet” / “down bet” to trade it, or “analyze this strike”.',
+    ],
+    highlight: { marketId: market.expiry_market_id, strikePrice: best.strike, isUp: best.isUp },
+  };
 }
 
 /** "How big a move is priced in?" — the ATM ±1σ band over the tenor (kept in
@@ -740,6 +899,53 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   return { text };
 }
 
+/* ------------------------------ explainers ------------------------------- */
+// Plain-language answers to "how does X work?" — static (no live data), so a new
+// trader can learn the mechanics inline. Kept jargon-free and short.
+
+const EXPLAINERS: Record<ExplainTopic, string[]> = {
+  leverage: [
+    'Leverage multiplies your bet: a 3× UP bet gains 3× as fast, so the same stake can win more.',
+    'The catch — if BTC moves against you far enough before the close, a leveraged bet closes early for $0 (a “knockout”). You can never lose more than you put in; higher leverage just means a smaller cushion. Say “set up a trade” and I’ll show you the exact knockout level.',
+  ],
+  range: [
+    'A range bet wins if BTC settles between two prices you choose — good when you think it’ll stay calm and drift sideways rather than pick a clear direction.',
+    'Pick a low and a high; if the closing price lands inside, you win. Tap two points on the surface, or open the ticket and switch to Range.',
+  ],
+  binary: [
+    'An UP bet wins if BTC settles ABOVE the price you pick; a DOWN bet wins if it settles at or below it.',
+    'The closer your price is to where BTC is now, the safer the bet and the smaller the payout — further away pays more but is less likely. Tell me a direction and I’ll set one up.',
+  ],
+  settlement: [
+    'Each market has a fixed close time (some settle in about a minute). At the close, BTC’s price is checked once: if your side is right you win the payout, otherwise the bet is worth $0.',
+    'It settles on the price AT the close, so a bet that’s winning midway can still flip. After it settles, you redeem your winnings — just say “redeem my winnings”.',
+  ],
+  loss: [
+    'The most you can ever lose is what you put in — a losing bet simply settles at $0. No margin calls, nothing owed.',
+    'With leverage there’s one wrinkle: if BTC moves against you far enough before the close, the bet closes early for $0 (a “knockout”) — but you still never lose more than your stake.',
+  ],
+  fees: [
+    'The app charges a small fee on each trade (currently 2% of your bet) — that’s how it earns, and it’s already included in the price you see before you confirm.',
+    'The pool that pays winners earns a separate spread, which goes to the people who supply that pool, not to the app. No hidden costs and no subscription.',
+  ],
+  funds: [
+    'You bet with DUSDC — a test-dollar on Sui testnet, not real money. Grab some free from the faucet and it lands in your wallet ready to trade.',
+    'Ask me “what’s my balance” any time to see how much you have.',
+  ],
+  payout: [
+    'Your payout depends on the odds: the less likely your bet, the more it pays. A ~70% chance pays about 1.4× your stake; a ~25% longshot pays around 4×.',
+    'I always show the exact odds and payout before you place anything — say “safe up bet” or “longshot down bet” to see one.',
+  ],
+  predict: [
+    'This is a prediction market on BTC: you bet which way the price goes by a set close time, using the live surface on the left.',
+    'I’m your co-pilot — I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
+  ],
+};
+
+function explainReply(topic: ExplainTopic): CopilotReply {
+  return { text: EXPLAINERS[topic] };
+}
+
 function helpReply(): CopilotReply {
   return {
     text: [
@@ -755,6 +961,14 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return analyzeReply(ctx);
     case 'analyze_strike':
       return analyzeStrikeReply(ctx);
+    case 'find_strike':
+      return findStrikeReply(intent.price, intent.dir, ctx);
+    case 'explain':
+      return explainReply(intent.topic);
+    case 'best_value':
+      return bestValueReply(ctx);
+    case 'adjust_ticket':
+      return adjustReply(intent, ctx);
     case 'next_market':
       return nextMarketReply(ctx);
     case 'metric':
@@ -780,10 +994,11 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
     case 'directional_bet':
       return betReply(intent.dir, intent.conviction, intent.horizon, ctx, intent.target);
     // The screen intercepts these before they reach here — start_trade runs the
-    // guided wizard (lib/copilot/flow); busiest_strike fetches the orders feed and
-    // answers via lib/copilot/strike-volume. Handled defensively for a total switch.
+    // guided wizard (lib/copilot/flow); busiest_strike fetches the orders feed; and
+    // close_position redeems on-chain. Handled defensively for a total switch.
     case 'start_trade':
     case 'busiest_strike':
+    case 'close_position':
     case 'help':
       return helpReply();
   }
