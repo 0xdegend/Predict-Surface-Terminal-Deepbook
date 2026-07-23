@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startFlow, advanceFlow, type FlowContext } from './flow';
+import { startFlow, advanceFlow, extractSlots, type FlowContext } from './flow';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -49,6 +49,74 @@ describe('trade wizard — happy path', () => {
     expect(b.leverage).toBe(1);
     expect(b.isUp).toBe(false);
     expect(b.payoutMult).toBeGreaterThan(1);
+  });
+});
+
+describe('trade wizard — current price', () => {
+  it('quotes the live spot (matching the tape), not the forward', () => {
+    // forward 65,000, tape spot 64,900 → the wizard must show 64,900.
+    const c = candidate('m1', NOW + 7 * 60_000, 65_000);
+    const s = startFlow({ candidates: [c], now: NOW, spot: 64_900 });
+    const blob = s.reply.text.join(' ');
+    expect(blob).toContain('64,900');
+    expect(blob).not.toContain('65,000');
+  });
+
+  it('still snaps/prices the strike on the forward (spot is display-only)', () => {
+    const c = candidate('m1', NOW + 7 * 60_000, 65_000);
+    const ctx2: FlowContext = { candidates: [c], now: NOW, spot: 64_900 };
+    // Type a strike; the snapped strike + odds come off the forward, unaffected by spot.
+    const s = advanceFlow({ step: 'strike', marketId: 'm1' }, '65,000', ctx2);
+    expect(s.flow?.step).toBe('direction');
+    expect(s.flow?.strikePrice).toBeCloseTo(65_000, -1);
+  });
+});
+
+describe('trade wizard — one-shot slot filling', () => {
+  it('extractSlots reads strike, leverage, and amount from one message', () => {
+    const s = extractSlots('Set up my trade for me, strike 66,000, leverage 2x, bet amount 6 dusdc');
+    expect(s.strikePrice).toBe(66_000);
+    expect(s.leverage).toBe(2);
+    expect(s.amount).toBe(6);
+    expect(s.isUp).toBeUndefined(); // "set up" must NOT read as UP
+  });
+
+  it('extractSlots reads an explicit direction', () => {
+    expect(extractSlots('bet strike 65000 above, 2x, 5 dusdc').isUp).toBe(true);
+    expect(extractSlots('strike 65000 below with 3x and 10 dusdc').isUp).toBe(false);
+  });
+
+  it('pre-fills every given slot and asks only for the missing one (direction)', () => {
+    const s = startFlow(ctx, 'set up my trade, strike 65000, 2x leverage, bet 6 dusdc');
+    expect(s.flow?.step).toBe('direction'); // the only thing missing
+    expect(s.flow?.strikePrice).toBeCloseTo(65_000, -1);
+    expect(s.flow?.amount).toBe(6);
+    expect(s.flow?.leverage).toBe(2); // stored raw; capped at review
+    expect(s.reply.text.join(' ')).toMatch(/above.*below|below.*above/i);
+
+    // Answering the one missing slot jumps straight to review (no re-asking).
+    const r = advanceFlow(s.flow!, 'above', ctx);
+    expect(r.flow?.step).toBe('review');
+    expect(r.reply.bet?.amount).toBe(6);
+    expect(r.reply.bet?.isUp).toBe(true);
+    expect(r.reply.bet?.leverage).toBeGreaterThanOrEqual(1);
+    expect(r.reply.bet?.leverage).toBeLessThanOrEqual(2);
+  });
+
+  it('goes straight to review when the message gives everything', () => {
+    const s = startFlow(ctx, 'set up a trade: strike 65000, above, 2x, 8 dusdc');
+    expect(s.flow?.step).toBe('review');
+    expect(s.reply.bet).toBeDefined();
+    expect(s.reply.bet?.amount).toBe(8);
+    expect(s.reply.bet?.isUp).toBe(true);
+  });
+
+  it('asks for the strike when only later slots are given', () => {
+    const s = startFlow(ctx, 'set up a trade with 2x leverage and 6 dusdc');
+    expect(s.flow?.step).toBe('strike');
+    expect(s.flow?.leverage).toBe(2);
+    expect(s.flow?.amount).toBe(6);
+    expect(s.reply.text.join(' ')).toMatch(/what price|type a strike/i);
   });
 });
 

@@ -190,6 +190,19 @@ export function directionStance(ctx: BtcInsights | null, isUp: boolean): MarketR
   return lean > 0 === isUp ? 'aligned' : 'against';
 }
 
+/** A soft, non-advice steer: which way the SAME blended lean points — an UP or
+ *  DOWN bet when it's clearly leaning, or a RANGE bet when there's no clear
+ *  direction (picking a side is a coin-flip, so a band may fit better). Reuses
+ *  the headline's 0.28 threshold so the steer never contradicts the read.
+ *  `confidence` = how strong that call is. Null when there's no live data. */
+export function recommendation(ctx: BtcInsights | null): { pick: 'up' | 'down' | 'range'; confidence: 'slight' | 'clear' } | null {
+  if (!ctx || !ctx.available) return null;
+  const lean = marketLean(ctx);
+  const mag = Math.abs(lean);
+  if (mag < 0.28) return { pick: 'range', confidence: mag < 0.12 ? 'clear' : 'slight' };
+  return { pick: lean > 0 ? 'up' : 'down', confidence: mag >= 0.5 ? 'clear' : 'slight' };
+}
+
 export function buildMarketRead(input: MarketReadInput): MarketRead | null {
   const { ctx, strike, isUp, strikePrice, timeLeftLabel } = input;
   if (!ctx || !ctx.available) return null;

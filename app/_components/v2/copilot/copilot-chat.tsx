@@ -11,7 +11,7 @@
  * BetCard so the trader sees the exact bet, then reviews and places it in the
  * ticket. Nothing here signs or mints.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LuSparkles, LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock } from 'react-icons/lu';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
@@ -43,20 +43,47 @@ export function CopilotChat({
   onPlaceBet,
   onEditBet,
   busy,
+  threadEnd,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
   onPlaceBet: (bet: BetSuggestion) => void;
   onEditBet: () => void;
   busy?: boolean;
+  /** Live content pinned at the bottom of the thread (the open-bets tray) — part
+   *  of the conversation flow, not a separate rail, so it scrolls with the chat. */
+  threadEnd?: ReactNode;
 }) {
   const [draft, setDraft] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Keep the newest message (or the typing bubble) in view as the thread grows.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, busy]);
+
+  // Type-anywhere: a printable keystroke while nothing else is focused drops the
+  // trader straight into the input (and captures that first character), so they
+  // never have to click the box first. We stay out of the way when they're
+  // already in a field, when a modal owns the keys (the ticket/confirm dialogs),
+  // when a modifier is held (shortcuts), or while a reply is in flight.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (busy || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key.length !== 1) return; // printable single chars only (letters/digits/space/punct/numpad)
+      const el = inputRef.current;
+      if (!el || document.activeElement === el) return; // already typing here
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName))) return;
+      if (document.querySelector('[role="dialog"]')) return; // a modal is open — let it have the keys
+      e.preventDefault();
+      el.focus();
+      setDraft((d) => d + e.key);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [busy]);
 
   function submit(text: string) {
     const t = text.trim();
@@ -84,6 +111,7 @@ export function CopilotChat({
           <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} />
         ))}
         {busy && <TypingBubble />}
+        {threadEnd}
         <div ref={endRef} />
       </div>
 
@@ -110,6 +138,7 @@ export function CopilotChat({
           className="flex items-center gap-2 rounded-xl border border-line bg-white/2 px-3 py-1.5 focus-within:border-accent/40"
         >
           <input
+            ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             disabled={busy}
