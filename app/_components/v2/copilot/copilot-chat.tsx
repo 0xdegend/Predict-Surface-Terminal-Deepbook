@@ -27,6 +27,9 @@ export interface ChatMessage {
 
 const CHIPS = ['Set up a trade', 'Analyze BTC', 'Next market', 'Safe UP bet', 'Longshot UP bet', 'Safe DOWN bet'];
 
+/** The composer grows with the text up to ~3 lines (px), then scrolls. */
+const MAX_INPUT_H = 76;
+
 /** Live countdown clock: `6:47`, `0:52`, or `1:02:33` for longer-dated markets. */
 function fmtCountdown(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -44,6 +47,8 @@ export function CopilotChat({
   onEditBet,
   busy,
   threadEnd,
+  pinnedTop,
+  suggestions,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -53,15 +58,32 @@ export function CopilotChat({
   /** Live content pinned at the bottom of the thread (the open-bets tray) — part
    *  of the conversation flow, not a separate rail, so it scrolls with the chat. */
   threadEnd?: ReactNode;
+  /** A card pinned ABOVE the thread (the ambient surface read) — always in view,
+   *  doesn't scroll away with the messages. */
+  pinnedTop?: ReactNode;
+  /** The suggestion chips. Adaptive: the screen passes context-aware prompts that
+   *  shift with the live market. Falls back to the static set when omitted. */
+  suggestions?: string[];
 }) {
+  const chips = suggestions && suggestions.length > 0 ? suggestions : CHIPS;
   const [draft, setDraft] = useState('');
+  const typing = draft.trim().length > 0; // hide the suggestion chips while composing
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Keep the newest message (or the typing bubble) in view as the thread grows.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, busy]);
+
+  // Grow the composer with its text (up to ~3 lines), then let it scroll. Runs on
+  // every draft change — typing, the type-anywhere append, and the reset on send.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_H)}px`;
+  }, [draft]);
 
   // Type-anywhere: a printable keystroke while nothing else is focused drops the
   // trader straight into the input (and captures that first character), so they
@@ -105,6 +127,9 @@ export function CopilotChat({
         </div>
       </div>
 
+      {/* pinned ambient read — sits under the header, above the scrolling thread */}
+      {pinnedTop}
+
       {/* thread */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
@@ -117,34 +142,46 @@ export function CopilotChat({
 
       {/* chips + input */}
       <div className="border-t border-line px-3 py-3">
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {CHIPS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              disabled={busy}
-              onClick={() => submit(c)}
-              className="rounded-full border border-line px-2.5 py-1 text-[10.5px] text-text-2 transition-colors hover:border-accent/40 hover:text-text-1 disabled:opacity-50"
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        {/* The suggestion chips only show when the input is empty — they clear out
+            of the way the moment the trader starts composing, and return on send. */}
+        {!typing && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {chips.map((c) => (
+              <button
+                key={c}
+                type="button"
+                disabled={busy}
+                onClick={() => submit(c)}
+                className="rounded-full border border-line px-2.5 py-1 text-[10.5px] text-text-2 transition-colors hover:border-accent/40 hover:text-text-1 disabled:opacity-50"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             submit(draft);
           }}
-          className="flex items-center gap-2 rounded-xl border border-line bg-white/2 px-3 py-1.5 focus-within:border-accent/40"
+          className="flex items-end gap-2 rounded-xl border border-line bg-white/2 px-3 py-1.5 focus-within:border-accent/40"
         >
-          <input
+          <textarea
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter (or a newline mid-IME) drops a line.
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                submit(draft);
+              }
+            }}
             disabled={busy}
+            rows={1}
             placeholder="Ask, or say “safe up bet”…"
             aria-label="Message the co-pilot"
-            className="min-w-0 flex-1 bg-transparent py-1 text-[12.5px] text-text-1 placeholder:text-text-3 focus:outline-none"
+            className="scroll-quiet min-w-0 flex-1 resize-none bg-transparent py-1 text-[12.5px] leading-snug text-text-1 placeholder:text-text-3 focus:outline-none"
           />
           <button
             type="submit"

@@ -568,20 +568,37 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
   cands.sort((a, b) => b.value - a.value);
   const best = cands[0];
   if (!best || best.value <= 0.03) {
+    // No mispriced edge — the market's fair. Don't dead-end: recommend the
+    // cleanest straightforward bet instead. Side it by the off-chain lean when
+    // there is one, else by the surface's own slight tilt (chance of a pop vs a
+    // drop), and load a SAFE bet into the ticket so "best bet" is always actionable.
+    const rec = recommendation(ctx.insights);
+    const isUpPick =
+      rec?.pick === 'up' ? true
+      : rec?.pick === 'down' ? false
+      : upFair(pricer.forward * 1.01, pricer.forward, pricer.svi) >= 1 - upFair(pricer.forward * 0.99, pricer.forward, pricer.svi);
+    const dir: BetDirection = isUpPick ? 'up' : 'down';
+    const strikePrice = toFloat(strikeForDirectionFair(CONVICTION_TARGET.safe, pricer.forward, pricer.svi, market.admission_tick_size, isUpPick));
+    const prob = directionFair(strikePrice, pricer.forward, pricer.svi, isUpPick);
+    const payoutMult = payoutMultiple(prob);
+    const label = timeLeftLabel(market.expiry, ctx.now);
     return {
       text: [
-        "Nothing jumps out as clear value on this market right now. The surface is pricing moves about as often as they've actually happened lately. That's a fair, efficient market.",
-        'If you just want a solid bet, say “safe up bet”; or ask me to “analyze this strike”.',
+        "Nothing's clearly mispriced right now. The surface is pricing moves about as often as they've actually happened, so it's a fair, efficient market.",
+        `So here's the most solid value bet I'd pick: a safer ${dir.toUpperCase()} on the ${windowAdj(market.expiry, ctx.now)} market. It wins if BTC is ${isUpPick ? 'above' : 'below'} $${num(strikePrice, 0)} at the close, about ${pct(prob, 0)} to win, and pays ~${payoutMult.toFixed(2)}×.`,
+        'Not financial advice. I’ve loaded it into your ticket. Tap “Place this bet” to trade it, or say “longshot bet” if you want a bigger payout.',
       ],
+      bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir, isUp: isUpPick, strikePrice, prob, payoutMult, conviction: 'safe', timeLeftLabel: label },
     };
   }
+  const conv: Conviction = best.implied > 0.6 ? 'safe' : best.implied < 0.35 ? 'longshot' : 'even';
   return {
     text: [
       `Best value I can find on the ${windowAdj(market.expiry, ctx.now)} market: ${best.isUp ? 'UP' : 'DOWN'} $${num(best.strike, 0)}.`,
       `The surface gives it about ${pct(best.implied, 0)} to win (pays ~${payoutMultiple(best.implied).toFixed(2)}×), but across the last ${best.samples.toLocaleString()} similar ${minutesToExpiry}-minute windows BTC actually landed there about ${pct(best.empirical, 0)} of the time. Better odds than the price is asking for.`,
-      'Not financial advice, and past moves are only a guide. I’ve highlighted it on the surface. Say “up bet” / “down bet” to trade it, or “analyze this strike”.',
+      'Not financial advice, and past moves are only a guide. I’ve loaded it into your ticket. Tap “Place this bet” to trade it, or ask me to “analyze this strike”.',
     ],
-    highlight: { marketId: market.expiry_market_id, strikePrice: best.strike, isUp: best.isUp },
+    bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir: best.isUp ? 'up' : 'down', isUp: best.isUp, strikePrice: best.strike, prob: best.implied, payoutMult: payoutMultiple(best.implied), conviction: conv, timeLeftLabel: timeLeftLabel(market.expiry, ctx.now) },
   };
 }
 

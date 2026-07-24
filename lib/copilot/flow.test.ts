@@ -131,6 +131,45 @@ describe('trade wizard — one-shot slot filling', () => {
   });
 });
 
+describe('trade wizard — inline strike out of band', () => {
+  // $67k is ~27% to settle above, outside a tight [0.35, 0.65] band but inside a
+  // wide [0.01, 0.99] one. Same SVI/forward on both, so only the band differs.
+  const bandMarket = (id: string, minutes: number, min: string, max: string) => ({
+    market: {
+      expiry_market_id: id,
+      expiry: NOW + minutes * 60_000,
+      admission_tick_size: '1000000000',
+      min_entry_probability: min,
+      max_entry_probability: max,
+      max_admission_leverage: 3_000_000_000,
+    } as unknown as V2Market,
+    pricer: { expiryMarketId: id, forward: 65_000, svi: SVI } as LivePricer,
+  });
+
+  it('hops to a longer market that can quote the strike instead of dropping it', () => {
+    const c: FlowContext = {
+      candidates: [bandMarket('soon', 2, '350000000', '650000000'), bandMarket('long', 30, '10000000', '990000000')],
+      now: NOW,
+    };
+    const s = startFlow(c, 'set up a trade, strike 67000, 2x, 100 dusdc');
+    expect(s.flow?.marketId).toBe('long'); // honored the strike on a market that can quote it
+    expect(s.flow?.strikePrice).toBeCloseTo(67_000, -1);
+    expect(s.flow?.amount).toBe(100);
+    expect(s.flow?.leverage).toBe(2);
+    expect(s.reply.text.join(' ')).toMatch(/in range|moved/i);
+  });
+
+  it('explains (does not silently drop) when no market can quote the strike', () => {
+    const c: FlowContext = { candidates: [bandMarket('soon', 2, '350000000', '650000000')], now: NOW };
+    const s = startFlow(c, 'set up a trade, strike 67000, 2x, 100 dusdc');
+    expect(s.flow?.strikePrice).toBeUndefined(); // not captured
+    expect(s.flow?.step).toBe('strike'); // re-asks the strike
+    expect(s.flow?.amount).toBe(100); // but keeps the amount + leverage it did get
+    expect(s.flow?.leverage).toBe(2);
+    expect(s.reply.text.join(' ')).toMatch(/too far/i);
+  });
+});
+
 describe('trade wizard — validation', () => {
   it('re-asks when the strike has no number', () => {
     const s = advanceFlow({ step: 'strike' }, 'hmm not sure', ctx);

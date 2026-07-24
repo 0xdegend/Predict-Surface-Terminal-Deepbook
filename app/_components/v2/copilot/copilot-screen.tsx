@@ -20,7 +20,7 @@ import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
-import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
+import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useNow } from '@/lib/hooks/use-now';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
@@ -29,8 +29,22 @@ import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2PositionsPanel } from '../positions-panel';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
+import { CopilotStatBar } from './copilot-stat-bar';
+import { CopilotRead } from './copilot-read';
+import { V2MarketPicker } from '../market-picker';
 import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
+import {
+  marketRows,
+  volState,
+  arbState,
+  bias as pulseBias,
+  nextExpiry as pulseNextExpiry,
+  suggestChips,
+  type VolState,
+  type ArbState,
+  type Bias,
+} from '@/lib/copilot/pulse';
 import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
 import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
@@ -180,6 +194,34 @@ export function V2CopilotScreen({
     [markets, pricers],
   );
   const canSurface = surfaceInputs.length >= 2;
+
+  // ── Cockpit pulse ──────────────────────────────────────────────────────────
+  // The live derivations the chrome around the chat reads from (stat bar, markets
+  // rail, ambient read, adaptive chips). Computed HERE once from primitives the
+  // screen already holds, using the SAME lib/svi + respond.ts logic the
+  // conversation uses — so a pill can never disagree with the chat. `now`/`spot`
+  // are READ from the live tape in the query cache (see below), NOT subscribed, so
+  // this never drags the surface into a per-tick re-render; the stat bar and rail
+  // own the ticking bits (live spot, countdowns) inside their own leaf subtrees.
+  const stageCandidates = useMemo<BetCandidate[]>(
+    () => markets.flatMap((m) => (pricers[m.expiry_market_id] ? [{ market: m, pricer: pricers[m.expiry_market_id] }] : [])),
+    [markets, pricers],
+  );
+  // `now` + `spot` come from the live tape in the query cache — READ, never
+  // subscribed (exactly like readSpot below) — so the pulse advances on the
+  // screen's own cadence without a per-second subscription that would re-render
+  // the heavy surface. The tape's own timestamp is the honest clock for market
+  // timing; the stat bar and rail still tick their countdowns live via useNow.
+  const pythObs = queryClient.getQueryData<PythObservation | null>(qkV2.pythLatest) ?? null;
+  const pulseSpot = pythSpot(pythObs);
+  const pulseNow = pythObs?.source_timestamp_ms ?? pythObs?.checkpoint_timestamp_ms ?? serverNow;
+  // The soonest market's chance-up read (for the ambient "surface read" card).
+  const rows = marketRows(stageCandidates, pulseSpot, pulseNow);
+  const vol = volState(stageCandidates, candles?.closes, pulseNow);
+  const arb = arbState(surfaceInputs, pulseNow);
+  const lean = pulseBias(insights ?? null);
+  const nextExp = pulseNextExpiry(stageCandidates, pulseNow);
+  const chips = suggestChips({ vol, arb, bias: lean, hasPortfolio: !!acct.owner });
 
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
@@ -549,6 +591,22 @@ export function V2CopilotScreen({
     pushExchange(text, reply);
   }
 
+  // Everything the left stage (stat bar + markets rail + surface) needs, bundled
+  // once so the live layout and the coming-soon backdrop render the exact same
+  // cockpit (no divergence between the teaser and the finished thing).
+  const stageProps: StageProps = {
+    insights: insights ?? null,
+    vol,
+    arb,
+    bias: lean,
+    nextExpiry: nextExp,
+    canSurface,
+    surfaceInputs,
+    markets,
+    pricerSeeds,
+    serverNow,
+  };
+
   if (markets.length === 0) {
     return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
   }
@@ -556,7 +614,7 @@ export function V2CopilotScreen({
   // Gated for launch: real (live) surface + a sample chat, blurred behind a
   // "coming soon" overlay. Flip COPILOT_LIVE to take it live.
   if (!COPILOT_LIVE) {
-    return <CopilotComingSoon canSurface={canSurface} surfaceInputs={surfaceInputs} markets={markets} serverNow={serverNow} />;
+    return <CopilotComingSoon stage={stageProps} />;
   }
 
   return (
@@ -567,24 +625,17 @@ export function V2CopilotScreen({
           height) → each column scrolls INTERNALLY instead of growing the page.
           Mobile: normal flow (flex-1), the page scrolls as usual. */}
       <main className="grid flex-1 grid-cols-1 gap-px bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-1 lg:overflow-hidden">
-        {/* Left — JUST the live surface (desktop). It reacts to the conversation:
-            a suggested or clicked bet lights up here, and you trade it in place
-            (surface click-to-mint) or via the pop-out ticket, so there's no second
-            trading UI to wade through. Hidden on mobile (the chat leads there). */}
-        <section className="hidden min-w-0 flex-col bg-bg-0 lg:flex lg:min-h-0">
-          <div className="min-h-0 flex-1">
-            {canSurface ? (
-              <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
-            ) : (
-              <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
-            )}
-          </div>
-        </section>
+        {/* Left — the cockpit: a live stat bar, a markets rail, and the surface
+            (the hero). It reacts to the conversation: a suggested or clicked bet
+            lights up here, and you trade it in place (surface click-to-mint) or via
+            the pop-out ticket. Hidden on mobile (the chat leads there). */}
+        <CopilotStage {...stageProps} />
 
-        {/* Right — the conversation. Bounded height so it scrolls internally. Once
-            a bet is live it shows at the bottom of the thread here (and on the
-            surface as a gem), so the trader can watch it perform and close it in
-            place — inside the chat — without leaving for /portfolio. */}
+        {/* Right — the conversation. Bounded height so it scrolls internally. An
+            ambient surface read is pinned above the thread; the chips adapt to the
+            live market. Once a bet is live it shows at the bottom of the thread
+            here (and on the surface as a gem), so the trader can watch it perform
+            and close it in place — inside the chat — without leaving for /portfolio. */}
         <aside className="flex min-h-[62vh] min-w-0 flex-col bg-bg-0 lg:min-h-0">
           <CopilotChat
             messages={messages}
@@ -592,6 +643,8 @@ export function V2CopilotScreen({
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
             busy={thinking}
+            suggestions={chips}
+            pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
             threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} />}
           />
         </aside>
@@ -605,6 +658,50 @@ export function V2CopilotScreen({
   );
 }
 
+/** Everything the left cockpit needs — bundled so the live layout and the
+ *  coming-soon backdrop render the identical stage. */
+interface StageProps {
+  insights: BtcInsights | null;
+  vol: VolState | null;
+  arb: ArbState | null;
+  bias: Bias | null;
+  nextExpiry: number | null;
+  canSurface: boolean;
+  surfaceInputs: SmileInput[];
+  markets: V2Market[];
+  pricerSeeds: Record<string, LivePricer>;
+  serverNow: number;
+}
+
+/**
+ * CopilotStage — the left column of the co-pilot page (desktop): a live stat bar
+ * docked on top, the surface as the hero, and the oracle table (V2MarketPicker,
+ * the SAME table/cards the Trade page uses) underneath it — so the surface reads
+ * exactly like the Trade page, with its markets in a table below rather than a
+ * side rail. Selecting a market there drives the shared store, so the surface +
+ * ticket react. The stat bar is a leaf that owns its own live ticking, so it
+ * never re-renders the surface. Hidden on mobile, where the chat leads.
+ */
+function CopilotStage({ insights, vol, arb, bias, nextExpiry, canSurface, surfaceInputs, markets, pricerSeeds, serverNow }: StageProps) {
+  return (
+    <section className="hidden min-w-0 flex-col bg-bg-0 lg:flex lg:min-h-0">
+      <CopilotStatBar insights={insights} vol={vol} arb={arb} bias={bias} nextExpiry={nextExpiry} serverNow={serverNow} />
+      {/* Surface hero on top… */}
+      <div className="h-[54vh] min-h-90 shrink-0">
+        {canSurface ? (
+          <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
+        ) : (
+          <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
+        )}
+      </div>
+      {/* …the oracle table underneath, scrolling internally (Trade-page layout). */}
+      <div className="flex min-h-0 flex-1 flex-col border-t border-line p-4">
+        <V2MarketPicker markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
+      </div>
+    </section>
+  );
+}
+
 /**
  * CopilotComingSoon — the launch gate. The REAL live surface and a sample
  * conversation render underneath, blurred and inert (`inert` + pointer-events-none
@@ -613,36 +710,29 @@ export function V2CopilotScreen({
  * a genuine teaser of what's shipping, not a static mock. Flip COPILOT_LIVE (or
  * NEXT_PUBLIC_COPILOT_LIVE=1) to remove it.
  */
-function CopilotComingSoon({
-  canSurface,
-  surfaceInputs,
-  markets,
-  serverNow,
-}: {
-  canSurface: boolean;
-  surfaceInputs: SmileInput[];
-  markets: V2Market[];
-  serverNow: number;
-}) {
-  const preview = useMemo(() => previewMessages(serverNow), [serverNow]);
+function CopilotComingSoon({ stage }: { stage: StageProps }) {
+  const preview = useMemo(() => previewMessages(stage.serverNow), [stage.serverNow]);
   const noop = () => {};
   return (
     <div className="relative flex-1 overflow-hidden lg:h-[calc(100dvh-4rem)] lg:flex-none">
       {/* The real page, behind glass. `inert` takes the whole subtree out of the
-          tab order / hit-testing; the blur + slight scale hide the frosted edges. */}
+          tab order / hit-testing; the blur + slight scale hide the frosted edges.
+          The SAME CopilotStage renders here, so the teaser is the finished cockpit
+          (blurred), not a stand-in. Clawby-backed pills self-hide (insights gated
+          off), so it still costs no credits behind the gate. */}
       <div inert aria-hidden className="pointer-events-none h-full select-none blur-[6px]">
         <main className="grid h-full grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-1">
-          <section className="hidden min-w-0 flex-col bg-bg-0 lg:flex lg:min-h-0">
-            <div className="min-h-0 flex-1">
-              {canSurface ? (
-                <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
-              ) : (
-                <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
-              )}
-            </div>
-          </section>
+          <CopilotStage {...stage} />
           <aside className="flex min-h-[62vh] min-w-0 flex-col bg-bg-0 lg:min-h-0">
-            <CopilotChat messages={preview} onSend={noop} onPlaceBet={noop} onEditBet={noop} busy={false} />
+            <CopilotChat
+              messages={preview}
+              onSend={noop}
+              onPlaceBet={noop}
+              onEditBet={noop}
+              busy={false}
+              suggestions={suggestChips({ vol: stage.vol, arb: stage.arb, bias: stage.bias, hasPortfolio: false })}
+              pinnedTop={<CopilotRead bias={stage.bias} vol={stage.vol} upChance={null} closes={null} />}
+            />
           </aside>
         </main>
       </div>

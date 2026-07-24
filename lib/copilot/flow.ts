@@ -183,6 +183,18 @@ function checkStrike(raw: number | null, market: V2Market, pricer: LivePricer): 
   return { ok: true, strikePrice };
 }
 
+/** The soonest open market with enough runway whose admission band can quote this
+ *  strike. Lets an inline strike that's too far for the short pinned market get
+ *  honored on a longer one (whose wider variance/band covers it) instead of being
+ *  silently dropped. Null when no open market can quote it. */
+function marketForStrike(strike: number, ctx: FlowContext): BetCandidate | null {
+  for (const c of openSorted(ctx)) {
+    if (c.market.expiry - ctx.now < FLOW_RUNWAY_MS) continue;
+    if (checkStrike(strike, c.market, c.pricer).ok) return c;
+  }
+  return null;
+}
+
 function checkAmount(raw: number | null): { ok: true; amount: number } | { ok: false; kind: 'nan' | 'small' } {
   if (raw == null) return { ok: false, kind: 'nan' };
   if (raw < minStake()) return { ok: false, kind: 'small' };
@@ -292,20 +304,37 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
   if (!cand) {
     return { flow: null, reply: { text: ["There's no live market to trade right now. Check back in a moment."] } };
   }
-  const { market, pricer } = cand;
-  const marketId = market.expiry_market_id;
+  let { market, pricer } = cand;
+  let marketId = market.expiry_market_id;
 
-  // Fill any inline params (validate strike + amount; leverage is stored and
-  // capped at review; direction taken as-is). Invalid values are dropped — the
-  // wizard just asks for them normally.
+  // Fill any inline params. Strike: checked against the market's quotable band; if
+  // it's too far for the short pinned market we HOP to a longer open market that
+  // can quote it (honoring the strike) rather than dropping it. Amount validated.
+  // Leverage stored (capped at review); direction as-is. Anything we still can't
+  // use is called out in `notes`, so the wizard never silently ignores an input.
   const slots = message ? extractSlots(message) : {};
   let flow: TradeFlow = { step: 'strike', marketId };
   const captured: string[] = [];
+  const notes: string[] = [];
+
   if (slots.strikePrice != null) {
-    const c = checkStrike(slots.strikePrice, market, pricer);
+    let c = checkStrike(slots.strikePrice, market, pricer);
+    if (!c.ok && c.kind === 'far') {
+      const alt = marketForStrike(slots.strikePrice, ctx);
+      if (alt) {
+        market = alt.market;
+        pricer = alt.pricer;
+        marketId = market.expiry_market_id;
+        flow = { ...flow, marketId };
+        c = checkStrike(slots.strikePrice, market, pricer);
+        notes.push(`Moved you to the market settling in ${timeLeftLabel(market.expiry, ctx.now)} so $${num(slots.strikePrice, 0)} is in range.`);
+      }
+    }
     if (c.ok) {
       flow = { ...flow, strikePrice: c.strikePrice };
       captured.push(`strike $${num(c.strikePrice, 0)}`);
+    } else {
+      notes.push(`$${num(slots.strikePrice, 0)} is too far from the current price to quote right now, so pick one closer to it.`);
     }
   }
   if (slots.isUp != null) {
@@ -317,6 +346,8 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
     if (c.ok) {
       flow = { ...flow, amount: c.amount };
       captured.push(`$${num(c.amount, 2)} DUSDC`);
+    } else if (c.kind === 'small') {
+      notes.push(`A bet needs to be at least ${minStake()} DUSDC, so I skipped the $${num(slots.amount, 2)} you gave.`);
     }
   }
   if (slots.leverage != null) {
@@ -324,8 +355,8 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
     captured.push(`${num(slots.leverage, 1)}× leverage`);
   }
 
-  // Nothing usable inline → the normal opening question.
-  if (captured.length === 0) {
+  // Nothing usable at all → the normal opening question.
+  if (captured.length === 0 && notes.length === 0) {
     const price = num(nowPrice(ctx, pricer), 0);
     return {
       flow: { step: 'strike', marketId },
@@ -338,10 +369,12 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
     };
   }
 
-  // Inline params → summarize what we caught, then continue to the first missing
-  // slot (or straight to the review if they gave everything).
-  const lead = `Got your setup, ${humanList(captured)}.`;
-  return continueFrom(flow, market, pricer, ctx, lead);
+  // Summarize what we caught (+ any notes about what we couldn't use), then
+  // continue to the first missing slot (or straight to the review).
+  const leadBits: string[] = [];
+  if (captured.length) leadBits.push(`Got your setup, ${humanList(captured)}.`);
+  leadBits.push(...notes);
+  return continueFrom(flow, market, pricer, ctx, leadBits.join(' '));
 }
 
 /** Feed the trader's reply into the active wizard and get the next question (or

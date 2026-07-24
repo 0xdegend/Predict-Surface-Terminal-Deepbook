@@ -517,12 +517,24 @@ describe('respondToIntent — explain (glossary)', () => {
 });
 
 describe('respondToIntent — best value', () => {
-  const CLOSES = Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)); // steady upward drift
+  const CLOSES = Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)); // long history + drift → a real edge
 
-  it('with price history → a value read (highlights a strike, or says nothing stands out)', () => {
+  it('with a real edge → loads a concrete bet on that market (not just a highlight)', () => {
     const r = respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: CLOSES }));
     expect(r.text.join(' ')).toMatch(/value/i);
-    if (r.highlight) expect(r.highlight.marketId).toBe('m-soon');
+    expect(r.bet).toBeDefined();
+    expect(r.bet!.marketId).toBe('m-soon');
+  });
+
+  it('no clear edge → still loads a solid safe bet instead of dead-ending (the "recommend me a trade" ask)', () => {
+    // 60 closes clears the length gate but sits below the empirical sample floor,
+    // so no strike qualifies as value → the fair-market fallback fires and must
+    // still hand back a concrete, loadable bet.
+    const thin = Array.from({ length: 60 }, () => 65_000);
+    const r = respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: thin }));
+    expect(r.bet).toBeDefined();
+    expect(r.bet!.conviction).toBe('safe');
+    expect(r.bet!.marketId).toBe('m-soon');
   });
 
   it('without price history → asks to wait', () => {
@@ -602,6 +614,7 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'explain', topic: 'fees' }, ctx()),
       respondToIntent({ kind: 'explain', topic: 'predict' }, ctx()),
       respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)) })),
+      respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: Array.from({ length: 60 }, () => 65_000) })), // fair-market fallback branch
       respondToIntent({ kind: 'adjust_ticket', stake: 20, leverage: 2 }, ctx({ selection: { marketId: 'm-soon', strikePrice: 65_000, isUp: true, stake: 5, leverage: 1 } })),
       respondToIntent({ kind: 'help' }, ctx()),
     ];
