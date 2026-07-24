@@ -143,8 +143,12 @@ export function extractSlots(message: string): FlowSlots {
     t.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:dusdc|usdc|usd|dollars?)\b/);
   if (amt) slots.amount = parseFloat(amt[1].replace(/,/g, ''));
 
-  // Strike — "strike 66,000", "strike of 66k", "price 66000", "target 66k".
-  const strike = t.match(/\b(?:strike|price|target|level)\s*(?:of|is|=|:|at)?\s*\$?(\d[\d,]*(?:\.\d+)?)\s*(k)?/);
+  // Strike — the keyword may come BEFORE the number ("strike 66,000", "price 66k")
+  // or AFTER it ("64,850 as my strike", "66k target"). Try both orders; group 1 is
+  // always the number and group 2 the optional "k" in either pattern.
+  const strike =
+    t.match(/\b(?:strike|price|target|level)\s*(?:of|is|=|:|at)?\s*\$?(\d[\d,]*(?:\.\d+)?)\s*(k)?/) ??
+    t.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(k)?\s*(?:as\s+(?:my|the|a)\s+)?(?:strike|price|target|level)\b/);
   if (strike) {
     let n = parseFloat(strike[1].replace(/,/g, ''));
     if (strike[2] === 'k') n *= 1000;
@@ -201,7 +205,7 @@ function questionFor(step: FlowStep, market: V2Market, pricer: LivePricer, ctx: 
   switch (step) {
     case 'strike': {
       const price = num(nowPrice(ctx, pricer), 0);
-      return [`What price do you want to bet on? BTC is around $${price} now — type a strike, e.g. ${price}.`];
+      return [`What price do you want to bet on? BTC is around $${price} now. Type a strike, e.g. ${price}.`];
     }
     case 'direction':
       return [`Do you think BTC will settle ABOVE or BELOW $${num(flow.strikePrice ?? 0, 0)} when the market closes?`];
@@ -210,7 +214,7 @@ function questionFor(step: FlowStep, market: V2Market, pricer: LivePricer, ctx: 
     case 'leverage': {
       const maxLev = maxLeverageFor(flow.strikePrice!, flow.isUp!, market, pricer);
       return [
-        'Last thing — your leverage.',
+        'Last thing. Your leverage.',
         `Pick anywhere from 1× up to ${num(maxLev, 1)}× for this strike. Higher leverage pays more, but the bet can be closed early for a loss if the price moves against you. (Type 1 for no leverage.)`,
       ];
     }
@@ -256,7 +260,7 @@ function buildReview(flow: TradeFlow, market: V2Market, pricer: LivePricer, ctx:
   return {
     flow: { step: 'review', marketId: market.expiry_market_id, ...f },
     reply: {
-      text: [...pre, "Here's your trade — check it over, then tap Trade it to place it (or Edit to change something)."],
+      text: [...pre, "Here's your trade. Check it over, then tap Trade it to place it (or Edit to change something)."],
       bet: reviewBet(f, market, pricer, ctx.now),
     },
   };
@@ -286,7 +290,7 @@ function humanList(items: string[]): string {
 export function startFlow(ctx: FlowContext, message?: string): FlowResult {
   const { cand } = resolveMarket(ctx, {});
   if (!cand) {
-    return { flow: null, reply: { text: ["There's no live market to trade right now — check back in a moment."] } };
+    return { flow: null, reply: { text: ["There's no live market to trade right now. Check back in a moment."] } };
   }
   const { market, pricer } = cand;
   const marketId = market.expiry_market_id;
@@ -328,7 +332,7 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
       reply: {
         text: [
           `Let's build your trade on the market settling in ${timeLeftLabel(market.expiry, ctx.now)}.`,
-          `What price do you want to bet on? BTC is around $${price} now — type a strike, e.g. ${price}.`,
+          `What price do you want to bet on? BTC is around $${price} now. Type a strike, e.g. ${price}.`,
         ],
       },
     };
@@ -336,7 +340,7 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
 
   // Inline params → summarize what we caught, then continue to the first missing
   // slot (or straight to the review if they gave everything).
-  const lead = `Got your setup — ${humanList(captured)}.`;
+  const lead = `Got your setup, ${humanList(captured)}.`;
   return continueFrom(flow, market, pricer, ctx, lead);
 }
 
@@ -345,18 +349,18 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
  *  the pinned one is about to close. */
 export function advanceFlow(flow: TradeFlow, message: string, ctx: FlowContext): FlowResult {
   if (CANCEL.test(message.toLowerCase())) {
-    return { flow: null, reply: { text: ['Okay, cancelled — no trade set up. Ask me anything else whenever you like.'] } };
+    return { flow: null, reply: { text: ['Okay, cancelled. No trade set up. Ask me anything else whenever you like.'] } };
   }
   const { cand, switched } = resolveMarket(ctx, flow);
   if (!cand) {
-    return { flow: null, reply: { text: ["That market closed and there isn't another open right now — say “set up a trade” to try again in a moment."] } };
+    return { flow: null, reply: { text: ["That market closed and there isn't another open right now. Say “set up a trade” to try again in a moment."] } };
   }
   const { market, pricer } = cand;
   const marketId = market.expiry_market_id;
 
   // A market hop carries the slots over (they're prices/amounts) but re-prices
   // everything against the fresher market — announce it so the odds make sense.
-  const note = switched ? `Heads up — that market was about to close, so I moved you to the next one (it settles in ${timeLeftLabel(market.expiry, ctx.now)}).` : null;
+  const note = switched ? `Heads up. That market was about to close, so I moved you to the next one (it settles in ${timeLeftLabel(market.expiry, ctx.now)}).` : null;
   const withNote = (r: FlowResult): FlowResult => (note ? { ...r, reply: { ...r.reply, text: [note, ...r.reply.text] } } : r);
   const reAsk = (text: string[]): FlowResult => withNote({ flow: { ...flow, marketId }, reply: { text } });
 
@@ -370,7 +374,7 @@ export function advanceFlow(flow: TradeFlow, message: string, ctx: FlowContext):
             : `$${num(c.snapped, 0)} is too far from the current price to trade here. Try something within a few hundred dollars of $${num(nowPrice(ctx, pricer), 0)}.`,
         ]);
       }
-      return withNote(continueFrom({ ...flow, marketId, strikePrice: c.strikePrice }, market, pricer, ctx, `Got it — $${num(c.strikePrice, 0)}.`));
+      return withNote(continueFrom({ ...flow, marketId, strikePrice: c.strikePrice }, market, pricer, ctx, `Got it, $${num(c.strikePrice, 0)}.`));
     }
 
     case 'direction': {

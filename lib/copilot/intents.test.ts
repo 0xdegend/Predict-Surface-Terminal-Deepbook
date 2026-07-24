@@ -101,6 +101,16 @@ describe('parseIntent', () => {
     expect(parseIntent('analyse the market').kind).toBe('analyze');
   });
 
+  it('"analyse 64,500 strike" carries the named price (reads THAT strike, not the selected one)', () => {
+    expect(parseIntent('Analyse 64,500 strike for me')).toMatchObject({ kind: 'analyze_strike', price: 64500 });
+    expect(parseIntent('analyze the 65k strike')).toMatchObject({ kind: 'analyze_strike', price: 65000 });
+    expect(parseIntent('read the 66,200 down strike')).toMatchObject({ kind: 'analyze_strike', price: 66200, dir: 'down' });
+    // "analyse this strike" (no number) still routes there, with no price.
+    const bare = parseIntent('analyze this strike');
+    expect(bare.kind).toBe('analyze_strike');
+    expect((bare as { price?: number }).price).toBeUndefined();
+  });
+
   it('a clear single direction still wins over a recommendation ask', () => {
     // "should I take a safe up bet?" has one side → it's a bet, not a steer.
     expect(parseIntent('should I take a safe up bet?')).toMatchObject({ kind: 'directional_bet', dir: 'up' });
@@ -172,6 +182,14 @@ describe('parseIntent', () => {
     expect(parseIntent('is the surface arbitrage free').kind).toBe('no_arb');
   });
 
+  it('"how volatile is the surface right now" → volatility (not no_arb via "right now")', () => {
+    expect(parseIntent('How volatile is the surface right now?').kind).toBe('volatility');
+    expect(parseIntent('is BTC volatile right now').kind).toBe('volatility');
+    // The "is the surface right?" (correct) sense still routes to the no-arb check.
+    expect(parseIntent('is the surface right').kind).toBe('no_arb');
+    expect(parseIntent('is the surface healthy').kind).toBe('no_arb');
+  });
+
   it('"find/show me the $X strike" → find_strike (locate it), with the price', () => {
     expect(parseIntent('Find me the 64,730 strike on the surface?')).toMatchObject({ kind: 'find_strike', price: 64730 });
     expect(parseIntent('show me 65,200 on the surface')).toMatchObject({ kind: 'find_strike', price: 65200 });
@@ -184,6 +202,26 @@ describe('parseIntent', () => {
     // No price → not a find; "most volume on the surface" stays busiest_strike.
     expect(parseIntent('find me a safe up bet').kind).not.toBe('find_strike');
     expect(parseIntent('where is the most volume on the surface').kind).toBe('busiest_strike');
+  });
+
+  it('a chance question carries a time horizon (soon vs today vs an hour)', () => {
+    expect(parseIntent('what is the chance BTC is above 65k soon')).toMatchObject({ kind: 'odds', horizon: 'soonest' });
+    expect(parseIntent('what is the chance BTC is above 65k today')).toMatchObject({ kind: 'odds', horizon: 'today' });
+    expect(parseIntent('odds BTC is above 65,000 in a few hours')).toMatchObject({ kind: 'odds', horizon: 'today' });
+    expect(parseIntent('chance BTC is above 65k in the next hour')).toMatchObject({ kind: 'odds', horizon: 'hour' });
+    // no time word → the soonest market
+    expect(parseIntent('what are the odds BTC is above 65k')).toMatchObject({ kind: 'odds', horizon: 'soonest' });
+  });
+
+  it('"pick / search / choose / select the $X strike" also → find_strike', () => {
+    expect(parseIntent('Pick 65,965 strike for me on the surface')).toMatchObject({ kind: 'find_strike', price: 65965 });
+    expect(parseIntent('Search for 65,965 strike on the surface')).toMatchObject({ kind: 'find_strike', price: 65965 });
+    expect(parseIntent('choose the 64,500 strike')).toMatchObject({ kind: 'find_strike', price: 64500 });
+    expect(parseIntent('select 66k on the surface')).toMatchObject({ kind: 'find_strike', price: 66000 });
+    // A soft verb with NO strike is not a find (falls through to its real intent).
+    expect(parseIntent('pick a safe up bet').kind).not.toBe('find_strike');
+    // A sizing token means it's a trade SETUP → wizard, not a locate.
+    expect(parseIntent('pick strike 66000 at 2x').kind).toBe('start_trade');
   });
 
   it('"which strike has the most volume" → busiest_strike, scoped by a now-cue', () => {
@@ -299,6 +337,17 @@ describe('parseIntent', () => {
     expect(parseIntent('close all')).toMatchObject({ kind: 'close_position', all: true });
     // "close" as an adjective is NOT a close request.
     expect(parseIntent('how close is BTC to 65k').kind).not.toBe('close_position');
+  });
+
+  it('"clear that position" → close_position (the LOST-bet verb)', () => {
+    expect(parseIntent('clear that position').kind).toBe('close_position');
+    expect(parseIntent('clear my down bet')).toMatchObject({ kind: 'close_position', dir: 'down' });
+    expect(parseIntent('clear it').kind).toBe('close_position');
+    expect(parseIntent('clear the 64,850 one')).toMatchObject({ kind: 'close_position', strike: 64850 });
+    expect(parseIntent('clear all')).toMatchObject({ kind: 'close_position', all: true });
+    // "clear" as an adjective / non-action is NOT a close request.
+    expect(parseIntent('is that clear').kind).not.toBe('close_position');
+    expect(parseIntent('that makes it clear').kind).not.toBe('close_position');
   });
 });
 

@@ -122,10 +122,30 @@ export function timeLeftLabel(expiry: number, now: number): string {
   return hr === 1 ? 'about an hour' : `about ${hr} hours`;
 }
 
+/** A bare duration for "over the next ___" phrasing: "minute", "4 minutes",
+ *  "hour", "3 hours". ("about a minute" / "under a minute" don't fit there.) */
+function windowLabel(expiry: number, now: number): string {
+  const min = Math.max(1, Math.round(Math.max(0, expiry - now) / 60_000));
+  if (min < 45) return min === 1 ? 'minute' : `${min} minutes`;
+  const hr = Math.round(min / 60);
+  return hr === 1 ? 'hour' : `${hr} hours`;
+}
+
+/** An adjective for "this ___ market": "1-minute", "4-minute", "1-hour", "3-hour". */
+function windowAdj(expiry: number, now: number): string {
+  const min = Math.max(1, Math.round(Math.max(0, expiry - now) / 60_000));
+  return min < 45 ? `${min}-minute` : `${Math.round(min / 60)}-hour`;
+}
+
 /** Pick the market a horizon points at, from those we can price. */
 function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now: number): BetCandidate | null {
   const open = candidates.filter((c) => c.market.expiry > now);
   if (open.length === 0) return null;
+  if (horizon === 'today') {
+    // The longest window we can price — the best available answer for "today" /
+    // "in a few hours" on a venue whose listed markets are short.
+    return open.reduce((best, c) => (c.market.expiry > best.market.expiry ? c : best));
+  }
   if (horizon === 'hour') {
     const target = now + 3_600_000;
     return open.reduce((best, c) =>
@@ -140,7 +160,7 @@ const convictionLead: Record<Conviction, string> = { safe: 'a safer', even: 'an 
 function analyzeReply(ctx: CopilotContext): CopilotReply {
   const read = buildMarketRead({ ctx: ctx.insights, strike: null, isUp: true, strikePrice: null, spot: ctx.insights?.spot ?? null });
   if (!read) {
-    return { text: ["I can't reach the live market data right now — give it a moment and ask again."] };
+    return { text: ["I can't reach the live market data right now. Give it a moment and ask again."] };
   }
   const text = [read.headline, ...read.lines.map((l) => l.text)];
   const soonest = pickCandidate(ctx.candidates, 'soonest', ctx.now);
@@ -156,7 +176,7 @@ function analyzeReply(ctx: CopilotContext): CopilotReply {
 function nextMarketReply(ctx: CopilotContext): CopilotReply {
   const cand = pickCandidate(ctx.candidates, 'soonest', ctx.now);
   if (!cand) {
-    return { text: ["There's no live market right now — a new one opens about every minute, so check back in a moment."] };
+    return { text: ["There's no live market right now. A new one opens about every minute, so check back in a moment."] };
   }
   const { market, pricer } = cand;
   return {
@@ -180,7 +200,7 @@ function targetProbFor(conviction: Conviction, target?: BetTarget): number {
 function betReply(dir: BetDirection, conviction: Conviction, horizon: Horizon, ctx: CopilotContext, target?: BetTarget): CopilotReply {
   const cand = pickCandidate(ctx.candidates, horizon, ctx.now);
   if (!cand) {
-    return { text: ["There's no live market to bet on right now — check back in a moment and I'll set one up."] };
+    return { text: ["There's no live market to bet on right now. Check back in a moment and I'll set one up."] };
   }
   const { market, pricer } = cand;
   const isUp = dir === 'up';
@@ -196,13 +216,13 @@ function betReply(dir: BetDirection, conviction: Conviction, horizon: Horizon, c
 
   const text = [
     `Here's ${convictionLead[conv]} ${dir.toUpperCase()} bet on the market settling ${label}.`,
-    `It wins if BTC is ${isUp ? 'above' : 'below'} $${num(strikePrice, 0)} at the end — it's around $${num(nowPrice(ctx, pricer), 0)} now.`,
+    `It wins if BTC is ${isUp ? 'above' : 'below'} $${num(strikePrice, 0)} at the end. It's around $${num(nowPrice(ctx, pricer), 0)} now.`,
     `The odds work out to about ${pct(prob, 0)}, and it pays about ${payoutMult.toFixed(2)}× your stake if it wins.`,
   ];
   const stance = directionStance(ctx.insights, isUp);
   if (stance === 'aligned') text.push('Good sign: the wider market is leaning the same way right now.');
   else if (stance === 'against') text.push('Worth knowing: the wider market is leaning against this right now.');
-  text.push('I’ve marked it on the surface — tap “Place this bet” to open your ticket and trade it.');
+  text.push('I’ve marked it on the surface. Tap “Place this bet” to open your ticket and trade it.');
 
   return {
     text,
@@ -213,14 +233,27 @@ function betReply(dir: BetDirection, conviction: Conviction, horizon: Horizon, c
 /** "What are the odds at $X / of a Y% move?" — quote the chance + payout off the
  *  live surface. A move (or an explicit side) shows one side and loads a bet; a
  *  bare strike shows BOTH sides and lets the trader pick. */
-function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: CopilotContext): CopilotReply {
-  const cand = pickCandidate(ctx.candidates, 'soonest', ctx.now);
+function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: CopilotContext, horizonArg?: Horizon): CopilotReply {
+  // "soon"/"now"/no qualifier reads the soonest (~1-minute) market; "today"/"in a
+  // few hours" reads the longest market we list, so a strike that's out of reach in
+  // a minute gets a real chance over the longer window.
+  const horizon = horizonArg ?? 'soonest';
+  const cand = pickCandidate(ctx.candidates, horizon, ctx.now);
   if (!cand) {
-    return { text: ["There's no live market to price right now — check back in a moment and ask again."] };
+    return { text: ["There's no live market to price right now. Check back in a moment and ask again."] };
   }
   const { market, pricer } = cand;
   const label = timeLeftLabel(market.expiry, ctx.now);
   const spotNow = ctx.spot ?? pricer.forward;
+  // If the trader asked about a longer window than we actually list, say which
+  // window we're really pricing, so "today" doesn't silently become a short answer.
+  const minsLeft = (market.expiry - ctx.now) / 60_000;
+  const windowNote =
+    horizon === 'today' && minsLeft < 45
+      ? `The longest market I can price right now settles in ${label}, so that's the window here. `
+      : horizon === 'hour' && minsLeft < 30
+        ? `The market nearest an hour out settles in ${label}, so that's what I'm using. `
+        : '';
 
   // Resolve the level to an absolute, admission-snapped strike.
   let rawStrike: number;
@@ -238,21 +271,39 @@ function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: Copilot
   if (up <= 0.005 || up >= 0.995) {
     return {
       text: [
-        `$${num(strike, 0)} is so far from the current $${num(spotNow, 0)} that it's almost ${up >= 0.5 ? 'certain' : 'impossible'} on this ${label} market — too lopsided to price. Try a level closer to $${num(spotNow, 0)}.`,
+        `${windowNote}$${num(strike, 0)} is so far from the current $${num(spotNow, 0)} that it's almost ${up >= 0.5 ? 'certain' : 'impossible'} even on this ${windowAdj(market.expiry, ctx.now)} market. Too lopsided to price. Try a level closer to $${num(spotNow, 0)}.`,
       ],
     };
   }
 
-  // A % move (or an explicit side) → one side + a loadable bet.
+  // A % move (or an explicit side) → one side, the FULL read (surface odds + the
+  // empirical base rate + the Clawby market context → a verdict) + a loadable bet.
   if (level.kind === 'move' || dir) {
     const isUp = (dir ?? 'up') === 'up';
     const prob = isUp ? up : 1 - up;
     const payoutMult = payoutMultiple(prob);
+    const text: string[] = [
+      `${windowNote}The chance BTC settles ${isUp ? 'above' : 'at or below'} $${num(strike, 0)}${moveNote} in ${label} is about ${pct(prob, 0)}. A winning bet pays about ${payoutMult.toFixed(2)}× your stake.`,
+    ];
+
+    // Past history: how often BTC has ACTUALLY landed there, plus a plain verdict.
+    const minutesToExpiry = Math.max(1, Math.round((market.expiry - ctx.now) / 60_000));
+    if (ctx.closes && ctx.closes.length >= 30) {
+      const a = analyzeStrike({ closes: ctx.closes, spot: spotNow, strike, isUp, minutesToExpiry, impliedProb: prob });
+      if (a?.empirical) {
+        text.push(`Looking back, it's actually landed there about ${pct(a.empirical.prob, 0)} of the time across ${a.empirical.samples.toLocaleString()} past ${minutesToExpiry}-minute windows.`);
+        text.push(strikeVerdict(a).text);
+      }
+    }
+
+    // Clawby market context leaning for/against this side.
+    const stance = directionStance(ctx.insights, isUp);
+    if (stance === 'aligned') text.push('The wider market (funding, sentiment, recent liquidations) is leaning the same way, a small tailwind.');
+    else if (stance === 'against') text.push('Worth knowing: the wider market (funding, sentiment, recent liquidations) is leaning against this side right now.');
+
+    text.push('Not financial advice. I’ve marked it on the surface. Tap “Place this bet” to load it.');
     return {
-      text: [
-        `The chance BTC settles ${isUp ? 'above' : 'at or below'} $${num(strike, 0)}${moveNote} in ${label} is about ${pct(prob, 0)}.`,
-        `A winning bet pays about ${payoutMult.toFixed(2)}× your stake. I've marked it on the surface — tap "Place this bet" to load it.`,
-      ],
+      text,
       bet: {
         marketId: market.expiry_market_id,
         expiry: market.expiry,
@@ -270,9 +321,9 @@ function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: Copilot
   // Bare strike, no side → show both sides and let them pick.
   return {
     text: [
-      `At $${num(strike, 0)}, settling in ${label}:`,
-      `Above — about ${pct(up, 0)} chance, pays ~${payoutMultiple(up).toFixed(2)}×.`,
-      `At or below — about ${pct(1 - up, 0)} chance, pays ~${payoutMultiple(1 - up).toFixed(2)}×.`,
+      `${windowNote}At $${num(strike, 0)}, settling in ${label}:`,
+      `Above: about ${pct(up, 0)} chance, pays ~${payoutMultiple(up).toFixed(2)}×.`,
+      `At or below: about ${pct(1 - up, 0)} chance, pays ~${payoutMultiple(1 - up).toFixed(2)}×.`,
       `Want one? Say “up bet” or “down bet”, or “set up a trade” to fix that exact strike.`,
     ],
   };
@@ -280,7 +331,7 @@ function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: Copilot
 
 /* --------------------- surface-native analysis (Z / Y / shape) ----------- */
 
-const NO_MARKET: CopilotReply = { text: ["There's no live market to read right now — check back in a moment and ask again."] };
+const NO_MARKET: CopilotReply = { text: ["There's no live market to read right now. Check back in a moment and ask again."] };
 
 /** "How often has BTC actually moved that much?" — the surface's implied chance
  *  vs the empirical base rate from the recent price tape (the credibility flex).
@@ -290,7 +341,7 @@ function realityCheckReply(level: OddsLevel | undefined, dir: BetDirection | und
   if (!cand) return NO_MARKET;
   const closes = ctx.closes;
   if (!closes || closes.length < 30) {
-    return { text: ["I don't have enough price history loaded yet to check that — give it a moment and ask again."] };
+    return { text: ["I don't have enough price history loaded yet to check that. Give it a moment and ask again."] };
   }
   const { market, pricer } = cand;
   const label = timeLeftLabel(market.expiry, ctx.now);
@@ -306,7 +357,7 @@ function realityCheckReply(level: OddsLevel | undefined, dir: BetDirection | und
   const implied = directionFair(strike, pricer.forward, pricer.svi, isUp);
   const a = analyzeStrike({ closes, spot: spotNow, strike, isUp, minutesToExpiry, impliedProb: implied });
   if (!a || !a.empirical) {
-    return { text: [`I couldn't find enough past ${minutesToExpiry}-minute windows to judge a move to $${num(strike, 0)} — try a smaller move or a nearer strike.`] };
+    return { text: [`I couldn't find enough past ${minutesToExpiry}-minute windows to judge a move to $${num(strike, 0)}. Try a smaller move or a nearer strike.`] };
   }
   const verdict = strikeVerdict(a); // plain-language, no jargon
   return {
@@ -314,7 +365,7 @@ function realityCheckReply(level: OddsLevel | undefined, dir: BetDirection | und
       `Settling ${isUp ? 'above' : 'at or below'} $${num(strike, 0)} (a ${signed(a.requiredMovePct, 2)}% move from ~$${num(spotNow, 0)}) in ${label}: the surface prices it at about ${pct(implied, 0)}.`,
       `Looking back, BTC has actually landed there about ${pct(a.empirical.prob, 0)} of the time across ${a.empirical.samples.toLocaleString()} past ${minutesToExpiry}-minute windows.`,
       verdict.text,
-      'Not financial advice — history is a guide, not a guarantee. Want it? Say “up bet” / “down bet”, or “set up a trade”.',
+      'Not financial advice. History is a guide, not a guarantee. Want it? Say “up bet” / “down bet”, or “set up a trade”.',
     ],
   };
 }
@@ -323,7 +374,7 @@ function realityCheckReply(level: OddsLevel | undefined, dir: BetDirection | und
  *  is on: the surface's odds + payout, the recent reality check, and the Clawby
  *  market context for that side. Falls back to the at-the-money strike on the
  *  soonest market when nothing's selected yet. */
-function analyzeStrikeReply(ctx: CopilotContext): CopilotReply {
+function analyzeStrikeReply(ctx: CopilotContext, price?: number, dir?: BetDirection): CopilotReply {
   const sel = ctx.selection;
   const cand =
     (sel && ctx.candidates.find((c) => c.market.expiry_market_id === sel.marketId)) ??
@@ -332,25 +383,30 @@ function analyzeStrikeReply(ctx: CopilotContext): CopilotReply {
   const { market, pricer } = cand;
   const label = timeLeftLabel(market.expiry, ctx.now);
   const spotNow = ctx.spot ?? pricer.forward;
-  const isUp = sel ? sel.isUp : true;
 
-  // The strike being looked at: the selected one if set, else at-the-money.
-  const rawStrike = sel && sel.strikePrice > 0 ? sel.strikePrice : spotNow;
+  // The strike being looked at: a strike the trader NAMED wins, else the selected
+  // one, else at-the-money.
+  const rawStrike = price != null && price > 0 ? price : sel && sel.strikePrice > 0 ? sel.strikePrice : spotNow;
   const strike = toFloat(snapStrikeToAdmission(fromFloat(rawStrike), market.admission_tick_size));
+  // Direction: an explicit up/down wins; else the current selection's side (when
+  // reading "this" strike); else default to the more-likely side of a named strike.
+  const isUp = dir != null ? dir === 'up' : price == null && sel ? sel.isUp : strike <= spotNow;
+  // When the trader named a specific strike, light it up on the surface too.
+  const highlight = price != null && price > 0 ? { marketId: market.expiry_market_id, strikePrice: strike, isUp } : undefined;
+
   const up = upFair(strike, pricer.forward, pricer.svi);
   if (up <= 0.005 || up >= 0.995) {
-    return {
-      text: [
-        `$${num(strike, 0)} is so far from the current $${num(spotNow, 0)} that it's almost ${up >= 0.5 ? 'certain' : 'impossible'} on this ${label} market — too lopsided to read. Pick a strike nearer $${num(spotNow, 0)}.`,
-      ],
-    };
+    const text = [
+      `$${num(strike, 0)} is so far from the current $${num(spotNow, 0)} that it's almost ${up >= 0.5 ? 'certain' : 'impossible'} on this ${windowAdj(market.expiry, ctx.now)} market. Too lopsided to read. Pick a strike nearer $${num(spotNow, 0)}.`,
+    ];
+    return highlight ? { text, highlight } : { text };
   }
   const prob = isUp ? up : 1 - up;
   const payoutMult = payoutMultiple(prob);
   const movePct = spotNow > 0 ? ((strike - spotNow) / spotNow) * 100 : 0;
 
   const text: string[] = [
-    `Looking at ${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)} on the market settling ${label} — BTC is around $${num(spotNow, 0)} now (${signed(movePct, 2)}% away).`,
+    `Looking at ${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)} on the market settling in ${label}, BTC is around $${num(spotNow, 0)} now (${signed(movePct, 2)}% away).`,
     `The surface prices it at about ${pct(prob, 0)} to win, paying ~${payoutMult.toFixed(2)}× your stake.`,
   ];
 
@@ -368,12 +424,12 @@ function analyzeStrikeReply(ctx: CopilotContext): CopilotReply {
 
   // Clawby market context for this side.
   const stance = directionStance(ctx.insights, isUp);
-  if (stance === 'aligned') text.push('The wider market (funding, sentiment, recent liquidations) is leaning the same way — a small tailwind for this side.');
+  if (stance === 'aligned') text.push('The wider market (funding, sentiment, recent liquidations) is leaning the same way, a small tailwind for this side.');
   else if (stance === 'against') text.push('Worth knowing: the wider market (funding, sentiment, recent liquidations) is leaning against this side right now.');
   else if (ctx.insights?.available) text.push("The wider market isn't leaning strongly either way right now.");
 
-  text.push('Not financial advice — just how the surface and the data read. Want it? Say “set up a trade”, or place it from the ticket.');
-  return { text };
+  text.push('Not financial advice. Just how the surface and the data read. Want it? Say “set up a trade”, or place it from the ticket.');
+  return highlight ? { text, highlight } : { text };
 }
 
 /** "Find / show me the $X strike on the surface" — snap it to a real tradeable
@@ -398,7 +454,7 @@ function findStrikeReply(price: number, dir: BetDirection | undefined, ctx: Copi
   if (up <= 0.005 || up >= 0.995) {
     return {
       text: [
-        `Here's $${num(strike, 0)}${snapNote} — I've highlighted it on the surface. It's ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}, so far out it's almost ${up >= 0.5 ? 'certain' : 'a long shot'} on this ${label} market.`,
+        `Here's $${num(strike, 0)}${snapNote}, I've highlighted it on the surface. It's ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}, so far out it's almost ${up >= 0.5 ? 'certain' : 'a long shot'} on this ${label} market.`,
         'Pick a strike nearer the current price for a tradeable bet, or say “analyze this strike”.',
       ],
       highlight,
@@ -406,8 +462,8 @@ function findStrikeReply(price: number, dir: BetDirection | undefined, ctx: Copi
   }
   return {
     text: [
-      `Found it — $${num(strike, 0)}${snapNote}, ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}. I've highlighted it on the surface for the market settling ${label}.`,
-      `Above — about ${pct(up, 0)} chance, pays ~${payoutMultiple(up).toFixed(2)}×. At or below — about ${pct(1 - up, 0)} chance, pays ~${payoutMultiple(1 - up).toFixed(2)}×.`,
+      `Found it, $${num(strike, 0)}${snapNote}, ${signed(movePct, 2)}% from the current $${num(spotNow, 0)}. I've highlighted it on the surface for the market settling ${label}.`,
+      `Above: about ${pct(up, 0)} chance, pays ~${payoutMultiple(up).toFixed(2)}×. At or below: about ${pct(1 - up, 0)} chance, pays ~${payoutMultiple(1 - up).toFixed(2)}×.`,
       'Say “up bet” or “down bet” to trade it, or “analyze this strike” for the full read.',
     ],
     highlight,
@@ -429,13 +485,13 @@ function adjustReply(adj: { stake?: number; leverage?: number; strike?: number; 
 
   const haveStrike = adj.strike != null || (sel?.strikePrice != null && sel.strikePrice > 0);
   if (!haveStrike) {
-    return { text: ['Set up a bet first and I’ll tweak it from there — say “safe up bet” or “set up a trade”, then tell me to change the amount, leverage, strike, or side.'] };
+    return { text: ['Set up a bet first and I’ll tweak it from there. Say “safe up bet” or “set up a trade”, then tell me to change the amount, leverage, strike, or side.'] };
   }
   const isUp = adj.flip ? !(sel?.isUp ?? true) : adj.dir ? adj.dir === 'up' : (sel?.isUp ?? true);
   const strike = toFloat(snapStrikeToAdmission(fromFloat(adj.strike ?? sel!.strikePrice), market.admission_tick_size));
   const entryProb = directionFair(strike, pricer.forward, pricer.svi, isUp);
   if (entryProb <= 0.005 || entryProb >= 0.995) {
-    return { text: [`$${num(strike, 0)} is too far from the current $${num(spotNow, 0)} to trade on this market — pick a strike nearer the price.`] };
+    return { text: [`$${num(strike, 0)} is too far from the current $${num(spotNow, 0)} to trade on this market. Pick a strike nearer the price.`] };
   }
   const stake = adj.stake ?? sel?.stake ?? 5;
   const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
@@ -453,8 +509,8 @@ function adjustReply(adj: { stake?: number; leverage?: number; strike?: number; 
 
   return {
     text: [
-      `Updated — ${changed.join(', ') || 'your bet'}${capNote}.`,
-      `${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)}, $${num(stake, 0)} at ${num(leverage, 1)}× — about ${pct(entryProb, 0)} to win, could win ~$${num(win, 0)}.`,
+      `Updated, ${changed.join(', ') || 'your bet'}${capNote}.`,
+      `${isUp ? 'UP' : 'DOWN'} $${num(strike, 0)}, $${num(stake, 0)} at ${num(leverage, 1)}×. About ${pct(entryProb, 0)} to win, could win ~$${num(win, 0)}.`,
       'Say “trade it” to place it, or tell me another change.',
     ],
     bet: {
@@ -485,9 +541,8 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
   const { market, pricer } = cand;
   const closes = ctx.closes;
   if (!closes || closes.length < 30) {
-    return { text: ["I need a bit more price history to judge value — give it a moment and ask again."] };
+    return { text: ["I need a bit more price history to judge value. Give it a moment and ask again."] };
   }
-  const label = timeLeftLabel(market.expiry, ctx.now);
   const spotNow = ctx.spot ?? pricer.forward;
   const minutesToExpiry = Math.max(1, Math.round((market.expiry - ctx.now) / 60_000));
 
@@ -515,16 +570,16 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
   if (!best || best.value <= 0.03) {
     return {
       text: [
-        "Nothing jumps out as clear value on this market right now — the surface is pricing moves about as often as they've actually happened lately. That's a fair, efficient market.",
+        "Nothing jumps out as clear value on this market right now. The surface is pricing moves about as often as they've actually happened lately. That's a fair, efficient market.",
         'If you just want a solid bet, say “safe up bet”; or ask me to “analyze this strike”.',
       ],
     };
   }
   return {
     text: [
-      `Best value I can find on the ${label} market: ${best.isUp ? 'UP' : 'DOWN'} $${num(best.strike, 0)}.`,
-      `The surface gives it about ${pct(best.implied, 0)} to win (pays ~${payoutMultiple(best.implied).toFixed(2)}×), but across the last ${best.samples.toLocaleString()} similar ${minutesToExpiry}-minute windows BTC actually landed there about ${pct(best.empirical, 0)} of the time — better odds than the price is asking for.`,
-      'Not financial advice, and past moves are only a guide. I’ve highlighted it on the surface — say “up bet” / “down bet” to trade it, or “analyze this strike”.',
+      `Best value I can find on the ${windowAdj(market.expiry, ctx.now)} market: ${best.isUp ? 'UP' : 'DOWN'} $${num(best.strike, 0)}.`,
+      `The surface gives it about ${pct(best.implied, 0)} to win (pays ~${payoutMultiple(best.implied).toFixed(2)}×), but across the last ${best.samples.toLocaleString()} similar ${minutesToExpiry}-minute windows BTC actually landed there about ${pct(best.empirical, 0)} of the time. Better odds than the price is asking for.`,
+      'Not financial advice, and past moves are only a guide. I’ve highlighted it on the surface. Say “up bet” / “down bet” to trade it, or “analyze this strike”.',
     ],
     highlight: { marketId: market.expiry_market_id, strikePrice: best.strike, isUp: best.isUp },
   };
@@ -532,21 +587,50 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
 
 /** "How big a move is priced in?" — the ATM ±1σ band over the tenor (kept in
  *  concrete $/% terms; we don't annualize, which is meaningless on a 1-min tenor). */
+/** BTC's recent realized 1σ move over an N-minute tenor, from the 1-minute close
+ *  tape — the yardstick we judge the surface's implied swing against ("is vol
+ *  high?"). Returns a fraction of spot, or null when there isn't enough history. */
+function realizedTenorSigma(closes: number[] | null | undefined, minutes: number): number | null {
+  if (!closes || closes.length < 30) return null;
+  const rets: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i] > 0 && closes[i - 1] > 0) rets.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  if (rets.length < 20) return null;
+  const mean = rets.reduce((s, r) => s + r, 0) / rets.length;
+  const variance = rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length - 1);
+  return Math.sqrt(Math.max(0, variance)) * Math.sqrt(Math.max(1, minutes));
+}
+
 function volatilityReply(ctx: CopilotContext): CopilotReply {
   const cand = pickCandidate(ctx.candidates, 'soonest', ctx.now);
   if (!cand) return NO_MARKET;
   const { market, pricer } = cand;
-  const label = timeLeftLabel(market.expiry, ctx.now);
   const sigma = Math.sqrt(Math.max(0, totalVariance(pricer.forward, pricer.forward, pricer.svi))); // 1σ move to expiry (fraction)
   const spotNow = ctx.spot ?? pricer.forward;
   const moveUsd = spotNow * sigma;
-  return {
-    text: [
-      `Over the next ${label}, the surface is pricing a typical swing of about ±$${num(moveUsd, 0)} (±${pct(sigma, 2)}) by the close.`,
-      `So BTC is roughly 2-in-3 to settle between $${num(spotNow - moveUsd, 0)} and $${num(spotNow + moveUsd, 0)}, and about 19-in-20 within double that. The wider the band, the more a longshot pays.`,
-      'Tell me a direction and I’ll set up a bet, or say “set up a trade”.',
-    ],
-  };
+  const text: string[] = [
+    `Over the next ${windowLabel(market.expiry, ctx.now)}, the surface expects BTC to move about $${num(moveUsd, 0)} up or down (roughly ${pct(sigma, 2)}) by the close.`,
+    `That gives it about a 2 in 3 chance of finishing between $${num(spotNow - moveUsd, 0)} and $${num(spotNow + moveUsd, 0)}. A move bigger than about $${num(moveUsd * 2, 0)} either way would be unusual.`,
+  ];
+
+  // Is that high or calm? Judge the implied swing against BTC's recent realized move.
+  const minutes = Math.max(1, Math.round((market.expiry - ctx.now) / 60_000));
+  const realized = realizedTenorSigma(ctx.closes, minutes);
+  if (realized && realized > 0) {
+    const realizedUsd = spotNow * realized;
+    const ratio = sigma / realized;
+    text.push(
+      ratio > 1.15
+        ? `Right now that is on the high side. The surface expects a bigger move than BTC has actually been making lately, which is about $${num(realizedUsd, 0)} up or down. So expect bigger swings, and bets on a large move pay more.`
+        : ratio < 0.87
+          ? `Right now that is on the calm side. It is smaller than BTC has been moving lately, which is about $${num(realizedUsd, 0)} up or down. So moves look quiet, and the safer bets cost less.`
+          : `That is about the same as BTC has actually been moving lately, around $${num(realizedUsd, 0)} up or down.`,
+    );
+  }
+
+  text.push('Tell me a direction and I’ll set up a bet for you, or say “set up a trade”.');
+  return { text };
 }
 
 /** "Crash or pump?" — compare the priced chance of a 1% drop vs a 1% pop. */
@@ -554,21 +638,20 @@ function skewReply(ctx: CopilotContext): CopilotReply {
   const cand = pickCandidate(ctx.candidates, 'soonest', ctx.now);
   if (!cand) return NO_MARKET;
   const { market, pricer } = cand;
-  const label = timeLeftLabel(market.expiry, ctx.now);
   const f = pricer.forward;
   const d = 0.01; // ±1%
   const pUp = upFair(f * (1 + d), f, pricer.svi); // chance of a ≥1% pop
   const pDown = 1 - upFair(f * (1 - d), f, pricer.svi); // chance of a ≥1% drop
   const ratio = pDown / Math.max(1e-6, pUp);
   const lean =
-    ratio > 1.15 ? 'leaning to the DOWNSIDE — a sharp drop is priced as more likely than an equal-sized pop'
-    : ratio < 0.87 ? 'leaning to the UPSIDE — a sharp pop is priced as more likely than an equal-sized drop'
-    : "roughly balanced — it isn't favoring a crash or a pump";
+    ratio > 1.15 ? 'leaning to the DOWNSIDE. A sharp drop is priced as more likely than an equal-sized pop'
+    : ratio < 0.87 ? 'leaning to the UPSIDE. A sharp pop is priced as more likely than an equal-sized drop'
+    : "roughly balanced. It isn't favoring a crash or a pump";
   return {
     text: [
-      `Over the next ${label}, the surface prices about a ${pct(pDown, 0)} chance of a 1% drop versus ${pct(pUp, 0)} for a 1% pop.`,
+      `Over the next ${windowLabel(market.expiry, ctx.now)}, the surface prices about a ${pct(pDown, 0)} chance of a 1% drop versus ${pct(pUp, 0)} for a 1% pop.`,
       `So it's ${lean}.`,
-      'Not financial advice — just the shape of the odds. Tell me a direction and I’ll set up a bet.',
+      'Not financial advice. Just the shape of the odds. Tell me a direction and I’ll set up a bet.',
     ],
   };
 }
@@ -590,7 +673,7 @@ function termStructureReply(dir: BetDirection | undefined, ctx: CopilotContext):
     text: [
       `Chance of a small (0.5%) ${isUp ? 'up' : 'down'} move from ~$${num(spotNow, 0)}, by each market's close:`,
       ...rows,
-      'Longer markets give a move more time to happen — but as the odds rise, the payout shrinks. Say “set up a trade” to pick one.',
+      'Longer markets give a move more time to happen. But as the odds rise, the payout shrinks. Say “set up a trade” to pick one.',
     ],
   };
 }
@@ -600,7 +683,7 @@ function termStructureReply(dir: BetDirection | undefined, ctx: CopilotContext):
 function noArbReply(ctx: CopilotContext): CopilotReply {
   const inputs = ctx.surfaceInputs;
   if (!inputs || inputs.length < 2) {
-    return { text: ['I need a couple of live expiries to check the surface for mispricings — check back in a moment.'] };
+    return { text: ['I need a couple of live expiries to check the surface for mispricings. Check back in a moment.'] };
   }
   const surface = buildSurface(inputs, { nowMs: ctx.now });
   let butterfly = 0;
@@ -614,7 +697,7 @@ function noArbReply(ctx: CopilotContext): CopilotReply {
   if (butterfly + calendar === 0) {
     return {
       text: [
-        'The surface is clean — no arbitrage violations right now.',
+        'The surface is clean. No arbitrage violations right now.',
         "Every strike's odds fall smoothly as the price target rises, and they line up across expiries, so nothing is mispriced. That's how it should look on live data.",
       ],
     };
@@ -622,8 +705,8 @@ function noArbReply(ctx: CopilotContext): CopilotReply {
   const parts = [butterfly ? `${butterfly} butterfly` : '', calendar ? `${calendar} calendar` : ''].filter(Boolean).join(' and ');
   return {
     text: [
-      `Heads up — I spotted ${parts} spot${butterfly + calendar > 1 ? 's' : ''} where the odds don't line up cleanly.`,
-      "That's almost always a fleeting data blip (a stale feed), not a real free lunch — I'd steer clear of those exact strikes until it settles.",
+      `Heads up, I spotted ${parts} spot${butterfly + calendar > 1 ? 's' : ''} where the odds don't line up cleanly.`,
+      "That's almost always a fleeting data blip (a stale feed), not a real free lunch, I'd steer clear of those exact strikes until it settles.",
     ],
   };
 }
@@ -655,7 +738,7 @@ function recommendationText(rec: Rec, mode: 'lead' | 'close'): string[] {
   if (rec.pick === 'range') {
     const core =
       mode === 'lead'
-        ? "There's no clear direction right now, so rather than pick a side I'd lean to a RANGE bet — you win if BTC stays between two prices you choose."
+        ? "There's no clear direction right now, so rather than pick a side I'd lean to a RANGE bet. You win if BTC stays between two prices you choose."
         : "Bottom line: no clear direction right now, so a RANGE bet (BTC stays between two prices) may fit better than picking a side.";
     return [`${core} That's not financial advice, just how the live data reads.`, recSetupHint(rec)];
   }
@@ -673,7 +756,7 @@ function recommendReply(ctx: CopilotContext): CopilotReply {
   const rec = recommendation(ctx.insights);
   const read = buildMarketRead({ ctx: ctx.insights, strike: null, isUp: true, strikePrice: null, spot: ctx.insights?.spot ?? null });
   if (!rec || !read) {
-    return { text: ["I can't reach the live market data right now, so I can't give you a steer — give it a moment and ask again."] };
+    return { text: ["I can't reach the live market data right now, so I can't give you a steer. Give it a moment and ask again."] };
   }
   const [steer, hint] = recommendationText(rec, 'lead');
   return {
@@ -695,16 +778,16 @@ const METRIC_CTA = 'Say “analyze BTC” for the full picture, or tell me a dir
 
 function fearGreedReply(ins: BtcInsights): CopilotReply {
   const s = ins.sentiment;
-  if (!s) return { text: ["I don't have a fear & greed reading right now — give it a moment and ask again."] };
+  if (!s) return { text: ["I don't have a fear & greed reading right now. Give it a moment and ask again."] };
   const mood =
-    s.value <= 25 ? 'people are very fearful — the crowd is nervous and often over-selling'
-    : s.value < 45 ? 'people are leaning fearful — a cautious mood'
+    s.value <= 25 ? 'people are very fearful. The crowd is nervous and often over-selling'
+    : s.value < 45 ? 'people are leaning fearful. A cautious mood'
     : s.value <= 55 ? 'the mood is roughly balanced between fear and greed'
-    : s.value < 75 ? 'people are leaning greedy — a confident, risk-on mood'
-    : 'people are very greedy — the crowd is euphoric and often over-buying';
+    : s.value < 75 ? 'people are leaning greedy. A confident, risk-on mood'
+    : 'people are very greedy. The crowd is euphoric and often over-buying';
   return {
     text: [
-      `BTC's Fear & Greed Index is ${s.value}/100 right now — that's ${s.label}.`,
+      `BTC's Fear & Greed Index is ${s.value}/100 right now. That's ${s.label}.`,
       `In plain terms, ${mood}.`,
       METRIC_CTA,
     ],
@@ -713,35 +796,35 @@ function fearGreedReply(ins: BtcInsights): CopilotReply {
 
 function fundingReply(ins: BtcInsights): CopilotReply {
   const f = ins.funding.avgPct ?? ins.funding.binancePct;
-  if (f == null) return { text: ["I don't have a funding-rate reading right now — give it a moment and ask again."] };
+  if (f == null) return { text: ["I don't have a funding-rate reading right now. Give it a moment and ask again."] };
   const sign = f > 0.0001 ? 'positive' : f < -0.0001 ? 'negative' : 'about flat';
   const mean =
     f > 0.0001 ? 'Traders betting it goes UP are paying to hold, so the crowd is leaning long.'
     : f < -0.0001 ? 'Traders betting it goes DOWN are paying to hold, so the crowd is leaning short.'
     : 'Neither side is really paying to hold, so the crowd is balanced.';
-  return { text: [`BTC funding is ${signed(f, 3)}% right now — that's ${sign}.`, mean, METRIC_CTA] };
+  return { text: [`BTC funding is ${signed(f, 3)}% right now. That's ${sign}.`, mean, METRIC_CTA] };
 }
 
 function liquidationsReply(ins: BtcInsights): CopilotReply {
   const { longUsd, shortUsd, totalUsd } = ins.liq24h;
   if (longUsd == null || shortUsd == null) {
-    return { text: ["I don't have liquidation figures right now — give it a moment and ask again."] };
+    return { text: ["I don't have liquidation figures right now. Give it a moment and ask again."] };
   }
   const line =
     longUsd > shortUsd * 1.25 ? `longs took the bigger hit (${usd(longUsd)} vs ${usd(shortUsd)}), so the recent pressure ran downward`
     : shortUsd > longUsd * 1.25 ? `shorts took the bigger hit (${usd(shortUsd)} vs ${usd(longUsd)}), so the recent pressure ran upward`
     : `longs and shorts were hit about evenly (${usd(longUsd)} / ${usd(shortUsd)})`;
   const lead = totalUsd != null ? `${usd(totalUsd)} of BTC positions were liquidated in the last 24h` : 'BTC saw notable liquidations in the last 24h';
-  return { text: [`${lead} — ${line}.`, METRIC_CTA] };
+  return { text: [`${lead}, ${line}.`, METRIC_CTA] };
 }
 
 function maxPainReply(ins: BtcInsights): CopilotReply {
   const mp = ins.maxPain;
-  if (!mp) return { text: ["I don't have a max-pain level right now — give it a moment and ask again."] };
+  if (!mp) return { text: ["I don't have a max-pain level right now. Give it a moment and ask again."] };
   return {
     text: [
       `BTC's max-pain price is $${num(mp.strike, 0)} (for the ${mp.date} options expiry).`,
-      "That's the level where the most options expire worthless — price often drifts toward it into expiry, though it's only one signal.",
+      "That's the level where the most options expire worthless. Price often drifts toward it into expiry, though it's only one signal.",
       METRIC_CTA,
     ],
   };
@@ -749,14 +832,14 @@ function maxPainReply(ins: BtcInsights): CopilotReply {
 
 function priceReply(ctx: CopilotContext, ins: BtcInsights): CopilotReply {
   const spot = ctx.spot ?? ins.spot;
-  if (spot == null) return { text: ["I don't have a live BTC price right now — give it a moment and ask again."] };
+  if (spot == null) return { text: ["I don't have a live BTC price right now. Give it a moment and ask again."] };
   const chg = ins.change24hPct != null ? ` It's ${signed(ins.change24hPct, 2)}% over the last 24h.` : '';
   return { text: [`BTC is $${num(spot, 0)} right now.${chg}`, METRIC_CTA] };
 }
 
 function change24hReply(ins: BtcInsights): CopilotReply {
   const chg = ins.change24hPct;
-  if (chg == null) return { text: ["I don't have a 24h change reading right now — give it a moment and ask again."] };
+  if (chg == null) return { text: ["I don't have a 24h change reading right now. Give it a moment and ask again."] };
   const dir = chg > 0.05 ? 'up' : chg < -0.05 ? 'down' : 'flat';
   const at = ins.spot != null ? `, around $${num(ins.spot, 0)}` : '';
   return { text: [`BTC is ${dir} ${signed(chg, 2)}% over the last 24h${at}.`, METRIC_CTA] };
@@ -764,10 +847,10 @@ function change24hReply(ins: BtcInsights): CopilotReply {
 
 function openInterestReply(ins: BtcInsights): CopilotReply {
   const oi = ins.oiUsd;
-  if (oi == null) return { text: ["I don't have an open-interest figure right now — give it a moment and ask again."] };
+  if (oi == null) return { text: ["I don't have an open-interest figure right now. Give it a moment and ask again."] };
   return {
     text: [
-      `BTC open interest is about ${usd(oi)} — that's how much money is riding on open futures positions right now, a rough gauge of how much action is on the table.`,
+      `BTC open interest is about ${usd(oi)}. That's how much money is riding on open futures positions right now, a rough gauge of how much action is on the table.`,
       METRIC_CTA,
     ],
   };
@@ -776,7 +859,7 @@ function openInterestReply(ins: BtcInsights): CopilotReply {
 function metricReply(metric: MetricKind, ctx: CopilotContext): CopilotReply {
   const ins = ctx.insights;
   if (!ins || !ins.available) {
-    return { text: ["I can't reach the live market data right now — give it a moment and ask again."] };
+    return { text: ["I can't reach the live market data right now. Give it a moment and ask again."] };
   }
   switch (metric) {
     case 'fear_greed':
@@ -807,7 +890,7 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
     return { text: ['Connect your wallet (top-right) and I’ll show your DUSDC balance.'] };
   }
   if (w.walletBase === undefined) {
-    return { text: ['One sec — I’m still loading your balance. Ask me again in a moment.'] };
+    return { text: ['One sec, I’m still loading your balance. Ask me again in a moment.'] };
   }
   const account = fromQuote(w.accountBase);
   const wallet = fromQuote(w.walletBase);
@@ -818,7 +901,7 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
     return {
       text: [
         'Your DUSDC balance is $0.00 right now.',
-        'You’ll need some testnet DUSDC to place a bet — grab it from the faucet, then ask me to set up a trade.',
+        'You’ll need some testnet DUSDC to place a bet. Grab it from the faucet, then ask me to set up a trade.',
       ],
     };
   }
@@ -827,13 +910,13 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
     return {
       text: [
         `You’ve got ${fmt(wallet)} DUSDC in your wallet.`,
-        'It moves into your trading account the first time you place a bet — say “set up a trade” whenever you’re ready.',
+        'It moves into your trading account the first time you place a bet. Say “set up a trade” whenever you’re ready.',
       ],
     };
   }
   return {
     text: [
-      `You’ve got ${fmt(total)} DUSDC ready to trade — ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`,
+      `You’ve got ${fmt(total)} DUSDC ready to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`,
       'Want to put it to work? Say “set up a trade”, or tell me a direction.',
     ],
   };
@@ -859,7 +942,7 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
     walletLoading
       ? `You've also got ${fmt(account)} free in your trading account.`
       : account > 0 && wallet > 0
-        ? `You've also got ${fmt(free)} DUSDC free to trade — ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
+        ? `You've also got ${fmt(free)} DUSDC free to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
         : `You've also got ${fmt(free)} DUSDC free to trade.`;
 
   // Still loading positions, or genuinely none open.
@@ -870,7 +953,7 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
         "You don't have any open bets right now.",
         free > 0
           ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
-          : 'Your DUSDC balance is $0.00 — grab some testnet DUSDC from the faucet to place your first bet.',
+          : 'Your DUSDC balance is $0.00. Grab some testnet DUSDC from the faucet to place your first bet.',
         'Say “set up a trade” or tell me a direction whenever you’re ready.',
       ],
     };
@@ -889,7 +972,7 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   }
   if (p!.claimableCount > 0) {
     const one = p!.claimableCount === 1;
-    text.push(`${fmt(p!.claimable)} is waiting to be claimed from ${p!.claimableCount} settled ${one ? 'win' : 'wins'} — open Portfolio to redeem ${one ? 'it' : 'them'}.`);
+    text.push(`${fmt(p!.claimable)} is waiting to be claimed from ${p!.claimableCount} settled ${one ? 'win' : 'wins'}. Open Portfolio to redeem ${one ? 'it' : 'them'}.`);
   }
   if (p!.settledLostCount > 0 && p!.openCount === 0 && p!.claimableCount === 0) {
     text.push(`${p!.settledLostCount} settled ${p!.settledLostCount === 1 ? 'bet' : 'bets'} didn't win this time.`);
@@ -906,39 +989,39 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
 const EXPLAINERS: Record<ExplainTopic, string[]> = {
   leverage: [
     'Leverage multiplies your bet: a 3× UP bet gains 3× as fast, so the same stake can win more.',
-    'The catch — if BTC moves against you far enough before the close, a leveraged bet closes early for $0 (a “knockout”). You can never lose more than you put in; higher leverage just means a smaller cushion. Say “set up a trade” and I’ll show you the exact knockout level.',
+    'The catch. If BTC moves against you far enough before the close, a leveraged bet closes early for $0 (a “knockout”). You can never lose more than you put in; higher leverage just means a smaller cushion. Say “set up a trade” and I’ll show you the exact knockout level.',
   ],
   range: [
-    'A range bet wins if BTC settles between two prices you choose — good when you think it’ll stay calm and drift sideways rather than pick a clear direction.',
+    'A range bet wins if BTC settles between two prices you choose. Good when you think it’ll stay calm and drift sideways rather than pick a clear direction.',
     'Pick a low and a high; if the closing price lands inside, you win. Tap two points on the surface, or open the ticket and switch to Range.',
   ],
   binary: [
     'An UP bet wins if BTC settles ABOVE the price you pick; a DOWN bet wins if it settles at or below it.',
-    'The closer your price is to where BTC is now, the safer the bet and the smaller the payout — further away pays more but is less likely. Tell me a direction and I’ll set one up.',
+    'The closer your price is to where BTC is now, the safer the bet and the smaller the payout. Further away pays more but is less likely. Tell me a direction and I’ll set one up.',
   ],
   settlement: [
     'Each market has a fixed close time (some settle in about a minute). At the close, BTC’s price is checked once: if your side is right you win the payout, otherwise the bet is worth $0.',
-    'It settles on the price AT the close, so a bet that’s winning midway can still flip. After it settles, you redeem your winnings — just say “redeem my winnings”.',
+    'It settles on the price AT the close, so a bet that’s winning midway can still flip. After it settles, you redeem your winnings. Just say “redeem my winnings”.',
   ],
   loss: [
-    'The most you can ever lose is what you put in — a losing bet simply settles at $0. No margin calls, nothing owed.',
-    'With leverage there’s one wrinkle: if BTC moves against you far enough before the close, the bet closes early for $0 (a “knockout”) — but you still never lose more than your stake.',
+    'The most you can ever lose is what you put in. A losing bet simply settles at $0. No margin calls, nothing owed.',
+    'With leverage there’s one wrinkle: if BTC moves against you far enough before the close, the bet closes early for $0 (a “knockout”). But you still never lose more than your stake.',
   ],
   fees: [
-    'The app charges a small fee on each trade (currently 2% of your bet) — that’s how it earns, and it’s already included in the price you see before you confirm.',
+    'The app charges a small fee on each trade (currently 2% of your bet). That’s how it earns, and it’s already included in the price you see before you confirm.',
     'The pool that pays winners earns a separate spread, which goes to the people who supply that pool, not to the app. No hidden costs and no subscription.',
   ],
   funds: [
-    'You bet with DUSDC — a test-dollar on Sui testnet, not real money. Grab some free from the faucet and it lands in your wallet ready to trade.',
+    'You bet with DUSDC. A test-dollar on Sui testnet, not real money. Grab some free from the faucet and it lands in your wallet ready to trade.',
     'Ask me “what’s my balance” any time to see how much you have.',
   ],
   payout: [
     'Your payout depends on the odds: the less likely your bet, the more it pays. A ~70% chance pays about 1.4× your stake; a ~25% longshot pays around 4×.',
-    'I always show the exact odds and payout before you place anything — say “safe up bet” or “longshot down bet” to see one.',
+    'I always show the exact odds and payout before you place anything. Say “safe up bet” or “longshot down bet” to see one.',
   ],
   predict: [
     'This is a prediction market on BTC: you bet which way the price goes by a set close time, using the live surface on the left.',
-    'I’m your co-pilot — I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
+    'I’m your co-pilot, I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
   ],
 };
 
@@ -949,7 +1032,7 @@ function explainReply(topic: ExplainTopic): CopilotReply {
 function helpReply(): CopilotReply {
   return {
     text: [
-      "I'm your Predict co-pilot. I can read the BTC market for you, or set up a bet — just tell me the direction.",
+      "I'm your Predict co-pilot. I can read the BTC market for you, or set up a bet. Just tell me the direction.",
       'Try “analyze BTC”, “safe up bet”, or “longshot down bet for the next hour”.',
     ],
   };
@@ -960,7 +1043,7 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
     case 'analyze':
       return analyzeReply(ctx);
     case 'analyze_strike':
-      return analyzeStrikeReply(ctx);
+      return analyzeStrikeReply(ctx, intent.price, intent.dir);
     case 'find_strike':
       return findStrikeReply(intent.price, intent.dir, ctx);
     case 'explain':
@@ -980,7 +1063,7 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
     case 'portfolio':
       return portfolioReply(ctx);
     case 'odds':
-      return oddsReply(intent.level, intent.dir, ctx);
+      return oddsReply(intent.level, intent.dir, ctx, intent.horizon);
     case 'volatility':
       return volatilityReply(ctx);
     case 'skew':

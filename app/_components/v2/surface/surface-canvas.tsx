@@ -23,9 +23,10 @@
  * Not yet ported: LIVE/time-travel scrub (needs a per-market SVI history the v2
  * data path doesn't expose today).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, Grid } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
@@ -106,6 +107,41 @@ function nearestCell(mesh: SurfaceMesh, p: THREE.Vector3): { row: number; col: n
 type SurfaceSelection =
   | { kind: 'binary'; oracleId: string; strike: number; isUp: boolean }
   | { kind: 'range'; oracleId: string; lower: number; higher: number };
+
+// Keep the camera in a usable FRONT arc — the surface reads from the wings and the
+// 3/4 front, but never from behind (where the axes flip and the valley faces away).
+// FRONT_AZ is the azimuth of the initial camera [6.6, _, 10.4] looking at x=z=0.
+const FRONT_AZ = Math.atan2(6.6, 10.4); // ≈ 0.566 rad
+const AZ_ARC = 1.15; // ~66° each way: explore both wings, never spin to the back
+const AZ_MIN = FRONT_AZ - AZ_ARC;
+const AZ_MAX = FRONT_AZ + AZ_ARC;
+const AUTO_ROTATE_SPEED = 0.1;
+
+/** Gently rock the idle auto-rotation back and forth WITHIN the azimuth arc, so the
+ *  slow "alive" spin sweeps the front instead of drifting into (and sticking at) the
+ *  clamp. Reverses direction at each edge; no-ops when auto-rotation is off. */
+function CameraRock({
+  controls,
+  active,
+}: {
+  controls: RefObject<OrbitControlsImpl | null>;
+  active: boolean;
+}) {
+  const dir = useRef(1);
+  // Mutating the OrbitControls object inside the render loop is the intended R3F
+  // imperative pattern; the react-compiler immutability rule false-positives on it.
+  /* eslint-disable react-hooks/immutability */
+  useFrame(() => {
+    const c = controls.current;
+    if (!c || !active) return;
+    const a = c.getAzimuthalAngle();
+    if (a >= AZ_MAX) dir.current = -1;
+    else if (a <= AZ_MIN) dir.current = 1;
+    c.autoRotateSpeed = dir.current * AUTO_ROTATE_SPEED;
+  });
+  /* eslint-enable react-hooks/immutability */
+  return null;
+}
 
 export function SurfaceCanvasV2({
   inputs,
@@ -332,6 +368,7 @@ export function SurfaceCanvasV2({
   // and the second click is still pending. While true, the camera is frozen (no
   // zoom/orbit) so an aimed click can't be thrown off by the model moving.
   const interacting = popover || rangeAnchorPrice != null;
+  const orbitRef = useRef<OrbitControlsImpl>(null);
 
   // A surface needs ≥2 live expiries; between market rolls the filter can briefly
   // leave fewer, and an early stretch of tape may not have two markets recorded yet.
@@ -355,6 +392,8 @@ export function SurfaceCanvasV2({
       </div>
     );
   }
+
+  const autoRotateActive = isLive && !hover && !reduced && !popover && rangeAnchorPrice == null;
 
   return (
     <div className="relative h-full w-full">
@@ -419,6 +458,7 @@ export function SurfaceCanvasV2({
           />
         </group>
         <OrbitControls
+          ref={orbitRef}
           enablePan={false}
           // Freeze zoom + orbit while the user is committed to a pick — the ticket
           // is open, or a range's first edge is set and they're aiming the second.
@@ -427,13 +467,18 @@ export function SurfaceCanvasV2({
           // autoRotate already pauses on these states + hover.)
           enableZoom={!interacting}
           enableRotate={!interacting}
-          autoRotate={isLive && !hover && !reduced && !popover && rangeAnchorPrice == null}
-          autoRotateSpeed={0.1}
+          autoRotate={autoRotateActive}
+          // Azimuth is clamped to a front-facing arc so the surface can never be
+          // spun behind (unreadable). CameraRock manages autoRotateSpeed to rock
+          // within the arc. Vertical tilt stays above the floor.
+          minAzimuthAngle={AZ_MIN}
+          maxAzimuthAngle={AZ_MAX}
           minDistance={8}
           maxDistance={22}
           maxPolarAngle={Math.PI / 2.05}
           target={[0, -0.5, 0]}
         />
+        <CameraRock controls={orbitRef} active={autoRotateActive} />
       </Canvas>
 
       {hover && !popover && <SurfaceTooltip hover={hover} />}

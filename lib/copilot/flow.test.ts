@@ -86,6 +86,17 @@ describe('trade wizard — one-shot slot filling', () => {
     expect(extractSlots('strike 65000 below with 3x and 10 dusdc').isUp).toBe(false);
   });
 
+  it('extractSlots reads a strike when the keyword comes AFTER the number', () => {
+    // The exact phrasing that slipped through: "pick 64,850 as my strike".
+    const s = extractSlots('Set up a trade for me, pick 64,850 as my strike, 2x leverage, will be betting with 10 dusdc');
+    expect(s.strikePrice).toBe(64_850);
+    expect(s.leverage).toBe(2);
+    expect(s.amount).toBe(10);
+    // "66k target" / "65000 price" (number-first) also read.
+    expect(extractSlots('66k target, 2x, 5 dusdc').strikePrice).toBe(66_000);
+    expect(extractSlots('go 64500 as the strike').strikePrice).toBe(64_500);
+  });
+
   it('pre-fills every given slot and asks only for the missing one (direction)', () => {
     const s = startFlow(ctx, 'set up my trade, strike 65000, 2x leverage, bet 6 dusdc');
     expect(s.flow?.step).toBe('direction'); // the only thing missing

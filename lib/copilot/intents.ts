@@ -14,7 +14,7 @@
  */
 
 export type Conviction = 'safe' | 'even' | 'longshot';
-export type Horizon = 'soonest' | 'hour';
+export type Horizon = 'soonest' | 'hour' | 'today';
 export type BetDirection = 'up' | 'down';
 /** A single market metric the trader can ask about directly — answered with a
  *  focused one/two-liner instead of the full market read. */
@@ -29,14 +29,14 @@ export type ExplainTopic = 'leverage' | 'range' | 'binary' | 'settlement' | 'los
 
 export type CopilotIntent =
   | { kind: 'analyze' }
-  | { kind: 'analyze_strike' }
+  | { kind: 'analyze_strike'; price?: number; dir?: BetDirection }
   | { kind: 'next_market' }
   | { kind: 'start_trade' }
   | { kind: 'metric'; metric: MetricKind }
   | { kind: 'recommend' }
   | { kind: 'balance' }
   | { kind: 'portfolio' }
-  | { kind: 'odds'; level: OddsLevel; dir?: BetDirection }
+  | { kind: 'odds'; level: OddsLevel; dir?: BetDirection; horizon?: Horizon }
   | { kind: 'reality_check'; level?: OddsLevel; dir?: BetDirection }
   | { kind: 'volatility' }
   | { kind: 'skew' }
@@ -94,7 +94,12 @@ function convictionFrom(text: string): Conviction {
 }
 
 function horizonFrom(text: string): Horizon {
-  return /\bhour\b|\b1\s*hr?\b|\b60\s*min/.test(text) ? 'hour' : 'soonest';
+  // Multiple hours / today / rest of the day → price the LONGEST market we list
+  // (this venue's markets are short, so that's the best available answer).
+  if (/\btoday\b|\btonight\b|this (?:afternoon|evening|morning)|end of (?:the )?day|\beod\b|rest of (?:the )?day|(?:few|couple|several|\d+)\s*(?:more\s*)?hours|\bhours\b/.test(text)) return 'today';
+  // About an hour out.
+  if (/\bhour\b|\b1\s*hr?\b|\b60\s*min|next hour|within (?:the|an) hour|this hour/.test(text)) return 'hour';
+  return 'soonest';
 }
 
 /** "Which market can I bet on / what's the next one" — an explicit phrase, or
@@ -214,7 +219,7 @@ function wantsRealityCheck(text: string): boolean {
 
 /** "How big a move is priced in? / is vol high?" — the surface's Z-axis. */
 function wantsVolatility(text: string): boolean {
-  return /\bvolatility\b|\bhow volatile\b|how big (?:a |of a )?move|(?:big|large|expected|likely) move|move (?:that'?s |is )?priced in|priced[- ]in move|expected (?:range|move|swing)|how much (?:could|will|might|can) (?:btc|it|price) (?:move|swing)/.test(text);
+  return /\bvolatility\b|\bvolatile\b|how big (?:a |of a )?move|(?:big|large|expected|likely) move|move (?:that'?s |is )?priced in|priced[- ]in move|expected (?:range|move|swing)|how much (?:could|will|might|can) (?:btc|it|price) (?:move|swing)/.test(text);
 }
 
 /** "Crash or pump? / which tail is bigger?" — the surface's skew/shape. */
@@ -222,9 +227,11 @@ function wantsSkew(text: string): boolean {
   return /\bskew\b|crash or pump|pump or crash|bracing for|(?:bigger|more) (?:on the )?(?:downside|upside)|downside.{0,10}upside|upside.{0,10}downside|tail risk|priced for a (?:crash|drop|pump|rally)|fear(?:ing)? a (?:crash|drop)/.test(text);
 }
 
-/** "Any mispricings? / is the surface arb-free?" — the no-arb checker. */
+/** "Any mispricings? / is the surface arb-free?" — the no-arb checker. ("right" is
+ *  the "is it correct?" sense; guard it so "is the surface right NOW" — a volatility
+ *  ask — doesn't get caught here.) */
 function wantsNoArb(text: string): boolean {
-  return /arbitrage|no[- ]?arb|arb[- ]?free|mispric|is the surface (?:ok|healthy|clean|arb|fair|right)|surface (?:healthy|clean|broken|glitch)/.test(text);
+  return /arbitrage|no[- ]?arb|arb[- ]?free|mispric|is the surface (?:ok|healthy|clean|arb|fair|right(?! now))|surface (?:healthy|clean|broken|glitch)/.test(text);
 }
 
 /** "Which strike has the most volume? / busiest strike? / where's the action?" —
@@ -243,7 +250,10 @@ function wantsBusiestStrike(text: string): boolean {
 function wantsClose(text: string): { all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number } | null {
   // "close" as the close-VERB, not the adjective ("how close is it", "close to X").
   const closeVerb = /\bclose\b/.test(text) && !/\bhow close\b|\bclose (?:to|is|are|enough|call|by)\b/.test(text);
-  const cue = closeVerb || /\bredeem\b|cash ?out|\bclaim\b|\bsell\b|\bcollect\b|\bexit\b|get out|take (?:my )?(?:profit|winnings|money)|take profits?/.test(text);
+  // "clear" the position (esp. a LOST bet, whose action reads "Clear" not "Redeem"),
+  // not the adjective ("is that clear", "clear enough", "clear it up").
+  const clearVerb = /\bclear\b/.test(text) && !/\b(?:is|are|it'?s|that|this|make[sn]?)\s+(?:it |that |this )?clear\b|\bclear (?:up|enough|sky|skies)\b|\bcrystal clear\b/.test(text);
+  const cue = closeVerb || clearVerb || /\bredeem\b|cash ?out|\bclaim\b|\bsell\b|\bcollect\b|\bexit\b|get out|take (?:my )?(?:profit|winnings|money)|take profits?/.test(text);
   if (!cue) return null;
   // Standalone claim verbs imply "my stuff"; "close"/"sell"/"exit" need a position
   // reference (a strike, a side, or my/it/this/bet/…) so "close to the money" or
@@ -329,7 +339,10 @@ function explainTopic(text: string): ExplainTopic | null {
  *  a specific strike (so we can light it up), not build or analyze one. Needs a
  *  find-style cue AND a concrete strike price. */
 function wantsFindStrike(text: string): { price: number; dir?: BetDirection } | null {
-  if (!/\bfind\b|\bshow\b|\blocate\b|\bhighlight\b|\bwhere('?s| is)\b|point (?:me )?(?:to|out|at)|take me to|\bgo to\b|\bmark\b|pull up|bring up|\bdisplay\b/.test(text)) return null;
+  if (!/\bfind\b|\bshow\b|\blocate\b|\bhighlight\b|\bwhere('?s| is)\b|point (?:me )?(?:to|out|at)|take me to|\bgo to\b|\bmark\b|pull up|bring up|\bdisplay\b|\bpick\b|\bchoose\b|\bselect\b|\bsearch\b/.test(text)) return null;
+  // A sizing token (leverage / amount) means it's a trade SETUP, not a locate —
+  // let it fall through to the wizard rather than just lighting the strike up.
+  if (/\bleverage\b|\b\d+(?:\.\d+)?\s*x\b|\b\d[\d,]*\s*dusdc\b/.test(text)) return null;
   const level = levelFrom(text);
   if (!level || level.kind !== 'strike') return null;
   return { price: level.price, dir: dirFrom(text) };
@@ -395,7 +408,7 @@ export function parseIntent(message: string): CopilotIntent {
   // "What are the odds at $X / of a Y% move?" — a chance question. Checked before
   // the directional branch because "odds BTC ABOVE $67k" carries a side word.
   const odds = oddsFrom(text);
-  if (odds) return { kind: 'odds', ...odds };
+  if (odds) return { kind: 'odds', ...odds, horizon: horizonFrom(text) };
 
   // "Which strike has the most volume?" — a distinct volume-by-strike ask. Before
   // the other surface questions so "most volume" isn't misread as "biggest move".
@@ -413,8 +426,15 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsTermStructure(text)) return { kind: 'term_structure', dir: dirFrom(text) };
   if (wantsRealityCheck(text)) return { kind: 'reality_check', level: levelFrom(text) ?? undefined, dir: dirFrom(text) };
   // "Analyse the current/this strike" — a focused read of the selected strike,
-  // before the plain analyze cue (which "analyse" would otherwise trigger).
-  if (wantsStrikeAnalysis(text)) return { kind: 'analyze_strike' };
+  // before the plain analyze cue (which "analyse" would otherwise trigger). If the
+  // trader named a strike ("analyse 64,500 strike"), carry it so we read THAT one,
+  // not whatever's currently selected.
+  if (wantsStrikeAnalysis(text)) {
+    const lvl = levelFrom(text);
+    const price = lvl?.kind === 'strike' ? lvl.price : undefined;
+    const dir = dirFrom(text);
+    return { kind: 'analyze_strike', ...(price != null ? { price } : {}), ...(dir ? { dir } : {}) };
+  }
 
   // "Close my up bet / redeem my winnings / cash out the 65k" — act on the trader's
   // own positions. Before the directional branch, since "close my up bet" carries a

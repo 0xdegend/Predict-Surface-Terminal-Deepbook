@@ -210,6 +210,17 @@ describe('respondToIntent — odds & payout', () => {
     expect(r.bet!.strikePrice).toBeCloseTo(66_500, -2);
   });
 
+  it('"chance BTC above $X" blends surface odds + past history + a verdict (still loads a bet)', () => {
+    const CLOSES = Array.from({ length: 300 }, (_, i) => 65_000 * (1 + 0.0004 * i)); // upward drift
+    const r = respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 65_300 }, dir: 'up' }, ctx({ spot: 65_000, closes: CLOSES }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/chance/i); // surface odds
+    expect(blob).toMatch(/landed there about \d+% of the time/); // empirical past history
+    expect(blob).toMatch(/not financial advice/i); // the verdict/disclaimer
+    expect(r.bet).toBeDefined(); // still actionable
+    expect(r.bet!.isUp).toBe(true);
+  });
+
   it('a % move resolves to a strike off spot and loads a bet', () => {
     const r = respondToIntent({ kind: 'odds', level: { kind: 'move', pct: 1 }, dir: 'up' }, ctx({ spot: 65_000 }));
     expect(r.bet).toBeDefined();
@@ -234,6 +245,29 @@ describe('respondToIntent — odds & payout', () => {
     const r = respondToIntent({ kind: 'directional_bet', dir: 'up', conviction: 'even', horizon: 'soonest', target: { kind: 'payout', mult: 2 } }, ctx({ spot: 65_000 }));
     expect(r.bet!.payoutMult).toBeGreaterThan(1.7);
     expect(r.bet!.payoutMult).toBeLessThan(2.4);
+  });
+});
+
+describe('respondToIntent — odds time horizon (soon vs today)', () => {
+  const mk = (id: string, min: number, b: number, sigma: number): BetCandidate => ({
+    market: { expiry_market_id: id, expiry: NOW + min * 60_000, admission_tick_size: '1000000000', tick_size: '1', max_admission_leverage: 3_000_000_000, base_fee: '0' } as unknown as V2Market,
+    pricer: { expiryMarketId: id, forward: 64_354, svi: { a: 0, b, rho: -0.1, m: 0, sigma } } as LivePricer,
+  });
+  // A ~1-minute market (almost no room to move) and a ~3-hour market (real room).
+  const octx: CopilotContext = { insights: INSIGHTS, candidates: [mk('m1', 1, 0.001, 0.002), mk('mlong', 180, 0.02, 0.12)], now: NOW, spot: 64_354 };
+
+  it('"soon" prices the 1-minute market, so a $65k strike reads as out of reach', () => {
+    const r = respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 65_000 }, dir: 'up', horizon: 'soonest' }, octx);
+    expect(r.text.join(' ')).toMatch(/lopsided|impossible/i);
+  });
+
+  it('"today" prices the LONGEST market, so the same strike gets a real chance + a bet', () => {
+    const r = respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 65_000 }, dir: 'up', horizon: 'today' }, octx);
+    const blob = r.text.join(' ');
+    expect(blob).not.toMatch(/lopsided/i);
+    expect(blob).toMatch(/settles above \$65,000/);
+    expect(blob).toMatch(/about 3 hours/); // used the long market, not the 1-minute one
+    expect(r.bet).toBeDefined();
   });
 });
 
@@ -286,9 +320,23 @@ describe('respondToIntent — surface-native analysis', () => {
   it('volatility → a concrete ± band, no meaningless annualized figure', () => {
     const r = respondToIntent({ kind: 'volatility' }, sctx);
     const blob = r.text.join(' ');
-    expect(blob).toMatch(/typical swing of about ±\$/);
-    expect(blob).toMatch(/2-in-3/);
+    expect(blob).toMatch(/expects BTC to move about \$/);
+    expect(blob).toMatch(/2 in 3/);
     expect(blob).not.toMatch(/annualiz/i);
+  });
+
+  it('volatility verdict: HIGH when the surface implies a bigger move than BTC realized', () => {
+    let p = 66_000;
+    const quiet: number[] = [p]; // tiny realized moves → the implied swing looks big
+    for (let i = 0; i < 200; i++) { p *= 1 + (i % 2 ? -0.004 : 0.004); quiet.push(p); }
+    expect(respondToIntent({ kind: 'volatility' }, { ...sctx, closes: quiet }).text.join(' ')).toMatch(/high side/i);
+  });
+
+  it('volatility verdict: CALM when the surface implies a smaller move than BTC realized', () => {
+    let p = 66_000;
+    const wild: number[] = [p]; // big realized moves → the implied swing looks calm
+    for (let i = 0; i < 200; i++) { p *= 1 + (i % 2 ? -0.03 : 0.03); wild.push(p); }
+    expect(respondToIntent({ kind: 'volatility' }, { ...sctx, closes: wild }).text.join(' ')).toMatch(/calm side/i);
   });
 
   it('skew → drop-vs-pop comparison and a lean', () => {
@@ -403,6 +451,21 @@ describe('respondToIntent — analyze the current strike', () => {
     expect(r.text.join(' ')).toMatch(/surface prices it/);
   });
 
+  it('honors a NAMED strike (reads it, not the selection) and highlights it on the surface', () => {
+    const r = respondToIntent({ kind: 'analyze_strike', price: 64_500 }, ctx({ selection, spot: 65_000, closes: CLOSES }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/\$64,500/); // the strike the trader NAMED
+    expect(blob).not.toMatch(/65,325/); // NOT the currently-selected strike
+    expect(r.highlight).toBeDefined(); // lit up on the surface
+    expect(Math.abs(r.highlight!.strikePrice - 64_500)).toBeLessThan(50);
+  });
+
+  it('a named strike honors an explicit side', () => {
+    const r = respondToIntent({ kind: 'analyze_strike', price: 65_400, dir: 'down' }, ctx({ selection: null, spot: 65_000 }));
+    expect(r.text.join(' ')).toMatch(/DOWN \$65,400/);
+    expect(r.highlight!.isUp).toBe(false);
+  });
+
   it('no live market → honest fallback', () => {
     const r = respondToIntent({ kind: 'analyze_strike' }, ctx({ candidates: [] }));
     expect(r.text.join(' ')).toMatch(/no live market/i);
@@ -413,9 +476,9 @@ describe('respondToIntent — find a strike on the surface', () => {
   it('snaps the strike, returns a highlight, and quotes both sides', () => {
     const r = respondToIntent({ kind: 'find_strike', price: 65_200 }, ctx());
     const blob = r.text.join(' ');
-    expect(blob).toMatch(/Found it — \$65,200/);
+    expect(blob).toMatch(/Found it, \$65,200/);
     expect(blob).toMatch(/highlighted it on the surface/i);
-    expect(blob).toMatch(/Above — about \d+%/);
+    expect(blob).toMatch(/Above: about \d+%/);
     expect(r.highlight).toBeDefined();
     expect(r.highlight!.marketId).toBe('m-soon');
     expect(r.highlight!.strikePrice).toBeCloseTo(65_200, -1);
@@ -515,6 +578,8 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 66_000 }, dir: 'up' }, ctx()),
       respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 66_000 } }, ctx()),
       respondToIntent({ kind: 'volatility' }, ctx()),
+      respondToIntent({ kind: 'volatility' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })), // exercises the high/calm verdict
+      respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 66_000 }, dir: 'up' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })), // exercises the empirical + verdict blend
       respondToIntent({ kind: 'skew' }, ctx()),
       respondToIntent({ kind: 'term_structure' }, ctx()),
       respondToIntent({ kind: 'no_arb' }, ctx()),

@@ -436,8 +436,14 @@ export function V2CopilotScreen({
         pushBot(['That didn’t go through, so nothing was closed. You can try again, or use the Portfolio panel.']);
       } else if (done === 1) {
         const p = match.positions[0];
+        const lost = p.settled && p.won === false;
         const gained = winningClaimPayout(p, p.qtyBase!) ?? p.markValue ?? 0;
-        pushBot([`Closed your ${positionCloseLabel(p).split(' · ')[0]} bet${gained > 0 ? ` — ${'$' + num(gained, 2)} back in your account` : ''}.`]);
+        const side = positionCloseLabel(p).split(' · ')[0];
+        pushBot([
+          lost
+            ? `Cleared your ${side} bet — it settled a loss, so there was nothing to redeem.`
+            : `Closed your ${side} bet${gained > 0 ? ` — ${'$' + num(gained, 2)} back in your account` : ''}.`,
+        ]);
       } else {
         pushBot([`Closed ${done} bets${proceeds > 0 ? ` — about $${num(proceeds, 2)} back in your account` : ''}. Nice.`]);
       }
