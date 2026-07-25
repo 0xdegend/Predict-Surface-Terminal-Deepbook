@@ -46,6 +46,9 @@ export type CopilotIntent =
   | { kind: 'find_strike'; price: number; dir?: BetDirection }
   | { kind: 'explain'; topic: ExplainTopic }
   | { kind: 'best_value' }
+  | { kind: 'positioning' }
+  | { kind: 'flow' }
+  | { kind: 'options_market' }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -311,6 +314,22 @@ function wantsBestValue(text: string): boolean {
   return /\bbest value\b|\bgood value\b|\bvalue (?:bet|play|strike|pick)\b|where('?s| is) (?:the )?value|\bunder ?priced\b|\bover ?priced\b|\bbest bet\b|\bmost value\b|\bcheapest (?:bet|strike)\b/.test(text);
 }
 
+/** "How's everyone positioned? / is the crowd long or short? / buy or sell pressure?
+ *  / what's smart money doing?" — the perps positioning + order-flow read (Clawby PRO). */
+function wantsPositioning(text: string): boolean {
+  return /\bpositioning\b|\bpositioned\b|long\s*\/\s*short|long[- ]short ratio|\bthe crowd\b|smart money|(?:big|top|large|whale)\s*traders?|order flow|(?:buy(?:ing|ers)?|sell(?:ing|ers)?)\s*(?:vs\.?|versus|or)\s*(?:sell(?:ing|ers)?|buy(?:ing|ers)?)|(?:buy|sell)(?:ing)?\s*pressure|(?:who|everyone|people|most people|are (?:traders|people|they|longs|shorts)).{0,18}\b(?:long|short|buying|selling|positioned)\b/.test(text);
+}
+
+/** "Are institutions buying? / ETF flow? / is money coming in?" — institutional flow. */
+function wantsFlow(text: string): boolean {
+  return /\betfs?\b|institution(?:s|al)?|\binflows?\b|\boutflows?\b|net flow|fund flow|spot etf|(?:are|is)\s+(?:institutions|whales|the whales|big money)\s+(?:buying|selling|accumulating|dumping)|(?:money|capital)\s+(?:coming in|flowing in|leaving|flowing out|pouring in)/.test(text);
+}
+
+/** "What's the options market saying? / put-call ratio? / options positioning?" */
+function wantsOptionsMarket(text: string): boolean {
+  return /options? (?:market|flow|positioning|sentiment|book|traders?)|put[- ]?call|call[- ]?put|p\s*\/\s*c ratio|what.{0,25}options.{0,15}(?:say|saying|tell|think)|options.{0,12}(?:bullish|bearish|lean|leaning)/.test(text);
+}
+
 /** "Right now / currently / live" → the single live market; otherwise every open
  *  expiry. (The user's rule: a "now"-style cue scopes to the current market.) */
 function busiestScope(text: string): 'now' | 'all' {
@@ -416,6 +435,14 @@ export function parseIntent(message: string): CopilotIntent {
   // "What's the best value?" — before term_structure so "which is the best value"
   // isn't caught by its "which market … best" pattern.
   if (wantsBestValue(text)) return { kind: 'best_value' };
+
+  // Positioning & flow (Clawby PRO): the crowd/smart-money/order-flow read, the
+  // institutional ETF flow, and the options market. BEFORE the surface + directional
+  // branches, since "long/short" and "buying/selling" carry direction words that
+  // aren't a bet. Options-market first (most specific), then flow, then positioning.
+  if (wantsOptionsMarket(text)) return { kind: 'options_market' };
+  if (wantsFlow(text)) return { kind: 'flow' };
+  if (wantsPositioning(text)) return { kind: 'positioning' };
 
   // Surface-native analysis (vol / skew / term / no-arb / reality check). Before
   // the directional branch too — "crash or pump" carries both sides, "1m or 5m for

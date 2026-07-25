@@ -21,6 +21,7 @@ import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
+import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
 import { useNow } from '@/lib/hooks/use-now';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
@@ -140,6 +141,10 @@ export function V2CopilotScreen({
   // sweep, no 60s polling. It only starts spending once the feature is live
   // (locally, where NEXT_PUBLIC_COPILOT_LIVE=1). See the gate at the render tail.
   const { data: insights } = useBtcInsights({ enabled: COPILOT_LIVE });
+  // Positioning & flow (Clawby PRO) — reuses the SAME cached route the Options page
+  // uses (60s), so it adds no fetch cost. Feeds the co-pilot's positioning / flow /
+  // options-market answers and enriches "Analyze BTC".
+  const { data: positioning } = useBtcPositioning({ enabled: COPILOT_LIVE });
   // Read the live spot the SAME way the top tape does — but imperatively from the
   // query cache at send-time (the tape's query already keeps it fresh), NOT via a
   // hook subscription, so this screen doesn't re-render every 1.5s and drag the
@@ -557,6 +562,7 @@ export function V2CopilotScreen({
         const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp, stake: st.stake, leverage: st.leverage } : null;
         reply = respondToIntent(intent, {
           insights: insights ?? null,
+          positioning: positioning ?? null,
           candidates,
           now,
           spot,

@@ -23,6 +23,7 @@ import {
   LuBookOpen,
   LuKeyRound,
   LuSparkles,
+  LuChartCandlestick,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
@@ -53,6 +54,7 @@ const VAULT_ITEMS: MenuItem[] = [
  *  renders the shared manual under the v2 shell too (/v2/docs) so it keeps the
  *  Latest chrome and its in-page links stay on /v2. */
 const MORE_ITEMS: MenuItem[] = [
+  { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
   { href: '/v2/copilot', label: 'Co-pilot', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },

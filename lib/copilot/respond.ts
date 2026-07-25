@@ -20,6 +20,8 @@ import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { quantityForStake, winPayout, leverageSliderMax } from '@/lib/sui/v2/quote';
 import { buildMarketRead, directionStance, recommendation } from '@/lib/insights/market-read';
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
+import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
+import type { Positioning } from '@/lib/insights/positioning';
 import { strikeForDirectionFair } from '@/lib/sui/v2/invert';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { upFair, totalVariance } from '@/lib/svi/svi';
@@ -41,6 +43,9 @@ export interface BetCandidate {
 
 export interface CopilotContext {
   insights: BtcInsights | null;
+  /** Positioning & flow (Clawby PRO) — crowd/smart-money/pressure, ETF flow, and
+   *  the options market. Null until it loads (or when the page is gated). */
+  positioning?: Positioning | null;
   candidates: BetCandidate[];
   now: number;
   /** Live BTC spot ($) — the SAME feed the top price tape shows. Used only for
@@ -165,6 +170,13 @@ function analyzeReply(ctx: CopilotContext): CopilotReply {
   const text = [read.headline, ...read.lines.map((l) => l.text)];
   const soonest = pickCandidate(ctx.candidates, 'soonest', ctx.now);
   if (soonest) text.push(`The soonest market you can bet on settles in ${timeLeftLabel(soonest.market.expiry, ctx.now)}.`);
+  // Enrich with the wider-market positioning + institutional flow when we have it
+  // (Clawby PRO): the crowd's lean and whether ETFs are adding or trimming.
+  const posFunding = ctx.insights?.funding.binancePct ?? ctx.insights?.funding.avgPct ?? null;
+  const crowdL = positioningLines(ctx.positioning ?? null, posFunding)[0];
+  const etfL = flowLines(ctx.positioning ?? null)[0];
+  if (crowdL) text.push(crowdL);
+  if (etfL) text.push(etfL);
   // Close with a soft steer (Up / Down / Range) off the same lean — the user
   // asked the analysis to conclude with a recommendation, not just describe.
   const rec = recommendation(ctx.insights);
@@ -1055,6 +1067,25 @@ function helpReply(): CopilotReply {
   };
 }
 
+function positioningReply(ctx: CopilotContext): CopilotReply {
+  const funding = ctx.insights?.funding.binancePct ?? ctx.insights?.funding.avgPct ?? null;
+  const lines = positioningLines(ctx.positioning ?? null, funding);
+  if (lines.length === 0) return { text: ['I can’t read the positioning data right now — give it a moment and ask again.'] };
+  return { text: ['Here’s how everyone’s positioned right now:', ...lines] };
+}
+
+function flowReply(ctx: CopilotContext): CopilotReply {
+  const lines = flowLines(ctx.positioning ?? null);
+  if (lines.length === 0) return { text: ['I don’t have fresh ETF flow data right now — try again in a moment.'] };
+  return { text: lines };
+}
+
+function optionsMarketReply(ctx: CopilotContext): CopilotReply {
+  const lines = optionsLines(ctx.positioning ?? null);
+  if (lines.length === 0) return { text: ['I can’t read the options market right now — give it a moment and ask again.'] };
+  return { text: ['Here’s what the wider options market is showing:', ...lines] };
+}
+
 export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): CopilotReply {
   switch (intent.kind) {
     case 'analyze':
@@ -1067,6 +1098,12 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return explainReply(intent.topic);
     case 'best_value':
       return bestValueReply(ctx);
+    case 'positioning':
+      return positioningReply(ctx);
+    case 'flow':
+      return flowReply(ctx);
+    case 'options_market':
+      return optionsMarketReply(ctx);
     case 'adjust_ticket':
       return adjustReply(intent, ctx);
     case 'next_market':
