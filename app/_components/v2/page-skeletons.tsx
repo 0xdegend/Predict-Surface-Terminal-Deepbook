@@ -338,6 +338,90 @@ export function V2QuestsSkeleton() {
   );
 }
 
+/* ============================== BTC Options ============================== */
+
+export function V2OptionsSkeleton() {
+  return (
+    <Body label="Loading BTC options…" maxW="max-w-7xl">
+      {/* header: asset + price, regime pills, next-expiry + Plain/Pro toggle */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/5 pb-3">
+        <div className="flex items-center gap-2">
+          <Skel className="h-6 w-6 rounded-full" />
+          <Skel className="h-4 w-28" />
+        </div>
+        <Skel className="h-5 w-24" />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skel key={i} className="h-5 w-20 rounded-full" />
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <Skel className="h-4 w-28" />
+          <Skel className="h-7 w-24 rounded-lg" />
+        </div>
+      </div>
+
+      {/* hero: surface read + expected-move band | the live 3-D surface */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="flex flex-col gap-3">
+          {/* surface read card */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/2 p-4">
+            <Skel className="h-2.5 w-24" />
+            <Skel className="h-4 w-11/12" />
+            <div className="flex flex-col gap-1.5">
+              <Skel className="h-3 w-full" />
+              <Skel className="h-3 w-4/5" />
+              <Skel className="h-3 w-11/12" />
+            </div>
+          </div>
+          {/* expected-move band */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/2 p-4">
+            <Skel className="h-2.5 w-28" />
+            <Skel className="h-6 w-40" />
+            <Skel className="h-2 w-full rounded-full" />
+            <div className="flex items-center justify-between">
+              <Skel className="h-3 w-16" />
+              <Skel className="h-3 w-16" />
+            </div>
+          </div>
+        </div>
+        {/* live surface canvas */}
+        <CardSkel className="h-[44vh] min-h-80" />
+      </div>
+
+      {/* expiry selector */}
+      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        <Skel className="mr-1 h-3 w-12" />
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skel key={i} className="h-7 w-12 rounded-md" />
+        ))}
+      </div>
+
+      {/* the flagship probability ladder */}
+      <CardSkel className="mt-2 h-96" />
+
+      {/* probability consensus */}
+      <CardSkel className="mt-4 h-56" />
+
+      {/* positioning & flow: a verdict line + four cells */}
+      <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-white/5 bg-white/2 p-4">
+        <Skel className="h-4 w-10/12 max-w-md" />
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skel key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+      </div>
+
+      {/* term structure + reality check */}
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <CardSkel className="h-52" />
+        <CardSkel className="h-52" />
+      </div>
+    </Body>
+  );
+}
+
 /* ============================ Trader profile ============================ */
 
 export function V2TraderSkeleton() {

@@ -49,6 +49,7 @@ export type CopilotIntent =
   | { kind: 'positioning' }
   | { kind: 'flow' }
   | { kind: 'options_market' }
+  | { kind: 'why_moving' }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -330,6 +331,30 @@ function wantsOptionsMarket(text: string): boolean {
   return /options? (?:market|flow|positioning|sentiment|book|traders?)|put[- ]?call|call[- ]?put|p\s*\/\s*c ratio|what.{0,25}options.{0,15}(?:say|saying|tell|think)|options.{0,12}(?:bullish|bearish|lean|leaning)/.test(text);
 }
 
+/** A live move/direction cue ("pumping", "dropping", "up", "red") and a market
+ *  subject ("btc", "price") — the two ingredients of a causal "why" question. */
+const MOVE_CTX = /\b(?:mov(?:e|ing|ed)|pump(?:ing)?|dump(?:ing)?|drop(?:ping)?|fall(?:ing)?|ris(?:e|ing)|rally(?:ing)?|crash(?:ing)?|tank(?:ing)?|surg(?:e|ing)|spik(?:e|ing)|sell(?:ing|off| off)?|\bup\b|\bdown\b|\bred\b|\bgreen\b)\b/;
+const MARKET_SUBJ = /\b(?:btc|bitcoin|price|market|crypto)\b/;
+
+/** "Why is BTC moving? / what's driving this? / any news? / why the dump?" — the
+ *  CAUSAL question (what's behind the move + what people are discussing), distinct
+ *  from the plain "read the market" (which stays `analyze`, so "what's happening
+ *  with bitcoin" isn't swallowed). Never about the trader's own book. */
+function wantsWhyMoving(text: string): boolean {
+  if (/\bmy (?:bet|position|trade|money|stake)\b/.test(text)) return false;
+  const causal =
+    /what'?s (?:driving|behind|causing|moving)\b/.test(text) ||
+    /what (?:is|'s) (?:driving|behind|causing|moving|the reason|the catalyst)\b/.test(text) ||
+    /what (?:caused|moved|drove)\b/.test(text) ||
+    /\breason (?:for|behind) (?:the|this|that|btc|bitcoin|it|price)\b/.test(text) ||
+    /\bwhat'?s the news\b|\bany (?:news|catalyst)\b|\bis there (?:any )?news\b|breaking news/.test(text) ||
+    /\bwhy the (?:dump|pump|drop|rally|crash|sell-?off|move|spike|red|green|tank|fall|surge)\b/.test(text);
+  if (causal) return true;
+  // A "why …" question that names a move word or a market subject.
+  const whyMove = /\bwhy\b/.test(text) && (MOVE_CTX.test(text) || /\bhappening\b|going on/.test(text));
+  return whyMove && (MARKET_SUBJ.test(text) || MOVE_CTX.test(text));
+}
+
 /** "Right now / currently / live" → the single live market; otherwise every open
  *  expiry. (The user's rule: a "now"-style cue scopes to the current market.) */
 function busiestScope(text: string): 'now' | 'all' {
@@ -443,6 +468,12 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsOptionsMarket(text)) return { kind: 'options_market' };
   if (wantsFlow(text)) return { kind: 'flow' };
   if (wantsPositioning(text)) return { kind: 'positioning' };
+
+  // "Why is BTC moving? / what's driving this? / any news?" — the causal read.
+  // Before the surface + directional + analyze branches, since it carries move and
+  // direction words ("dumping", "up") that aren't a bet, and "moving" is an analyze
+  // cue we want to beat when the question is explicitly asking WHY.
+  if (wantsWhyMoving(text)) return { kind: 'why_moving' };
 
   // Surface-native analysis (vol / skew / term / no-arb / reality check). Before
   // the directional branch too — "crash or pump" carries both sides, "1m or 5m for

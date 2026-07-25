@@ -21,7 +21,9 @@ import { quantityForStake, winPayout, leverageSliderMax } from '@/lib/sui/v2/quo
 import { buildMarketRead, directionStance, recommendation } from '@/lib/insights/market-read';
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
+import { buildNarrative } from '@/lib/insights/narrative';
 import type { Positioning } from '@/lib/insights/positioning';
+import type { NarrativeFeed } from '@/lib/insights/narrative';
 import { strikeForDirectionFair } from '@/lib/sui/v2/invert';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { upFair, totalVariance } from '@/lib/svi/svi';
@@ -46,6 +48,10 @@ export interface CopilotContext {
   /** Positioning & flow (Clawby PRO) — crowd/smart-money/pressure, ETF flow, and
    *  the options market. Null until it loads (or when the page is gated). */
   positioning?: Positioning | null;
+  /** The "what is X talking about?" chatter aggregate (Clawby PRO x_search), for
+   *  the "why is BTC moving?" answer. Carries the `ai` seam a later Claude slice
+   *  fills. Null until it loads (or when the page is gated). */
+  narrative?: NarrativeFeed | null;
   candidates: BetCandidate[];
   now: number;
   /** Live BTC spot ($) — the SAME feed the top price tape shows. Used only for
@@ -1086,6 +1092,22 @@ function optionsMarketReply(ctx: CopilotContext): CopilotReply {
   return { text: ['Here’s what the wider options market is showing:', ...lines] };
 }
 
+/** "Why is BTC moving? / what's driving this? / any news?" — names the single
+ *  biggest live driver from the hard data, then what X is discussing. Composed by
+ *  the shared, tested engine (buildNarrative), which prefers a later LLM read when
+ *  the feed carries one. Reuses insights + positioning already in context — the
+ *  only extra fetch is the slow (5-min) chatter aggregate. */
+function whyMovingReply(ctx: CopilotContext): CopilotReply {
+  const n = buildNarrative({
+    feed: ctx.narrative ?? null,
+    insights: ctx.insights,
+    positioning: ctx.positioning ?? null,
+    closes: ctx.closes,
+    now: ctx.now,
+  });
+  return { text: n.text };
+}
+
 export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): CopilotReply {
   switch (intent.kind) {
     case 'analyze':
@@ -1104,6 +1126,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return flowReply(ctx);
     case 'options_market':
       return optionsMarketReply(ctx);
+    case 'why_moving':
+      return whyMovingReply(ctx);
     case 'adjust_ticket':
       return adjustReply(intent, ctx);
     case 'next_market':

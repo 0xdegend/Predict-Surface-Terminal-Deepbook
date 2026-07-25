@@ -19,3 +19,4 @@ export * from './strike-analysis';
 export * from './positioning';
 export * from './positioning-read';
 export * from './consensus';
+export * from './narrative';

@@ -22,6 +22,7 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
+import { useBtcNarrative } from '@/lib/hooks/use-btc-narrative';
 import { useNow } from '@/lib/hooks/use-now';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
@@ -145,6 +146,10 @@ export function V2CopilotScreen({
   // uses (60s), so it adds no fetch cost. Feeds the co-pilot's positioning / flow /
   // options-market answers and enriches "Analyze BTC".
   const { data: positioning } = useBtcPositioning({ enabled: COPILOT_LIVE });
+  // The "what is X talking about?" chatter aggregate (Clawby PRO x_search), for the
+  // "why is BTC moving?" answer. Slow poll (5 min) — chatter drifts over hours, and
+  // x_search is the heaviest call, so this adds negligible load.
+  const { data: narrative } = useBtcNarrative({ enabled: COPILOT_LIVE });
   // Read the live spot the SAME way the top tape does — but imperatively from the
   // query cache at send-time (the tape's query already keeps it fresh), NOT via a
   // hook subscription, so this screen doesn't re-render every 1.5s and drag the
@@ -563,6 +568,7 @@ export function V2CopilotScreen({
         reply = respondToIntent(intent, {
           insights: insights ?? null,
           positioning: positioning ?? null,
+          narrative: narrative ?? null,
           candidates,
           now,
           spot,
