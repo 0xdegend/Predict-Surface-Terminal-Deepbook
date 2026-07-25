@@ -13,6 +13,7 @@
  * Degrades gracefully to `{ available: false }` when no key is configured.
  */
 import { NextResponse } from 'next/server';
+import type { MarketContext } from '@/lib/insights/context';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -20,18 +21,6 @@ export const dynamic = 'force-dynamic';
 const CLAWBY = 'https://api.openclawby.com/api/relay';
 const KEY = process.env.CLAWBY_API_KEY;
 const TTL_MS = 60_000;
-
-export interface BtcInsights {
-  available: boolean;
-  asOf: number;
-  spot: number | null;
-  change24hPct: number | null;
-  oiUsd: number | null;
-  funding: { binancePct: number | null; avgPct: number | null };
-  liq24h: { totalUsd: number | null; longUsd: number | null; shortUsd: number | null };
-  maxPain: { strike: number; date: string } | null;
-  sentiment: { value: number; label: string } | null;
-}
 
 const n = (v: unknown): number | null => {
   const x = Number(v);
@@ -79,8 +68,8 @@ function parseExpiry(d: unknown): string {
   return /^\d{6}$/.test(s) ? `20${s.slice(0, 2)}-${s.slice(2, 4)}-${s.slice(4, 6)}` : s;
 }
 
-async function build(): Promise<BtcInsights> {
-  const base: BtcInsights = {
+async function build(): Promise<MarketContext> {
+  const base: MarketContext = {
     available: true,
     asOf: Date.now(),
     spot: null,
@@ -153,11 +142,11 @@ async function build(): Promise<BtcInsights> {
 }
 
 // In-process cache + single-flight, so bursty traffic never fans out to Clawby.
-const g = globalThis as unknown as { __btcInsights?: { at: number; payload: BtcInsights }; __btcInflight?: Promise<BtcInsights> | null };
+const g = globalThis as unknown as { __btcInsights?: { at: number; payload: MarketContext }; __btcInflight?: Promise<MarketContext> | null };
 
 export async function GET() {
   if (!KEY) {
-    return NextResponse.json({ available: false } satisfies Partial<BtcInsights>);
+    return NextResponse.json({ available: false } satisfies Partial<MarketContext>);
   }
   const now = Date.now();
   if (g.__btcInsights && now - g.__btcInsights.at < TTL_MS) {
@@ -175,6 +164,6 @@ export async function GET() {
   } catch {
     // Serve the last good payload if we have one; else signal unavailable.
     if (g.__btcInsights) return NextResponse.json(g.__btcInsights.payload);
-    return NextResponse.json({ available: false } satisfies Partial<BtcInsights>);
+    return NextResponse.json({ available: false } satisfies Partial<MarketContext>);
   }
 }

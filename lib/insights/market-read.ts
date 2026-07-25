@@ -14,7 +14,7 @@
  * no "edge", no "basis points", no Greek — a first-time trader must follow it.
  */
 import { compact, num, signed } from '@/lib/format';
-import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
+import type { MarketContext } from './context';
 import type { StrikeAnalysis } from './strike-analysis';
 
 export type ReadTone = 'up' | 'down' | 'warn' | 'neutral';
@@ -36,7 +36,7 @@ export interface MarketRead {
 }
 
 export interface MarketReadInput {
-  ctx: BtcInsights | null;
+  ctx: MarketContext | null;
   /** Present only once a binary strike is picked and analyzed. */
   strike: StrikeAnalysis | null;
   isUp: boolean;
@@ -55,7 +55,7 @@ const usd = (v: number) => `$${compact(v)}`;
  * wording ("leaning your way"), it is NOT a trade signal, and nothing downstream
  * treats it as a probability.
  */
-function marketLean(ctx: BtcInsights): number {
+function marketLean(ctx: MarketContext): number {
   let lean = 0;
   let weight = 0;
 
@@ -78,7 +78,7 @@ function marketLean(ctx: BtcInsights): number {
   return weight > 0 ? lean / weight : 0;
 }
 
-function trendLine(ctx: BtcInsights): ReadLine | null {
+function trendLine(ctx: MarketContext): ReadLine | null {
   const chg = ctx.change24hPct;
   if (chg == null) return null;
   const funding = ctx.funding.binancePct;
@@ -105,7 +105,7 @@ function trendLine(ctx: BtcInsights): ReadLine | null {
   return { tone, text: `BTC is ${dir} ${mag} over the last 24h${fundingClause}.` };
 }
 
-function liquidationLine(ctx: BtcInsights): ReadLine | null {
+function liquidationLine(ctx: MarketContext): ReadLine | null {
   const { longUsd, shortUsd } = ctx.liq24h;
   if (longUsd == null || shortUsd == null || longUsd + shortUsd <= 0) return null;
   if (longUsd > shortUsd * 1.25) {
@@ -126,7 +126,7 @@ function liquidationLine(ctx: BtcInsights): ReadLine | null {
   };
 }
 
-function sentimentLine(ctx: BtcInsights): ReadLine | null {
+function sentimentLine(ctx: MarketContext): ReadLine | null {
   const s = ctx.sentiment;
   if (!s) return null;
   const tone: ReadTone = s.value < 45 ? 'down' : s.value > 55 ? 'up' : 'neutral';
@@ -183,7 +183,7 @@ function headlineFor(lean: number, hasBet: boolean, isUp: boolean): { stance: Ma
  * Reuses the same soft blend + threshold as the headline, so the two never
  * disagree. 'mixed' when there's no clear lean (or no data).
  */
-export function directionStance(ctx: BtcInsights | null, isUp: boolean): MarketRead['stance'] {
+export function directionStance(ctx: MarketContext | null, isUp: boolean): MarketRead['stance'] {
   if (!ctx || !ctx.available) return 'mixed';
   const lean = marketLean(ctx);
   if (Math.abs(lean) < 0.28) return 'mixed';
@@ -195,7 +195,7 @@ export function directionStance(ctx: BtcInsights | null, isUp: boolean): MarketR
  *  direction (picking a side is a coin-flip, so a band may fit better). Reuses
  *  the headline's 0.28 threshold so the steer never contradicts the read.
  *  `confidence` = how strong that call is. Null when there's no live data. */
-export function recommendation(ctx: BtcInsights | null): { pick: 'up' | 'down' | 'range'; confidence: 'slight' | 'clear' } | null {
+export function recommendation(ctx: MarketContext | null): { pick: 'up' | 'down' | 'range'; confidence: 'slight' | 'clear' } | null {
   if (!ctx || !ctx.available) return null;
   const lean = marketLean(ctx);
   const mag = Math.abs(lean);
