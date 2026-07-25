@@ -133,7 +133,7 @@ export function PositioningFlow({ positioning, insights, intel }: { positioning:
           </Cell>
         </div>
 
-        {cross && <p className="mt-4 border-t border-line pt-3 text-[12.5px] leading-relaxed text-text-2">{cross}</p>}
+        {cross && <p className="mt-4 border-t border-line-soft pt-3 text-[12.5px] leading-relaxed text-text-2">{cross}</p>}
       </div>
     </section>
   );
@@ -141,7 +141,7 @@ export function PositioningFlow({ positioning, insights, intel }: { positioning:
 
 function Cell({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-line-soft bg-bg-2 p-3.5">
+    <div className="glass-inset flex flex-col gap-2.5 p-3.5">
       <div className="text-[10.5px] uppercase tracking-wide text-text-3">{label}</div>
       {children}
     </div>
@@ -172,7 +172,7 @@ function PcrBadge({ pcr }: { pcr: number }) {
 
 function Split({ a, b }: { a: number; b: number }) {
   return (
-    <div className="flex h-2 overflow-hidden rounded border border-line-soft">
+    <div className="flex h-2 overflow-hidden rounded-full bg-white/5">
       <span className="bg-up/70" style={{ width: `${a}%` }} />
       <span className="bg-down/70" style={{ width: `${b}%` }} />
     </div>

@@ -23,6 +23,7 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2CopilotTicketModal } from '../copilot/copilot-ticket-modal';
@@ -112,11 +113,19 @@ export function V2OptionsScreen({
   );
   const canSurface = surfaceInputs.length >= 2;
 
-  // now/spot READ from the live tape in the query cache (never subscribed).
+  // now/spot READ from the live tape in the query cache (never subscribed). Every
+  // live source (the tape cache + the Clawby fetches) is client-only, so it's gated
+  // on `mounted` — false on the server and the first client render, true after. That
+  // makes intel + every panel below identical on SSR and first paint (no hydration
+  // mismatch, §10.7), then they switch to live values right after hydration.
   const queryClient = useQueryClient();
-  const pythObs = queryClient.getQueryData<PythObservation | null>(qkV2.pythLatest) ?? null;
+  const mounted = useMounted();
+  const pythObs = mounted ? queryClient.getQueryData<PythObservation | null>(qkV2.pythLatest) ?? null : null;
   const pulseSpot = pythSpot(pythObs);
   const pulseNow = pythObs?.source_timestamp_ms ?? pythObs?.checkpoint_timestamp_ms ?? serverNow;
+  const liveInsights = mounted ? insights ?? null : null;
+  const liveCloses = mounted ? candles?.closes ?? null : null;
+  const livePositioning = mounted ? positioning ?? null : null;
 
   const candidates = useMemo<EngineCandidate[]>(
     () =>
@@ -133,12 +142,12 @@ export function V2OptionsScreen({
         asset: getAsset('BTC'),
         now: pulseNow,
         spot: pulseSpot,
-        ctx: insights ?? null,
+        ctx: liveInsights,
         candidates,
-        closes: candles?.closes ?? null,
+        closes: liveCloses,
         surfaceInputs,
       }),
-    [pulseNow, pulseSpot, insights, candidates, candles?.closes, surfaceInputs],
+    [pulseNow, pulseSpot, liveInsights, candidates, liveCloses, surfaceInputs],
   );
 
   // Light a strike on the surface + pre-fill the ticket selection (shared store).
@@ -163,7 +172,7 @@ export function V2OptionsScreen({
   const consensus = useMemo(() => {
     if (!ladderPricer || !selected || consensusStrike == null) return null;
     const a = analyzeStrikeForMarket({
-      closes: candles?.closes ?? null,
+      closes: liveCloses,
       pricer: ladderPricer,
       strike: consensusStrike,
       isUp: consensusIsUp,
@@ -172,7 +181,7 @@ export function V2OptionsScreen({
     });
     if (!a) return null;
     return buildConsensus({ isUp: consensusIsUp, surfaceProb: a.implied, sigmaMove: a.sigmaMove, empiricalProb: a.empirical?.prob ?? null });
-  }, [ladderPricer, selected, consensusStrike, consensusIsUp, candles?.closes, pulseNow]);
+  }, [ladderPricer, selected, consensusStrike, consensusIsUp, liveCloses, pulseNow]);
 
   if (markets.length === 0) {
     return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
@@ -181,7 +190,7 @@ export function V2OptionsScreen({
   const page = (
     <VocabProvider>
       <div className="mx-auto max-w-7xl px-4 pb-16 pt-4">
-        <OptionsHeader intel={intel} insights={insights ?? null} serverNow={serverNow} />
+        <OptionsHeader intel={intel} insights={liveInsights} serverNow={serverNow} />
 
         {/* Hero: the read + expected move alongside the live surface. */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
@@ -205,7 +214,7 @@ export function V2OptionsScreen({
 
         {/* The flagship ladder. */}
         <div className="mt-2">
-          <ProbabilityLadder market={selected} pricer={ladderPricer} closes={candles?.closes ?? null} now={pulseNow} onHighlight={highlight} onBet={bet} />
+          <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} />
         </div>
 
         {/* Probability consensus — the flagship, for the picked strike. */}
@@ -221,7 +230,7 @@ export function V2OptionsScreen({
 
         {/* Positioning & flow — the "why behind the odds" (Clawby PRO). */}
         <div className="mt-4">
-          <PositioningFlow positioning={positioning ?? null} insights={insights ?? null} intel={intel} />
+          <PositioningFlow positioning={livePositioning} insights={liveInsights} intel={intel} />
         </div>
 
         {/* Term structure + reality check. */}
@@ -231,7 +240,7 @@ export function V2OptionsScreen({
             pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
             expiryMs={selected?.expiry ?? null}
             now={pulseNow}
-            closes={candles?.closes ?? null}
+            closes={liveCloses}
           />
         </div>
       </div>
