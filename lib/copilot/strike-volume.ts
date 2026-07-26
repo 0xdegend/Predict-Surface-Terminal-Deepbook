@@ -118,3 +118,55 @@ export function busiestStrikeReply(buckets: StrikeVolume[], opts: { scope: 'now'
   text.push('Want the odds on any of these? Say “odds at $X”, or “analyze this strike”.');
   return { text };
 }
+
+/**
+ * The plain-language "how's the volume on the surface" overview: total staked, the
+ * up vs down (vs range) split, and the busiest spot. Complements busiestStrikeReply
+ * (which names one level) with the big picture. `scope` as above.
+ */
+export function surfaceVolumeReply(buckets: StrikeVolume[], opts: { scope: 'now' | 'all'; now: number }): CopilotReply {
+  const ranked = buckets.filter((b) => b.volume > 0);
+  if (ranked.length === 0) {
+    return {
+      text: [
+        opts.scope === 'now'
+          ? "It's quiet on the live market right now. No bets have gone through yet, which is normal between waves. Check back in a moment, or ask me to analyze it."
+          : "It's quiet across the surface right now. No bets have gone through on any open market yet. A fresh market opens about every minute, so check back shortly.",
+      ],
+    };
+  }
+
+  const sum = (dir: StrikeDir) => ranked.filter((b) => b.direction === dir).reduce((s, b) => s + b.volume, 0);
+  const total = ranked.reduce((s, b) => s + b.volume, 0);
+  const bets = ranked.reduce((s, b) => s + b.bets, 0);
+  const up = sum('up');
+  const down = sum('down');
+  const range = sum('range');
+  const pct = (v: number) => Math.round((v / total) * 100);
+  const rangeTail = range > 0 ? `, plus ${money(range)} in range bets` : '';
+  const whereWord = opts.scope === 'now' ? 'on the live market right now' : 'across all open markets';
+
+  const text: string[] = [
+    `Right now ${money(total)} is staked ${whereWord}, across ${bets} ${bets === 1 ? 'bet' : 'bets'}.`,
+  ];
+
+  // Which way the money leans (up vs down among the directional bets).
+  const dirTotal = up + down;
+  if (dirTotal === 0) {
+    text.push(`It's all range bets right now (${money(range)}), so traders are backing a zone rather than a side.`);
+  } else if (Math.abs(up - down) < dirTotal * 0.15) {
+    text.push(`It's split fairly evenly: ${money(up)} on UP and ${money(down)} on DOWN${rangeTail}.`);
+  } else if (up > down) {
+    text.push(`The money is leaning UP: ${money(up)} (${pct(up)}%) betting higher vs ${money(down)} (${pct(down)}%) lower${rangeTail}.`);
+  } else {
+    text.push(`The money is leaning DOWN: ${money(down)} (${pct(down)}%) betting lower vs ${money(up)} (${pct(up)}%) higher${rangeTail}.`);
+  }
+
+  // The busiest single spot.
+  const top = ranked[0];
+  const when = opts.scope === 'all' ? ` (settles ${timeLeftLabel(top.expiry, opts.now)})` : '';
+  text.push(`The busiest spot is ${strikeLabel(top)}${when} with ${money(top.volume)}.`);
+
+  text.push('Say “busiest strike” for the full ranking, or tell me a direction and I’ll set up a bet.');
+  return { text };
+}

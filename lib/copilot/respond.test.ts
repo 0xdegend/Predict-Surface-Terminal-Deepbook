@@ -571,13 +571,52 @@ describe('respondToIntent — help', () => {
   it('returns guidance, no bet', () => {
     const r = respondToIntent({ kind: 'help' }, ctx());
     expect(r.bet).toBeUndefined();
-    expect(r.text.join(' ')).toMatch(/co-pilot/i);
+    expect(r.text.join(' ')).toMatch(/Kelly/);
   });
 
   it('offers a way to reach the dev for feedback / missed questions', () => {
     const r = respondToIntent({ kind: 'help' }, ctx());
     expect(r.text.join(' ')).toMatch(/feedback|reach out|missed/i);
     expect(r.link).toEqual({ label: expect.stringMatching(/dev/i), href: 'https://x.com/0xdegend' });
+  });
+});
+
+describe('respondToIntent — surface overview (what can I bet on)', () => {
+  it('names the count and the range of expiries, no bet', () => {
+    const r = respondToIntent({ kind: 'markets_overview' }, ctx());
+    expect(r.bet).toBeUndefined();
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/2 live markets/);
+    expect(blob).toMatch(/from about 4 minutes out to about an hour/);
+    expect(blob).toMatch(/UP, DOWN, or a range/);
+  });
+
+  it('reads a single market in the singular', () => {
+    const r = respondToIntent({ kind: 'markets_overview' }, ctx({ candidates: [candidate('m-only', 3)] }));
+    expect(r.text.join(' ')).toMatch(/one live market/i);
+  });
+
+  it('honest fallback when nothing is live', () => {
+    const r = respondToIntent({ kind: 'markets_overview' }, ctx({ candidates: [] }));
+    expect(r.text.join(' ')).toMatch(/no live market/i);
+  });
+});
+
+describe('respondToIntent — biggest payout (longshot finder)', () => {
+  it('loads the highest-payout mintable bet as a longshot', () => {
+    const r = respondToIntent({ kind: 'biggest_payout' }, ctx({ spot: 65_000 }));
+    expect(r.bet).toBeDefined();
+    expect(r.bet!.conviction).toBe('longshot');
+    expect(r.bet!.payoutMult).toBeGreaterThan(1);
+    expect(r.bet!.prob).toBeGreaterThan(0.03);
+    expect(r.text.join(' ')).toMatch(/longest shot/i);
+    expect(r.text.join(' ')).toMatch(/×/); // the payout multiple
+  });
+
+  it('honest fallback when nothing is live', () => {
+    const r = respondToIntent({ kind: 'biggest_payout' }, ctx({ candidates: [] }));
+    expect(r.bet).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/nothing to bet on|no live market/i);
   });
 });
 
@@ -606,6 +645,8 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'no_arb' }, ctx()),
       respondToIntent({ kind: 'reality_check', level: { kind: 'move', pct: 0.5 }, dir: 'up' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })),
       respondToIntent({ kind: 'recommend' }, ctx()),
+      respondToIntent({ kind: 'markets_overview' }, ctx()),
+      respondToIntent({ kind: 'biggest_payout' }, ctx({ spot: 65_000 })),
       respondToIntent({ kind: 'balance' }, ctx({ wallet: { connected: true, hasAccount: true, accountBase: 250_000_000n, walletBase: 40_000_000n } })),
       respondToIntent(
         { kind: 'portfolio' },

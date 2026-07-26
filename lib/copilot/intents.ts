@@ -43,6 +43,9 @@ export type CopilotIntent =
   | { kind: 'term_structure'; dir?: BetDirection }
   | { kind: 'no_arb' }
   | { kind: 'busiest_strike'; scope: 'now' | 'all' }
+  | { kind: 'surface_volume'; scope: 'now' | 'all' }
+  | { kind: 'markets_overview' }
+  | { kind: 'biggest_payout' }
   | { kind: 'find_strike'; price: number; dir?: BetDirection }
   | { kind: 'explain'; topic: ExplainTopic }
   | { kind: 'best_value' }
@@ -249,6 +252,31 @@ function wantsBusiestStrike(text: string): boolean {
   const volumeCue = /\bbusiest\b|\bhottest\b|most (?:traded|active|popular|bet on|volume|action|bets)|\bmost volume\b|where.{0,20}(?:action|money|volume|bets|flow)|\bmost bets?\b/.test(text);
   const strikeCue = /\bstrikes?\b|\bprice level\b|which (?:strike|level|price)|on the surface|\bfrom the surface\b/.test(text);
   return volumeCue && strikeCue;
+}
+
+/** "How's the volume on the surface? / how busy is it? / how much is being bet?" —
+ *  the OVERALL activity read (total staked + up/down split + busiest spot), distinct
+ *  from `busiest_strike` (which names one level). A bare volume/activity cue with no
+ *  "which strike" is enough; busiest_strike is matched first, so "where's the volume"
+ *  still names the level. Not the trader's own book. */
+function wantsSurfaceVolume(text: string): boolean {
+  if (/\bmy (?:bet|position|trade|money|stake|volume)\b/.test(text)) return false;
+  return /\bvolume\b|\bhow (?:busy|active)\b|\bhow much (?:is )?(?:being )?(?:traded|bet|staked|going (?:on|through))\b|\b(?:much|any|lots? of|a lot of) (?:activity|action|trading|betting)\b|\bis it (?:busy|active|quiet|dead)\b|how'?s (?:the )?(?:activity|action)\b/.test(text);
+}
+
+/** "What can I bet on? / how many markets? / how far out can I bet? / what
+ *  timeframes?" — the surface's shape: how many live expiries and their range.
+ *  About the markets, not the trader's own book. */
+function wantsMarketsOverview(text: string): boolean {
+  if (/\bmy\b/.test(text)) return false; // "my markets/bets" is the portfolio
+  return /\bwhat can i (?:bet|trade|play) on\b|\bhow many (?:markets?|expiries|expiry|timeframes?)\b|\bhow far (?:out|ahead|forward)\b|\bwhat (?:markets?|expiries|timeframes?|timescales?) (?:are (?:there|available|open|live|up)|can i|do i|do you)\b|\bwhat timeframes?\b|\blist (?:the )?(?:markets?|expiries)\b|\bwhat'?s (?:available|open) to bet\b/.test(text);
+}
+
+/** "Where's the biggest payout? / the longest shot? / a moonshot?" — the highest
+ *  mintable payout multiple on the surface. Requires a superlative + a payout noun
+ *  (so a bare "longshot up bet" stays a directional bet, not this). */
+function wantsBiggestPayout(text: string): boolean {
+  return /\b(?:biggest|highest|largest|longest|best|max(?:imum)?)\s+(?:payout|multiplier|multiple|return|reward|win|shot)\b|\bmoon ?shot\b|\blongest shot\b|\bmost i can (?:win|make|earn)\b|\bbiggest (?:gamble|risk|degen)\b/.test(text);
 }
 
 /** "Close my up bet / cash out / redeem my winnings / close the 65k one" — a
@@ -499,6 +527,12 @@ export function parseIntent(message: string): CopilotIntent {
   // "Which strike has the most volume?" — a distinct volume-by-strike ask. Before
   // the other surface questions so "most volume" isn't misread as "biggest move".
   if (wantsBusiestStrike(text)) return { kind: 'busiest_strike', scope: busiestScope(text) };
+  if (wantsSurfaceVolume(text)) return { kind: 'surface_volume', scope: busiestScope(text) };
+  // "What can I bet on?" (the surface's expiries) and "biggest payout / longshot"
+  // (the highest mintable multiple) — before best_value so a "biggest payout" ask
+  // isn't read as "best value".
+  if (wantsMarketsOverview(text)) return { kind: 'markets_overview' };
+  if (wantsBiggestPayout(text)) return { kind: 'biggest_payout' };
   // "What's the best value?" — before term_structure so "which is the best value"
   // isn't caught by its "which market … best" pattern.
   if (wantsBestValue(text)) return { kind: 'best_value' };

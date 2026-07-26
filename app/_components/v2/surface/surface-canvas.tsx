@@ -24,7 +24,7 @@
  * data path doesn't expose today).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { OrbitControls, Html, Line, Grid } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
@@ -117,6 +117,20 @@ const AZ_MIN = FRONT_AZ - AZ_ARC;
 const AZ_MAX = FRONT_AZ + AZ_ARC;
 const AUTO_ROTATE_SPEED = 0.1;
 
+// "Make it pop" — when the co-pilot finds/points to a strike, the surface stops
+// its idle drift, eases the camera onto that node, and flashes the marker, so the
+// pick clearly LANDS (before this, an ATM-ish find looked identical to the resting
+// state). EASE = how long the camera glide takes; HOLD = how long the spin stays
+// paused after (long enough to register the flash); DIST = the dolly-in distance
+// it eases toward (resting distance is ~14; min is 8), a gentle zoom, not a lunge.
+const FOCUS_EASE_MS = 850;
+const FOCUS_HOLD_MS = 2400;
+const FOCUS_DIST = 10.5;
+// Reusable scratch for the focus camera glide — one controller exists, so keeping
+// these module-level honors the "zero per-frame allocations in the loop" budget.
+const _focusSph = new THREE.Spherical();
+const _focusOff = new THREE.Vector3();
+
 /** Gently rock the idle auto-rotation back and forth WITHIN the azimuth arc, so the
  *  slow "alive" spin sweeps the front instead of drifting into (and sticking at) the
  *  clamp. Reverses direction at each edge; no-ops when auto-rotation is off. */
@@ -155,6 +169,9 @@ export function SurfaceCanvasV2({
   const [stress, setStress] = useState(false);
   const [showNoArb, setShowNoArb] = useState(false);
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  // True during a co-pilot "find" reveal — pauses the idle auto-rotate so the
+  // camera glide + marker flash aren't fighting the drift (see FocusController).
+  const [focusing, setFocusing] = useState(false);
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   // Below lg the surface is VIEW-ONLY — trading happens from the rail/list
   // (legacy parity: a 3-D tap on a phone is imprecise).
@@ -393,7 +410,7 @@ export function SurfaceCanvasV2({
     );
   }
 
-  const autoRotateActive = isLive && !hover && !reduced && !popover && rangeAnchorPrice == null;
+  const autoRotateActive = isLive && !hover && !reduced && !popover && rangeAnchorPrice == null && !focusing;
 
   return (
     <div className="relative h-full w-full">
@@ -438,6 +455,9 @@ export function SurfaceCanvasV2({
             <SurfacePositionPins mesh={mesh} surface={surface} positions={positionPins} />
           )}
           <FillRipple mesh={mesh} surface={surface} />
+          {/* Co-pilot "found it" flash — a shockwave + light beam at the strike,
+              fired on each pulseFocus. Held out of stress/scrub previews. */}
+          {isLive && !stress && <FocusFlash mesh={mesh} surface={surface} reduced={reduced} />}
           <FirstRunPulse
             mesh={mesh}
             surface={surface}
@@ -479,6 +499,16 @@ export function SurfaceCanvasV2({
           target={[0, -0.5, 0]}
         />
         <CameraRock controls={orbitRef} active={autoRotateActive} />
+        {/* Eases the camera onto a co-pilot-found strike (desktop, motion on).
+            Reports its window via focusing so the idle spin holds meanwhile. */}
+        <FocusController
+          controls={orbitRef}
+          mesh={mesh}
+          surface={surface}
+          enabled={isLive && !stress && !isMobile && !reduced}
+          onStart={() => setFocusing(true)}
+          onEnd={() => setFocusing(false)}
+        />
       </Canvas>
 
       {hover && !popover && <SurfaceTooltip hover={hover} />}
@@ -1235,6 +1265,160 @@ function FillRipple({ mesh, surface }: { mesh: SurfaceMesh; surface: Surface }) 
       <meshBasicMaterial color={fill.isUp ? UP_ACCENT : DOWN_ACCENT} transparent side={THREE.DoubleSide} />
     </mesh>
   );
+}
+
+/**
+ * FocusFlash — the visible half of "make it pop". On each `pulseFocus` (the
+ * co-pilot finding / pointing to a strike) it plays a one-shot reveal at that
+ * node: two expanding shockwave rings and a brief pillar of light, in the bet's
+ * accent colour. Fed by the trade store's `focus` (ts distinguishes repeats), the
+ * same pattern as FillRipple. Silent under reduced motion — the marker still
+ * moves there, it just doesn't flash.
+ */
+function FocusFlash({ mesh, surface, reduced }: { mesh: SurfaceMesh; surface: Surface; reduced: boolean }) {
+  const focus = useV2TradeStore((s) => s.focus);
+  const ringRef = useRef<THREE.Mesh>(null);
+  const ring2Ref = useRef<THREE.Mesh>(null);
+  const beamRef = useRef<THREE.Mesh>(null);
+  const beamMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const start = useRef(0);
+  const pos = useMemo(
+    () => (focus ? locate(mesh, surface, focus.marketId, focus.strike) : null),
+    [mesh, surface, focus],
+  );
+  useEffect(() => {
+    start.current = performance.now();
+  }, [focus?.ts]);
+  useFrame(() => {
+    if (reduced) return;
+    const t = Math.min((performance.now() - start.current) / 1400, 1);
+    const e = 1 - Math.pow(1 - t, 3); // easeOutCubic — quick out, gentle settle
+    if (ringRef.current) {
+      const s = 0.1 + e * 3.1;
+      ringRef.current.scale.set(s, s, s);
+      (ringRef.current.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.9;
+      ringRef.current.visible = t < 1;
+    }
+    if (ring2Ref.current) {
+      // A second ring trailing the first reads as a real shockwave, not a blip.
+      const t2 = Math.max(0, Math.min((t - 0.14) / 0.86, 1));
+      const s = 0.1 + (1 - Math.pow(1 - t2, 3)) * 2.2;
+      ring2Ref.current.scale.set(s, s, s);
+      (ring2Ref.current.material as THREE.MeshBasicMaterial).opacity = (1 - t2) * 0.65;
+      ring2Ref.current.visible = t < 1;
+    }
+    if (beamMatRef.current) {
+      // Pillar of light: fades in fast, then out over the rest of the reveal.
+      const o = (t < 0.22 ? t / 0.22 : 1 - (t - 0.22) / 0.78) * 0.5;
+      beamMatRef.current.opacity = Math.max(0, o);
+      if (beamRef.current) beamRef.current.visible = t < 1;
+    }
+  });
+  if (!pos || !focus) return null;
+  const accent = focus.isUp ? UP_ACCENT : DOWN_ACCENT;
+  const beamH = 2.4;
+  return (
+    <group>
+      {/* Outer shockwave ring on the surface, in the bet's accent colour. */}
+      <mesh ref={ringRef} position={[pos.x, pos.y + 0.04, pos.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.2, 0.3, 44]} />
+        <meshBasicMaterial color={accent} transparent side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      {/* Inner white shockwave for a crisp "ping" at the centre. */}
+      <mesh ref={ring2Ref} position={[pos.x, pos.y + 0.04, pos.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.15, 0.22, 44]} />
+        <meshBasicMaterial color="#ffffff" transparent side={THREE.DoubleSide} depthWrite={false} />
+      </mesh>
+      {/* Pillar of light rising from the node (base sits on the surface). */}
+      <mesh ref={beamRef} position={[pos.x, pos.y + 0.12 + beamH / 2, pos.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.03, 0.055, beamH, 10, 1, true]} />
+        <meshBasicMaterial
+          ref={beamMatRef}
+          color={accent}
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * FocusController — the camera half of "make it pop". On each `pulseFocus` it
+ * eases the camera to face the found strike (azimuth clamped to the front arc)
+ * and dollies gently toward it, then holds the idle spin off long enough to
+ * register the flash before releasing. Purely imperative on the OrbitControls,
+ * the intended R3F pattern; `enabled` gates it to the live desktop surface with
+ * motion on. Reports its window via onStart/onEnd so the parent can pause spin.
+ */
+function FocusController({
+  controls,
+  mesh,
+  surface,
+  enabled,
+  onStart,
+  onEnd,
+}: {
+  controls: RefObject<OrbitControlsImpl | null>;
+  mesh: SurfaceMesh;
+  surface: Surface;
+  enabled: boolean;
+  onStart: () => void;
+  onEnd: () => void;
+}) {
+  const camera = useThree((s) => s.camera);
+  const focus = useV2TradeStore((s) => s.focus);
+  const tween = useRef<{ start: number; fromAz: number; toAz: number; fromDist: number; toDist: number } | null>(null);
+  const done = useRef(true);
+
+  useEffect(() => {
+    const c = controls.current;
+    if (!enabled || !focus || !c) return;
+    const p = locate(mesh, surface, focus.marketId, focus.strike);
+    if (!p) return;
+    // Azimuth that brings the node to front-centre (only x/z matter for the
+    // horizontal angle), clamped so we never swing behind the surface.
+    const az = Math.max(AZ_MIN, Math.min(AZ_MAX, Math.atan2(p.x - c.target.x, p.z - c.target.z)));
+    tween.current = {
+      start: performance.now(),
+      fromAz: c.getAzimuthalAngle(),
+      toAz: az,
+      fromDist: c.getDistance(),
+      toDist: FOCUS_DIST,
+    };
+    done.current = false;
+    onStart();
+    // Re-run only when a NEW focus fires (ts changes), never on unrelated renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.ts]);
+
+  // Mutating the camera / OrbitControls inside the loop is the intended imperative
+  // R3F pattern.
+  useFrame(() => {
+    const c = controls.current;
+    const tw = tween.current;
+    if (!c || !tw) return;
+    const elapsed = performance.now() - tw.start;
+    const p = Math.min(elapsed / FOCUS_EASE_MS, 1);
+    const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+    const az = tw.fromAz + (tw.toAz - tw.fromAz) * e;
+    const dist = tw.fromDist + (tw.toDist - tw.fromDist) * e;
+    _focusSph.set(dist, c.getPolarAngle(), az);
+    _focusOff.setFromSpherical(_focusSph);
+    camera.position.copy(c.target).add(_focusOff);
+    c.update();
+    // Glide finishes at EASE_MS; keep the spin paused until HOLD_MS so the flash
+    // reads, then release and let auto-rotate resume from here.
+    if (elapsed >= FOCUS_HOLD_MS && !done.current) {
+      done.current = true;
+      tween.current = null;
+      onEnd();
+    }
+  });
+  return null;
 }
 
 /**

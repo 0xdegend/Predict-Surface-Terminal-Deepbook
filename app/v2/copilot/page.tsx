@@ -13,7 +13,7 @@ import { predictV2Config } from '@/config/predict';
 import type { V2Market } from '@/lib/api/v2/types';
 
 export const metadata: Metadata = {
-  title: 'Co-pilot',
+  title: 'Ask Kelly',
   description: 'Talk to the volatility surface — get a plain-language read and a ready-to-place bet.',
 };
 

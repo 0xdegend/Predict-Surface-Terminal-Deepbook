@@ -190,6 +190,33 @@ describe('parseIntent', () => {
     expect(parseIntent('is the surface healthy').kind).toBe('no_arb');
   });
 
+  it('overall volume/activity → surface_volume; naming a strike stays busiest_strike', () => {
+    expect(parseIntent('How is the volume like on the surface right now?')).toMatchObject({ kind: 'surface_volume', scope: 'now' });
+    expect(parseIntent('how busy is the surface').kind).toBe('surface_volume');
+    expect(parseIntent('how much is being bet right now')).toMatchObject({ kind: 'surface_volume', scope: 'now' });
+    expect(parseIntent('is it active on the surface').kind).toBe('surface_volume');
+    expect(parseIntent("what's the volume across all markets")).toMatchObject({ kind: 'surface_volume', scope: 'all' });
+    // "which strike / where's the volume" still names the level → busiest_strike.
+    expect(parseIntent('which strike has the most volume').kind).toBe('busiest_strike');
+    expect(parseIntent("where's the volume on the surface").kind).toBe('busiest_strike');
+    // Not about the trader's own book.
+    expect(parseIntent('how much is my bet worth').kind).not.toBe('surface_volume');
+  });
+
+  it('"what can I bet on" → markets_overview; "biggest payout / longshot" → biggest_payout', () => {
+    expect(parseIntent('what can I bet on right now').kind).toBe('markets_overview');
+    expect(parseIntent('how many markets are there').kind).toBe('markets_overview');
+    expect(parseIntent('how far out can I bet').kind).toBe('markets_overview');
+    expect(parseIntent('what timeframes can I trade').kind).toBe('markets_overview');
+    expect(parseIntent("where's the biggest payout on the surface").kind).toBe('biggest_payout');
+    expect(parseIntent('longest shot on the surface').kind).toBe('biggest_payout');
+    expect(parseIntent('find me a moonshot').kind).toBe('biggest_payout');
+    expect(parseIntent('biggest win I can get').kind).toBe('biggest_payout');
+    // Guards: a directional longshot bet and "best bet" don't get hijacked.
+    expect(parseIntent('give me a longshot up bet').kind).toBe('directional_bet');
+    expect(parseIntent("what's the best bet right now").kind).toBe('best_value');
+  });
+
   it('"find/show me the $X strike" → find_strike (locate it), with the price', () => {
     expect(parseIntent('Find me the 64,730 strike on the surface?')).toMatchObject({ kind: 'find_strike', price: 64730 });
     expect(parseIntent('show me 65,200 on the surface')).toMatchObject({ kind: 'find_strike', price: 65200 });

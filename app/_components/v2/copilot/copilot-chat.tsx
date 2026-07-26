@@ -135,7 +135,7 @@ export function CopilotChat({
           <LuSparkles size={13} />
         </span>
         <div className="flex flex-col">
-          <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Predict co-pilot</h2>
+          <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Kelly</h2>
           <span className="text-[9.5px] uppercase tracking-wider text-text-3">Auto · beta · grounded in live data</span>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function CopilotChat({
             disabled={busy}
             rows={1}
             placeholder="Ask, or say “safe up bet”…"
-            aria-label="Message the co-pilot"
+            aria-label="Message Kelly"
             className="scroll-quiet min-w-0 flex-1 resize-none bg-transparent py-1 text-[12.5px] leading-snug text-text-1 placeholder:text-text-3 focus:outline-none"
           />
           <button
@@ -326,14 +326,17 @@ function ActionCard({ action, onAction, busy }: { action: OnboardAction; onActio
   );
 }
 
-/** Three bouncing dots — the "co-pilot is reading the market" beat before a reply. */
+/** Kelly reading the market — a small name tag + three bouncing dots before a reply. */
 function TypingBubble() {
   return (
     <div className="flex items-start">
-      <div className="glass-inset flex items-center gap-1 rounded-2xl px-3 py-3 text-text-3">
-        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" />
-        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.15s' }} />
-        <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.3s' }} />
+      <div className="glass-inset flex items-center gap-2 rounded-2xl px-3 py-3 text-text-3">
+        <span className="text-[9.5px] font-medium uppercase tracking-wider">Kelly</span>
+        <span className="flex items-center gap-1">
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.15s' }} />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.3s' }} />
+        </span>
       </div>
     </div>
   );

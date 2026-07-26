@@ -24,6 +24,7 @@ import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
 import { useBtcNarrative } from '@/lib/hooks/use-btc-narrative';
 import { useNow } from '@/lib/hooks/use-now';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
@@ -53,7 +54,7 @@ import {
 import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
 import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
-import { aggregateStrikeVolume, busiestStrikeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
+import { aggregateStrikeVolume, busiestStrikeReply, surfaceVolumeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
 import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-match';
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import { num, quote as fmtQuote } from '@/lib/format';
@@ -69,7 +70,7 @@ const GREETING: ChatMessage = {
   id: 'greet',
   role: 'assistant',
   text: [
-    "Hi — I'm your Predict co-pilot. Tell me which way you think BTC goes and how bold you want to be, and I'll set the bet up for you.",
+    "Hi, I'm Kelly, your Predict co-pilot. Tell me which way you think BTC goes and how bold you want to be, and I'll set the bet up for you.",
     'Try “analyze BTC”, “safe up bet”, or say “set up a trade” and I’ll walk you through it step by step.',
   ],
 };
@@ -162,6 +163,7 @@ export function V2CopilotScreen({
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
+  const pulseFocus = useV2TradeStore((s) => s.pulseFocus);
 
   // Both Clawby-backed fetches are gated on COPILOT_LIVE: while the co-pilot ships
   // behind the coming-soon overlay (prod), the page does ZERO Clawby work — no
@@ -265,7 +267,13 @@ export function V2CopilotScreen({
   const arb = arbState(surfaceInputs, pulseNow);
   const lean = pulseBias(insights ?? null);
   const nextExp = pulseNextExpiry(stageCandidates, pulseNow);
-  const chips = suggestChips({ vol, arb, bias: lean, hasPortfolio: !!acct.owner });
+  // The chips are derived from LIVE data (vol/arb/lean + wallet), which the server
+  // doesn't have — so the first client render must match the server's static
+  // fallback, then swap to the context-aware set after mount. Without this gate the
+  // server renders CHIPS[0] ("Set up a trade") and the client renders a live chip,
+  // tripping hydration. `undefined` lets CopilotChat fall back to its static CHIPS.
+  const mounted = useMounted();
+  const chips = mounted ? suggestChips({ vol, arb, bias: lean, hasPortfolio: !!acct.owner }) : undefined;
 
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
@@ -301,6 +309,9 @@ export function V2CopilotScreen({
     if (bet.amount != null) setStake(bet.amount);
     if (bet.leverage != null) setLeverage(bet.leverage);
     markPicked();
+    // Reveal it on the surface (pause the spin, ease the camera in, flash the
+    // marker) so the co-pilot's pick clearly "lands" instead of sitting unseen.
+    pulseFocus({ marketId: bet.marketId, strike: bet.strikePrice, isUp: bet.isUp });
   }
 
   // Light a strike up on the surface (+ pre-fill the ticket selection) without
@@ -317,6 +328,9 @@ export function V2CopilotScreen({
       setMode('binary');
       setIsUp(b.direction === 'up');
       setStrikePrice(b.strike);
+      // Same reveal as applyBet — flash the busiest binary strike so it "lands".
+      // (Range bands get their own always-visible band marker, no camera flash.)
+      pulseFocus({ marketId: b.marketId, strike: b.strike, isUp: b.direction === 'up' });
     }
     markPicked();
   }
@@ -579,12 +593,14 @@ export function V2CopilotScreen({
     }
   }
 
-  // "Which strike has the most volume?" — the surface holds pricing, not volume,
-  // so pull the recent bets from the ORDERS feed and bucket them by strike. Scope:
-  // 'now' = the single live market, 'all' = every open expiry (capped so the
-  // fan-out stays bounded). Lazy + cached (fetchQuery dedupes with the analytics
-  // hook), so it costs nothing until asked and repeat asks are cheap.
-  async function answerBusiestStrike(scope: 'now' | 'all', userText: string) {
+  // Volume questions — the surface holds pricing, not volume, so pull the recent
+  // bets from the ORDERS feed and bucket them by strike. `mode` picks the answer:
+  // 'busiest' names the single hottest strike; 'overview' reads the whole surface
+  // (total staked + up/down split + busiest spot). Scope: 'now' = the single live
+  // market, 'all' = every open expiry (capped so the fan-out stays bounded). Lazy +
+  // cached (fetchQuery dedupes with the analytics hook), so it costs nothing until
+  // asked and repeat asks are cheap.
+  async function answerSurfaceOrders(scope: 'now' | 'all', userText: string, mode: 'busiest' | 'overview') {
     pushUser(userText);
     setThinking(true);
     try {
@@ -608,13 +624,18 @@ export function V2CopilotScreen({
         ),
       );
       const buckets = aggregateStrikeVolume(results);
-      const base = busiestStrikeReply(buckets, { scope, now }).text;
       const top = buckets[0];
-      if (top && top.volume > 0) {
-        highlightStrike(top); // light the busiest strike up on the surface
-        pushBot([base[0], 'I’ve highlighted it on the surface.', ...base.slice(1)]);
+      if (mode === 'overview') {
+        if (top && top.volume > 0) highlightStrike(top); // light the busiest spot
+        pushBot(surfaceVolumeReply(buckets, { scope, now }).text);
       } else {
-        pushBot(base);
+        const base = busiestStrikeReply(buckets, { scope, now }).text;
+        if (top && top.volume > 0) {
+          highlightStrike(top); // light the busiest strike up on the surface
+          pushBot([base[0], 'I’ve highlighted it on the surface.', ...base.slice(1)]);
+        } else {
+          pushBot(base);
+        }
       }
     } catch {
       pushBot(["I couldn't read the recent bets just now — give it a moment and ask again."]);
@@ -722,10 +743,10 @@ export function V2CopilotScreen({
       nextFlow = res.flow;
     } else {
       const intent = parseIntent(text);
-      if (intent.kind === 'busiest_strike') {
+      if (intent.kind === 'busiest_strike' || intent.kind === 'surface_volume') {
         // Needs the orders feed (not in the surface's pricing data) — fetch it on
         // demand and answer async, so there's no standing cost when it's not asked.
-        void answerBusiestStrike(intent.scope, text);
+        void answerSurfaceOrders(intent.scope, text, intent.kind === 'surface_volume' ? 'overview' : 'busiest');
         return;
       }
       if (intent.kind === 'close_position') {
@@ -776,6 +797,9 @@ export function V2CopilotScreen({
       setIsUp(h.isUp);
       setStrikePrice(h.strikePrice);
       markPicked();
+      // Reveal it: pause the spin, ease the camera onto it, flash the marker so
+      // "found it, I've highlighted it" is something you can actually SEE happen.
+      pulseFocus({ marketId: h.marketId, strike: h.strikePrice, isUp: h.isUp });
     } else if (nextFlow) {
       pendingBetRef.current = null;
     }
@@ -970,7 +994,7 @@ function CopilotComingSoon({ stage }: { stage: StageProps }) {
               Ask the live volatility surface anything. Get a clear read of the market in plain language, plus a bet
               that’s ready to place.
             </p>
-            <p className="mt-5 text-[12px] text-text-3">We’re putting the finishing touches on the co-pilot.</p>
+            <p className="mt-5 text-[12px] text-text-3">We’re putting the finishing touches on Kelly.</p>
           </div>
         </div>
       </div>

@@ -29,6 +29,7 @@ import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { upFair, totalVariance } from '@/lib/svi/svi';
 import { buildSurface, type SmileInput } from '@/lib/svi/surface';
 import { directionFair, payoutMultiple } from '@/lib/svi/invert';
+import { buildLadder } from '@/lib/markets/v2-ladder';
 import type { PortfolioSummary } from '@/lib/portfolio/v2';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
@@ -1081,7 +1082,7 @@ const EXPLAINERS: Record<ExplainTopic, string[]> = {
   ],
   predict: [
     'This is a prediction market on BTC: you bet which way the price goes by a set close time, using the live surface on the left.',
-    'I’m your co-pilot, I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
+    'I’m Kelly, your Predict co-pilot. I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
   ],
 };
 
@@ -1089,10 +1090,89 @@ function explainReply(topic: ExplainTopic): CopilotReply {
   return { text: EXPLAINERS[topic] };
 }
 
+/* --------------------------- surface overview --------------------------- */
+
+/** "What can I bet on?" — the surface's live expiries: how many, and the range
+ *  from the soonest to the furthest, read straight from the live candidates. */
+function marketsOverviewReply(ctx: CopilotContext): CopilotReply {
+  const live = ctx.candidates.filter((c) => c.market.expiry > ctx.now);
+  if (live.length === 0) {
+    return { text: ["There's no live market right now. A fresh one opens about every minute, so check back in a moment."] };
+  }
+  const exps = live.map((c) => c.market.expiry).sort((a, b) => a - b);
+  const soonest = exps[0];
+  const furthest = exps[exps.length - 1];
+  if (live.length === 1) {
+    return {
+      text: [
+        `There's one live market on the surface right now, settling in ${timeLeftLabel(soonest, ctx.now)}. A fresh one opens about every minute.`,
+        'You can bet it UP, DOWN, or a range. Tell me a direction and I’ll set it up.',
+      ],
+    };
+  }
+  return {
+    text: [
+      `There are ${live.length} live markets on the surface right now, settling anywhere from ${timeLeftLabel(soonest, ctx.now)} out to ${timeLeftLabel(furthest, ctx.now)}.`,
+      'Each one you can bet UP, DOWN, or a range on. Tell me a direction and I’ll set one up, or say “next market” to step through them.',
+    ],
+  };
+}
+
+/** "Where's the biggest payout / longest shot?" — scans every live market's ladder
+ *  (both sides of each mintable rung) for the highest fair payout multiple, then
+ *  loads it as a bet. The payout is the fair 1/chance figure the surface implies;
+ *  the ticket still shows the exact chain quote before you place. */
+function biggestPayoutReply(ctx: CopilotContext): CopilotReply {
+  const now = ctx.now;
+  const live = ctx.candidates.filter((c) => c.market.expiry > now);
+  if (live.length === 0) {
+    return { text: ["There's no live market right now, so there's nothing to bet on yet. A fresh one opens about every minute."] };
+  }
+  type Shot = { payout: number; prob: number; isUp: boolean; strike: number; marketId: string; expiry: number };
+  let best: Shot | null = null;
+  for (const c of live) {
+    const rungs = buildLadder(c.pricer, c.market.admission_tick_size ?? '1000000000');
+    for (const r of rungs) {
+      const sides: Shot[] = [
+        { payout: r.payoutUp, prob: r.chanceAbove, isUp: true, strike: r.strike, marketId: c.market.expiry_market_id, expiry: c.market.expiry },
+        { payout: payoutMultiple(1 - r.chanceAbove), prob: 1 - r.chanceAbove, isUp: false, strike: r.strike, marketId: c.market.expiry_market_id, expiry: c.market.expiry },
+      ];
+      for (const s of sides) {
+        // Guard the un-quotable extreme (chance → 0) so the "longest shot" is still a real bet.
+        if (s.prob > 0.03 && (!best || s.payout > best.payout)) best = s;
+      }
+    }
+  }
+  if (!best) {
+    return { text: ["I couldn't find a clean longshot on the surface right now. Ask me to analyze BTC, or tell me a direction and I’ll set up a bet."] };
+  }
+  const spot = ctx.spot ?? null;
+  const dirLabel = best.isUp ? `UP $${num(best.strike, 0)}` : `DOWN $${num(best.strike, 0)}`;
+  const moveWord = best.isUp ? `get above $${num(best.strike, 0)}` : `drop below $${num(best.strike, 0)}`;
+  return {
+    text: [
+      `The longest shot on the surface right now is ${dirLabel}, settling in ${timeLeftLabel(best.expiry, now)} and paying about ${best.payout.toFixed(2)}× if it hits.`,
+      `It needs BTC to ${moveWord}${spot != null ? ` from $${num(spot, 0)}` : ''} by then, about a ${pct(best.prob, 0)} chance. Big payout, long odds.`,
+      'I’ve set it up below and lit it on the surface. Not financial advice, just the biggest mintable payout live.',
+    ],
+    bet: {
+      marketId: best.marketId,
+      expiry: best.expiry,
+      dir: best.isUp ? 'up' : 'down',
+      isUp: best.isUp,
+      strikePrice: best.strike,
+      prob: best.prob,
+      payoutMult: best.payout,
+      conviction: 'longshot',
+      timeLeftLabel: timeLeftLabel(best.expiry, now),
+    },
+  };
+}
+
 function helpReply(): CopilotReply {
   return {
     text: [
-      "I'm your Predict co-pilot. I can read the BTC market for you, or set up a bet. Just tell me the direction.",
+      "I'm Kelly, your Predict co-pilot. I can read the BTC market for you, or set up a bet. Just tell me the direction.",
       'Try “analyze BTC”, “safe up bet”, or “longshot down bet for the next hour”.',
       "If I missed your question or you've got feedback, reach out to the dev on X and they'll take a look.",
     ],
@@ -1249,6 +1329,10 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return explainReply(intent.topic);
     case 'best_value':
       return bestValueReply(ctx);
+    case 'markets_overview':
+      return marketsOverviewReply(ctx);
+    case 'biggest_payout':
+      return biggestPayoutReply(ctx);
     case 'positioning':
       return positioningReply(ctx);
     case 'flow':
@@ -1294,6 +1378,7 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
     // close_position redeems on-chain. Handled defensively for a total switch.
     case 'start_trade':
     case 'busiest_strike':
+    case 'surface_volume':
     case 'close_position':
     case 'help':
       return helpReply();

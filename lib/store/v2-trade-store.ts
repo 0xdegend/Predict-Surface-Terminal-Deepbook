@@ -46,6 +46,11 @@ interface V2TradeState {
   /** Last successful mint (legacy surface-store parity) — the surface pulses a
    *  ripple at this spot. `ts` distinguishes repeat fills at the same node. */
   fill: { marketId: string; strike: number; isUp: boolean; ts: number } | null;
+  /** A "find / point me to this strike" request (co-pilot) the surface REVEALS:
+   *  it pauses the idle spin, eases the camera onto the strike, and flashes the
+   *  marker so the found level is unmistakable. Distinct from `fill` (a mint
+   *  ripple). `ts` distinguishes repeat finds of the same node. */
+  focus: { marketId: string; strike: number; isUp: boolean; ts: number } | null;
 
   /** Mobile only: whether the slide-up trade-ticket sheet is open. Picking any
    *  market (table row / card side) opens it; desktop ignores it (the ticket
@@ -72,6 +77,9 @@ interface V2TradeState {
   markPicked: () => void;
   /** Announce a successful mint so the surface can ripple at the fill. */
   pulseFill: (f: { marketId: string; strike: number; isUp: boolean }) => void;
+  /** Ask the surface to reveal a strike (pause spin, ease camera in, flash it) —
+   *  used when the co-pilot finds/points to a level so it clearly "lands". */
+  pulseFocus: (f: { marketId: string; strike: number; isUp: boolean }) => void;
   /** Mobile: open / close the slide-up trade-ticket sheet. */
   openTicketSheet: () => void;
   closeTicketSheet: () => void;
@@ -90,6 +98,7 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   leverage: 1,
   pickSeq: 0,
   fill: null,
+  focus: null,
   ticketSheetOpen: false,
 
   // Switching markets drops the pinned strike/band (a $63k strike is meaningless
@@ -127,6 +136,7 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   setLeverage: (leverage) => set({ leverage: Math.max(1, leverage) }),
   markPicked: () => set((s) => ({ pickSeq: s.pickSeq + 1 })),
   pulseFill: (f) => set({ fill: { ...f, ts: Date.now() } }),
+  pulseFocus: (f) => set({ focus: { ...f, ts: Date.now() } }),
   openTicketSheet: () => set({ ticketSheetOpen: true }),
   closeTicketSheet: () => set({ ticketSheetOpen: false }),
 }));

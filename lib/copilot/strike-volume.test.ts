@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateStrikeVolume, busiestStrikeReply, type StrikeVolume } from './strike-volume';
+import { aggregateStrikeVolume, busiestStrikeReply, surfaceVolumeReply, type StrikeVolume } from './strike-volume';
 import { POS_INF_TICK } from '@/lib/sui/v2/ticks';
 import { toQuote } from '@/config/scale';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
@@ -75,6 +75,48 @@ describe('busiestStrikeReply', () => {
   it('avoids trader jargon', () => {
     const BANNED = ['edge', 'basis point', 'sigma', 'implied vol', 'skew', 'delta', 'gamma', 'tape', 'moneyness', 'theta'];
     const blob = busiestStrikeReply(buckets, { scope: 'all', now: NOW }).text.join(' ').toLowerCase();
+    for (const w of BANNED) expect(blob, w).not.toContain(w);
+  });
+});
+
+describe('surfaceVolumeReply', () => {
+  const buckets: StrikeVolume[] = [
+    { marketId: 'm1', expiry: NOW + 5 * 60_000, direction: 'up', strike: 65_000, volume: 150, bets: 2 },
+    { marketId: 'm1', expiry: NOW + 5 * 60_000, direction: 'down', strike: 64_000, volume: 30, bets: 1 },
+    { marketId: 'm2', expiry: NOW + 60 * 60_000, direction: 'range', band: { lower: 63_000, higher: 66_000 }, volume: 10, bets: 1 },
+  ];
+
+  it('reads total staked, the up-vs-down lean, and the busiest spot', () => {
+    const blob = surfaceVolumeReply(buckets, { scope: 'now', now: NOW }).text.join(' ');
+    expect(blob).toMatch(/\$190 is staked on the live market right now, across 4 bets/);
+    expect(blob).toMatch(/leaning UP: \$150 \(79%\) betting higher vs \$30 \(16%\) lower, plus \$10 in range bets/);
+    expect(blob).toMatch(/busiest spot is UP \$65,000 with \$150/);
+    expect(blob).not.toMatch(/—/); // no em-dash in the new copy
+  });
+
+  it('calls a balanced book an even split', () => {
+    const even: StrikeVolume[] = [
+      { marketId: 'm1', expiry: NOW + 5 * 60_000, direction: 'up', strike: 65_000, volume: 100, bets: 2 },
+      { marketId: 'm1', expiry: NOW + 5 * 60_000, direction: 'down', strike: 64_000, volume: 100, bets: 2 },
+    ];
+    expect(surfaceVolumeReply(even, { scope: 'now', now: NOW }).text.join(' ')).toMatch(/split fairly evenly/);
+  });
+
+  it('an all-range book says so instead of a side', () => {
+    const r: StrikeVolume[] = [
+      { marketId: 'm1', expiry: NOW + 5 * 60_000, direction: 'range', band: { lower: 63_000, higher: 66_000 }, volume: 40, bets: 1 },
+    ];
+    expect(surfaceVolumeReply(r, { scope: 'now', now: NOW }).text.join(' ')).toMatch(/all range bets/);
+  });
+
+  it('quiet surface → an honest "no bets yet" answer', () => {
+    expect(surfaceVolumeReply([], { scope: 'now', now: NOW }).text.join(' ')).toMatch(/quiet|no bets/i);
+    expect(surfaceVolumeReply([], { scope: 'all', now: NOW }).text.join(' ')).toMatch(/quiet|no bets/i);
+  });
+
+  it('avoids trader jargon', () => {
+    const BANNED = ['edge', 'basis point', 'sigma', 'implied vol', 'skew', 'delta', 'gamma', 'tape', 'moneyness', 'theta'];
+    const blob = surfaceVolumeReply(buckets, { scope: 'all', now: NOW }).text.join(' ').toLowerCase();
     for (const w of BANNED) expect(blob, w).not.toContain(w);
   });
 });
