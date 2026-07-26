@@ -170,6 +170,8 @@ describe('respondToIntent — metric (focused answers)', () => {
     expect(blob).toMatch(/greed/i); // the fixture's label
     // Focused — it must NOT dump the trend/liquidation lines of the full read.
     expect(blob).not.toMatch(/liquidat/i);
+    // It offers a shareable snapshot (the "Share to X" card) with the live reading.
+    expect(r.share).toEqual({ kind: 'fear_greed', value: 62, label: expect.stringMatching(/greed/i) });
   });
 
   it('funding → a focused funding line', () => {
@@ -191,6 +193,7 @@ describe('respondToIntent — metric (focused answers)', () => {
   it('honest fallback when insights are unavailable', () => {
     const r = respondToIntent({ kind: 'metric', metric: 'fear_greed' }, ctx({ insights: null }));
     expect(r.text.join(' ')).toMatch(/market data|moment/i);
+    expect(r.share).toBeUndefined(); // nothing to share without a reading
   });
 
   it('price / 24h / open interest focused answers', () => {
@@ -569,6 +572,12 @@ describe('respondToIntent — help', () => {
     const r = respondToIntent({ kind: 'help' }, ctx());
     expect(r.bet).toBeUndefined();
     expect(r.text.join(' ')).toMatch(/co-pilot/i);
+  });
+
+  it('offers a way to reach the dev for feedback / missed questions', () => {
+    const r = respondToIntent({ kind: 'help' }, ctx());
+    expect(r.text.join(' ')).toMatch(/feedback|reach out|missed/i);
+    expect(r.link).toEqual({ label: expect.stringMatching(/dev/i), href: 'https://x.com/0xdegend' });
   });
 });
 

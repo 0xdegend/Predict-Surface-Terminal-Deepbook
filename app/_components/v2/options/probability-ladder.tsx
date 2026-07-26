@@ -15,6 +15,7 @@ import { num, signed } from '@/lib/format';
 import { buildLadder, type LadderRung } from '@/lib/markets/v2-ladder';
 import { analyzeStrikeForMarket } from '@/lib/insights';
 import { Term } from './vocab';
+import { ShareXButton } from '../share/share-x-button';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -25,6 +26,7 @@ export function ProbabilityLadder({
   now,
   onHighlight,
   onBet,
+  onShareOdds,
 }: {
   market: V2Market | null;
   pricer: LivePricer | null | undefined;
@@ -32,6 +34,8 @@ export function ProbabilityLadder({
   now: number;
   onHighlight: (strike: number, isUp: boolean) => void;
   onBet: (strike: number, isUp: boolean) => void;
+  /** Share a rung's odds as a card (opens the share dialog in the screen). */
+  onShareOdds?: (r: LadderRung) => void;
 }) {
   const rungs = useMemo(
     () => (pricer ? buildLadder(pricer, market?.admission_tick_size ?? '1000000000') : []),
@@ -74,6 +78,7 @@ export function ProbabilityLadder({
               hit={hits.get(r.strike) ?? null}
               onHighlight={() => onHighlight(r.strike, true)}
               onBet={() => onBet(r.strike, true)}
+              onShare={onShareOdds ? () => onShareOdds(r) : undefined}
             />
           ))}
         </tbody>
@@ -95,11 +100,23 @@ function Th({ children, className = '' }: { children?: ReactNode; className?: st
   return <th className={`border-b border-line px-3.5 pb-2.5 text-right font-medium ${className}`}>{children}</th>;
 }
 
-function Row({ r, hit, onHighlight, onBet }: { r: LadderRung; hit: number | null; onHighlight: () => void; onBet: () => void }) {
+function Row({
+  r,
+  hit,
+  onHighlight,
+  onBet,
+  onShare,
+}: {
+  r: LadderRung;
+  hit: number | null;
+  onHighlight: () => void;
+  onBet: () => void;
+  onShare?: () => void;
+}) {
   return (
     <tr
       onClick={onHighlight}
-      className={`cursor-pointer border-b border-line/60 font-mono text-[13px] transition hover:bg-white/[0.025] ${r.isAtm ? 'bg-(--accent-soft)' : ''}`}
+      className={`group cursor-pointer border-b border-line/60 font-mono text-[13px] transition hover:bg-white/2.5 ${r.isAtm ? 'bg-(--accent-soft)' : ''}`}
     >
       <td className={`px-3.5 py-2.5 text-left tabular-nums ${r.isAtm ? 'font-semibold text-accent' : 'text-text-1'}`}>
         ${num(r.strike, 0)}
@@ -117,16 +134,25 @@ function Row({ r, hit, onHighlight, onBet }: { r: LadderRung; hit: number | null
       <td className="px-3.5 py-2.5 text-right tabular-nums text-text-2">{hit != null ? `${(hit * 100).toFixed(0)}%` : '—'}</td>
       <td className="px-3.5 py-2.5 text-right tabular-nums">{r.payoutUp.toFixed(2)}×</td>
       <td className="px-3.5 py-2.5 text-right">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onBet();
-          }}
-          className="rounded-md bg-(--accent-soft) px-3 py-1 font-sans text-[12px] font-medium text-accent ring-1 ring-inset ring-(--accent-line) transition hover:bg-accent/20"
-        >
-          Bet ↑
-        </button>
+        <span className="inline-flex items-center justify-end gap-1.5">
+          {onShare && (
+            <ShareXButton
+              onClick={onShare}
+              label="Share these odds"
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            />
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onBet();
+            }}
+            className="rounded-md bg-(--accent-soft) px-3 py-1 font-sans text-[12px] font-medium text-accent ring-1 ring-inset ring-(--accent-line) transition hover:bg-accent/20"
+          >
+            Bet ↑
+          </button>
+        </span>
       </td>
     </tr>
   );

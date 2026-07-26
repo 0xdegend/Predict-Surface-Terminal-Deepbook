@@ -120,6 +120,11 @@ export interface BetSuggestion {
  *  real flow in the screen (createAccount / the starter-grant airdrop). */
 export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: string };
 
+/** A shareable snapshot the chat offers to post as an image card (a "Share to X"
+ *  affordance under the answer). Today only the fear & greed reading is shareable;
+ *  the union leaves room for more (funding, a market read) without reshaping the API. */
+export type ShareCard = { kind: 'fear_greed'; value: number; label: string };
+
 export interface CopilotReply {
   text: string[];
   bet?: BetSuggestion;
@@ -129,6 +134,11 @@ export interface CopilotReply {
   /** An onboarding action card (create account / get test tokens). The screen
    *  renders a button that runs the real flow. */
   action?: OnboardAction;
+  /** A snapshot the chat can offer to share as an image card (e.g. fear & greed). */
+  share?: ShareCard;
+  /** An outbound link rendered as a tappable chip under the message (e.g. the
+   *  "message the dev" contact on the fallback reply). Opens in a new tab. */
+  link?: { label: string; href: string };
 }
 
 /** Target win-chance per conviction — kept inside the quotable band so the
@@ -840,6 +850,7 @@ function fearGreedReply(ins: BtcInsights): CopilotReply {
       `In plain terms, ${mood}.`,
       METRIC_CTA,
     ],
+    share: { kind: 'fear_greed', value: s.value, label: s.label },
   };
 }
 
@@ -1083,7 +1094,9 @@ function helpReply(): CopilotReply {
     text: [
       "I'm your Predict co-pilot. I can read the BTC market for you, or set up a bet. Just tell me the direction.",
       'Try “analyze BTC”, “safe up bet”, or “longshot down bet for the next hour”.',
+      "If I missed your question or you've got feedback, reach out to the dev on X and they'll take a look.",
     ],
+    link: { label: 'Message the dev on X', href: 'https://x.com/0xdegend' },
   };
 }
 

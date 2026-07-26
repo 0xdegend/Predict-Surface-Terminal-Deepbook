@@ -6,9 +6,19 @@
  */
 import { num } from '@/lib/format';
 import { Term } from './vocab';
+import { ShareXButton } from '../share/share-x-button';
 import type { ExpectedMove, AssetConfig } from '@/lib/insights';
 
-export function ExpectedMoveBand({ em, spot }: { em: ExpectedMove | null; spot: number | null; asset: AssetConfig }) {
+export function ExpectedMoveBand({
+  em,
+  spot,
+  onShare,
+}: {
+  em: ExpectedMove | null;
+  spot: number | null;
+  asset: AssetConfig;
+  onShare?: () => void;
+}) {
   if (!em) return null;
   const pct = (em.sigma * 100).toFixed(2);
   // Marker position within [low, high], clamped so a big move still renders.
@@ -16,8 +26,11 @@ export function ExpectedMoveBand({ em, spot }: { em: ExpectedMove | null; spot: 
 
   return (
     <div className="glass rounded-lg p-4">
-      <div className="text-[10.5px] uppercase tracking-wider text-text-3">
-        <Term plain="Expected range by next expiry (about 2 in 3 chance)" pro="1σ expected move · front expiry" />
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[10.5px] uppercase tracking-wider text-text-3">
+          <Term plain="Expected range by next expiry (about 2 in 3 chance)" pro="1σ expected move · front expiry" />
+        </div>
+        {onShare && <ShareXButton onClick={onShare} label="Share the expected range" />}
       </div>
       <div className="relative mb-2 mt-6 h-2.5 rounded-md border border-(--accent-line) bg-(--accent-soft)">
         <div className="absolute top-[-6px] h-[22px] w-0.5 rounded bg-text-1" style={{ left: `${pos * 100}%` }}>

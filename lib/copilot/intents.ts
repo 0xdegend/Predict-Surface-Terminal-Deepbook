@@ -372,6 +372,10 @@ const MARKET_SUBJ = /\b(?:btc|bitcoin|price|market|crypto)\b/;
  *  with bitcoin" isn't swallowed). Never about the trader's own book. */
 function wantsWhyMoving(text: string): boolean {
   if (/\bmy (?:bet|position|trade|money|stake)\b/.test(text)) return false;
+  // "why is it so volatile" — a causal "why" about the volatility (what's driving
+  //  the swings), distinct from "how volatile is it" (the magnitude), which asks
+  //  the surface's expected move and stays `volatility`.
+  if (/\bwhy\b/.test(text) && /\bvolatil/.test(text)) return true;
   const causal =
     /what'?s (?:driving|behind|causing|moving)\b/.test(text) ||
     /what (?:is|'s) (?:driving|behind|causing|moving|the reason|the catalyst)\b/.test(text) ||

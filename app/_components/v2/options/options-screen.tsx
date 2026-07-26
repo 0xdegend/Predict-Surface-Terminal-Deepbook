@@ -14,7 +14,7 @@
  * Feature-flagged like the co-pilot: ships behind a "coming soon" gate (the real
  * surface + ladder blurred underneath). Flip NEXT_PUBLIC_OPTIONS_LIVE=1 to go live.
  */
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { LuChartCandlestick } from 'react-icons/lu';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -35,8 +35,12 @@ import { SkewTerm } from './skew-term';
 import { PositioningFlow } from './positioning-flow';
 import { ProbabilityConsensus } from './consensus';
 import { VocabProvider } from './vocab';
-import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, type EngineCandidate, type MarketExpiry, type MarketRead } from '@/lib/insights';
+import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, expectedMove, type EngineCandidate, type MarketExpiry, type MarketRead } from '@/lib/insights';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { OptionsShareModal } from './options-share-modal';
+import { ShareXButton } from '../share/share-x-button';
+import type { OptionsShareCard } from '@/lib/share/options-share';
+import type { LadderRung } from '@/lib/markets/v2-ladder';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
 import type { V2Market, PythObservation } from '@/lib/api/v2/types';
@@ -183,6 +187,46 @@ export function V2OptionsScreen({
     return buildConsensus({ isUp: consensusIsUp, surfaceProb: a.implied, sigmaMove: a.sigmaMove, empiricalProb: a.empirical?.prob ?? null });
   }, [ladderPricer, selected, consensusStrike, consensusIsUp, liveCloses, pulseNow]);
 
+  // Share-to-X: the Options page's shareable snapshots, built from the SAME live
+  // data the widgets show. Each opens the card dialog (an ad for the page).
+  const [shareCard, setShareCard] = useState<OptionsShareCard | null>(null);
+  const shareMarketRead = () => {
+    if (!intel.read) return;
+    setShareCard({
+      kind: 'market_read',
+      asset: intel.asset.short,
+      headline: intel.read.headline,
+      lines: intel.read.lines,
+      sentiment: liveInsights?.sentiment ?? null,
+    });
+  };
+  const shareExpectedRange = () => {
+    const em = ladderPricer ? expectedMove({ forward: ladderPricer.forward, svi: ladderPricer.svi }) : null;
+    if (!em || !selected) return;
+    setShareCard({
+      kind: 'expected_range',
+      asset: intel.asset.short,
+      forward: em.forward,
+      spot: intel.spot,
+      sigmaPct: em.sigma * 100,
+      lowPrice: em.lowPrice,
+      highPrice: em.highPrice,
+      horizon: fmtTime(selected.expiry - pulseNow),
+    });
+  };
+  const shareOdds = (r: LadderRung) => {
+    if (!selected) return;
+    setShareCard({
+      kind: 'bold_odds',
+      asset: intel.asset.short,
+      strike: r.strike,
+      chancePct: r.chanceAbove * 100,
+      payoutX: r.payoutUp,
+      horizon: fmtTime(selected.expiry - pulseNow),
+      isUp: true,
+    });
+  };
+
   if (markets.length === 0) {
     return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
   }
@@ -195,8 +239,8 @@ export function V2OptionsScreen({
         {/* Hero: the read + expected move alongside the live surface. */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
           <div className="flex flex-col gap-3">
-            <MarketReadCard read={intel.read} />
-            <ExpectedMoveBand em={intel.expectedMove} spot={intel.spot} asset={intel.asset} />
+            <MarketReadCard read={intel.read} onShare={shareMarketRead} />
+            <ExpectedMoveBand em={intel.expectedMove} spot={intel.spot} asset={intel.asset} onShare={shareExpectedRange} />
           </div>
           <div className="h-[44vh] min-h-80 overflow-hidden rounded-lg border border-line bg-bg-1">
             {canSurface ? (
@@ -214,7 +258,7 @@ export function V2OptionsScreen({
 
         {/* The flagship ladder. */}
         <div className="mt-2">
-          <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} />
+          <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} onShareOdds={shareOdds} />
         </div>
 
         {/* Probability consensus — the flagship, for the picked strike. */}
@@ -243,6 +287,9 @@ export function V2OptionsScreen({
             closes={liveCloses}
           />
         </div>
+
+        {/* Share-to-X card dialog (market read / expected range / bold odds). */}
+        <OptionsShareModal card={shareCard} onClose={() => setShareCard(null)} />
       </div>
     </VocabProvider>
   );
@@ -257,11 +304,14 @@ export function V2OptionsScreen({
   );
 }
 
-function MarketReadCard({ read }: { read: MarketRead | null }) {
+function MarketReadCard({ read, onShare }: { read: MarketRead | null; onShare?: () => void }) {
   if (!read) return null;
   return (
     <div className="glass rounded-lg p-4">
-      <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
+        {onShare && <ShareXButton onClick={onShare} label="Share the market read" />}
+      </div>
       <p className="mt-2 text-[13.5px] font-medium leading-snug text-text-1">{read.headline}</p>
       <ul className="mt-2 space-y-1.5">
         {read.lines.map((l, i) => (

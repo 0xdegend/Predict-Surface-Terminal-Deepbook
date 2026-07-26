@@ -36,8 +36,9 @@ import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
-import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction } from '@/lib/copilot/respond';
+import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
+import { FearGreedShareModal } from './fear-greed-share-modal';
 import {
   marketRows,
   volState,
@@ -268,6 +269,9 @@ export function V2CopilotScreen({
 
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
+  // The share snapshot whose card dialog is open (null = closed). Set when the
+  // trader taps "Share to X" under a shareable answer (fear & greed).
+  const [shareCard, setShareCard] = useState<ShareCard | null>(null);
   // The guided step-by-step wizard's state (null = not in a guided flow).
   const [flow, setFlow] = useState<TradeFlow | null>(null);
   // The bet currently set up + shown on a card (wizard review or a one-shot
@@ -352,7 +356,7 @@ export function V2CopilotScreen({
     pushUser(userText);
     setThinking(true);
     replyTimer.current = setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, action: reply.action }]);
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, action: reply.action, share: reply.share, link: reply.link }]);
       setThinking(false);
     }, 600);
   }
@@ -831,6 +835,7 @@ export function V2CopilotScreen({
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
             onAction={handleOnboardAction}
+            onShare={setShareCard}
             busy={thinking}
             suggestions={chips}
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
@@ -855,6 +860,15 @@ export function V2CopilotScreen({
         sub="added to your wallet — you’re ready to trade"
         gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
         digest={grant.success?.digest}
+      />
+
+      {/* The fear & greed share card — opens when a "Share to X" chip is tapped
+          under a fear & greed answer. */}
+      <FearGreedShareModal
+        open={!!shareCard}
+        value={shareCard?.kind === 'fear_greed' ? shareCard.value : null}
+        label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
+        onClose={() => setShareCard(null)}
       />
     </>
   );

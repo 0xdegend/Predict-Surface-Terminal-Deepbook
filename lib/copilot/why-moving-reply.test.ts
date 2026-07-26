@@ -61,12 +61,17 @@ describe('co-pilot — "why is BTC moving?" parses', () => {
     expect(parseIntent('any news on bitcoin?').kind).toBe('why_moving');
     expect(parseIntent('what caused the move?').kind).toBe('why_moving');
     expect(parseIntent('why is btc up today?').kind).toBe('why_moving');
+    // A causal "why … volatile" wants the drivers, not the expected-move magnitude.
+    expect(parseIntent('Why is BTC so volatile?').kind).toBe('why_moving');
+    expect(parseIntent('why is it so volatile').kind).toBe('why_moving');
   });
 
   it('does NOT swallow a plain market read or unrelated questions', () => {
     expect(parseIntent("what's happening with bitcoin").kind).toBe('analyze');
     expect(parseIntent('analyze BTC').kind).toBe('analyze');
-    expect(parseIntent('why is it so volatile').kind).toBe('volatility');
+    // Magnitude questions ("how volatile", "is it volatile now") stay `volatility`.
+    expect(parseIntent('how volatile is BTC').kind).toBe('volatility');
+    expect(parseIntent('is BTC volatile right now').kind).toBe('volatility');
     expect(parseIntent('why is my bet losing').kind).not.toBe('why_moving');
   });
 });

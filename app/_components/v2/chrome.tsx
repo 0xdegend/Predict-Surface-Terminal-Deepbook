@@ -34,7 +34,15 @@ import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { isAdminAddress } from '@/config/predict';
 
 type NavItem = { href: string; label: string; exact?: boolean };
-type MenuItem = { href: string; label: string; desc: string; icon: IconType; soon?: boolean };
+type MenuItem = {
+  href: string;
+  label: string;
+  desc: string;
+  icon: IconType;
+  soon?: boolean;
+  /** Renders full-width at the bottom of a grid menu instead of as a tile (e.g. Docs = "help"). */
+  footer?: boolean;
+};
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
@@ -49,16 +57,18 @@ const VAULT_ITEMS: MenuItem[] = [
   { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
 ];
 
-/** Secondary destinations — same set as the legacy "More" menu. Quests /
- *  Competitions render the shared showcase panels under the v2 shell; Docs
- *  renders the shared manual under the v2 shell too (/v2/docs) so it keeps the
- *  Latest chrome and its in-page links stay on /v2. */
+/** Secondary destinations — same set as the legacy "More" menu, rendered as a
+ *  two-column launcher grid so the list stays short as it grows. Live tools sit
+ *  on top, the coming-soon gamification below, and Docs (help) spans the bottom
+ *  as a full-width footer. Quests / Competitions render the shared showcase
+ *  panels under the v2 shell; Docs renders the shared manual under the v2 shell
+ *  too (/v2/docs) so it keeps the Latest chrome and its in-page links stay on /v2. */
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
   { href: '/v2/copilot', label: 'Co-pilot', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
-  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
+  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
@@ -103,7 +113,7 @@ export function V2Chrome() {
             <NavLink key={n.href} href={n.href} label={n.label} active={matches(pathname, n)} />
           ))}
           <NavMenu fallbackLabel="Vault" items={VAULT_ITEMS} pathname={pathname} />
-          <NavMenu fallbackLabel="More" items={moreItems} pathname={pathname} />
+          <NavMenu fallbackLabel="More" items={moreItems} pathname={pathname} grid />
         </nav>
       </div>
 
@@ -156,14 +166,20 @@ function NavMenu({
   fallbackLabel,
   items,
   pathname,
+  grid = false,
 }: {
   fallbackLabel: string;
   items: MenuItem[];
   pathname: string;
+  /** Lay the menu out as a two-column launcher grid (footer items span full width). */
+  grid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const activeItem = items.find((i) => pathname.startsWith(i.href));
+
+  const tileItems = grid ? items.filter((i) => !i.footer) : items;
+  const footerItems = grid ? items.filter((i) => i.footer) : [];
 
   useEffect(() => {
     if (!open) return;
@@ -198,42 +214,109 @@ function NavMenu({
       {open && (
         <div
           role="menu"
-          className="glass-menu popover-in absolute left-0 top-[calc(100%+10px)] z-50 w-64 overflow-hidden rounded-2xl p-2"
+          className={`glass-menu popover-in absolute left-0 top-[calc(100%+10px)] z-50 overflow-hidden rounded-2xl p-2 ${
+            grid ? 'w-110' : 'w-64'
+          }`}
         >
-          <div className="flex flex-col gap-1.5">
-            {items.map((item) => {
-              const active = pathname.startsWith(item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  role="menuitem"
-                  onClick={() => setOpen(false)}
-                  aria-current={active ? 'page' : undefined}
-                  className={`ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
-                    active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
-                  }`}
-                >
-                  <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
-                  <span className="flex flex-1 flex-col gap-1">
-                    <span className="text-[13px] font-medium leading-none">{item.label}</span>
-                    <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
-                  </span>
-                  {item.soon && (
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
-                      style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
-                    >
-                      Soon
-                    </span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
+          {grid ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
+                {tileItems.map((item) => (
+                  <MenuTile key={item.href} item={item} pathname={pathname} onSelect={() => setOpen(false)} />
+                ))}
+              </div>
+              {footerItems.map((item) => (
+                <MenuRow key={item.href} item={item} pathname={pathname} onSelect={() => setOpen(false)} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {tileItems.map((item) => (
+                <MenuRow key={item.href} item={item} pathname={pathname} onSelect={() => setOpen(false)} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/** Soon chip — the design system's coming-soon marker, shared by rows and tiles. */
+function SoonChip() {
+  return (
+    <span
+      className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
+      style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
+    >
+      Soon
+    </span>
+  );
+}
+
+/** A horizontal menu row: icon · (label + description) · optional Soon chip.
+ *  Used for the single-column menus (Vault) and the full-width footer of a grid menu (Docs). */
+function MenuRow({
+  item,
+  pathname,
+  onSelect,
+}: {
+  item: MenuItem;
+  pathname: string;
+  onSelect: () => void;
+}) {
+  const active = pathname.startsWith(item.href);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      role="menuitem"
+      onClick={onSelect}
+      aria-current={active ? 'page' : undefined}
+      className={`ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
+        active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
+      }`}
+    >
+      <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+      <span className="flex flex-1 flex-col gap-1">
+        <span className="text-[13px] font-medium leading-none">{item.label}</span>
+        <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
+      </span>
+      {item.soon && <SoonChip />}
+    </Link>
+  );
+}
+
+/** A vertical launcher tile: (icon · label · optional Soon) over a wrapping
+ *  description. Tiles stretch to equal height within a grid row, so uneven
+ *  description lengths stay aligned. */
+function MenuTile({
+  item,
+  pathname,
+  onSelect,
+}: {
+  item: MenuItem;
+  pathname: string;
+  onSelect: () => void;
+}) {
+  const active = pathname.startsWith(item.href);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      role="menuitem"
+      onClick={onSelect}
+      aria-current={active ? 'page' : undefined}
+      className={`ctrl-soft flex h-full flex-col gap-2 rounded-xl p-3 transition-colors ${
+        active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
+      }`}
+    >
+      <span className="flex items-center gap-2">
+        <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+        <span className="text-[13px] font-medium leading-none">{item.label}</span>
+        {item.soon && <span className="ml-auto"><SoonChip /></span>}
+      </span>
+      <span className="text-[11px] leading-snug text-text-3">{item.desc}</span>
+    </Link>
   );
 }

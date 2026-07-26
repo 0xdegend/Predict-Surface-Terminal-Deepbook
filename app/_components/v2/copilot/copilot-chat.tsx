@@ -13,10 +13,11 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { LuSparkles, LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins } from 'react-icons/lu';
+import { FaXTwitter } from 'react-icons/fa6';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
-import type { BetSuggestion, OnboardAction } from '@/lib/copilot/respond';
+import type { BetSuggestion, OnboardAction, ShareCard } from '@/lib/copilot/respond';
 
 export interface ChatMessage {
   id: string;
@@ -25,6 +26,10 @@ export interface ChatMessage {
   bet?: BetSuggestion;
   /** An onboarding step rendered as a one-tap button (create account / get tokens). */
   action?: OnboardAction;
+  /** A snapshot the message can offer to share as an image card (fear & greed). */
+  share?: ShareCard;
+  /** An outbound link chip under the message (e.g. "message the dev on X"). */
+  link?: { label: string; href: string };
 }
 
 const CHIPS = ['Set up a trade', 'Analyze BTC', 'Next market', 'Safe UP bet', 'Longshot UP bet', 'Safe DOWN bet'];
@@ -48,6 +53,7 @@ export function CopilotChat({
   onPlaceBet,
   onEditBet,
   onAction,
+  onShare,
   busy,
   threadEnd,
   pinnedTop,
@@ -59,6 +65,8 @@ export function CopilotChat({
   onEditBet: () => void;
   /** Run an onboarding action (create trading account / get test tokens). */
   onAction?: (kind: OnboardAction['kind']) => void;
+  /** Open the share dialog for a shareable snapshot (fear & greed card). */
+  onShare?: (share: ShareCard) => void;
   busy?: boolean;
   /** Live content pinned at the bottom of the thread (the open-bets tray) — part
    *  of the conversation flow, not a separate rail, so it scrolls with the chat. */
@@ -138,7 +146,7 @@ export function CopilotChat({
       {/* thread */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} onAction={onAction} busy={busy} />
+          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} onAction={onAction} onShare={onShare} busy={busy} />
         ))}
         {busy && <TypingBubble />}
         {threadEnd}
@@ -210,12 +218,14 @@ function MessageBubble({
   onPlaceBet,
   onEditBet,
   onAction,
+  onShare,
   busy,
 }: {
   message: ChatMessage;
   onPlaceBet: (bet: BetSuggestion) => void;
   onEditBet: () => void;
   onAction?: (kind: OnboardAction['kind']) => void;
+  onShare?: (share: ShareCard) => void;
   busy?: boolean;
 }) {
   const isUser = message.role === 'user';
@@ -250,7 +260,50 @@ function MessageBubble({
           <ActionCard action={message.action} onAction={onAction} busy={busy} />
         </div>
       )}
+      {/* A "Share to X" chip on shareable answers (fear & greed) — opens the card dialog. */}
+      {message.share && onShare && (
+        <div className="rise" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
+          <ShareChip onClick={() => onShare(message.share!)} />
+        </div>
+      )}
+      {/* An outbound link chip — e.g. "message the dev on X" on the fallback reply. */}
+      {message.link && (
+        <div className="rise" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
+          <LinkChip link={message.link} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** A tappable outbound-link pill under a message (opens in a new tab). Used for the
+ *  "message the dev on X" contact on the fallback reply. */
+function LinkChip({ link }: { link: { label: string; href: string } }) {
+  return (
+    <a
+      href={link.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="ctrl-soft inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:border-accent/40 hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <FaXTwitter size={11} />
+      {link.label}
+    </a>
+  );
+}
+
+/** A subtle "Share to X" pill under a shareable answer. Opens the image-card dialog
+ *  in the screen (nothing here draws or posts). */
+function ShareChip({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="ctrl-soft inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:border-accent/40 hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <FaXTwitter size={11} />
+      Share to X
+    </button>
   );
 }
 
