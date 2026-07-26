@@ -68,6 +68,12 @@ export interface CopilotContext {
     hasAccount: boolean; // a trading account (wrapper) exists
     accountBase: bigint; // DUSDC sitting in the trading account
     walletBase: bigint | undefined; // DUSDC in the plain wallet
+    /** True ONLY for a brand-new, near-empty wallet the app can still auto-fund:
+     *  the starter grant is one-time and gated on no trading account yet + a DUSDC
+     *  balance under the ceiling (the server also handles the SUI-for-gas drip).
+     *  When false the treasury would reject the grant, so we offer the faucet
+     *  instead of a doomed drip. Computed in the screen (mirrors the trade ticket). */
+    grantEligible?: boolean;
   } | null;
   /** Every live expiry's smile (the same inputs the 3-D surface is built from),
    *  for the no-arb check. Needs ≥2 expiries. */
@@ -109,12 +115,20 @@ export interface BetSuggestion {
   leverage?: number;
 }
 
+/** A one-tap onboarding step the chat renders as a button. `connect` is guidance
+ *  only (no button — the wallet modal lives in the top bar); the other two run a
+ *  real flow in the screen (createAccount / the starter-grant airdrop). */
+export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: string };
+
 export interface CopilotReply {
   text: string[];
   bet?: BetSuggestion;
   /** A strike to light up on the surface WITHOUT suggesting a full bet — the screen
    *  loads it into the store selection. Used by "find me the $X strike". */
   highlight?: { marketId: string; strikePrice: number; isUp: boolean };
+  /** An onboarding action card (create account / get test tokens). The screen
+   *  renders a button that runs the real flow. */
+  action?: OnboardAction;
 }
 
 /** Target win-chance per conviction — kept inside the quotable band so the
@@ -936,7 +950,7 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
     return {
       text: [
         'Your DUSDC balance is $0.00 right now.',
-        'You’ll need some testnet DUSDC to place a bet. Grab it from the faucet, then ask me to set up a trade.',
+        'You’ll need some test tokens to place a bet. Say “get test tokens” and I’ll drop some into your wallet, then ask me to set up a trade.',
       ],
     };
   }
@@ -988,7 +1002,7 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
         "You don't have any open bets right now.",
         free > 0
           ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
-          : 'Your DUSDC balance is $0.00. Grab some testnet DUSDC from the faucet to place your first bet.',
+          : 'Your DUSDC balance is $0.00. Say “get test tokens” and I’ll drop some in so you can place your first bet.',
         'Say “set up a trade” or tell me a direction whenever you’re ready.',
       ],
     };
@@ -1073,6 +1087,108 @@ function helpReply(): CopilotReply {
   };
 }
 
+/* ------------------------------ onboarding ------------------------------- */
+// The first-run journey, state-aware from ctx.wallet: (1) not signed in — you can
+// still ask anything about the market; (2) signed in, no trading account — offer to
+// create it; (3) account but no funds — offer the test-token airdrop; (4) all set.
+// The `action` cards run the real flow in the screen (createAccount / grant); nothing
+// here signs or spends. Plain language, no jargon.
+
+/** Free DUSDC across the trading account + wallet (human units). */
+function readyFunds(w: NonNullable<CopilotContext['wallet']>): number {
+  return fromQuote(w.accountBase) + (w.walletBase != null ? fromQuote(w.walletBase) : 0);
+}
+
+function onboardingReply(ctx: CopilotContext): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return {
+      text: [
+        "You don't need to sign in to explore. Ask me anything about the market, like “fear and greed”, “analyze BTC”, or “what's the funding rate”.",
+        'When you want to actually place a bet, tap Connect (top right) to sign in. Then I can get you some test tokens and set up your free trading account.',
+      ],
+    };
+  }
+  // Brand-new, empty wallet the app can still fund → tokens first (the grant also
+  // covers gas), then the account.
+  if (w.grantEligible) {
+    return {
+      text: [
+        "You're signed in, nice. To start trading you'll need some test tokens, plus a little gas to go with them. It’s all play money on testnet, not real funds.",
+        'Want me to drop some into your wallet to get you going?',
+      ],
+      action: { kind: 'get_tokens', label: 'Get test tokens' },
+    };
+  }
+  const funds = readyFunds(w);
+  if (!w.hasAccount) {
+    if (funds <= 0) {
+      // Empty, but the one-time grant isn't available (already used, or off) → faucet.
+      return {
+        text: [
+          "You're signed in. You’ll need some test tokens to trade, grab them from the testnet faucet, then I’ll set up your trading account.",
+        ],
+      };
+    }
+    return {
+      text: [
+        "You're signed in and funded. Next you'll need a trading account, a one-time free setup that holds your funds and positions.",
+        'Want me to create it for you now?',
+      ],
+      action: { kind: 'create_account', label: 'Create trading account' },
+    };
+  }
+  if (funds <= 0) {
+    return {
+      text: [
+        'Your trading account is set up, but it’s out of test tokens. You can top up from the testnet faucet.',
+        'Once you’ve got some, tell me a direction and I’ll set up a bet.',
+      ],
+    };
+  }
+  return {
+    text: [
+      "You're all set: signed in, trading account ready, and funded.",
+      'Tell me a direction and I’ll set up a bet, like “safe up bet”, or say “analyze BTC” for a read.',
+    ],
+  };
+}
+
+function createAccountReply(ctx: CopilotContext): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return { text: ['To create your trading account, first tap Connect (top right) to sign in. Then I’ll set it up in one tap.'] };
+  }
+  if (w.hasAccount) {
+    return { text: ["You've already got a trading account, so you're ready to bet. Try “safe up bet”, or “get test tokens” if you need funds."] };
+  }
+  return {
+    text: ['A trading account is a one-time, free on-chain setup that holds your test funds and positions. Want me to create it now?'],
+    action: { kind: 'create_account', label: 'Create trading account' },
+  };
+}
+
+function getTokensReply(ctx: CopilotContext): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return { text: ['To get test tokens, first tap Connect (top right) to sign in, then I’ll drop some DUSDC into your wallet.'] };
+  }
+  if (w.grantEligible) {
+    return {
+      text: [
+        'I can get you some free test tokens (DUSDC) to trade with, plus a little gas. It’s play money on testnet, not real funds.',
+        'Want me to send some to your wallet?',
+      ],
+      action: { kind: 'get_tokens', label: 'Get test tokens' },
+    };
+  }
+  // Not eligible: the one-time grant only goes to a brand-new, near-empty wallet.
+  if (readyFunds(w) > 0) {
+    return { text: ["You've already got test tokens in your wallet, so you're ready to trade. Tell me a direction and I’ll set one up."] };
+  }
+  return { text: ['I can only auto-send test tokens to a brand-new wallet, and yours is already set up. You can top up from the testnet faucet instead.'] };
+}
+
 function positioningReply(ctx: CopilotContext): CopilotReply {
   const funding = ctx.insights?.funding.binancePct ?? ctx.insights?.funding.avgPct ?? null;
   const lines = positioningLines(ctx.positioning ?? null, funding);
@@ -1128,6 +1244,12 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return optionsMarketReply(ctx);
     case 'why_moving':
       return whyMovingReply(ctx);
+    case 'onboarding':
+      return onboardingReply(ctx);
+    case 'create_account':
+      return createAccountReply(ctx);
+    case 'get_tokens':
+      return getTokensReply(ctx);
     case 'adjust_ticket':
       return adjustReply(intent, ctx);
     case 'next_market':

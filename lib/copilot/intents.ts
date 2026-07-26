@@ -50,6 +50,10 @@ export type CopilotIntent =
   | { kind: 'flow' }
   | { kind: 'options_market' }
   | { kind: 'why_moving' }
+  // Onboarding: get-started guidance, create the trading account, get test tokens.
+  | { kind: 'onboarding' }
+  | { kind: 'create_account' }
+  | { kind: 'get_tokens' }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -326,6 +330,32 @@ function wantsFlow(text: string): boolean {
   return /\betfs?\b|institution(?:s|al)?|\binflows?\b|\boutflows?\b|net flow|fund flow|spot etf|(?:are|is)\s+(?:institutions|whales|the whales|big money)\s+(?:buying|selling|accumulating|dumping)|(?:money|capital)\s+(?:coming in|flowing in|leaving|flowing out|pouring in)/.test(text);
 }
 
+/* ------------------------------ onboarding ------------------------------- */
+// The first-run journey: get the trading account created, and get some test
+// tokens to trade with. Matched on the RAW text (before the "set up" strip) and
+// checked BEFORE the info intents, so "get me some dusdc" triggers the airdrop
+// rather than the static funds explainer.
+
+/** "Create my trading account / open an account / set up my account." Requires an
+ *  action verb + "account", so "what's a trading account" (a question) isn't caught. */
+function wantsCreateAccount(text: string): boolean {
+  return /\b(?:create|open|set ?up|make|start|register|activate|need|want|get)\b[^?]{0,20}\b(?:trading )?account\b/.test(text);
+}
+
+/** "Get test tokens / airdrop / faucet / fund my account / give me DUSDC." An
+ *  ACQUISITION cue (get/give/claim/fund/airdrop/faucet), so "how much DUSDC do I
+ *  have" (balance) and "what is DUSDC" (explain) are not swept in. */
+function wantsGetTokens(text: string): boolean {
+  return /\bairdrop\b|\bfaucet\b|\btest (?:tokens?|dusdc|money|funds|coins?)\b|\bfree (?:tokens?|dusdc|money|coins?)\b|\b(?:get|give|send|grab|claim|need|want|drip)\b[^?]{0,16}\b(?:dusdc|tokens?|test funds|test money)\b|\bfund (?:my )?(?:account|wallet)\b|\btop ?up\b[^?]{0,12}\b(?:account|wallet|balance)\b|\bstarter grant\b/.test(text);
+}
+
+/** "How do I get started / onboard me / new here / where do I begin." The general
+ *  first-run guidance (state-aware). Kept narrow so "how does this work" stays the
+ *  explainer. */
+function wantsOnboarding(text: string): boolean {
+  return /\bget started\b|\bgetting started\b|\bonboard(?:ing| me)?\b|\bnew here\b|\bnew to (?:this|predict|trading|the app)\b|\bhow (?:do i|to) (?:get )?start(?:ed)?\b|\bwhere do i (?:start|begin)\b|\bhelp me (?:get )?start\b|\bfirst time\b|\bwhat do i need to (?:start|trade|bet)\b/.test(text);
+}
+
 /** "What's the options market saying? / put-call ratio? / options positioning?" */
 function wantsOptionsMarket(text: string): boolean {
   return /options? (?:market|flow|positioning|sentiment|book|traders?)|put[- ]?call|call[- ]?put|p\s*\/\s*c ratio|what.{0,25}options.{0,15}(?:say|saying|tell|think)|options.{0,12}(?:bullish|bearish|lean|leaning)/.test(text);
@@ -441,6 +471,14 @@ export function parseIntent(message: string): CopilotIntent {
   if (adjust) return { kind: 'adjust_ticket', ...adjust };
   // Explicit trade params ("strike 66000, 2x, 6 dusdc") → build a fresh trade.
   if (TRADE_PARAM.test(raw)) return { kind: 'start_trade' };
+
+  // Onboarding actions, matched on RAW text (before the "set up" strip below would
+  // remove "set up my account") and before the info intents (so "get me dusdc"
+  // triggers the airdrop, not the funds explainer). Create-account first (most
+  // specific), then get-tokens, then the general get-started guidance.
+  if (wantsCreateAccount(raw)) return { kind: 'create_account' };
+  if (wantsGetTokens(raw)) return { kind: 'get_tokens' };
+  if (wantsOnboarding(raw)) return { kind: 'onboarding' };
 
   const text = raw.replace(NON_DIRECTIONAL, ' ');
 

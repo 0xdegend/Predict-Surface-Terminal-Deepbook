@@ -12,17 +12,19 @@
  * ticket. Nothing here signs or mints.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LuSparkles, LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock } from 'react-icons/lu';
+import { LuSparkles, LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins } from 'react-icons/lu';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
-import type { BetSuggestion } from '@/lib/copilot/respond';
+import type { BetSuggestion, OnboardAction } from '@/lib/copilot/respond';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string[];
   bet?: BetSuggestion;
+  /** An onboarding step rendered as a one-tap button (create account / get tokens). */
+  action?: OnboardAction;
 }
 
 const CHIPS = ['Set up a trade', 'Analyze BTC', 'Next market', 'Safe UP bet', 'Longshot UP bet', 'Safe DOWN bet'];
@@ -45,6 +47,7 @@ export function CopilotChat({
   onSend,
   onPlaceBet,
   onEditBet,
+  onAction,
   busy,
   threadEnd,
   pinnedTop,
@@ -54,6 +57,8 @@ export function CopilotChat({
   onSend: (text: string) => void;
   onPlaceBet: (bet: BetSuggestion) => void;
   onEditBet: () => void;
+  /** Run an onboarding action (create trading account / get test tokens). */
+  onAction?: (kind: OnboardAction['kind']) => void;
   busy?: boolean;
   /** Live content pinned at the bottom of the thread (the open-bets tray) — part
    *  of the conversation flow, not a separate rail, so it scrolls with the chat. */
@@ -133,7 +138,7 @@ export function CopilotChat({
       {/* thread */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} />
+          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} onAction={onAction} busy={busy} />
         ))}
         {busy && <TypingBubble />}
         {threadEnd}
@@ -204,10 +209,14 @@ function MessageBubble({
   message,
   onPlaceBet,
   onEditBet,
+  onAction,
+  busy,
 }: {
   message: ChatMessage;
   onPlaceBet: (bet: BetSuggestion) => void;
   onEditBet: () => void;
+  onAction?: (kind: OnboardAction['kind']) => void;
+  busy?: boolean;
 }) {
   const isUser = message.role === 'user';
   return (
@@ -235,7 +244,32 @@ function MessageBubble({
           <BetCard bet={message.bet} onPlace={() => onPlaceBet(message.bet!)} onEdit={onEditBet} />
         </div>
       )}
+      {/* An onboarding action button lands the same way — create account / get tokens. */}
+      {message.action && onAction && (
+        <div className="rise w-full" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
+          <ActionCard action={message.action} onAction={onAction} busy={busy} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The onboarding action button (create trading account / get test tokens). Runs
+ *  the real flow in the screen; shows a pending label while it's in flight. */
+function ActionCard({ action, onAction, busy }: { action: OnboardAction; onAction: (kind: OnboardAction['kind']) => void; busy?: boolean }) {
+  const Icon = action.kind === 'create_account' ? LuWallet : LuCoins;
+  const pending = action.kind === 'create_account' ? 'Creating your account…' : 'Sending your tokens…';
+  return (
+    <button
+      type="button"
+      onClick={() => onAction(action.kind)}
+      disabled={busy}
+      className="glass-card flex w-[88%] items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) py-2.5 text-[12px] font-medium text-accent transition-colors hover:bg-up/15 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+    >
+      <Icon size={14} />
+      {busy ? pending : action.label}
+      {!busy && <span aria-hidden>→</span>}
+    </button>
   );
 }
 

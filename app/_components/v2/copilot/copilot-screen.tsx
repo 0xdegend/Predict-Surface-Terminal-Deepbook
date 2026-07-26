@@ -24,7 +24,8 @@ import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
 import { useBtcNarrative } from '@/lib/hooks/use-btc-narrative';
 import { useNow } from '@/lib/hooks/use-now';
-import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
+import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
@@ -35,7 +36,8 @@ import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
-import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
+import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction } from '@/lib/copilot/respond';
+import { SuccessModal } from '@/app/_components/ui/success-modal';
 import {
   marketRows,
   volState,
@@ -53,7 +55,9 @@ import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
 import { aggregateStrikeVolume, busiestStrikeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
 import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-match';
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
-import { num } from '@/lib/format';
+import { num, quote as fmtQuote } from '@/lib/format';
+import { predictV2Config } from '@/config/predict';
+import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { pythSpot, qkV2, getMarketOrders } from '@/lib/api/v2/client';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -76,6 +80,27 @@ const GREETING: ChatMessage = {
 // set NEXT_PUBLIC_COPILOT_LIVE=1 in the environment (a one-switch flip — no code
 // change), or hardcode this to `true`.
 const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
+
+/**
+ * The starter grant only funds a brand-new, near-empty wallet: it's one-time and
+ * gated on no trading account yet + a DUSDC balance under the ceiling (the server
+ * also drips gas SUI only when the wallet lacks it). A wallet with an account or
+ * enough DUSDC would be rejected, so we offer the faucet there instead. Mirrors the
+ * trade ticket's grant-CTA gate exactly.
+ */
+function grantEligibleFor(a: { walletDusdcBase: bigint | undefined; wrapperExists: boolean; balanceBase: bigint }): boolean {
+  return (
+    starterGrant.enabled &&
+    a.walletDusdcBase !== undefined &&
+    !a.wrapperExists &&
+    a.balanceBase + a.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING
+  );
+}
+
+/** A faucet-fallback line for when the auto-grant can't run. */
+function faucetLine(lead: string): string {
+  return predictV2Config.faucetUrl ? `${lead} You can grab test tokens from the faucet: ${predictV2Config.faucetUrl}` : `${lead} Try the testnet faucet to top up.`;
+}
 
 // A short, believable exchange to blur behind the overlay — shows the co-pilot
 // reading the market and handing back a concrete bet (plain language, no jargon).
@@ -167,6 +192,14 @@ export function V2CopilotScreen({
     hasAccount: acct.wrapperExists,
     accountBase: acct.balanceBase,
     walletBase: acct.walletDusdcBase,
+    grantEligible: grantEligibleFor(acct),
+  });
+  // One-tap "get test tokens" for onboarding — the SAME app-treasury starter grant
+  // the trade ticket uses, pointed at v2's wallet-balance query so balances refresh.
+  // Gasless (Google) accounts get DUSDC only; external wallets also get gas SUI.
+  const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
+    invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
+    symbol: predictV2Config.quote.symbol,
   });
 
   // The recent 1-minute BTC tape, for the co-pilot's empirical "how often has this
@@ -319,10 +352,153 @@ export function V2CopilotScreen({
     pushUser(userText);
     setThinking(true);
     replyTimer.current = setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet }]);
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, action: reply.action }]);
       setThinking(false);
     }, 600);
   }
+
+  // Run an onboarding action from a chat button (create the trading account, or drip
+  // test tokens) — the SAME flows the ticket uses. createAccount signs a one-time
+  // setup; the grant is a treasury drip. Both need a connected wallet.
+  async function handleOnboardAction(kind: OnboardAction['kind']) {
+    if (!acct.owner) {
+      botAfterBeat(['Tap Connect (top right) to sign in first, then I’ll take care of it.']);
+      return;
+    }
+    if (kind === 'create_account') {
+      if (acct.wrapperExists) {
+        botAfterBeat(["You've already got a trading account, so you're ready to bet. Say “safe up bet”, or “get test tokens” if you need funds."]);
+        return;
+      }
+      setThinking(true);
+      try {
+        const digest = await acct.createAccount();
+        pushBot(
+          digest
+            ? ['Your trading account is ready. Nice.', 'Next, say “get test tokens” (or tap the button) and I’ll fund it, then you can place your first bet.']
+            : ['That didn’t go through, so your account wasn’t created. You can try again, or set it up from the trade ticket.'],
+        );
+      } catch {
+        pushBot(['That didn’t go through, so your account wasn’t created. You can try again, or set it up from the trade ticket.']);
+      } finally {
+        setThinking(false);
+      }
+      return;
+    }
+    // get_tokens — the treasury drip works ONLY for a brand-new, near-empty wallet.
+    // If the wallet already has funds or a trading account, the grant would be
+    // rejected, so explain + point to the faucet instead of a doomed attempt.
+    if (!grantEligibleFor(acct)) {
+      const funds = acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+      botAfterBeat([
+        funds >= STARTER_GRANT_BALANCE_CEILING
+          ? "You've already got enough test tokens to trade, so you're set. Tell me a direction and I’ll set up a bet."
+          : !starterGrant.enabled
+            ? faucetLine('Auto-funding is off right now.')
+            : faucetLine('I can only auto-send test tokens to a brand-new wallet, and yours is already set up.'),
+      ]);
+      return;
+    }
+    // Drip the starter grant. Its toast + success modal fire too; the effects below
+    // add a chat line on success, and a faucet fallback on failure.
+    if (grant.busy) return;
+    setThinking(true);
+    try {
+      await grant.claim();
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  // Latest account state readable inside the delayed nudge timer + grant effects.
+  // Synced in an effect (not during render) so a timer that fires later sees fresh
+  // account state without those effects re-subscribing to every account tick.
+  const acctRef = useRef(acct);
+  useEffect(() => {
+    acctRef.current = acct;
+  });
+
+  // Proactive onboarding: a moment after a wallet connects with NO trading account,
+  // nudge them to create one (one-tap button). Once per connected wallet; the 2.5s
+  // delay lets the account query settle so we don't misfire on a wallet that has an
+  // account. Live co-pilot only.
+  const nudgeDoneRef = useRef(false);
+  useEffect(() => {
+    if (!COPILOT_LIVE || !acct.owner) return;
+    nudgeDoneRef.current = false; // re-arm for this connected wallet
+    const id = setTimeout(() => {
+      if (nudgeDoneRef.current) return;
+      const a = acctRef.current;
+      if (!a.owner || a.wrapperExists) return; // signed out, or already has an account
+      nudgeDoneRef.current = true;
+      // A brand-new empty wallet needs test tokens first (they also cover gas);
+      // a funded-but-account-less wallet just needs the account.
+      const eligible = grantEligibleFor(a);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: 'onboard-nudge',
+          role: 'assistant',
+          text: eligible
+            ? [
+                "Welcome! You're signed in. To start trading you'll need some free test tokens (they cover gas too) and a one-time trading account.",
+                'Want me to grab you some test tokens to get started?',
+              ]
+            : [
+                "Welcome! You're signed in, but you don't have a trading account yet.",
+                "It's a one-time, free setup so you can place bets. Want me to create it?",
+              ],
+          action: eligible ? { kind: 'get_tokens', label: 'Get test tokens' } : { kind: 'create_account', label: 'Create trading account' },
+        },
+      ]);
+    }, 2500);
+    return () => clearTimeout(id);
+  }, [acct.owner]);
+
+  // Grant success → a chat line (the toast + success modal fire too). Deduped by
+  // digest so a re-render can't repeat it.
+  const grantMsgRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!grant.success || grantMsgRef.current === grant.success.digest) return;
+    grantMsgRef.current = grant.success.digest;
+    const sui = grant.success.sui > 0 ? ' (plus a little SUI for gas)' : '';
+    const funded = acctRef.current.wrapperExists;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `grant-${grant.success!.digest}`,
+        role: 'assistant',
+        text: [
+          `Done — ${fmtQuote(grant.success!.amount)} test DUSDC is in your wallet${sui}.`,
+          funded
+            ? 'You’re funded and ready. Tell me a direction and I’ll set up a bet.'
+            : 'Now say “create my trading account” (or tap the button) and you’re ready to bet.',
+        ],
+      },
+    ]);
+  }, [grant.success]);
+
+  // Grant failure → point to the public faucet (the grant is never a dead end).
+  const grantFailRef = useRef(false);
+  const grantFailNRef = useRef(0);
+  useEffect(() => {
+    if (grant.failed && !grantFailRef.current) {
+      grantFailRef.current = true;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `grant-fail-${grantFailNRef.current++}`,
+          role: 'assistant',
+          text: [
+            'I couldn’t send the test tokens automatically right now.',
+            predictV2Config.faucetUrl ? `You can grab them from the faucet instead: ${predictV2Config.faucetUrl}` : 'Give it a moment and try again.',
+          ],
+        },
+      ]);
+    } else if (!grant.failed) {
+      grantFailRef.current = false;
+    }
+  }, [grant.failed]);
 
   // Typed "trade it" → place the bet directly (no in-app confirm step) using the
   // SAME budget mint the ticket runs. The "Trade it" BUTTON still opens the ticket
@@ -654,6 +830,7 @@ export function V2CopilotScreen({
             onSend={handleSend}
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
+            onAction={handleOnboardAction}
             busy={thinking}
             suggestions={chips}
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
@@ -666,6 +843,19 @@ export function V2CopilotScreen({
           trader taps "Place this bet" (or a surface pick), so the surface owns the
           page instead of a permanent ticket rail. */}
       <V2CopilotTicketModal market={selected} pricer={pricer} serverNow={serverNow} />
+
+      {/* Starter-grant confirmation — a gasless, popup-less drip is easy to miss on
+          a toast alone (mirrors the ticket). */}
+      <SuccessModal
+        open={!!grant.success}
+        onClose={grant.clearSuccess}
+        title="Account funded"
+        eyebrow="Received"
+        amount={grant.success?.amount ?? 0}
+        sub="added to your wallet — you’re ready to trade"
+        gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
+        digest={grant.success?.digest}
+      />
     </>
   );
 }
