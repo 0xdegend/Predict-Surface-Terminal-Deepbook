@@ -152,7 +152,21 @@ export function V2PriceChart({
       // secondsVisible is set ADAPTIVELY after history loads (see below): a short,
       // fast window collapses HH:MM labels into duplicates ("10:32 10:32 10:32"),
       // so it shows seconds; a legacy-length window keeps clean minute labels.
-      timeScale: { borderColor: 'rgba(255,255,255,0.08)', timeVisible: true, secondsVisible: false, rightOffset: 6 },
+      //
+      // lockVisibleTimeRangeOnResize keeps the SAME time span filling the width when
+      // the container resizes (toggling Surface↔Chart, a panel/window resize, or the
+      // first layout settle): widening stretches the bars instead of leaving empty
+      // space on the left. fixLeftEdge is the belt-and-suspenders clamp — the view
+      // can never scroll or settle past the first data point into that left gap.
+      // rightOffset keeps the live-edge breathing room on the right.
+      timeScale: {
+        borderColor: 'rgba(255,255,255,0.08)',
+        timeVisible: true,
+        secondsVisible: false,
+        rightOffset: 6,
+        lockVisibleTimeRangeOnResize: true,
+        fixLeftEdge: true,
+      },
       crosshair: {
         vertLine: { color: 'rgba(255,255,255,0.18)', labelBackgroundColor: '#181c20' },
         horzLine: { color: 'rgba(255,255,255,0.18)', labelBackgroundColor: '#181c20' },
