@@ -556,7 +556,7 @@ export function V2TradeTicket({
       <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} />
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
-        You’ll preview the trade next; cost is an estimate — your wallet shows the exact amount
+        You’ll preview the trade next; cost is an estimate. Your wallet shows the exact amount
         before you approve.
       </p>
     </>
