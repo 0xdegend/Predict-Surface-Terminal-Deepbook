@@ -14,7 +14,7 @@
  * surface + ticket are the existing components, unchanged.
  */
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { LuSparkles } from 'react-icons/lu';
+import { LuSparkles, LuPause } from 'react-icons/lu';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
@@ -82,6 +82,10 @@ const GREETING: ChatMessage = {
 // set NEXT_PUBLIC_COPILOT_LIVE=1 in the environment (a one-switch flip — no code
 // change), or hardcode this to `true`.
 const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
+
+// Chips shown when markets are paused: read-only prompts only (each parses to a
+// real read intent), so nothing suggests a bet that can't be placed right now.
+const PAUSED_CHIPS = ['Analyze BTC', "What's the fear and greed?", 'Why is BTC moving?', "How's BTC positioned?"];
 
 /**
  * The starter grant only funds a brand-new, near-empty wallet: it's one-time and
@@ -823,14 +827,54 @@ export function V2CopilotScreen({
     serverNow,
   };
 
-  if (markets.length === 0) {
-    return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
-  }
-
   // Gated for launch: real (live) surface + a sample chat, blurred behind a
   // "coming soon" overlay. Flip COPILOT_LIVE to take it live.
   if (!COPILOT_LIVE) {
     return <CopilotComingSoon stage={stageProps} />;
+  }
+
+  // Markets paused (none live): Kelly stays useful for READING BTC — price, fear
+  // & greed, why it's moving, positioning are all Clawby/Pyth, not markets. So we
+  // drop the surface cockpit (no vol feed without markets) and center the chat
+  // with a paused note + read-only chips; bet-setup asks still answer honestly
+  // ("no live market"). Flips back to the full cockpit the moment markets return.
+  if (markets.length === 0) {
+    return (
+      <>
+        <main className="flex flex-1 justify-center bg-bg-0 px-4 py-4">
+          <div className="flex min-h-[70vh] w-full max-w-2xl min-w-0 flex-col lg:h-[calc(100dvh-5rem)]">
+            <div className="mb-3 flex items-center gap-2.5 rounded-xl border border-line bg-bg-1 px-3.5 py-2.5">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/5 text-text-2">
+                <LuPause size={13} />
+              </span>
+              <p className="text-[11.5px] leading-snug text-text-3">
+                Markets are paused, so there’s nothing to bet on yet. I can still read BTC for you, ask about the price, fear and greed, or why it’s moving.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1">
+              <CopilotChat
+                messages={messages}
+                onSend={handleSend}
+                onPlaceBet={handlePlaceBet}
+                onEditBet={handleEditBet}
+                onAction={handleOnboardAction}
+                onShare={setShareCard}
+                busy={thinking}
+                suggestions={PAUSED_CHIPS}
+                threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} />}
+              />
+            </div>
+          </div>
+        </main>
+        {/* Fear & greed share still works off a read. */}
+        <FearGreedShareModal
+          open={!!shareCard}
+          value={shareCard?.kind === 'fear_greed' ? shareCard.value : null}
+          label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
+          onClose={() => setShareCard(null)}
+        />
+      </>
+    );
   }
 
   return (

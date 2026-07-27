@@ -12,9 +12,11 @@
  * are useMediaQuery-gated, so exactly one ticket mounts per breakpoint.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { LuBoxes, LuChartArea } from 'react-icons/lu';
+import Link from 'next/link';
+import { LuBoxes, LuChartArea, LuPause, LuSparkles } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
+import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
@@ -78,9 +80,14 @@ export function V2TradeScreen({
     [markets, pricers],
   );
 
-  if (markets.length === 0) {
-    return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
-  }
+  // "Paused" = no live markets right now (useV2Markets already returns only
+  // active/future ones). We DON'T dead-end the page: the Pyth spot feed stays
+  // live even when the protocol's market scheduler is off, so the hero keeps a
+  // live BTC chart, the Surface tab disables itself (no vol feed without
+  // markets), and the ticket blurs behind a "paused" note carrying live fear &
+  // greed. Everything flips back to live automatically when markets return —
+  // `paused` just goes false and the normal surface/ticket/picker light up.
+  const paused = markets.length === 0;
 
   return (
     <>
@@ -91,12 +98,10 @@ export function V2TradeScreen({
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
       <section className="flex min-w-0 flex-col gap-px bg-white/6">
         <div data-tour="surface" className="h-[48vh] min-h-90 bg-bg-0 md:h-[56vh] lg:h-[64vh] lg:min-h-130">
-          {selected && (
-            <Hero market={selected} pricer={pricer} serverNow={serverNow} surfaceInputs={surfaceInputs} markets={markets} />
-          )}
+          <Hero market={selected} pricer={pricer} serverNow={serverNow} surfaceInputs={surfaceInputs} markets={markets} paused={paused} />
         </div>
         <div data-tour="picker" className="flex min-h-0 flex-1 flex-col bg-bg-0 p-4 sm:p-5">
-          <V2MarketPicker markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />
+          {paused ? <PickerPaused /> : <V2MarketPicker markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} />}
         </div>
       </section>
 
@@ -104,30 +109,39 @@ export function V2TradeScreen({
           underneath. On mobile the ticket lives in the slide-up V2TradeSheet, so
           the rail is just odds + positions (the ticket block hides at <lg). */}
       <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
-        <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
-          {/* Rail ticket heading — mirrors legacy's TicketTitle chrome. */}
-          <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
-            <span className="h-3 w-px bg-accent/70" />
-            Trade ticket · click surface → mint
-          </h2>
-          <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
-        </div>
-        {/* Odds ⇆ Analysis. Odds is the surface's own fair-probability curve;
-            Analysis is the wider-market (Clawby) read + the picked strike's
-            real-world stats. Analysis is mount-gated inside, so its data only
-            loads when a trader opens that tab. */}
-        <div className="lg:border-t lg:border-line lg:pt-5">
-          <V2RailTabs market={selected} pricer={pricer} serverNow={serverNow} />
-        </div>
-        <div className="lg:border-t lg:border-line lg:pt-5">
+        {paused ? (
+          // Paused: the ticket has nothing to quote, so blur it and surface the
+          // live BTC fear & greed + a hand-off to Kelly (who still reads BTC).
+          <PausedTicket />
+        ) : (
+          <>
+            <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
+              {/* Rail ticket heading — mirrors legacy's TicketTitle chrome. */}
+              <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+                <span className="h-3 w-px bg-accent/70" />
+                Trade ticket · click surface → mint
+              </h2>
+              <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
+            </div>
+            {/* Odds ⇆ Analysis. Odds is the surface's own fair-probability curve;
+                Analysis is the wider-market (Clawby) read + the picked strike's
+                real-world stats. Analysis is mount-gated inside, so its data only
+                loads when a trader opens that tab. */}
+            <div className="lg:border-t lg:border-line lg:pt-5">
+              <V2RailTabs market={selected} pricer={pricer} serverNow={serverNow} />
+            </div>
+          </>
+        )}
+        <div className={paused ? '' : 'lg:border-t lg:border-line lg:pt-5'}>
           <V2PositionsPanel />
         </div>
       </aside>
     </main>
 
     {/* Mobile trade ticket — slides up over the page when a market is picked.
-        Renders nothing on desktop (the rail ticket takes over). */}
-    <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />
+        Renders nothing on desktop (the rail ticket takes over), and nothing while
+        paused (there's no market to pick). */}
+    {!paused && <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />}
     </>
   );
 }
@@ -168,15 +182,19 @@ function Hero({
   serverNow,
   surfaceInputs,
   markets,
+  paused,
 }: {
-  market: V2Market;
+  market: V2Market | null;
   pricer?: LivePricer;
   serverNow: number;
   surfaceInputs: SmileInput[];
   markets: V2Market[];
+  paused: boolean;
 }) {
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const canSurface = surfaceInputs.length >= 2;
+  // No live markets → no vol feed to build a surface from, so the Surface tab
+  // disables itself and the hero holds the live price chart (Pyth keeps ticking).
+  const canSurface = !paused && surfaceInputs.length >= 2;
   const [override, setOverride] = useState<HeroView | null>(null);
   // Default to the 3-D surface on desktop, the lighter live chart on mobile.
   const wanted: HeroView = override ?? (canSurface && isDesktop ? 'surface' : 'chart');
@@ -195,10 +213,28 @@ function Hero({
             className="segmented-thumb"
             style={{ transform: view === 'chart' ? 'translateX(100%)' : 'translateX(0)' }}
           />
-          <ViewTab Icon={LuBoxes} label="Surface" active={view === 'surface'} onClick={() => setOverride('surface')} disabled={!canSurface} />
+          <ViewTab
+            Icon={LuBoxes}
+            label="Surface"
+            active={view === 'surface'}
+            onClick={() => setOverride('surface')}
+            disabled={!canSurface}
+            title={paused ? 'The surface is paused while markets are offline' : undefined}
+          />
           <ViewTab Icon={LuChartArea} label="Chart" active={view === 'chart'} onClick={() => setOverride('chart')} />
         </div>
       </div>
+
+      {/* Honest "paused" flag so the empty ticket + missing surface read as an
+          upstream pause, not a broken page. */}
+      {paused && (
+        <div className="pointer-events-none absolute right-3 top-3 z-20">
+          <span className="chip h-6 gap-1.5 px-2.5 text-[10px] uppercase tracking-wider text-text-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-warn" />
+            Markets paused
+          </span>
+        </div>
+      )}
 
       {view === 'surface' ? (
         <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
@@ -215,12 +251,14 @@ function ViewTab({
   active,
   onClick,
   disabled,
+  title,
 }: {
   Icon: typeof LuBoxes;
   label: string;
   active: boolean;
   onClick: () => void;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
     <button
@@ -229,13 +267,112 @@ function ViewTab({
       aria-selected={active}
       onClick={onClick}
       disabled={disabled}
-      className={`relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:opacity-40 ${
+      title={title}
+      className={`relative z-10 inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-40 ${
         active ? 'text-text-1' : 'text-text-3 hover:text-text-2'
       }`}
     >
       <Icon size={13} className={active ? 'text-accent' : ''} />
       {label}
     </button>
+  );
+}
+
+/**
+ * PausedTicket — shown in the right rail when there are no live markets. A
+ * blurred, inert ticket skeleton (so the layout doesn't collapse) behind a small
+ * card that explains the pause, carries the live BTC Fear & Greed reading, and
+ * hands off to Kelly (who still reads BTC when nothing is tradeable). Flips back
+ * to the real ticket automatically the moment markets return.
+ */
+function PausedTicket() {
+  return (
+    <div data-tour="ticket" className="flex flex-col gap-4">
+      <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+        <span className="h-3 w-px bg-accent/70" />
+        Trade ticket
+      </h2>
+      <div className="relative overflow-hidden rounded-xl border border-line">
+        <div aria-hidden className="pointer-events-none select-none blur-[3px] saturate-50">
+          <TicketSkeleton />
+        </div>
+        <div className="absolute inset-0 grid place-items-center bg-bg-0/55 p-4">
+          <div className="w-full max-w-64 rounded-xl border border-line bg-bg-1/95 p-4 text-center shadow-[0_12px_34px_-14px_rgba(0,0,0,0.85)]">
+            <span className="mx-auto grid h-9 w-9 place-items-center rounded-full bg-white/5 text-text-2">
+              <LuPause size={15} />
+            </span>
+            <p className="mt-3 text-[12.5px] font-medium text-text-1">Markets are paused</p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-text-3">
+              No BTC markets are live right now. New ones open here on their own, then trading turns back on.
+            </p>
+            <FearGreedRead />
+            <Link
+              href="/v2/copilot"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[11px] text-text-2 transition-colors hover:border-accent/40 hover:text-text-1"
+            >
+              <LuSparkles size={12} />
+              Ask Kelly about BTC
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** The live BTC Fear & Greed reading (Clawby-sourced) shown on the paused ticket.
+ *  Renders nothing until it loads, so the card never shows a placeholder number. */
+function FearGreedRead() {
+  const { data } = useBtcInsights();
+  const s = data?.sentiment;
+  if (!s) return null;
+  const tone = s.value <= 25 ? 'var(--down)' : s.value >= 75 ? 'var(--up)' : 'var(--warn)';
+  return (
+    <div className="mt-3 flex items-center justify-center gap-2 rounded-lg border border-line bg-white/2 px-3 py-2">
+      <span className="text-[10px] uppercase tracking-wider text-text-3">Fear &amp; Greed</span>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone }} />
+      <span className="font-mono text-[12.5px] tabular-nums text-text-1">{s.value}</span>
+      <span className="text-[11px] text-text-2">{s.label}</span>
+    </div>
+  );
+}
+
+/** A static, non-interactive ticket shape sitting (blurred) behind the paused
+ *  card — keeps the rail from collapsing without feeding a null market to the
+ *  real ticket. Not data, just texture. */
+function TicketSkeleton() {
+  const rows = ['Level', 'Ends in', 'Amount', 'Leverage', 'Chance it hits', 'Payout if it hits'];
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-line py-2 text-center text-[11px] font-medium text-text-2">UP</div>
+        <div className="rounded-lg border border-line py-2 text-center text-[11px] font-medium text-text-2">DOWN</div>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {rows.map((r) => (
+          <div key={r} className="flex items-center justify-between border-b border-line pb-2 text-[11px]">
+            <span className="text-text-3">{r}</span>
+            <span className="text-text-3">—</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 rounded-lg bg-white/5 py-2.5 text-center text-[12px] text-text-3">Place · Mint</div>
+    </div>
+  );
+}
+
+/** Picker area stand-in while markets are paused (the picker would otherwise be
+ *  an empty table). */
+function PickerPaused() {
+  return (
+    <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-line px-6 py-10 text-center">
+      <div className="max-w-xs">
+        <p className="text-[12.5px] text-text-2">No markets are live right now</p>
+        <p className="mt-1 text-[11.5px] leading-relaxed text-text-3">
+          New BTC markets open here automatically once trading resumes. The chart above stays live in the meantime.
+        </p>
+      </div>
+    </div>
   );
 }
 
