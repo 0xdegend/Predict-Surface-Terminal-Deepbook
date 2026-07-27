@@ -25,6 +25,7 @@ import {
   LuTarget,
   LuSwords,
   LuBookOpen,
+  LuSparkles,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -39,6 +40,7 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
 
 const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean }[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Surface · probability ladder', icon: LuChartCandlestick },
+  { href: '/v2/copilot', label: 'Ask Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
   { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
   { href: '/v2/analytics', label: 'Analytics', desc: 'Live markets & activity', icon: LuChartNoAxesCombined },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
