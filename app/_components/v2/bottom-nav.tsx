@@ -38,14 +38,16 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
   { href: '/v2/leaderboard', label: 'Ranks', icon: LuTrophy, match: (p) => p.startsWith('/v2/leaderboard') },
 ];
 
-const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean }[] = [
-  { href: '/v2/options', label: 'BTC Options', desc: 'Surface · probability ladder', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Ask Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
-  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
-  { href: '/v2/analytics', label: 'Analytics', desc: 'Live markets & activity', icon: LuChartNoAxesCombined },
-  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
-  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
-  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
+const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean; footer?: boolean }[] = [
+  // Descs kept short so each tile is a single line on mobile (uniform height).
+  { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: LuChartCandlestick },
+  { href: '/v2/copilot', label: 'Ask Kelly', desc: 'Talk to the surface', icon: LuSparkles },
+  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety', icon: LuShieldAlert },
+  { href: '/v2/analytics', label: 'Analytics', desc: 'Markets & activity', icon: LuChartNoAxesCombined },
+  { href: '/v2/quests', label: 'Quests', desc: 'Earn DUSDC', icon: LuTarget, soon: true },
+  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: LuSwords, soon: true },
+  // Reference, not a destination tile → full-width footer row (keeps the grid even).
+  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
 ];
 
 export function V2BottomNav() {
@@ -103,13 +105,50 @@ export function V2BottomNav() {
           role="menu"
           className="glass-dock sheet-in pointer-events-auto mb-2.5 w-full max-w-md overflow-hidden rounded-[22px] p-2"
         >
-          <div className="flex flex-col gap-1.5">
+          {/* Capped height so the sheet can never swallow the whole screen on
+              small phones — it scrolls internally past that. */}
+          <div className="flex max-h-[72vh] flex-col gap-1.5 overflow-y-auto scroll-quiet">
             {/* Legacy ↔ Latest switch — the desktop header toggle's mobile home,
                 so users can move between deployments on phones too. */}
             <span className="px-1.5 pt-1 text-[11px] font-medium text-text-3">Version</span>
             <DeploymentToggle variant="sheet" onSelect={() => setOpen(false)} />
             <div className="my-1 h-px bg-line" />
-            {MORE.map((item) => {
+            {/* Destinations in a 2-column grid — halves the sheet's height vs a
+                single stack, so it stops covering most of the screen. */}
+            <div className="grid grid-cols-2 gap-2">
+              {MORE.filter((m) => !m.footer).map((item) => {
+                const active = pathname.startsWith(item.href);
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    role="menuitem"
+                    onClick={() => setOpen(false)}
+                    aria-current={active ? 'page' : undefined}
+                    className={`ctrl-soft flex h-full min-w-0 flex-col gap-1 rounded-2xl px-3 py-2.5 transition-colors ${
+                      active ? 'text-text-1' : 'text-text-2'
+                    }`}
+                  >
+                    <span className="flex items-center justify-between">
+                      <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+                      {item.soon && (
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
+                          style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
+                        >
+                          Soon
+                        </span>
+                      )}
+                    </span>
+                    <span className="truncate text-[12.5px] font-medium leading-none">{item.label}</span>
+                    <span className="truncate text-[10px] leading-none text-text-3">{item.desc}</span>
+                  </Link>
+                );
+              })}
+            </div>
+            {/* Full-width footer row(s) — Docs. */}
+            {MORE.filter((m) => m.footer).map((item) => {
               const active = pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
@@ -119,23 +158,13 @@ export function V2BottomNav() {
                   role="menuitem"
                   onClick={() => setOpen(false)}
                   aria-current={active ? 'page' : undefined}
-                  className={`ctrl-soft flex items-center gap-3 rounded-2xl px-3.5 py-3 transition-colors ${
+                  className={`ctrl-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 transition-colors ${
                     active ? 'text-text-1' : 'text-text-2'
                   }`}
                 >
-                  <Icon size={18} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
-                  <span className="flex flex-1 flex-col gap-1">
-                    <span className="text-[13px] font-medium leading-none">{item.label}</span>
-                    <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
-                  </span>
-                  {item.soon && (
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-widest"
-                      style={{ color: 'var(--warn)', background: 'var(--warn-soft)' }}
-                    >
-                      Soon
-                    </span>
-                  )}
+                  <Icon size={17} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+                  <span className="text-[12.5px] font-medium leading-none">{item.label}</span>
+                  <span className="text-[10.5px] leading-none text-text-3">{item.desc}</span>
                 </Link>
               );
             })}

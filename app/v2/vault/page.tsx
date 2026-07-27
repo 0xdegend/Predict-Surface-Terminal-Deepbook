@@ -26,7 +26,10 @@ export default function V2VaultPage() {
           each vault update.
         </p>
       </header>
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+      {/* grid-cols-1 (= minmax(0,1fr)) on mobile so the single column can't grow
+          past the viewport — without it the Activity table's min-width blows the
+          column out and pushes the tab bar off-screen. */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* Left: the pool split into Pool / Activity tabs so the secondary
             history + chart don't stretch the page (V2VaultTabs). */}
         <V2VaultTabs />
