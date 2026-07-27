@@ -117,11 +117,11 @@ export function V2Chrome() {
         </nav>
       </div>
 
-      {/* live chip */}
+      {/* live chip — the always-on BTC price, shown on every breakpoint (it fills
+          the otherwise-empty middle of the mobile bar, and Pyth spot stays live
+          even while markets are paused). */}
       <div data-tour="chip" className="flex min-w-0 justify-center">
-        <div className="hidden sm:block">
-          <V2SpotTape />
-        </div>
+        <V2SpotTape />
       </div>
 
       {/* toggle + wallet */}

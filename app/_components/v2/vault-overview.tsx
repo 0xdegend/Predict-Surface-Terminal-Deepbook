@@ -21,7 +21,7 @@ import { useVaultV2 } from '@/lib/hooks/use-vault-v2';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useNow } from '@/lib/hooks/use-now';
 import { fromQuote } from '@/config/scale';
-import { quote as fmtQuote, ago } from '@/lib/format';
+import { quote as fmtQuote, compact, ago } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { InfoTip } from '../ui/info-tip';
@@ -69,7 +69,7 @@ export function V2VaultOverview() {
           </div>
           <div className="relative flex flex-col gap-2">
             <span className="text-[34px] leading-none tracking-tight text-text-1">
-              {poolValue != null ? fmtQuote(poolValue) : '…'}
+              {poolValue != null ? <Money value={poolValue} /> : '…'}
             </span>
             <span className="text-[10px] uppercase tracking-[0.12em] text-text-3">
               {predictV2Config.quote.symbol} · backs every open position
@@ -88,14 +88,14 @@ export function V2VaultOverview() {
           icon={LuLayers}
           color={HUE.blue}
           label="Total shares"
-          value={vault ? fmtQuote(fromQuote(vault.plpTotalSupply)) : '…'}
+          value={vault ? <Money value={fromQuote(vault.plpTotalSupply)} /> : '…'}
           sub="PLP outstanding"
         />
         <SmallStat
           icon={LuWalletMinimal}
           color={HUE.violet}
           label="Idle liquidity"
-          value={vault || cur ? fmtQuote(idle) : '…'}
+          value={vault || cur ? <Money value={idle} /> : '…'}
           sub={`${predictV2Config.quote.symbol} on hand`}
         />
         <SmallStat
@@ -119,7 +119,7 @@ export function V2VaultOverview() {
             <span className="eyebrow">Your position</span>
           </div>
           <span className="relative text-[20px] leading-none tracking-tight text-accent">
-            {acct.wrapperExists && yourValue != null ? fmtQuote(yourValue) : '—'}{' '}
+            {acct.wrapperExists && yourValue != null ? <Money value={yourValue} /> : '—'}{' '}
             <span className="text-[11px] text-text-3">{predictV2Config.quote.symbol}</span>
           </span>
           <span className="relative text-[10px] leading-relaxed text-text-3">
@@ -138,7 +138,7 @@ export function V2VaultOverview() {
             Pool composition
           </h2>
           <span className="font-mono text-[11px] tabular-nums text-text-3">
-            {fmtQuote(poolTotal)} {predictV2Config.quote.symbol}
+            <Money value={poolTotal} /> {predictV2Config.quote.symbol}
           </span>
         </div>
 
@@ -148,8 +148,8 @@ export function V2VaultOverview() {
         </div>
 
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 font-mono text-[10px] tabular-nums text-text-3">
-          <Legend dot="bg-up/80" label="Idle — free for withdrawals" value={fmtQuote(idle)} />
-          <Legend dot="bg-white/25" label="Backing open markets" value={fmtQuote(deployed)} />
+          <Legend dot="bg-up/80" label="Idle — free for withdrawals" value={<Money value={idle} />} />
+          <Legend dot="bg-white/25" label="Backing open markets" value={<Money value={deployed} />} />
         </div>
 
         {(reserve > 0 || feeInc > 0) && (
@@ -178,6 +178,20 @@ export function V2VaultOverview() {
   );
 }
 
+/**
+ * A DUSDC / share amount that fits tight mobile cards: full precision on ≥sm
+ * (desktop has the room), compact (9.91M / 11.09K) below that. A pure CSS swap,
+ * so it's SSR-safe (no hydration flip on mount).
+ */
+function Money({ value }: { value: number }) {
+  return (
+    <>
+      <span className="sm:hidden">{compact(value)}</span>
+      <span className="hidden sm:inline">{fmtQuote(value)}</span>
+    </>
+  );
+}
+
 function SmallStat({
   icon,
   color,
@@ -189,7 +203,7 @@ function SmallStat({
   icon: IconType;
   color: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
   sub: string;
   info?: React.ReactNode;
 }) {
@@ -208,7 +222,7 @@ function SmallStat({
   );
 }
 
-function Legend({ dot, label, value }: { dot: string; label: string; value: string }) {
+function Legend({ dot, label, value }: { dot: string; label: string; value: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={`h-2 w-2 rounded-full ${dot}`} />

@@ -32,10 +32,18 @@ export function V2SpotTape() {
   const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '·';
 
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-white/2 px-3 py-2 backdrop-blur-md">
+    <div className="flex items-center gap-2 rounded-lg bg-white/2 px-2.5 py-2 backdrop-blur-md sm:px-3">
       <span className="eyebrow">BTC</span>
-      <span className={`font-mono text-[15px] tabular-nums ${color}`}>
-        {spot != null ? `$${spot.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
+      <span className={`font-mono text-[14px] tabular-nums sm:text-[15px] ${color}`}>
+        {spot != null ? (
+          <>
+            {/* Whole dollars on phones (the nav bar is tight there), cents on ≥sm. */}
+            <span className="sm:hidden">${Math.round(spot).toLocaleString()}</span>
+            <span className="hidden sm:inline">${spot.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          </>
+        ) : (
+          '—'
+        )}
         <span className="ml-1 text-[11px]">{arrow}</span>
       </span>
     </div>
