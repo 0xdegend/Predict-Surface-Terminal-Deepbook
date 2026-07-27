@@ -28,6 +28,7 @@ import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
+import { useV2History } from '@/lib/hooks/use-v2-history';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2PositionsPanel } from '../positions-panel';
@@ -38,8 +39,11 @@ import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
+import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
 import { FearGreedShareModal } from './fear-greed-share-modal';
+import { PerfShareCardModal } from '@/app/_components/positions/perf-share-card-modal';
+import type { PerfShareData } from '@/app/_components/positions/perf-share-card-canvas';
 import {
   marketRows,
   volState,
@@ -53,12 +57,14 @@ import {
 } from '@/lib/copilot/pulse';
 import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
 import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { derivePortfolioHistory, equityCurve, type WinStats, type PastPrediction } from '@/lib/portfolio/history';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
 import { aggregateStrikeVolume, busiestStrikeReply, surfaceVolumeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
 import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-match';
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import { num, quote as fmtQuote } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
+import { fromQuote } from '@/config/scale';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { pythSpot, qkV2, getMarketOrders } from '@/lib/api/v2/client';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -83,9 +89,24 @@ const GREETING: ChatMessage = {
 // change), or hardcode this to `true`.
 const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
 
+// ── LLM read tier (Claude Haiku) ────────────────────────────────────────────
+// When on, questions the rule router drops to `help` are sent to /api/copilot
+// (Claude, grounded in a compact context) before falling back to the help card.
+// OFF by default — set NEXT_PUBLIC_COPILOT_AI=1 AND have ANTHROPIC_API_KEY on the
+// server. Money paths (quotes/bet/place/adjust/close) NEVER route here. A client
+// per-session cap backs up the server's per-day cap so one tab can't drain credit.
+const COPILOT_AI = process.env.NEXT_PUBLIC_COPILOT_AI === '1';
+const AI_SESSION_CAP = 40;
+const AI_TIMEOUT_MS = 16_000;
+
 // Chips shown when markets are paused: read-only prompts only (each parses to a
 // real read intent), so nothing suggests a bet that can't be placed right now.
 const PAUSED_CHIPS = ['Analyze BTC', "What's the fear and greed?", 'Why is BTC moving?', "How's BTC positioned?"];
+
+/** The trader's settled track record, mirrored out of the open-bets subtree so the
+ *  screen can answer "did I win my last trade?" / "what's my win rate?" and build
+ *  the share card without subscribing to history itself. */
+type CopilotRecord = { stats: WinStats; curve: number[]; lastTrade: PastPrediction | null };
 
 /**
  * The starter grant only funds a brand-new, near-empty wallet: it's one-time and
@@ -284,6 +305,9 @@ export function V2CopilotScreen({
   // The share snapshot whose card dialog is open (null = closed). Set when the
   // trader taps "Share to X" under a shareable answer (fear & greed).
   const [shareCard, setShareCard] = useState<ShareCard | null>(null);
+  // The track-record share payload, snapshotted when the user taps "Share to X"
+  // (an event handler — so we never call the ref-reading builder during render).
+  const [perfShare, setPerfShare] = useState<PerfShareData | null>(null);
   // The guided step-by-step wizard's state (null = not in a guided flow).
   const [flow, setFlow] = useState<TradeFlow | null>(null);
   // The bet currently set up + shown on a card (wizard review or a one-shot
@@ -296,6 +320,12 @@ export function V2CopilotScreen({
   const portfolioRef = useRef<PortfolioSummary | null>(null);
   // The full position list (same source), so "close my bet" can match + redeem.
   const positionsRef = useRef<V2PortfolioPosition[]>([]);
+  // The settled track record (win rate + last result + equity curve), same source,
+  // for "did I win my last trade?" / "what's my win rate?" and the share card.
+  const recordRef = useRef<CopilotRecord | null>(null);
+  // How many times this session has hit the Claude read tier — a client cap that
+  // backs the server's per-day cap so a single tab can never drain the credits.
+  const aiCallsRef = useRef(0);
   const idRef = useRef(0);
   const nextId = () => `m${idRef.current++}`;
   const replyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -720,6 +750,128 @@ export function V2CopilotScreen({
     }, 500);
   }
 
+  // Reconstruct the bet the trader is looking at from the live ticket selection, so
+  // a typed "trade it" / "open the trade" places the visible card even when there's
+  // no pending suggestion (e.g. after an edit, or a strike picked on the surface).
+  // Binary + a live market with a real strike only; placeBetDirect re-quotes and
+  // gates everything else, so the odds fields here are unused placeholders.
+  // Build the track-record share-card payload from the latest history (read
+  // imperatively, so tapping "Share to X" uses fresh stats without subscribing the
+  // screen). Mirrors the Portfolio page's PerfShareData exactly. Null = nothing to
+  // share yet (no settled bets).
+  function perfShareData(): PerfShareData | null {
+    const r = recordRef.current;
+    if (!r || r.stats.total === 0) return null;
+    const { stats } = r;
+    return {
+      winRate: stats.winRate,
+      wins: stats.wins,
+      losses: stats.losses,
+      settled: stats.total,
+      realizedPnl: stats.realizedPnl,
+      staked: stats.staked,
+      avgRoi: stats.staked > 0 ? stats.realizedPnl / stats.staked : 0,
+      best: stats.best,
+      streak: stats.streak ? { count: stats.streak.count, won: stats.streak.result === 'won' } : null,
+      curve: r.curve,
+    };
+  }
+
+  // Open a share card. For the win-rate track record, snapshot the image payload
+  // now (from the live history ref) so the modal has fresh data.
+  function handleShare(card: ShareCard) {
+    if (card.kind === 'win_rate') setPerfShare(perfShareData());
+    setShareCard(card);
+  }
+
+  function betFromSelection(): BetSuggestion | null {
+    const st = useV2TradeStore.getState();
+    if (st.mode !== 'binary' || !st.marketId || st.strikePrice == null || st.strikePrice <= 0) return null;
+    const market = markets.find((m) => m.expiry_market_id === st.marketId);
+    if (!market) return null;
+    return {
+      marketId: market.expiry_market_id,
+      expiry: market.expiry,
+      dir: st.isUp ? 'up' : 'down',
+      isUp: st.isUp,
+      strikePrice: st.strikePrice,
+      prob: 0,
+      payoutMult: 1,
+      conviction: 'even',
+      timeLeftLabel: '',
+      amount: st.stake,
+      leverage: st.leverage,
+    };
+  }
+
+  // Compact, already-known facts for the Claude read tier — built ONLY in the send
+  // handler (never during render): reads refs + the query cache imperatively. Lean
+  // by design (one short line per fact, unknowns dropped) so grounding is cheap.
+  function buildAiContext(): AiContext {
+    const now = Date.now();
+    const rec = recordRef.current;
+    const lt = rec?.lastTrade ?? null;
+    return {
+      spot: readSpot(),
+      lean: lean ? { pick: lean.pick, confidence: lean.confidence } : null,
+      vol: vol ?? null,
+      fearGreed: insights?.sentiment ? { value: insights.sentiment.value, label: insights.sentiment.label } : null,
+      nextExpiryMins: nextExp && nextExp > now ? Math.max(1, Math.round((nextExp - now) / 60_000)) : null,
+      wallet: acct.owner
+        ? { connected: true, hasAccount: acct.wrapperExists, balance: fromQuote(acct.balanceBase) }
+        : { connected: false, hasAccount: false, balance: 0 },
+      record: rec
+        ? {
+            total: rec.stats.total,
+            wins: rec.stats.wins,
+            losses: rec.stats.losses,
+            winRate: rec.stats.winRate,
+            realizedPnl: rec.stats.realizedPnl,
+            streak: rec.stats.streak ? { won: rec.stats.streak.result === 'won', count: rec.stats.streak.count } : null,
+            last: lt
+              ? { side: lt.band ? 'range' : `${lt.up ? 'UP' : 'DOWN'} $${Math.round(lt.strike).toLocaleString('en-US')}`, result: lt.result, pnl: lt.pnl }
+              : null,
+          }
+        : null,
+    };
+  }
+
+  // The last few turns for continuity (trimmed here; the server caps again).
+  function recentTurns(): AiTurn[] {
+    return messages.slice(-6).map((m) => ({ role: m.role, text: m.text.join(' ') }));
+  }
+
+  // The rule router had no match → ask Claude (grounded in buildAiContext), then
+  // fall back to the deterministic help reply on any failure/timeout/disabled/capped.
+  // Purely additive: with the flag off or no key, this is never called.
+  async function answerWithAI(text: string, fallback: CopilotReply) {
+    const history = recentTurns(); // snapshot before echoing this turn
+    const context = buildAiContext();
+    pushUser(text);
+    setThinking(true);
+    aiCallsRef.current += 1;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    const showFallback = () =>
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: fallback.text, link: fallback.link }]);
+    try {
+      const reply = await askKellyAI({ message: text, history, context }, controller.signal);
+      if (reply.available && reply.text?.length) {
+        // When the trader asked about their performance and has a settled record,
+        // offer the SAME win-rate Share-to-X card the rule tier attaches — the chip
+        // + modal wiring (handleShare → perfShareData) already works for it.
+        const share: ShareCard | undefined =
+          context.record && context.record.total > 0 && isPerformanceQuestion(text) ? { kind: 'win_rate' } : undefined;
+        setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text!, share }]);
+      } else showFallback();
+    } catch {
+      showFallback();
+    } finally {
+      clearTimeout(timer);
+      setThinking(false);
+    }
+  }
+
   function handleSend(text: string) {
     if (thinking) return; // one at a time (the input is disabled too)
     // Date.now() + the cached spot read in an event handler (not render) — keeps
@@ -728,12 +880,21 @@ export function V2CopilotScreen({
     const spot = readSpot();
     const candidates = liveCandidates();
 
-    // "Trade it" / "place it" / "yes" once a bet is set up → place it directly (no
-    // in-app confirm step), reusing the ticket's exact budget mint. The review
-    // card's "Trade it" BUTTON still opens the ticket for anyone who wants to
-    // check it first. Only fires when a bet is actually pending.
-    if (pendingBetRef.current && isPlaceConfirmation(text)) {
-      void placeBetDirect(pendingBetRef.current, text);
+    // "Trade it" / "place it" / "open the trade" / "yes" → place the bet directly
+    // (no in-app confirm step), reusing the ticket's exact budget mint. The review
+    // card's "Trade it" BUTTON still opens the ticket for anyone who wants to check
+    // it first. Prefer the pending suggestion; otherwise place whatever's loaded in
+    // the ticket right now (a bet the trader edited, or picked on the surface), so a
+    // confirm never falls through to the generic help card. Nothing set up at all →
+    // a targeted nudge, not the help menu.
+    if (isPlaceConfirmation(text)) {
+      const bet = pendingBetRef.current ?? betFromSelection();
+      if (bet) {
+        void placeBetDirect(bet, text);
+        return;
+      }
+      pushUser(text);
+      botAfterBeat(['Set up a bet first and I’ll place it. Try “safe up bet”, or say “set up a trade” and I’ll walk you through it.']);
       return;
     }
 
@@ -781,9 +942,18 @@ export function V2CopilotScreen({
           surfaceInputs,
           closes: candles?.closes ?? null,
           portfolio: portfolioRef.current,
+          record: recordRef.current,
           selection,
         });
         nextFlow = null;
+        // No rule match → hand the read long tail to Claude (if enabled + under the
+        // session cap), grounded in the same context. answerWithAI owns the exchange
+        // and falls back to THIS help reply on any failure. Money paths never reach
+        // here (they returned above), so Claude only ever sees reads.
+        if (intent.kind === 'help' && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
+          void answerWithAI(text, reply);
+          return;
+        }
       }
     }
 
@@ -858,21 +1028,22 @@ export function V2CopilotScreen({
                 onPlaceBet={handlePlaceBet}
                 onEditBet={handleEditBet}
                 onAction={handleOnboardAction}
-                onShare={setShareCard}
+                onShare={handleShare}
                 busy={thinking}
                 suggestions={PAUSED_CHIPS}
-                threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} />}
+                threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
               />
             </div>
           </div>
         </main>
-        {/* Fear & greed share still works off a read. */}
+        {/* Fear & greed + track-record shares both work off a read (no markets needed). */}
         <FearGreedShareModal
-          open={!!shareCard}
+          open={shareCard?.kind === 'fear_greed'}
           value={shareCard?.kind === 'fear_greed' ? shareCard.value : null}
           label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
           onClose={() => setShareCard(null)}
         />
+        <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />
       </>
     );
   }
@@ -903,11 +1074,11 @@ export function V2CopilotScreen({
             onPlaceBet={handlePlaceBet}
             onEditBet={handleEditBet}
             onAction={handleOnboardAction}
-            onShare={setShareCard}
+            onShare={handleShare}
             busy={thinking}
             suggestions={chips}
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
-            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} />}
+            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
           />
         </aside>
       </main>
@@ -930,14 +1101,15 @@ export function V2CopilotScreen({
         digest={grant.success?.digest}
       />
 
-      {/* The fear & greed share card — opens when a "Share to X" chip is tapped
-          under a fear & greed answer. */}
+      {/* Share cards — opened when a "Share to X" chip is tapped under a shareable
+          answer. Fear & greed and the win-rate track record use different modals. */}
       <FearGreedShareModal
-        open={!!shareCard}
+        open={shareCard?.kind === 'fear_greed'}
         value={shareCard?.kind === 'fear_greed' ? shareCard.value : null}
         label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
         onClose={() => setShareCard(null)}
       />
+      <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />
     </>
   );
 }
@@ -1061,13 +1233,31 @@ function CopilotComingSoon({ stage }: { stage: StageProps }) {
  * the positions), so the screen can answer "how's my portfolio?" imperatively
  * without subscribing to positions itself — keeping the surface off that path.
  */
-function CopilotOpenBets({ summaryRef, positionsRef }: { summaryRef: MutableRefObject<PortfolioSummary | null>; positionsRef: MutableRefObject<V2PortfolioPosition[]> }) {
+function CopilotOpenBets({
+  summaryRef,
+  positionsRef,
+  recordRef,
+}: {
+  summaryRef: MutableRefObject<PortfolioSummary | null>;
+  positionsRef: MutableRefObject<V2PortfolioPosition[]>;
+  recordRef: MutableRefObject<CopilotRecord | null>;
+}) {
   const acct = usePredictAccountV2();
-  const { positions } = useV2PortfolioPositions(acct.accountId);
+  const { positions, marketMap } = useV2PortfolioPositions(acct.accountId);
+  // The authoritative settled history (same source the Portfolio page uses), folded
+  // into the win/loss stats + equity curve the chat's track-record answers + share
+  // card read. Lives here (not in the screen) so history's ~15s poll re-renders only
+  // this isolated subtree, never the heavy surface.
+  const { history } = useV2History(acct.accountId, marketMap);
+  const record = useMemo<CopilotRecord>(() => {
+    const { stats } = derivePortfolioHistory([], history);
+    return { stats, curve: equityCurve(history).map((p) => p.cumulative), lastTrade: history[0] ?? null };
+  }, [history]);
   useEffect(() => {
     summaryRef.current = summarizePositions(positions);
     positionsRef.current = positions;
-  }, [positions, summaryRef, positionsRef]);
+    recordRef.current = record;
+  }, [positions, record, summaryRef, positionsRef, recordRef]);
   const hasOpen = positions.some((p) => p.qty > 0);
   if (!hasOpen) return null;
   return (

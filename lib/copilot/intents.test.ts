@@ -356,6 +356,23 @@ describe('parseIntent', () => {
     expect(parseIntent('set up a trade, strike 66000, 2x').kind).toBe('start_trade');
   });
 
+  it('flips direction on synonym/edit wording → adjust_ticket (keeps stake+leverage, not a new bet)', () => {
+    // Plain-word sides ("below"/"above"), not just literal "up"/"down".
+    expect(parseIntent('change it to btc below')).toMatchObject({ kind: 'adjust_ticket', dir: 'down' });
+    expect(parseIntent('change it to below')).toMatchObject({ kind: 'adjust_ticket', dir: 'down' });
+    expect(parseIntent('make it above')).toMatchObject({ kind: 'adjust_ticket', dir: 'up' });
+    expect(parseIntent('switch to below')).toMatchObject({ kind: 'adjust_ticket', dir: 'down' });
+    // Edit verbs.
+    expect(parseIntent('edit it to down')).toMatchObject({ kind: 'adjust_ticket', dir: 'down' });
+    expect(parseIntent('reverse it')).toMatchObject({ kind: 'adjust_ticket', flip: true });
+    // A fresh directional bet (no edit cue) still builds a new one, not an edit.
+    expect(parseIntent('safe up bet').kind).toBe('directional_bet');
+    expect(parseIntent('go up').kind).toBe('directional_bet');
+    // "move" stays the price-movement noun (reality-check / volatility), never an edit.
+    expect(parseIntent('how often does a 1% move up actually happen').kind).toBe('reality_check');
+    expect(parseIntent('how big a move is priced in').kind).toBe('volatility');
+  });
+
   it('"close my up bet / redeem winnings / cash out the 65k" → close_position', () => {
     expect(parseIntent('close my up bet')).toMatchObject({ kind: 'close_position', dir: 'up' });
     expect(parseIntent('redeem my winnings')).toMatchObject({ kind: 'close_position', winnings: true });
@@ -364,6 +381,22 @@ describe('parseIntent', () => {
     expect(parseIntent('close all')).toMatchObject({ kind: 'close_position', all: true });
     // "close" as an adjective is NOT a close request.
     expect(parseIntent('how close is BTC to 65k').kind).not.toBe('close_position');
+  });
+
+  it('"did I win my last trade / win rate / loss rate" → track_record', () => {
+    expect(parseIntent('did I win my last trade?')).toMatchObject({ kind: 'track_record', focus: 'last', ask: 'win' });
+    expect(parseIntent('did I lose my last trade?')).toMatchObject({ kind: 'track_record', focus: 'last', ask: 'lose' });
+    expect(parseIntent('how did my last bet go')).toMatchObject({ kind: 'track_record', focus: 'last' });
+    expect(parseIntent('how is my win rate right now')).toMatchObject({ kind: 'track_record', focus: 'win_rate' });
+    expect(parseIntent("what's my win rate")).toMatchObject({ kind: 'track_record', focus: 'win_rate' });
+    expect(parseIntent('how often do I win')).toMatchObject({ kind: 'track_record', focus: 'win_rate' });
+    expect(parseIntent('what is my loss rate like')).toMatchObject({ kind: 'track_record', focus: 'loss_rate' });
+    // "close my last bet" is an imperative to close — stays close_position, not a read.
+    expect(parseIntent('close my last bet').kind).toBe('close_position');
+    // A general "how am I doing" is still the portfolio roll-up, not track_record.
+    expect(parseIntent('how is my portfolio').kind).toBe('portfolio');
+    // "how often does a 1% move happen" is still the reality check, not a win-rate ask.
+    expect(parseIntent('how often does a 1% move up happen').kind).toBe('reality_check');
   });
 
   it('"clear that position" → close_position (the LOST-bet verb)', () => {
@@ -380,7 +413,7 @@ describe('parseIntent', () => {
 
 describe('isPlaceConfirmation', () => {
   it('recognizes a short "place the bet now" confirmation', () => {
-    for (const m of ['trade it', 'Trade it.', 'place it', 'place this bet', 'open it', 'do it', 'confirm', 'yes', 'sure', "let's go", 'let’s go', 'send it', 'trade this']) {
+    for (const m of ['trade it', 'Trade it.', 'place it', 'place this bet', 'open it', 'open the trade', 'open the trade.', 'do it', 'confirm', 'yes', 'sure', "let's go", 'let’s go', 'send it', 'trade this']) {
       expect(isPlaceConfirmation(m), m).toBe(true);
     }
   });

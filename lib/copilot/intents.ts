@@ -36,6 +36,7 @@ export type CopilotIntent =
   | { kind: 'recommend' }
   | { kind: 'balance' }
   | { kind: 'portfolio' }
+  | { kind: 'track_record'; focus: 'last' | 'win_rate' | 'loss_rate'; ask?: 'win' | 'lose' }
   | { kind: 'odds'; level: OddsLevel; dir?: BetDirection; horizon?: Horizon }
   | { kind: 'reality_check'; level?: OddsLevel; dir?: BetDirection }
   | { kind: 'volatility' }
@@ -148,6 +149,35 @@ function wantsBalance(text: string): boolean {
   // "my money" is intentionally NOT here — it collides with "double my money"
   // (a payout target). "how much money do I have" still routes to balance.
   return /\bbalance\b|how much (?:dusdc|money|funds|do i have)|\bmy (?:wallet|funds|dusdc)\b|how much.*\bwallet\b/.test(text);
+}
+
+/** "Did I win my last trade? / what's my win rate? / how's my loss rate?" — a read
+ *  of the trader's SETTLED track record. `last` = the most recent settled bet's
+ *  result; `win_rate` / `loss_rate` = the running rate over settled bets. Defers to
+ *  close_position when it's an imperative to close/redeem (so "close my last bet"
+ *  isn't swallowed). "win rate"/"loss rate" are inherently personal on this venue,
+ *  so they don't require a first-person cue; the bare "last bet" branch does. */
+function trackRecordFrom(text: string): { focus: 'last' | 'win_rate' | 'loss_rate'; ask?: 'win' | 'lose' } | null {
+  // An imperative to act on a position belongs to close_position, not a read.
+  if (/\bclose\b|\bredeem\b|cash ?out|\bclaim\b|\bsell\b|\bexit\b|\bcollect\b|\bclear\b/.test(text)) return null;
+  const mine = /\bmy\b|\bi\b|\bi'?ve\b|\bam i\b|\bdid i\b|\bhave i\b|\bdo i\b/.test(text);
+  // Most recent settled bet's result.
+  if (
+    /\b(?:my |the )?last (?:trade|bet|prediction|position|one|call)\b/.test(text) &&
+    (mine || /\b(?:win|won|winning|lose|lost|losing|result|profit|pnl|go|going|do|doing|turn out)\b/.test(text))
+  ) {
+    // Track which way they asked so the answer's yes/no matches the question: "did I
+    // lose?" on a bet that WON must lead with "No", not "Yes". Neutral when neither
+    // (or both) side is named (e.g. "how did my last bet go").
+    const lose = /\b(?:lose|lost|losing)\b/.test(text);
+    const win = /\b(?:win|won|winning)\b/.test(text);
+    return { focus: 'last', ask: lose && !win ? 'lose' : win && !lose ? 'win' : undefined };
+  }
+  // Loss rate — checked before win so "win/loss rate" or a loss-focused ask lands here.
+  if (/\bloss rate\b|\blosing rate\b|how often do i lose|\bmy loss(?:es)?\b|loss (?:%|percent(?:age)?)/.test(text)) return { focus: 'loss_rate' };
+  // Win rate.
+  if (/\bwin ?rate\b|\bwinrate\b|\bwinning rate\b|win (?:%|percent(?:age)?)|how often do i win|\bmy wins?\b|\bhow many.*\b(?:win|won)\b/.test(text)) return { focus: 'win_rate' };
+  return null;
 }
 
 /** "How is my portfolio / how are my bets doing / am I up?" — a performance +
@@ -314,9 +344,17 @@ function wantsClose(text: string): { all?: boolean; winnings?: boolean; dir?: Be
 function adjustFrom(raw: string): { stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean } | null {
   const out: { stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean } = {};
 
-  if (/\bflip\b|other side|opposite side|switch sides/.test(raw)) out.flip = true;
-  const toDir = raw.match(/\b(?:flip|switch|change|make|go)\b[^.?!]{0,12}\b(up|down)\b/) ?? raw.match(/\b(up|down)\b(?: bet)? instead/);
-  if (toDir) out.dir = toDir[1] === 'up' ? 'up' : 'down';
+  if (/\bflip\b|\breverse\b|other side|opposite side|switch sides|other (?:way|direction)|opposite direction/.test(raw)) out.flip = true;
+  // A change to a named side. Accepts the plain-word synonyms ("change it to below",
+  // "make it above") and edit verbs ("edit"/"reverse"/"turn") so flipping direction
+  // stays an EDIT of the current ticket (keeps its stake + leverage) instead of
+  // falling through to a brand-new default bet.
+  // "move" is deliberately NOT an edit verb here — it's the noun for price movement
+  // ("a 1% move up"), so it stays with the reality-check / volatility reads.
+  const toDir =
+    raw.match(/\b(?:flip|switch|change|make|go|turn|edit)\b[^.?!]{0,16}\b(up|down|above|below|higher|lower|long|short)\b/) ??
+    raw.match(/\b(up|down|above|below|higher|lower)\b(?: bet)? instead/);
+  if (toDir) out.dir = /^(?:up|above|higher|long)$/.test(toDir[1]) ? 'up' : 'down';
 
   const lev = raw.match(/\b(?:leverage|lev)\s*(?:to|of|is|=|:|at)?\s*(\d+(?:\.\d+)?)\s*x?\b/) ?? raw.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
   if (lev) out.leverage = parseFloat(lev[1]);
@@ -335,7 +373,7 @@ function adjustFrom(raw: string): { stake?: number; leverage?: number; strike?: 
     if (!(out.leverage != null && n === out.leverage)) out.stake = n;
   }
 
-  const cue = /\bmake it\b|\bchange\b|\bset\b|\bswitch\b|\bflip\b|\buse\b|\bmove\b|\binstead\b|\bbump\b|\bincrease\b|\bdecrease\b|\blower\b|\braise\b|other side|make the/.test(raw);
+  const cue = /\bmake it\b|\bchange\b|\bset\b|\bswitch\b|\bflip\b|\breverse\b|\bturn\b|\bedit\b|\buse\b|\bmove\b|\binstead\b|\bbump\b|\bincrease\b|\bdecrease\b|\blower\b|\braise\b|other side|other (?:way|direction)|make the/.test(raw);
   const has = out.flip || out.dir != null || out.leverage != null || out.strike != null || out.stake != null;
   return cue && has ? out : null;
 }
@@ -550,6 +588,13 @@ export function parseIntent(message: string): CopilotIntent {
   // direction words ("dumping", "up") that aren't a bet, and "moving" is an analyze
   // cue we want to beat when the question is explicitly asking WHY.
   if (wantsWhyMoving(text)) return { kind: 'why_moving' };
+
+  // "Did I win my last trade? / win rate / loss rate" — the trader's settled track
+  // record. Checked EARLY (before reality_check's "how often", and the directional /
+  // portfolio branches) since "how often do i win" and "my last trade" carry cues
+  // those would otherwise claim. Defers to close_position via its own close-verb guard.
+  const rec = trackRecordFrom(text);
+  if (rec) return { kind: 'track_record', focus: rec.focus, ...(rec.ask ? { ask: rec.ask } : {}) };
 
   // Surface-native analysis (vol / skew / term / no-arb / reality check). Before
   // the directional branch too — "crash or pump" carries both sides, "1m or 5m for

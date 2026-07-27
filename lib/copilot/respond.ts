@@ -31,6 +31,7 @@ import { buildSurface, type SmileInput } from '@/lib/svi/surface';
 import { directionFair, payoutMultiple } from '@/lib/svi/invert';
 import { buildLadder } from '@/lib/markets/v2-ladder';
 import type { PortfolioSummary } from '@/lib/portfolio/v2';
+import type { WinStats, PastPrediction } from '@/lib/portfolio/history';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -84,6 +85,11 @@ export interface CopilotContext {
   /** The trader's own book roll-up, for "how is my portfolio doing?" — computed
    *  from the SAME positions the Portfolio screen shows. Null until it loads. */
   portfolio?: PortfolioSummary | null;
+  /** The trader's settled track record (win rate, streak, realized PnL) + their most
+   *  recent settled bet — for "did I win my last trade / what's my win rate". Derived
+   *  from useV2History in the screen's isolated open-bets subtree (so the surface
+   *  never subscribes to it). Null until it loads. */
+  record?: { stats: WinStats; lastTrade: PastPrediction | null } | null;
   /** What the ticket is currently on, for "analyse the current strike" and for
    *  conversational tweaks ("make it $10"). The responder finds this market in
    *  `candidates` for its pricer. `stake`/`leverage` are the current ticket values. */
@@ -122,9 +128,12 @@ export interface BetSuggestion {
 export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: string };
 
 /** A shareable snapshot the chat offers to post as an image card (a "Share to X"
- *  affordance under the answer). Today only the fear & greed reading is shareable;
- *  the union leaves room for more (funding, a market read) without reshaping the API. */
-export type ShareCard = { kind: 'fear_greed'; value: number; label: string };
+ *  affordance under the answer). `fear_greed` carries the reading; `win_rate` is a
+ *  bare signal (the screen builds the track-record card payload from its live
+ *  history ref), so the two use different modals. The union leaves room for more. */
+export type ShareCard =
+  | { kind: 'fear_greed'; value: number; label: string }
+  | { kind: 'win_rate' };
 
 export interface CopilotReply {
   text: string[];
@@ -1043,6 +1052,88 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   return { text };
 }
 
+/* ---------------------------- my track record ---------------------------- */
+
+/** "Did I win my last trade? / what's my win rate? / how's my loss rate?" — a read
+ *  of the trader's SETTLED bets (last result + running win/loss rate + streak), from
+ *  the SAME history the Portfolio screen shows. The win-rate answer offers a "Share
+ *  to X" card (the screen builds the image from its live history ref). */
+function trackRecordReply(focus: 'last' | 'win_rate' | 'loss_rate', ctx: CopilotContext, ask?: 'win' | 'lose'): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return { text: ['Connect your wallet (top-right) and I’ll pull up your track record.'] };
+  }
+  const rec = ctx.record;
+  // Still loading, or genuinely no settled bets yet.
+  if (!rec || rec.stats.total === 0) {
+    return {
+      text: [
+        "You don't have any settled bets yet, so there's no track record to show.",
+        'Once a bet settles I can tell you whether you won, and your win rate. Say “set up a trade” to place one.',
+      ],
+    };
+  }
+  const { stats, lastTrade } = rec;
+  const signedUsd = (n: number) => `${n >= 0 ? '+' : '−'}$${num(Math.abs(n), 2)}`;
+  const winWord = (n: number) => `${n} win${n === 1 ? '' : 's'}`;
+  const lossWord = (n: number) => `${n} loss${n === 1 ? '' : 'es'}`;
+  const betWord = (n: number) => `${n} settled bet${n === 1 ? '' : 's'}`;
+  const streakLine =
+    stats.streak && stats.streak.count >= 2
+      ? ` You’re on a ${stats.streak.count}-bet ${stats.streak.result === 'won' ? 'winning' : 'losing'} run.`
+      : '';
+
+  if (focus === 'last') {
+    const t = lastTrade;
+    if (!t) return { text: ['I can’t find your last settled bet just yet. Give it a moment and ask again.'] };
+    const side = t.band ? `range $${num(t.band.lower, 0)}–$${num(t.band.higher, 0)}` : `${t.up ? 'UP' : 'DOWN'} $${num(t.strike, 0)}`;
+    const won = t.result === 'won';
+    const wonDetail = `a ${side} bet that came back ${signedUsd(t.pnl)}`;
+    const lostDetail = `a ${side} bet, down $${num(Math.abs(t.pnl), 2)}`; // magnitude — "down" already means a loss
+    // Lead with a yes/no that matches HOW they asked. "Did I lose?" on a winning bet
+    // answers "No"; "did I win?" on a losing bet answers "No". A neutral ask ("how
+    // did my last bet go") just states the result.
+    let lead: string;
+    if (ask === 'lose') {
+      lead = won ? `No, you didn’t lose it. Your last bet won, ${wonDetail}.` : `Yes, your last bet lost. It was ${lostDetail}.`;
+    } else if (ask === 'win') {
+      lead = won ? `Yes, your last bet won. It was ${wonDetail}.` : `No, that one didn’t win. Your last bet lost, ${lostDetail}.`;
+    } else {
+      lead = won ? `Your last bet won, ${wonDetail}.` : `Your last bet lost. It was ${lostDetail}.`;
+    }
+    return {
+      text: [
+        lead,
+        `That puts you at ${winWord(stats.wins)} and ${lossWord(stats.losses)} across your ${betWord(stats.total)}.`,
+        'Ask “what’s my win rate” for the full picture.',
+      ],
+    };
+  }
+
+  const winPct = pct(stats.winRate, 0);
+  const lossPct = pct(1 - stats.winRate, 0);
+
+  if (focus === 'loss_rate') {
+    return {
+      text: [
+        `Your loss rate is ${lossPct}: ${stats.losses} of your ${betWord(stats.total)} didn’t pay out.${streakLine}`,
+        `That’s a ${winPct} win rate, with ${signedUsd(stats.realizedPnl)} realized so far.`,
+        'Ask “what’s my win rate” to see it as a card you can share.',
+      ],
+    };
+  }
+
+  // win_rate — the shareable one.
+  return {
+    text: [
+      `Your win rate is ${winPct}: ${winWord(stats.wins)} out of ${betWord(stats.total)}.${streakLine}`,
+      `You’re ${signedUsd(stats.realizedPnl)} realized across them.`,
+      'Want to show it off? Share your track record card on X.',
+    ],
+    share: { kind: 'win_rate' },
+  };
+}
+
 /* ------------------------------ explainers ------------------------------- */
 // Plain-language answers to "how does X work?" — static (no live data), so a new
 // trader can learn the mechanics inline. Kept jargon-free and short.
@@ -1359,6 +1450,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return balanceReply(ctx);
     case 'portfolio':
       return portfolioReply(ctx);
+    case 'track_record':
+      return trackRecordReply(intent.focus, ctx, intent.ask);
     case 'odds':
       return oddsReply(intent.level, intent.dir, ctx, intent.horizon);
     case 'volatility':

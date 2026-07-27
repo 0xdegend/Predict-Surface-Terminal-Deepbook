@@ -5,6 +5,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { Oracle } from '@/lib/api/types';
+import type { PastPrediction } from '@/lib/portfolio/history';
 
 const SVI: SviFloat = { a: 0.002, b: 0.01, rho: -0.1, m: 0, sigma: 0.08 };
 const NOW = 1_700_000_000_000;
@@ -681,5 +682,58 @@ describe('timeLeftLabel', () => {
     expect(timeLeftLabel(NOW + 60_000, NOW)).toBe('about a minute');
     expect(timeLeftLabel(NOW + 4 * 60_000, NOW)).toBe('about 4 minutes');
     expect(timeLeftLabel(NOW + 60 * 60_000, NOW)).toBe('about an hour');
+  });
+});
+
+describe('respondToIntent — track record (last trade / win rate / loss rate)', () => {
+  const wallet = { connected: true, hasAccount: true, accountBase: 0n, walletBase: 0n };
+  const lastWon: PastPrediction = {
+    key: 'k', oracleId: 'o', underlying: 'BTC', up: true, strike: 65_000, expiry: NOW, settledAt: NOW,
+    result: 'won', contracts: 10, cost: 5, payout: 8, pnl: 3, roi: 0.6, entryPrice: 0.6,
+  };
+  const record = { stats: { total: 4, wins: 3, losses: 1, winRate: 0.75, realizedPnl: 12.5, staked: 20, best: 6, worst: -5, streak: { result: 'won' as const, count: 2 }, unclaimed: 0 }, lastTrade: lastWon };
+
+  it('not connected → asks to connect, no share', () => {
+    const r = respondToIntent({ kind: 'track_record', focus: 'win_rate' }, ctx({ wallet: null }));
+    expect(r.text.join(' ')).toMatch(/connect/i);
+    expect(r.share).toBeUndefined();
+  });
+
+  it('no settled bets → says so, no share', () => {
+    const r = respondToIntent({ kind: 'track_record', focus: 'win_rate' }, ctx({ wallet, record: null }));
+    expect(r.text.join(' ')).toMatch(/no track record|don.t have any settled/i);
+    expect(r.share).toBeUndefined();
+  });
+
+  it('last trade → names the win + result', () => {
+    const r = respondToIntent({ kind: 'track_record', focus: 'last' }, ctx({ wallet, record }));
+    expect(r.text[0]).toMatch(/won/i);
+    expect(r.text[0]).toContain('65,000');
+    expect(r.share).toBeUndefined(); // only win_rate is shareable
+  });
+
+  it('last trade answers the question polarity ("did I lose?" on a win → No; "did I win?" → Yes)', () => {
+    const lose = respondToIntent({ kind: 'track_record', focus: 'last', ask: 'lose' }, ctx({ wallet, record }));
+    expect(lose.text[0]).toMatch(/^no,/i); // won, so "did I lose?" → No
+    expect(lose.text[0]).toMatch(/won/i);
+    const win = respondToIntent({ kind: 'track_record', focus: 'last', ask: 'win' }, ctx({ wallet, record }));
+    expect(win.text[0]).toMatch(/^yes,/i);
+    // A losing last bet flips both leads.
+    const lostRec = { ...record, lastTrade: { ...lastWon, result: 'lost' as const, pnl: -5 } };
+    const askWin = respondToIntent({ kind: 'track_record', focus: 'last', ask: 'win' }, ctx({ wallet, record: lostRec }));
+    expect(askWin.text[0]).toMatch(/^no,/i); // lost, so "did I win?" → No
+    expect(askWin.text[0]).toContain('down $5.00'); // magnitude, not "-$5.00"
+  });
+
+  it('win rate → shows the % and offers a share card', () => {
+    const r = respondToIntent({ kind: 'track_record', focus: 'win_rate' }, ctx({ wallet, record }));
+    expect(r.text[0]).toContain('75%');
+    expect(r.share).toEqual({ kind: 'win_rate' });
+  });
+
+  it('loss rate → shows the loss %, no share', () => {
+    const r = respondToIntent({ kind: 'track_record', focus: 'loss_rate' }, ctx({ wallet, record }));
+    expect(r.text[0]).toContain('25%');
+    expect(r.share).toBeUndefined();
   });
 });
