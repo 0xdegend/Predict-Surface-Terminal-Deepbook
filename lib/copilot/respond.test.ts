@@ -410,6 +410,25 @@ describe('respondToIntent — portfolio (how am I doing + balances)', () => {
     expect(blob).toMatch(/\$290\.00/); // free balance total (account + wallet)
   });
 
+  it('a single open trade → names the exact bet and its live PnL', () => {
+    const one = {
+      ...PF,
+      openCount: 1,
+      openValue: 22.4,
+      openExposure: 20,
+      unrealized: 2.4,
+      unrealizedPct: 0.12,
+      best: { label: 'UP $63,800', pnl: 2.4 },
+      worst: undefined,
+    };
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: one }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/UP \$63,800/); // names the specific bet
+    expect(blob).toMatch(/\+\$2\.40/); // its live PnL
+    expect(blob).toMatch(/up/i);
+    expect(blob).not.toMatch(/\d+ open bets/); // not the generic plural roll-up
+  });
+
   it('surfaces claimable winnings when there are settled wins', () => {
     const r = respondToIntent(
       { kind: 'portfolio' },

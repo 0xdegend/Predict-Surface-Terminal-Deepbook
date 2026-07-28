@@ -78,6 +78,15 @@ describe('parseIntent', () => {
       "what's my pnl",
       'how is my portfolio',
       'how are my trades performing',
+      // "how is my trade going" — the single-open-trade check the user asked for
+      'how is my trade going',
+      "how's my trade",
+      'check my trade',
+      // the "open"/"live" adjective must not derail it (was hitting analyze/help)
+      'how is my open trade',
+      'show my open trade',
+      'check my open position',
+      "how's my live bet doing",
     ]) {
       expect(parseIntent(m).kind, m).toBe('portfolio');
     }

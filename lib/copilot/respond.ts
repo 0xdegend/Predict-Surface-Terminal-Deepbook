@@ -1032,12 +1032,19 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   const text: string[] = [];
   if (p!.openCount > 0) {
     const dirWord = p!.unrealized > 0 ? 'up' : p!.unrealized < 0 ? 'down' : 'flat';
-    const one = p!.openCount === 1;
-    text.push(
-      `You've got ${p!.openCount} open ${one ? 'bet' : 'bets'} worth ${fmt(p!.openValue)} right now, and you're ${dirWord} ${signedUsd(p!.unrealized)} on ${one ? 'it' : 'them'} (${signed(p!.unrealizedPct * 100, 1)}%).`,
-    );
-    if (p!.best && p!.worst) {
-      text.push(`Best: ${p!.best.label} (${signedUsd(p!.best.pnl)}). Weakest: ${p!.worst.label} (${signedUsd(p!.worst.pnl)}).`);
+    const pctStr = signed(p!.unrealizedPct * 100, 1);
+    if (p!.openCount === 1 && p!.best) {
+      // A single open trade → name it, so "how is my trade going" answers the exact bet.
+      text.push(
+        `Your ${p!.best.label} bet is ${dirWord} ${signedUsd(p!.unrealized)} (${pctStr}%) right now, worth ${fmt(p!.openValue)}.`,
+      );
+    } else {
+      text.push(
+        `You've got ${p!.openCount} open bets worth ${fmt(p!.openValue)} right now, and you're ${dirWord} ${signedUsd(p!.unrealized)} on them (${pctStr}%).`,
+      );
+      if (p!.best && p!.worst) {
+        text.push(`Best: ${p!.best.label} (${signedUsd(p!.best.pnl)}). Weakest: ${p!.worst.label} (${signedUsd(p!.worst.pnl)}).`);
+      }
     }
   }
   if (p!.claimableCount > 0) {

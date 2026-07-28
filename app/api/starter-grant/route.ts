@@ -39,7 +39,9 @@ import {
   STARTER_GRANT_BALANCE_CEILING,
 } from '@/config/starter-grant';
 import {
-  hasGranted,
+  getGranted,
+  clearGranted,
+  isRealPayoutMarker,
   acquireLock,
   releaseLock,
   markGranted,
@@ -119,12 +121,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid address', code: 'bad_request' }, { status: 400 });
   }
 
-  // 1) one grant per address (durable, survives redeploys + shared across instances).
-  if (await hasGranted(address)) {
+  // 1) one grant per address — durable, but SELF-HEALING. A wallet is refused only
+  //    when its marker is a REAL prior payout (the marker stores the payout tx
+  //    digest, written only after the transfer confirmed on-chain). A stale/false
+  //    marker — e.g. the old balance-gate's '1' sentinel that flagged a wallet
+  //    "funded" without ever paying it — is cleared here so a genuinely
+  //    never-funded wallet gets its grant instead of being blocked forever.
+  const priorMarker = await getGranted(address);
+  if (isRealPayoutMarker(priorMarker)) {
     return NextResponse.json(
-      { error: 'This wallet has already been funded', code: 'already_funded' },
+      { error: 'This wallet already claimed its starter grant', code: 'already_funded' },
       { status: 429 },
     );
+  }
+  if (priorMarker) {
+    await clearGranted(address);
   }
 
   // 4) global daily cap.
@@ -145,9 +156,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    // 3) balance gate — never top up a wallet that already has DUSDC.
+    // 3) balance gate — never top up a wallet that already has DUSDC. Refuse
+    //    WITHOUT marking it funded: the live balance IS the gate, and a balance
+    //    read must never leave a permanent "funded" flag (that's what falsely
+    //    blocked never-funded wallets). If they spend down later, they're
+    //    re-evaluated fresh; only a confirmed payout marks the ledger.
     if ((await balanceOf(address, QUOTE)) >= BALANCE_CEILING) {
-      await markGranted(address); // they don't need it; don't re-check them.
       return NextResponse.json(
         { error: 'Wallet already holds enough DUSDC', code: 'already_funded' },
         { status: 409 },

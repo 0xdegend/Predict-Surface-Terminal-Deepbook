@@ -184,8 +184,11 @@ function trackRecordFrom(text: string): { focus: 'last' | 'win_rate' | 'loss_rat
  *  balances roll-up (broader than the funds-only `balance`). Checked before the
  *  directional branch so "am I up" isn't read as an UP bet. */
 function wantsPortfolio(text: string): boolean {
+  // `(?:open |live |current |running )?` lets "how's my OPEN trade" / "show my open
+  // position" reach the portfolio read — checking a live position is the most common
+  // way people phrase it, and without it "my open trade" slips past to analyze/help.
   return (
-    /\bportfolio\b|\bmy (?:positions?|bets?|trades?|holdings?|pnl|p&l|profit|performance|book|gains?|losses?)\b|how (?:am i|'?m i|are (?:my|things)|is my (?:portfolio|book|account|trading))|am i (?:up|down|winning|losing|in profit|making money|losing money)|how('?s| is| are) (?:my|the) (?:portfolio|bets?|trades?|positions?)|how are (?:my )?(?:bets?|trades?|positions?) (?:doing|performing|going)/.test(
+    /\bportfolio\b|\bmy (?:open |live |current |running )?(?:positions?|bets?|trades?|holdings?|pnl|p&l|profit|performance|book|gains?|losses?)\b|how (?:am i|'?m i|are (?:my|things)|is my (?:portfolio|book|account|trading))|am i (?:up|down|winning|losing|in profit|making money|losing money)|how('?s| is| are) (?:my|the) (?:open |live |current |running )?(?:portfolio|bets?|trades?|positions?)|how are (?:my )?(?:open |live |current |running )?(?:bets?|trades?|positions?) (?:doing|performing|going)/.test(
       text,
     )
   );

@@ -45,7 +45,7 @@ const dayKey = () => `grant:daily:${utcDay()}`;
 
 /* ---------------- in-process fallback (no Redis configured) ---------------- */
 
-const memDone = new Set<string>();
+const memDone = new Map<string, string>(); // addr -> payout digest (or '1' sentinel)
 const memLock = new Map<string, number>(); // addr -> expiry epoch ms
 let memDay = '';
 let memCount = 0;
@@ -64,6 +64,33 @@ function memRollDay() {
 export async function hasGranted(address: string): Promise<boolean> {
   if (redis) return (await redis.exists(doneKey(address))) === 1;
   return memDone.has(address);
+}
+
+/** The stored "funded" marker value, or null if none. A real payout stores its
+ *  tx DIGEST; the old balance-gate stored the sentinel '1'. The route uses this
+ *  to tell a genuine prior payout from a stale/false marker (self-healing). */
+export async function getGranted(address: string): Promise<string | null> {
+  if (redis) return (await redis.get<string | number>(doneKey(address)))?.toString() ?? null;
+  return memDone.get(address) ?? null;
+}
+
+/** Remove a "funded" marker — used to heal a stale/false one so a genuinely
+ *  never-funded wallet isn't blocked forever. */
+export async function clearGranted(address: string): Promise<void> {
+  if (redis) {
+    await redis.del(doneKey(address));
+    return;
+  }
+  memDone.delete(address);
+}
+
+/** True only when a marker is a GENUINE payout record: the executed transfer's
+ *  tx digest (base58, 32-48 chars), written after the transfer confirmed. The old
+ *  balance gate wrote the sentinel '1' WITHOUT paying, so that (and anything else
+ *  that isn't a real digest) reads as a false marker the route heals rather than
+ *  trusts — this is what stops a never-funded wallet being told "already funded". */
+export function isRealPayoutMarker(value: string | null | undefined): boolean {
+  return !!value && /^[1-9A-HJ-NP-Za-km-z]{32,48}$/.test(value);
 }
 
 /** Try to take the in-flight lock. Returns false if another request holds it
@@ -96,7 +123,7 @@ export async function markGranted(address: string, digest = '1'): Promise<void> 
     await redis.set(doneKey(address), digest, { ex: DONE_TTL });
     return;
   }
-  memDone.add(address);
+  memDone.set(address, digest);
 }
 
 /** Current number of grants paid today (UTC). */
