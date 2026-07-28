@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { LuBoxes, LuChartArea, LuPause, LuSparkles } from 'react-icons/lu';
+import { LuBoxes, LuChartArea, LuGift, LuPause, LuSparkles } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
@@ -21,6 +21,12 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
+import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
+import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
+import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
+import { predictV2Config } from '@/config/predict';
+import { fromQuote } from '@/config/scale';
+import { quote as fmtQuote } from '@/lib/format';
 import { V2MarketPicker } from './market-picker';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
@@ -93,6 +99,10 @@ export function V2TradeScreen({
     <>
     {/* Keeps the selection on a live market — advances the instant one expires. */}
     <MarketAutoAdvancer markets={markets} serverNow={serverNow} />
+    {/* Mobile-only funding prompt: on desktop the ticket rail shows the starter
+        grant on connect, but on mobile the ticket is a closed sheet, so a fresh
+        empty wallet would never see it. Surface the same one-tap grant up here. */}
+    <MobileFundBanner />
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
@@ -143,6 +153,74 @@ export function V2TradeScreen({
         paused (there's no market to pick). */}
     {!paused && <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />}
     </>
+  );
+}
+
+/**
+ * MobileFundBanner — a mobile-only "get funded" prompt for the Trade screen.
+ *
+ * The funding CTA normally lives at the top of the trade ticket, which on desktop
+ * is the always-visible right rail. On mobile the ticket is a slide-up sheet that
+ * only opens once a market is picked, so a freshly-connected empty wallet never sees
+ * it. This surfaces the SAME one-tap starter grant (same route / treasury / gate as
+ * the ticket) in a persistent banner above the layout, so a new trader can fund right
+ * away without first opening the sheet. Hidden on desktop (`lg:hidden`) and once the
+ * wallet has a trading account or any funds.
+ */
+function MobileFundBanner() {
+  const acct = usePredictAccountV2();
+  // The SAME one-tap grant the ticket uses: gasless (DUSDC only) for Enoki/Google,
+  // plus gas SUI for external wallets; refetch the v2 wallet balance so this clears.
+  const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
+    invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
+    symbol: predictV2Config.quote.symbol,
+  });
+
+  // Offer only to a genuinely new wallet — no trading account yet, and empty across
+  // wallet + account (mirrors the ticket's grantCta gate exactly).
+  const eligible =
+    !!acct.owner &&
+    acct.walletDusdcBase !== undefined &&
+    !acct.wrapperExists &&
+    acct.balanceBase + acct.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING &&
+    !grant.success;
+
+  if (!eligible) return null;
+
+  const sym = predictV2Config.quote.symbol;
+
+  return (
+    <div className="border-b border-line bg-(--accent-soft) px-4 py-2.5 lg:hidden">
+      {starterGrant.enabled && !grant.failed ? (
+        <button
+          type="button"
+          onClick={grant.claim}
+          disabled={grant.busy}
+          className="flex w-full items-center justify-between gap-3 text-left text-[12px] font-medium text-accent disabled:opacity-60"
+        >
+          <span className="inline-flex items-center gap-2">
+            <LuGift size={14} className="shrink-0" />
+            {grant.busy
+              ? 'Funding your account…'
+              : `New here? Get ${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym} to start trading`}
+          </span>
+          {!grant.busy && <span aria-hidden>→</span>}
+        </button>
+      ) : predictV2Config.faucetUrl ? (
+        <a
+          href={predictV2Config.faucetUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex w-full items-center justify-between gap-3 text-[12px] font-medium text-accent"
+        >
+          <span className="inline-flex items-center gap-2">
+            <LuGift size={14} className="shrink-0" />
+            Low balance. Get testnet {sym}
+          </span>
+          <span aria-hidden>→</span>
+        </a>
+      ) : null}
+    </div>
   );
 }
 
