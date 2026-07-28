@@ -14,7 +14,26 @@ import type { V2Market } from '@/lib/api/v2/types';
 
 export const metadata: Metadata = {
   title: 'Ask Kelly',
-  description: 'Talk to the volatility surface — get a plain-language read and a ready-to-place bet.',
+  description: 'Ask about any market in plain words and get a ready-to-place trade.',
+  openGraph: {
+    type: 'website',
+    title: 'Meet Kelly, the Predict AI Agent that reads the Surface',
+    description: 'Ask about any market in plain words and get a ready-to-place trade.',
+    images: [
+      {
+        url: '/ask-kelly-og-card.png',
+        width: 1200,
+        height: 630,
+        alt: 'Kelly, the Skew Predict AI agent, reading the Surface',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Meet Kelly, the Predict AI Agent that reads the Surface',
+    description: 'Ask about any market in plain words and get a ready-to-place trade.',
+    images: ['/ask-kelly-og-card.png'],
+  },
 };
 
 export const dynamic = 'force-dynamic';
