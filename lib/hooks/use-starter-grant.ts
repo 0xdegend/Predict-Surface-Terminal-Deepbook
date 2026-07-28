@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
-import { claimStarterGrant } from '@/lib/sui/starter-grant';
+import { claimStarterGrant, StarterGrantError } from '@/lib/sui/starter-grant';
 import { toast } from '@/lib/store/toast-store';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
@@ -49,14 +49,21 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // The server's reason code for the last failure (null when it succeeded or
+  // hasn't run). Lets callers tell a benign "already funded once" apart from a
+  // real error and steer the user to the faucet instead of showing an alarm.
+  const [failedCode, setFailedCode] = useState<string | null>(null);
   // Set on a successful grant → the caller pops an animated SuccessModal (a
   // bottom-right toast alone is easy to miss for a gasless, popup-less flow).
   const [success, setSuccess] = useState<GrantSuccess | null>(null);
+
+  const sym = opts?.symbol ?? predictConfig.quote.symbol;
 
   async function claim() {
     if (!owner || busy) return;
     setBusy(true);
     setFailed(false);
+    setFailedCode(null);
     try {
       const { amount, suiAmount, digest } = await claimStarterGrant(owner, includeSui);
       const sui = Number(BigInt(suiAmount)) / SUI_DECIMALS;
@@ -65,20 +72,31 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
       const keys = opts?.invalidateKeys ?? [qk.dusdcBalance(owner)];
       for (const key of keys) await queryClient.invalidateQueries({ queryKey: key });
       setSuccess({ amount: fromQuote(BigInt(amount)), sui, digest });
-      const sym = opts?.symbol ?? predictConfig.quote.symbol;
       const desc = sui > 0
         ? `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} + ${sui} SUI for gas added`
-        : `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} added — you're ready to trade`;
+        : `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} added. You're ready to trade.`;
       toast.success('Account funded', { desc });
     } catch (e) {
+      const code = e instanceof StarterGrantError ? e.code : 'error';
       setFailed(true);
-      toast.error('Could not fund account', {
-        desc: e instanceof Error ? e.message : 'Try the faucet instead',
-      });
+      setFailedCode(code);
+      // "Already funded" isn't an error the user did anything wrong — this wallet
+      // used its one-time grant in an earlier session (a returning wallet, or the
+      // same Google sign-in, which maps to the same on-chain address). Say so
+      // calmly and point at the faucet; the CTA below also flips to the faucet.
+      if (code === 'already_funded') {
+        toast.info('Wallet already funded', {
+          desc: `This wallet used its starter grant already. Use the faucet for more ${sym}.`,
+        });
+      } else {
+        toast.error('Could not fund account', {
+          desc: e instanceof Error ? e.message : 'Try the faucet instead',
+        });
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  return { claim, busy, failed, success, clearSuccess: () => setSuccess(null) };
+  return { claim, busy, failed, failedCode, success, clearSuccess: () => setSuccess(null) };
 }
