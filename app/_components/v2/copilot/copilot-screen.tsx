@@ -37,7 +37,7 @@ import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
-import { parseIntent, isPlaceConfirmation } from '@/lib/copilot/intents';
+import { parseIntent, isPlaceConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -55,7 +55,7 @@ import {
   type ArbState,
   type Bias,
 } from '@/lib/copilot/pulse';
-import { startFlow, advanceFlow, type TradeFlow } from '@/lib/copilot/flow';
+import { startFlow, advanceFlow, resumeHint, type TradeFlow } from '@/lib/copilot/flow';
 import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { derivePortfolioHistory, equityCurve, type WinStats, type PastPrediction } from '@/lib/portfolio/history';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
@@ -387,7 +387,9 @@ export function V2CopilotScreen({
     });
   }
 
-  // "Edit" on the review card → restart the wizard from the first question.
+  // "Edit" on the review card → restart the wizard from the first question. Only
+  // the wizard's review card carries Edit, and a signed-out visitor can't reach
+  // the wizard (handleSend gates it), so no connect check is needed here.
   function handleEditBet() {
     pendingBetRef.current = null; // re-building — don't let a stray "trade it" fire the old one
     const res = startFlow({ candidates: liveCandidates(), now: Date.now(), spot: readSpot() });
@@ -872,6 +874,32 @@ export function V2CopilotScreen({
     }
   }
 
+  // Build a one-shot read reply for an intent, with the same live context the
+  // main dispatch uses. Handler-only (reads the store + refs) — never call this
+  // during render, or the whole component's purity lint flips (see the Date.now
+  // notes elsewhere in this file).
+  function readReply(intent: CopilotIntent, now: number, spot: number | null, candidates: BetCandidate[]): CopilotReply {
+    // Read the store imperatively (getState, not a subscription) for the current
+    // selection so "analyse the current strike" reads the ticket's strike without
+    // this screen re-rendering on every store change.
+    const st = useV2TradeStore.getState();
+    const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp, stake: st.stake, leverage: st.leverage } : null;
+    return respondToIntent(intent, {
+      insights: insights ?? null,
+      positioning: positioning ?? null,
+      narrative: narrative ?? null,
+      candidates,
+      now,
+      spot,
+      wallet: readWallet(),
+      surfaceInputs,
+      closes: candles?.closes ?? null,
+      portfolio: portfolioRef.current,
+      record: recordRef.current,
+      selection,
+    });
+  }
+
   function handleSend(text: string) {
     if (thinking) return; // one at a time (the input is disabled too)
     // Date.now() + the cached spot read in an event handler (not render) — keeps
@@ -903,6 +931,19 @@ export function V2CopilotScreen({
     let reply: CopilotReply;
     let nextFlow: TradeFlow | null = flow;
     if (flow) {
+      // Mid-wizard the user may ask a DIFFERENT question ("analyse BTC", "how's
+      // fear and greed?"). Answer it and keep the trade PAUSED with a nudge back,
+      // instead of mis-reading it as a price and making them cancel to get a read.
+      // Only pure informational reads interrupt (isFlowInterruption); a real
+      // answer (a number / up / down / "cancel") still feeds advanceFlow below.
+      const interrupt = parseIntent(text);
+      if (isFlowInterruption(interrupt)) {
+        const answer = readReply(interrupt, now, spot, candidates);
+        // Drop any bet so a stray suggestion can't clobber the half-built trade,
+        // then tack the resume nudge onto the end of the answer.
+        pushExchange(text, { ...answer, bet: undefined, text: [...answer.text, resumeHint(flow)] });
+        return;
+      }
       const res = advanceFlow(flow, text, { candidates, now, spot });
       reply = res.reply;
       nextFlow = res.flow;
@@ -920,31 +961,22 @@ export function V2CopilotScreen({
         return;
       }
       if (intent.kind === 'start_trade') {
+        // A trade ends in a signed transaction, so there's no point walking
+        // someone through the whole wizard before they can place it. Gate the
+        // setup on a connected wallet (same as the close-bet + onboarding gates)
+        // and point them at Connect rather than starting a dead-end flow.
+        if (!acct.owner) {
+          pushUser(text);
+          botAfterBeat(['Connect your wallet first and I’ll set the trade up for you. Tap Connect (top right) to sign in, then say “set up a trade”.']);
+          return;
+        }
         // Pass the raw message so any inline params (strike/amount/leverage/side)
         // pre-fill the wizard and only the missing pieces get asked.
         const res = startFlow({ candidates, now, spot }, text);
         reply = res.reply;
         nextFlow = res.flow;
       } else {
-        // Read the store imperatively (getState, not a subscription) for the
-        // current selection so "analyse the current strike" reads the ticket's
-        // strike without this screen re-rendering on every store change.
-        const st = useV2TradeStore.getState();
-        const selection = selected ? { marketId: selected.expiry_market_id, strikePrice: st.strikePrice ?? 0, isUp: st.isUp, stake: st.stake, leverage: st.leverage } : null;
-        reply = respondToIntent(intent, {
-          insights: insights ?? null,
-          positioning: positioning ?? null,
-          narrative: narrative ?? null,
-          candidates,
-          now,
-          spot,
-          wallet: readWallet(),
-          surfaceInputs,
-          closes: candles?.closes ?? null,
-          portfolio: portfolioRef.current,
-          record: recordRef.current,
-          selection,
-        });
+        reply = readReply(intent, now, spot, candidates);
         nextFlow = null;
         // No rule match → hand the read long tail to Claude (if enabled + under the
         // session cap), grounded in the same context. answerWithAI owns the exchange

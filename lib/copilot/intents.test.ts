@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIntent, isPlaceConfirmation } from './intents';
+import { parseIntent, isPlaceConfirmation, isFlowInterruption, type CopilotIntent } from './intents';
 
 describe('parseIntent', () => {
   it('empty / greeting → help', () => {
@@ -430,5 +430,34 @@ describe('isPlaceConfirmation', () => {
     ]) {
       expect(isPlaceConfirmation(m), m).toBe(false);
     }
+  });
+});
+
+describe('isFlowInterruption', () => {
+  const asIntent = (kind: CopilotIntent['kind']) => ({ kind }) as unknown as CopilotIntent;
+
+  it('pure informational reads interrupt the wizard (answer it, keep the trade paused)', () => {
+    const reads = [
+      'analyze', 'why_moving', 'positioning', 'flow', 'options_market',
+      'volatility', 'skew', 'metric', 'reality_check', 'explain', 'no_arb',
+      'term_structure', 'markets_overview', 'balance', 'portfolio', 'track_record',
+    ] as const;
+    for (const kind of reads) expect(isFlowInterruption(asIntent(kind)), kind).toBe(true);
+  });
+
+  it('flow answers, bet/highlight producers, and money + control intents do NOT interrupt', () => {
+    const keepInFlow = [
+      'help', 'start_trade', 'directional_bet', 'recommend', 'best_value',
+      'biggest_payout', 'find_strike', 'odds', 'analyze_strike', 'next_market',
+      'adjust_ticket', 'close_position', 'create_account', 'get_tokens',
+      'onboarding', 'busiest_strike', 'surface_volume',
+    ] as const;
+    for (const kind of keepInFlow) expect(isFlowInterruption(asIntent(kind)), kind).toBe(false);
+  });
+
+  it('the reported case: a real question typed mid-setup interrupts, a bare price does not', () => {
+    expect(isFlowInterruption(parseIntent('analyse btc for me.'))).toBe(true);
+    // a bare number is a strike answer — it must feed the wizard, not interrupt it
+    expect(isFlowInterruption(parseIntent('63800'))).toBe(false);
   });
 });

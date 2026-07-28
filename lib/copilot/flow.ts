@@ -377,6 +377,19 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
   return continueFrom(flow, market, pricer, ctx, leadBits.join(' '));
 }
 
+/** A one-line nudge back into a PAUSED wizard, naming the slot it still needs, so
+ *  answering an aside mid-setup (see the screen's interruption handling) never
+ *  loses the trade the user was building. */
+export function resumeHint(flow: TradeFlow): string {
+  const need =
+    flow.step === 'strike' ? 'a price'
+    : flow.step === 'direction' ? 'above or below'
+    : flow.step === 'amount' ? 'an amount'
+    : flow.step === 'leverage' ? 'a leverage number'
+    : 'a yes to place it';
+  return `Whenever you’re ready, we can finish your trade. I still need ${need}. Say “cancel” to drop it.`;
+}
+
 /** Feed the trader's reply into the active wizard and get the next question (or
  *  the final review). Resolves a live market first, hopping (with a heads-up) if
  *  the pinned one is about to close. */

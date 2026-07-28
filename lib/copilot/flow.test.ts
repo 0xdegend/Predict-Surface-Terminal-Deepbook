@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { startFlow, advanceFlow, extractSlots, type FlowContext } from './flow';
+import { startFlow, advanceFlow, resumeHint, extractSlots, type FlowContext } from './flow';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -233,5 +233,21 @@ describe('trade wizard — no market', () => {
     const s = startFlow({ candidates: [], now: NOW });
     expect(s.flow).toBeNull();
     expect(s.reply.text.join(' ')).toMatch(/no live market/i);
+  });
+});
+
+describe('resumeHint', () => {
+  it('names the slot the paused wizard still needs, per step', () => {
+    expect(resumeHint({ step: 'strike' })).toMatch(/a price/i);
+    expect(resumeHint({ step: 'direction' })).toMatch(/above or below/i);
+    expect(resumeHint({ step: 'amount' })).toMatch(/an amount/i);
+    expect(resumeHint({ step: 'leverage' })).toMatch(/a leverage/i);
+    expect(resumeHint({ step: 'review' })).toMatch(/place it/i);
+  });
+
+  it('offers a cancel and keeps the no-em-dash rule', () => {
+    const h = resumeHint({ step: 'strike' });
+    expect(h.toLowerCase()).toContain('cancel');
+    expect(h).not.toContain('—');
   });
 });

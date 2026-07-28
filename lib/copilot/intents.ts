@@ -661,3 +661,23 @@ export function parseIntent(message: string): CopilotIntent {
 
   return { kind: 'help' };
 }
+
+/** Read/question intents a trader might fire in the MIDDLE of the guided trade
+ *  wizard. When one lands mid-setup we ANSWER it and keep the trade paused,
+ *  instead of mis-reading it as a flow answer (a price/direction) or forcing a
+ *  cancel. Deliberately PURE informational reads only: nothing that suggests or
+ *  edits a bet (so the half-built trade isn't clobbered), nothing async, and
+ *  none of the wizard's own answer words — bare numbers / "up" / "down" parse to
+ *  `help` or `directional_bet`, neither of which is here, so they still feed the
+ *  wizard. See the screen's handleSend for how this pauses vs advances the flow. */
+const FLOW_INTERRUPT_KINDS: ReadonlySet<CopilotIntent['kind']> = new Set<CopilotIntent['kind']>([
+  'analyze', 'why_moving', 'positioning', 'flow', 'options_market',
+  'volatility', 'skew', 'metric', 'reality_check', 'explain', 'no_arb',
+  'term_structure', 'markets_overview', 'balance', 'portfolio', 'track_record',
+]);
+
+/** True when `intent` is a question we should answer mid-wizard, pausing (not
+ *  cancelling) the trade setup. See FLOW_INTERRUPT_KINDS. */
+export function isFlowInterruption(intent: CopilotIntent): boolean {
+  return FLOW_INTERRUPT_KINDS.has(intent.kind);
+}
