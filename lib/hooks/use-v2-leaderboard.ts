@@ -87,9 +87,12 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
 
 export interface UseV2Leaderboard {
   rows: V2LeaderboardRow[];
-  /** Rows attributable to the Skew app (bets that carried its builder code). */
+  /** Rows attributable to the Skew app (bets that carried its builder code) — the
+   *  complete all-time board from the on-chain scan, not the fan-out window. */
   skewRows: V2LeaderboardRow[];
   loading: boolean;
+  /** First-load state of the Skew board specifically (its scan is a separate query). */
+  skewLoading: boolean;
   refreshing: boolean;
   error: string | null;
   refetch: () => void;
@@ -210,15 +213,41 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     placeholderData: keepPreviousData,
   });
 
+  // The all-time SKEW board comes from the server route — a GraphQL scan of the
+  // chain's order events, filtered to bets carrying the app's builder code. That's a
+  // COMPLETE history (no account-list endpoint needed), unlike the ~8h fan-out window
+  // above, so the Skew tab isn't capped by what the indexer still retains.
+  const skewQ = useQuery<V2LeaderboardRow[]>({
+    queryKey: ['v2', 'leaderboard', 'skew-onchain'] as const,
+    queryFn: async ({ signal }) => {
+      const res = await fetch('/api/v2/leaderboard', { signal });
+      if (!res.ok) throw new Error(`skew leaderboard ${res.status}`);
+      const snap = (await res.json()) as { rows?: V2LeaderboardRow[] };
+      return snap.rows ?? [];
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+  });
+
   const rows = useMemo(() => q.data ?? [], [q.data]);
-  const skewRows = useMemo(() => rows.filter((r) => r.viaSkew), [rows]);
+  const skewRows = useMemo(() => skewQ.data ?? [], [skewQ.data]);
 
   return {
     rows,
     skewRows,
     loading: q.isLoading,
-    refreshing: q.isFetching,
-    error: q.error instanceof Error ? q.error.message : null,
-    refetch: () => q.refetch(),
+    skewLoading: skewQ.isLoading,
+    refreshing: q.isFetching || skewQ.isFetching,
+    error:
+      q.error instanceof Error
+        ? q.error.message
+        : skewQ.error instanceof Error
+          ? skewQ.error.message
+          : null,
+    refetch: () => {
+      q.refetch();
+      skewQ.refetch();
+    },
   };
 }

@@ -57,14 +57,21 @@ export function V2LeaderboardPanel() {
   const account = useCurrentAccount();
   const mounted = useMounted();
   const [sort, setSort] = useState<V2SortKey>('points');
-  const [scope, setScope] = useState<Scope>('all');
+  // Skew traders is the live board (complete, all-time from the on-chain scan). The
+  // All-traders board is still capped to the indexer's ~8h window, so it stays
+  // disabled until the account-list / global-order endpoint lands — visible but not
+  // navigable, so nobody reads a half-populated protocol board as the full picture.
+  const [scope, setScope] = useState<Scope>('skew');
   const [page, setPage] = useState(0);
 
   // Real Season-2 standings, reconstructed from the per-market order feeds. 'all'
   // is the whole indexed venue; 'skew' is only bets placed through the app (they
   // carry its on-chain builder code).
-  const { rows: allRows, skewRows, loading, refreshing, refetch } = useV2Leaderboard();
+  const { rows: allRows, skewRows, loading, skewLoading, refreshing, refetch } = useV2Leaderboard();
   const rows = scope === 'skew' ? skewRows : allRows;
+  // Each scope has its own source (fan-out window vs on-chain Skew scan), so the
+  // active tab's own loading state drives the skeleton, not just the default tab's.
+  const activeLoading = scope === 'skew' ? skewLoading : loading;
 
   function selectSort(key: V2SortKey) {
     setSort(key);
@@ -79,7 +86,7 @@ export function V2LeaderboardPanel() {
   const totals = v2LeaderboardTotals(rows);
   // First load with nothing cached yet — skeleton the totals strip too (not just
   // the table), so the header doesn't flash real-looking 0 / 0.00 / 0 zeros.
-  const loadingEmpty = loading && sorted.length === 0;
+  const loadingEmpty = activeLoading && sorted.length === 0;
   const me = mounted ? (account?.address ?? null) : null;
 
   // The connected wallet's standing — pinned under the podium so a trader finds
@@ -127,18 +134,18 @@ export function V2LeaderboardPanel() {
       {/* Scope: the whole indexed venue vs only bets placed through the Skew app. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <ScopeTab
-          label="All traders"
-          icon={LuGlobe}
-          active={scope === 'all'}
-          onClick={() => selectScope('all')}
-          count={mounted && !loading ? allRows.length : undefined}
-        />
-        <ScopeTab
           label="Skew traders"
           icon={LuSparkles}
           active={scope === 'skew'}
           onClick={() => selectScope('skew')}
-          count={mounted && !loading ? skewRows.length : undefined}
+          count={mounted && !skewLoading ? skewRows.length : undefined}
+        />
+        <ScopeTab
+          label="All traders"
+          icon={LuGlobe}
+          active={scope === 'all'}
+          onClick={() => selectScope('all')}
+          disabled
         />
         <button
           onClick={refetch}
@@ -185,9 +192,9 @@ export function V2LeaderboardPanel() {
 
       {/* Your standing — pinned under the podium so the connected wallet finds
           itself instantly; otherwise a nudge to claim a spot. */}
-      {!loading && myRow ? (
+      {!activeLoading && myRow ? (
         <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} />
-      ) : !loading && me && sorted.length > 0 ? (
+      ) : !activeLoading && me && sorted.length > 0 ? (
         <NotRankedHint scope={scope} />
       ) : null}
 
@@ -402,33 +409,47 @@ function NotRankedHint({ scope }: { scope: Scope }) {
   );
 }
 
-/** Scope switch (All venue ↔ Skew traders) — a pill with an icon + count badge. */
+/** Scope switch (Skew traders ↔ All venue) — a pill with an icon + count badge.
+ *  `disabled` renders it visible-but-locked (a "Soon" chip, not navigable) for a
+ *  scope whose data isn't ready yet. */
 function ScopeTab({
   label,
   icon: Icon,
   active,
   onClick,
   count,
+  disabled = false,
 }: {
   label: string;
   icon: IconType;
   active: boolean;
   onClick: () => void;
   count?: number;
+  disabled?: boolean;
 }) {
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       aria-pressed={active}
+      title={disabled ? 'Full protocol board — unlocks when the trader endpoint is live' : undefined}
       className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
-        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
+        disabled
+          ? 'cursor-not-allowed text-text-3 opacity-50'
+          : active
+            ? 'bg-(--accent-soft) text-text-1'
+            : 'text-text-2 hover:bg-white/4 hover:text-text-1'
       }`}
     >
-      <Icon size={13} className={active ? 'text-accent' : 'text-text-3'} />
+      <Icon size={13} className={!disabled && active ? 'text-accent' : 'text-text-3'} />
       {label}
-      {count != null && (
+      {disabled ? (
+        <span className="rounded-full bg-bg-3 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-text-3">
+          Soon
+        </span>
+      ) : count != null ? (
         <span className="rounded-full bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">{count}</span>
-      )}
+      ) : null}
     </button>
   );
 }
