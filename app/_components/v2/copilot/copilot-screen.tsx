@@ -109,17 +109,18 @@ const PAUSED_CHIPS = ['Analyze BTC', "What's the fear and greed?", 'Why is BTC m
 type CopilotRecord = { stats: WinStats; curve: number[]; lastTrade: PastPrediction | null };
 
 /**
- * The starter grant only funds a brand-new, near-empty wallet: it's one-time and
- * gated on no trading account yet + a DUSDC balance under the ceiling (the server
- * also drips gas SUI only when the wallet lacks it). A wallet with an account or
- * enough DUSDC would be rejected, so we offer the faucet there instead. Mirrors the
- * trade ticket's grant-CTA gate exactly.
+ * The starter grant funds a near-empty wallet: gated purely on a DUSDC balance
+ * (account + wallet) under the ceiling. It is NOT gated on "no trading account
+ * yet" — a wallet can create a free gasless account and still be broke, and the
+ * server now self-heals stale "already funded" markers, so a genuinely empty
+ * wallet always claims. A wallet that was really funded before is caught server
+ * side (a real payout marker) and falls back to the faucet. Mirrors the trade
+ * ticket's grant-CTA gate exactly.
  */
-function grantEligibleFor(a: { walletDusdcBase: bigint | undefined; wrapperExists: boolean; balanceBase: bigint }): boolean {
+function grantEligibleFor(a: { walletDusdcBase: bigint | undefined; balanceBase: bigint }): boolean {
   return (
     starterGrant.enabled &&
     a.walletDusdcBase !== undefined &&
-    !a.wrapperExists &&
     a.balanceBase + a.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING
   );
 }

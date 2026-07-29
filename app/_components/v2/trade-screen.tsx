@@ -176,12 +176,14 @@ function MobileFundBanner() {
     symbol: predictV2Config.quote.symbol,
   });
 
-  // Offer only to a genuinely new wallet — no trading account yet, and empty across
-  // wallet + account (mirrors the ticket's grantCta gate exactly).
+  // Offer to any connected wallet that's broke across account + wallet. NOT gated
+  // on "no trading account yet": a wallet can create a free gasless account and
+  // still have zero DUSDC (that exact case was hiding this banner). The server
+  // self-heals stale markers, so a genuinely empty wallet claims; a really-funded
+  // one falls back to the faucet. Mirrors the ticket's grantCta gate exactly.
   const eligible =
     !!acct.owner &&
     acct.walletDusdcBase !== undefined &&
-    !acct.wrapperExists &&
     acct.balanceBase + acct.walletDusdcBase < STARTER_GRANT_BALANCE_CEILING &&
     !grant.success;
 
