@@ -15,8 +15,22 @@
  * the band on the second), then drags the band edges to adjust.
  */
 import { create } from 'zustand';
+import { toQuote } from '@/config/scale';
 
 export type V2TradeMode = 'binary' | 'range';
+
+/** The stake a fresh ticket seeds with, before we know the wallet balance. */
+export const STARTER_DEFAULT_STAKE = 10;
+/** Starter presets, biggest-first, used to right-size the default down. */
+const STARTER_PRESETS = [10, 5, 1];
+/**
+ * The biggest starter preset a wallet can actually cover (base units in), capped
+ * at the $10 default and floored at $1 — so a small wallet lands on an amount it
+ * can bet instead of a preselected $10 it has to clear first.
+ */
+export function defaultStakeForBalance(spendableBase: bigint): number {
+  return STARTER_PRESETS.find((n) => spendableBase >= toQuote(n)) ?? 1;
+}
 
 interface V2TradeState {
   marketId: string | null;
@@ -94,7 +108,7 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   rangeLowerPrice: null,
   rangeHigherPrice: null,
   rangeAnchorPrice: null,
-  stake: 10,
+  stake: STARTER_DEFAULT_STAKE,
   leverage: 1,
   pickSeq: 0,
   fill: null,

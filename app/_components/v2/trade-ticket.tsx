@@ -27,10 +27,10 @@
  * modal (MintSuccessModal), reusing both deployment-agnostic components. No async
  * re-quote step: v2 pricing is synchronous off the live Pricer every render.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
-import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
@@ -122,10 +122,13 @@ export function V2TradeTicket({
   // Two-step guided flow (legacy parity): 1 = side & level, 2 = bet (+ review
   // modal). An external pick (surface / market card) jumps straight to step 2.
   const [step, setStep] = useState<1 | 2>(1);
-  // Stake as a raw string so the field can be empty / mid-edit (a number-typed
-  // input coerces "" → 0, which makes a fresh digit read as "02"). The parsed
-  // number lives in the store for the sizing math.
-  const [betInput, setBetInput] = useState(() => (stake > 0 ? String(stake) : ''));
+  // Stake as a raw editing buffer so the field can be empty / mid-edit (a
+  // number-typed input coerces "" → 0, which makes a fresh digit read as "02").
+  // The parsed number lives in the store for the sizing math. `null` = "not
+  // edited yet, follow the store stake" — so the balance-aware default below
+  // shows through the field without the effect having to write local state.
+  const [betInput, setBetInput] = useState<string | null>(null);
+  const shownBet = betInput ?? (stake > 0 ? String(stake) : '');
   const [mintSuccess, setMintSuccess] = useState<{
     headline: string;
     tone: 'up' | 'down';
@@ -147,6 +150,21 @@ export function V2TradeTicket({
     setAppliedPick(pickSeq);
     if (mode === 'binary' && !mobile) setStep(2);
   }
+
+  // One-time: right-size the default bet to what the wallet holds, once the
+  // balance is known. Only fires while the stake is still the untouched $10
+  // default — a trader who has already picked an amount is never overridden. The
+  // "already ran" guard is a ref (not state) so it never re-renders on its own.
+  const defaultSized = useRef(false);
+  useEffect(() => {
+    if (defaultSized.current || acct.walletDusdcBase === undefined) return; // wait for balance
+    defaultSized.current = true;
+    if (stake !== STARTER_DEFAULT_STAKE) return; // trader already chose an amount
+    const sized = defaultStakeForBalance(acct.balanceBase + acct.walletDusdcBase);
+    // Only the store stake changes; the field is `null` (untouched) so it shows
+    // this new default through `shownBet` without a local state write.
+    if (sized !== stake) setStake(sized);
+  }, [acct.walletDusdcBase, acct.balanceBase, stake, setStake]);
 
   // Until mounted, the connected account is unknown (SSR has no wallet, but the
   // client restores it synchronously) — render a stable placeholder so the
@@ -354,7 +372,7 @@ export function V2TradeTicket({
           <input
             type="text"
             inputMode="decimal"
-            value={betInput}
+            value={shownBet}
             placeholder="0"
             onChange={(e) => applyBet(e.target.value)}
             className="w-16 bg-transparent text-right text-text-1 outline-none"
@@ -382,7 +400,7 @@ export function V2TradeTicket({
             key={n}
             onClick={() => applyBet(String(n))}
             className={`flex-1 rounded-md py-1.5 text-[11px] tabular-nums transition-colors ${
-              Number(betInput) === n ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3'
+              Number(shownBet) === n ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3'
             }`}
           >
             ${n}

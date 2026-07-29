@@ -19,11 +19,11 @@
  * estimate (no public cost view in v2); the wallet shows the exact figure at
  * signing.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { GlassError } from '../../ui/glass-error';
 import { LuArrowLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
-import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { price, pct, signed, countdown, dateUTC, leverage as fmtLev } from '@/lib/format';
@@ -107,6 +107,23 @@ export function V2CompactTicket({
   initialView?: 'glance' | 'ticket';
 }) {
   const mode = useV2TradeStore((s) => s.mode);
+  const acct = usePredictAccountV2();
+  const stake = useV2TradeStore((s) => s.stake);
+  const setStake = useV2TradeStore((s) => s.setStake);
+
+  // Same one-time balance-aware default as the full ticket (shared store), so the
+  // co-pilot / surface popover also opens on an amount a small wallet can cover,
+  // not a preselected $10 it has to clear. Only while the stake is untouched. The
+  // "already ran" guard is a ref (not state) so it never re-renders on its own.
+  const defaultSized = useRef(false);
+  useEffect(() => {
+    if (defaultSized.current || acct.walletDusdcBase === undefined) return; // wait for balance
+    defaultSized.current = true;
+    if (stake !== STARTER_DEFAULT_STAKE) return; // trader already chose an amount
+    const sized = defaultStakeForBalance(acct.balanceBase + acct.walletDusdcBase);
+    if (sized !== stake) setStake(sized);
+  }, [acct.walletDusdcBase, acct.balanceBase, stake, setStake]);
+
   return (
     <div className="font-mono text-[12px] tabular-nums">
       {mode === 'range' ? (

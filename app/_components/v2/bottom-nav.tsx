@@ -56,6 +56,7 @@ export function V2BottomNav() {
   // The mobile trade sheet slides up over this dock — tuck the dock away while
   // it's open so it doesn't float on top of the ticket (legacy BottomNav parity).
   const ticketSheetOpen = useV2TradeStore((s) => s.ticketSheetOpen);
+  const closeTicketSheet = useV2TradeStore((s) => s.closeTicketSheet);
 
   // Close the sheet on any navigation (a primary tab, browser back/forward, …) —
   // the nav persists across routes, so it would otherwise linger over the new
@@ -67,10 +68,24 @@ export function V2BottomNav() {
     setOpen(false);
   }
 
+  // Clear the SHARED trade-ticket flag on every navigation. It lives in the
+  // global store, but only the trade/copilot screens' sheet resets it on close —
+  // so a user who leaves a ticket open via the phone back gesture or an in-page
+  // link would strand this dock off-screen (it reads the flag to translate away)
+  // on the next page until a reload re-inits the store. A ticket sheet is always
+  // screen-local, so navigating anywhere must dismiss it. Effect (not a render
+  // write) to avoid touching another store mid-render / the purity lint.
+  useEffect(() => {
+    closeTicketSheet();
+  }, [pathname, closeTicketSheet]);
+
   const primaryIndex = PRIMARY.findIndex((t) => t.match(pathname));
   const moreActive = MORE.some((m) => pathname.startsWith(m.href));
-  // The lens sits under a primary tab, or under "More" (index 4) on its routes.
-  const activeIndex = primaryIndex >= 0 ? primaryIndex : moreActive ? 4 : -1;
+  // The lens sits under a primary tab, or under "More" (index 4) on its routes —
+  // AND while the More sheet is open, so opening More visibly slides the active
+  // highlight onto it instead of leaving it stranded under the current page's tab
+  // (e.g. Ranks), which reads as if the tap did nothing.
+  const activeIndex = open ? 4 : primaryIndex >= 0 ? primaryIndex : moreActive ? 4 : -1;
 
   // Esc closes the sheet.
   useEffect(() => {
@@ -186,14 +201,18 @@ export function V2BottomNav() {
           />
         )}
         {PRIMARY.map((tab) => {
-          const active = tab.match(pathname);
+          const onPage = tab.match(pathname);
+          // While the More sheet is open it owns the active state (its lens has
+          // moved onto it), so dim the current page's tab — but aria-current still
+          // marks the real page for assistive tech.
+          const active = onPage && !open;
           const Icon = tab.icon;
           return (
             <Link
               key={tab.href}
               href={tab.href}
               onClick={() => setOpen(false)}
-              aria-current={active ? 'page' : undefined}
+              aria-current={onPage ? 'page' : undefined}
               className={`relative z-10 flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-[10px] font-medium tracking-tight transition-colors ${
                 active ? 'text-text-1' : 'text-text-3 hover:text-text-2'
               }`}
