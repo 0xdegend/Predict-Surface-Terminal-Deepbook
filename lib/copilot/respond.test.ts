@@ -429,6 +429,27 @@ describe('respondToIntent — portfolio (how am I doing + balances)', () => {
     expect(blob).not.toMatch(/\d+ open bets/); // not the generic plural roll-up
   });
 
+  it('a lone open trade that can not be priced yet (markets paused) still names it, never "no open bets"', () => {
+    // best/worst undefined because there is no live PnL to rank on; openLabel carries the name.
+    const unpriceable = {
+      ...PF,
+      openCount: 1,
+      openValue: 20,
+      openExposure: 20,
+      unrealized: 0,
+      unrealizedPct: 0,
+      best: undefined,
+      worst: undefined,
+      openLabel: 'DOWN $61,500',
+    };
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: unpriceable }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/DOWN \$61,500/); // names the open trade (opened anywhere)
+    expect(blob).toMatch(/open/i); // confirms it's open
+    expect(blob).not.toMatch(/don't have any open bets/i); // NOT the empty answer
+    expect(blob).not.toMatch(/\d+ open bets/); // not the plural roll-up
+  });
+
   it('surfaces claimable winnings when there are settled wins', () => {
     const r = respondToIntent(
       { kind: 'portfolio' },

@@ -568,6 +568,10 @@ export interface PortfolioSummary {
   settledLostCount: number; // settled losers not yet cleared
   best?: { label: string; pnl: number }; // best / worst open bet by PnL
   worst?: { label: string; pnl: number };
+  /** The lone open bet's label, set only when exactly one is open — so "how is my
+   *  trade going?" can name it even when it can't be live-priced yet (e.g. markets
+   *  paused), where `best` is undefined because there's no PnL to rank on. */
+  openLabel?: string;
 }
 
 /** A short plain label for a position: "UP $65,427" / "DOWN $64,900" / "Range …". */
@@ -605,6 +609,7 @@ export function summarizePositions(positions: V2PortfolioPosition[]): PortfolioS
     settledLostCount: settledLost.length,
     best,
     worst,
+    openLabel: live.length === 1 ? positionLabel(live[0]) : undefined,
   };
 }
 

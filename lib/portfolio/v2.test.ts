@@ -7,6 +7,7 @@ import {
   positionWinPayout,
   buildV2Spark,
   deriveV2HistoryFromOrders,
+  summarizePositions,
   v2EntryFees,
 } from './v2';
 import type { V2Position, V2Market, V2OrderEvent } from '@/lib/api/v2/types';
@@ -172,6 +173,26 @@ describe('buildV2Spark', () => {
     expect(buildV2Spark(openPos, pricer, [])).toEqual([]);
     const settled = { ...openPos, settled: true };
     expect(buildV2Spark(settled, pricer, spots)).toEqual([]);
+  });
+});
+
+describe('summarizePositions — openLabel names a lone open bet', () => {
+  const base = normalizeV2Position(REAL_ROW, 0, MARKET);
+
+  it('sets openLabel for exactly one open bet, even with no live PnL to rank on', () => {
+    const s = summarizePositions([{ ...base, qty: 5, settled: false, pnl: undefined, markValue: undefined }]);
+    expect(s.openCount).toBe(1);
+    expect(s.best).toBeUndefined(); // no PnL → nothing to rank, so best/worst stay empty
+    expect(s.openLabel).toBeTruthy(); // but the trade is still named
+  });
+
+  it('leaves openLabel undefined when more than one is open (best/worst take over)', () => {
+    const s = summarizePositions([
+      { ...base, qty: 5, settled: false },
+      { ...base, qty: 5, settled: false },
+    ]);
+    expect(s.openCount).toBe(2);
+    expect(s.openLabel).toBeUndefined();
   });
 });
 

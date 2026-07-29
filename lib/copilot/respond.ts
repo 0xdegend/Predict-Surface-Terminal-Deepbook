@@ -1033,11 +1033,23 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   if (p!.openCount > 0) {
     const dirWord = p!.unrealized > 0 ? 'up' : p!.unrealized < 0 ? 'down' : 'flat';
     const pctStr = signed(p!.unrealizedPct * 100, 1);
-    if (p!.openCount === 1 && p!.best) {
-      // A single open trade → name it, so "how is my trade going" answers the exact bet.
-      text.push(
-        `Your ${p!.best.label} bet is ${dirWord} ${signedUsd(p!.unrealized)} (${pctStr}%) right now, worth ${fmt(p!.openValue)}.`,
-      );
+    if (p!.openCount === 1) {
+      // A single open trade — name it (works for a bet opened anywhere: Kelly, the
+      // ticket, or the surface — these come from the account's real positions).
+      const label = p!.best?.label ?? p!.openLabel;
+      if (p!.best) {
+        text.push(
+          `Your ${p!.best.label} bet is ${dirWord} ${signedUsd(p!.unrealized)} (${pctStr}%) right now, worth ${fmt(p!.openValue)}.`,
+        );
+      } else if (label) {
+        // Open, but not live-priceable this moment (e.g. markets paused) → no PnL to
+        // show, but confirm the trade so the trader still gets a real answer.
+        text.push(
+          `Your ${label} bet is still open, ${fmt(p!.openExposure)} staked. I can't price it live right now, so I don't have a PnL to show yet.`,
+        );
+      } else {
+        text.push(`You've got 1 open bet, ${fmt(p!.openExposure)} staked.`);
+      }
     } else {
       text.push(
         `You've got ${p!.openCount} open bets worth ${fmt(p!.openValue)} right now, and you're ${dirWord} ${signedUsd(p!.unrealized)} on them (${pctStr}%).`,
