@@ -35,6 +35,12 @@ describe('parseIntent', () => {
       'any market-moving events',
       'what are the events happening today',
       "what's going on this week",
+      // past-tense recap phrasings (events already released earlier today)
+      'What are the notable events that happened today?',
+      'what events happened today',
+      'What happened today?', // bare recap, no "events" noun
+      'anything happen today?',
+      'did anything happen today',
     ]) {
       expect(parseIntent(m).kind, m).toBe('events');
     }

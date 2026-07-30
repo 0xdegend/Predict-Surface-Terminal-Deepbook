@@ -19,9 +19,20 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const TTL_MS = 1_200_000; // 20 minutes — a calendar barely changes intraday.
-const WINDOW_BACK_MS = 6 * 3_600_000; // include events that just released
+// Cross-midnight floor: always look at least this far back, so a release just
+// before midnight still reads as "recent" right after the date rolls over.
+const WINDOW_BACK_MS = 6 * 3_600_000;
 const WINDOW_FWD_MS = 24 * 3_600_000; // through the rest of today + a little slack
 const MAX_EVENTS = 6;
+
+/** Midnight UTC of the day `ms` falls in. We anchor the lookback here so the day's
+ *  MORNING releases (PCE / CPI / jobs print ~12:30-14:00 UTC) still count as
+ *  "today's event" when asked in the evening — a fixed 6h lookback dropped them a
+ *  few hours after they printed, so Kelly wrongly read "nothing major today". */
+function startOfUtcDay(ms: number): number {
+  const d = new Date(ms);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
 
 /** Trimmed string, or null for empty / missing. */
 function str(v: unknown): string | null {
@@ -86,9 +97,12 @@ async function build(): Promise<EventsFeed> {
   let events: MarketEvent[] = [];
 
   try {
+    // Whole of today (UTC) plus a cross-midnight floor, so both a morning release
+    // hours ago and one that just printed before midnight are covered.
+    const start_time = Math.min(startOfUtcDay(asOf), asOf - WINDOW_BACK_MS);
     const rows = asList(
       await relay('calendar_economic_data', {
-        start_time: asOf - WINDOW_BACK_MS,
+        start_time,
         end_time: asOf + WINDOW_FWD_MS,
         language: 'en',
       }),

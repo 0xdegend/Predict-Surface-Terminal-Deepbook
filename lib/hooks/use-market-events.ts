@@ -7,13 +7,19 @@
  * heads-up. The browser never touches Clawby directly (key + rate limits live
  * server-side). Pass `{ enabled: false }` to stay dark.
  *
- * Polls slowly (20 min): a calendar barely changes intraday, so this adds
- * negligible fetch load.
+ * Polls slowly (20 min) once healthy: a calendar barely changes intraday, so this
+ * adds negligible fetch load. But a transient miss (the route degrading to
+ * `available:false` on a cold Clawby hiccup) must NOT get cached for the full 20
+ * min — otherwise Kelly reads "no events today" for the whole window. So while the
+ * feed is unavailable, it retries every minute until it comes good.
  */
 import { useQuery } from '@tanstack/react-query';
 import type { EventsFeed } from '@/lib/insights/events';
 
 export type { EventsFeed };
+
+const HEALTHY_MS = 1_200_000; // 20 min once we have a real feed
+const RETRY_MS = 60_000; // 1 min while it's unavailable, so a transient miss self-heals
 
 export function useMarketEvents(opts?: { enabled?: boolean }) {
   const enabled = opts?.enabled ?? true;
@@ -25,8 +31,10 @@ export function useMarketEvents(opts?: { enabled?: boolean }) {
       return (await res.json()) as EventsFeed;
     },
     enabled,
-    staleTime: 1_200_000,
-    refetchInterval: 1_200_000,
+    // Treat an unavailable feed as stale so a remount refetches instead of serving
+    // the cached miss; poll fast until it's healthy, then back off to 20 min.
+    staleTime: (query) => (query.state.data?.available ? HEALTHY_MS : 0),
+    refetchInterval: (query) => (query.state.data?.available ? HEALTHY_MS : RETRY_MS),
     refetchOnWindowFocus: false,
   });
   return { data: q.data, loading: q.isLoading };

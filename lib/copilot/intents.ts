@@ -448,13 +448,17 @@ function wantsEvents(text: string): boolean {
   if (/\b(?:any|what|which|the)\b[^?]{0,16}\bevents?\b/.test(text)) return true;
   if (/on (?:the )?(?:calendar|docket|agenda)/.test(text)) return true;
   if (/\b(?:events?|calendar|docket|agenda|scheduled?)\b/.test(text) && day) return true;
-  // "what's happening / going on / anything big", but ONLY when anchored to a day,
-  // so the plain "what's happening" market read still routes to `analyze`.
+  // "what's happening / went on / anything happen(ed) big", but ONLY when anchored
+  // to a day, so the plain "what's happening" market read still routes to `analyze`.
   if (
     /\b(?:what'?s|whats|what is|what are|anything|any big|is there anything)\b[^?]{0,24}\b(?:today|this week|coming up|on tap)\b/.test(text) &&
-    /\b(?:happening|going on|big|important|scheduled?|planned|calendar|events?)\b/.test(text)
+    /\b(?:happen(?:ed|ing|s)?|going on|big|important|scheduled?|planned|calendar|events?)\b/.test(text)
   )
     return true;
+  // "What happened today?" — a bare recap ask with no "events" noun; day-anchored so
+  // it doesn't swallow the plain market read. Routes to events (the calendar + the
+  // day's news headline) instead of dead-ending at help.
+  if (/\bwhat\b[^?]{0,20}\bhappen(?:ed|ing|s)?\b[^?]{0,16}\b(?:today|tonight|this week)\b/.test(text)) return true;
   return false;
 }
 

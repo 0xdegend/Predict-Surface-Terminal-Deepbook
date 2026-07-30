@@ -1011,10 +1011,15 @@ export function V2CopilotScreen({
         // grounded in the same context, with a graceful fall back to the rule reply:
         //  • `help` — the long tail the rule router couldn't place.
         //  • `events` — "what's happening today?", so Claude can phrase the calendar
-        //    naturally and weave in the live mood (events are in the AiContext too).
+        //    naturally and weave in the live mood — but ONLY when there are events to
+        //    phrase. With none (feed still loading, unavailable, or a genuinely quiet
+        //    calendar), the deterministic rule reply is honest ("give it a moment" /
+        //    "nothing major today"); handed empty context, Claude otherwise invents an
+        //    unhelpful "I don't have the events in my context" answer instead.
         // answerWithAI owns the exchange and falls back to THIS reply on any failure.
         // Money paths never reach here (they returned above), so Claude only sees reads.
-        if ((intent.kind === 'help' || intent.kind === 'events') && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
+        const eventsHaveData = intent.kind === 'events' && notableEvents(events ?? null).length > 0;
+        if ((intent.kind === 'help' || eventsHaveData) && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
           void answerWithAI(text, reply);
           return;
         }
