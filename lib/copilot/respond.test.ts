@@ -777,3 +777,27 @@ describe('respondToIntent — track record (last trade / win rate / loss rate)',
     expect(r.share).toBeUndefined();
   });
 });
+
+describe('respondToIntent — events', () => {
+  const HOUR = 3_600_000;
+  const eventsFeed = {
+    available: true as const,
+    asOf: NOW,
+    events: [
+      { title: 'Fed Interest Rate Decision', country: 'US', importance: 3, at: NOW + 3 * HOUR, released: false, forecast: null, previous: null, actual: null, effect: null },
+    ],
+    headline: null,
+  };
+
+  it('answers with the scheduled-calendar read and no bet', () => {
+    const r = respondToIntent({ kind: 'events' }, ctx({ events: eventsFeed }));
+    expect(r.bet).toBeUndefined();
+    expect(r.text.join('\n')).toMatch(/Fed Interest Rate Decision \(in about 3 hours\)/);
+    expect(r.text.join('\n')).toMatch(/not a prediction/i);
+  });
+
+  it('says the calendar is unavailable when no feed loaded', () => {
+    const r = respondToIntent({ kind: 'events' }, ctx({ events: null }));
+    expect(r.text[0]).toMatch(/can.t pull today.s calendar/i);
+  });
+});

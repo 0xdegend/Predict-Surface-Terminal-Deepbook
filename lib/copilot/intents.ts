@@ -54,6 +54,9 @@ export type CopilotIntent =
   | { kind: 'flow' }
   | { kind: 'options_market' }
   | { kind: 'why_moving' }
+  // "What's happening today? / any events? / is there FOMC?" — today's scheduled
+  // market-moving calendar (macro events + a news headline), from Clawby.
+  | { kind: 'events' }
   // Onboarding: get-started guidance, create the trading account, get test tokens.
   | { kind: 'onboarding' }
   | { kind: 'create_account' }
@@ -430,6 +433,31 @@ function wantsOptionsMarket(text: string): boolean {
   return /options? (?:market|flow|positioning|sentiment|book|traders?)|put[- ]?call|call[- ]?put|p\s*\/\s*c ratio|what.{0,25}options.{0,15}(?:say|saying|tell|think)|options.{0,12}(?:bullish|bearish|lean|leaning)/.test(text);
 }
 
+/** "What's happening today? / any events? / is there FOMC or CPI today? / anything
+ *  on the calendar?" — the day's SCHEDULED market-moving events. Distinct from the
+ *  plain "what's happening" market read (that stays `analyze`): the generic
+ *  what's-happening phrasing only routes here when anchored to a day, but a named
+ *  macro event (FOMC / CPI / rate decision) or explicit calendar language is enough
+ *  on its own. Never about the trader's own book. */
+function wantsEvents(text: string): boolean {
+  if (/\bmy (?:bet|position|trade|money|stake|pnl|p&l)\b/.test(text)) return false;
+  // Named macro events / explicit calendar language — a strong signal on its own.
+  if (/\bfomc\b|\bcpi\b|\bpce\b|\bnfp\b|\bnonfarm\b|\bjobs report\b|\bpowell\b|(?:interest )?rate (?:decision|hike|cut|meeting)|economic (?:calendar|data|events?)|\bmacro (?:calendar|events?|data)\b|market[- ]moving/.test(text)) return true;
+  const day = /\btoday\b|\btonight\b|this week|coming up|on tap/.test(text);
+  // A calendar/events noun that's being asked about.
+  if (/\b(?:any|what|which|the)\b[^?]{0,16}\bevents?\b/.test(text)) return true;
+  if (/on (?:the )?(?:calendar|docket|agenda)/.test(text)) return true;
+  if (/\b(?:events?|calendar|docket|agenda|scheduled?)\b/.test(text) && day) return true;
+  // "what's happening / going on / anything big", but ONLY when anchored to a day,
+  // so the plain "what's happening" market read still routes to `analyze`.
+  if (
+    /\b(?:what'?s|whats|anything|any big|is there anything)\b[^?]{0,24}\b(?:today|this week|coming up|on tap)\b/.test(text) &&
+    /\b(?:happening|going on|big|important|scheduled?|planned|calendar|events?)\b/.test(text)
+  )
+    return true;
+  return false;
+}
+
 /** A live move/direction cue ("pumping", "dropping", "up", "red") and a market
  *  subject ("btc", "price") — the two ingredients of a causal "why" question. */
 const MOVE_CTX = /\b(?:mov(?:e|ing|ed)|pump(?:ing)?|dump(?:ing)?|drop(?:ping)?|fall(?:ing)?|ris(?:e|ing)|rally(?:ing)?|crash(?:ing)?|tank(?:ing)?|surg(?:e|ing)|spik(?:e|ing)|sell(?:ing|off| off)?|\bup\b|\bdown\b|\bred\b|\bgreen\b)\b/;
@@ -586,6 +614,11 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsFlow(text)) return { kind: 'flow' };
   if (wantsPositioning(text)) return { kind: 'positioning' };
 
+  // "What's happening today? / any events? / is there FOMC?" — today's scheduled
+  // calendar. Before why_moving + analyze, since "happening today" trips the
+  // analyze cue and a named event should beat the causal/plain reads.
+  if (wantsEvents(text)) return { kind: 'events' };
+
   // "Why is BTC moving? / what's driving this? / any news?" — the causal read.
   // Before the surface + directional + analyze branches, since it carries move and
   // direction words ("dumping", "up") that aren't a bet, and "moving" is an analyze
@@ -674,7 +707,7 @@ export function parseIntent(message: string): CopilotIntent {
  *  `help` or `directional_bet`, neither of which is here, so they still feed the
  *  wizard. See the screen's handleSend for how this pauses vs advances the flow. */
 const FLOW_INTERRUPT_KINDS: ReadonlySet<CopilotIntent['kind']> = new Set<CopilotIntent['kind']>([
-  'analyze', 'why_moving', 'positioning', 'flow', 'options_market',
+  'analyze', 'why_moving', 'events', 'positioning', 'flow', 'options_market',
   'volatility', 'skew', 'metric', 'reality_check', 'explain', 'no_arb',
   'term_structure', 'markets_overview', 'balance', 'portfolio', 'track_record',
 ]);

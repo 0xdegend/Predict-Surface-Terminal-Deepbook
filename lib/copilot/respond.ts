@@ -22,8 +22,10 @@ import { buildMarketRead, directionStance, recommendation } from '@/lib/insights
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
 import { buildNarrative } from '@/lib/insights/narrative';
+import { buildEventsReply } from '@/lib/insights/events';
 import type { Positioning } from '@/lib/insights/positioning';
 import type { NarrativeFeed } from '@/lib/insights/narrative';
+import type { EventsFeed } from '@/lib/insights/events';
 import { strikeForDirectionFair } from '@/lib/sui/v2/invert';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { upFair, totalVariance } from '@/lib/svi/svi';
@@ -54,6 +56,9 @@ export interface CopilotContext {
    *  the "why is BTC moving?" answer. Carries the `ai` seam a later Claude slice
    *  fills. Null until it loads (or when the page is gated). */
   narrative?: NarrativeFeed | null;
+  /** Today's scheduled market-moving calendar (macro events + a news headline),
+   *  for "what's happening today?". Clawby-backed; null until it loads (or gated). */
+  events?: EventsFeed | null;
   candidates: BetCandidate[];
   now: number;
   /** Live BTC spot ($) — the SAME feed the top price tape shows. Used only for
@@ -1427,6 +1432,14 @@ function whyMovingReply(ctx: CopilotContext): CopilotReply {
   return { text: n.text };
 }
 
+/** "What's happening today? / any events? / is there FOMC?" — the day's scheduled
+ *  market-moving calendar, composed by the shared engine (buildEventsReply). The
+ *  screen may re-phrase this through the AI tier (events are also in the AiContext),
+ *  falling back to exactly these lines. */
+function eventsReply(ctx: CopilotContext): CopilotReply {
+  return { text: buildEventsReply(ctx.events ?? null, ctx.now) };
+}
+
 export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): CopilotReply {
   switch (intent.kind) {
     case 'analyze':
@@ -1451,6 +1464,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return optionsMarketReply(ctx);
     case 'why_moving':
       return whyMovingReply(ctx);
+    case 'events':
+      return eventsReply(ctx);
     case 'onboarding':
       return onboardingReply(ctx);
     case 'create_account':

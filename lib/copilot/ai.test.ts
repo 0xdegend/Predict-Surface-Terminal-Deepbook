@@ -65,6 +65,22 @@ describe('formatAiContext', () => {
     expect(out).toMatch(/no settled bets/i);
   });
 
+  it("lists today's scheduled events with their timing + a schedule-not-outcome caveat", () => {
+    const out = formatAiContext({
+      events: [
+        { title: 'Fed Interest Rate Decision', when: 'in about 3 hours' },
+        { title: 'US Jobless Claims', when: 'earlier today' },
+      ],
+    });
+    expect(out).toContain('Fed Interest Rate Decision (in about 3 hours)');
+    expect(out).toContain('US Jobless Claims (earlier today)');
+    expect(out).toMatch(/not a prediction of the outcome/i);
+  });
+
+  it('omits the events line when none are passed', () => {
+    expect(formatAiContext({ spot: 64_000 })).not.toMatch(/scheduled market events/i);
+  });
+
   it('describes a rangebound read without a confidence suffix', () => {
     const out = formatAiContext({ lean: { pick: 'range', confidence: 'slight' } });
     expect(out).toMatch(/no clear direction/i);

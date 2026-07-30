@@ -21,6 +21,36 @@ describe('parseIntent', () => {
     }
   });
 
+  it('calendar / macro-event asks → events', () => {
+    for (const m of [
+      "what's happening today",
+      'anything big today?',
+      'is there FOMC today',
+      'any events this week',
+      'is there a rate decision coming up',
+      'what CPI is out today',
+      "what's on the calendar",
+      'any market-moving events',
+      "what's going on this week",
+    ]) {
+      expect(parseIntent(m).kind, m).toBe('events');
+    }
+  });
+
+  it('does NOT route the plain reads / personal / causal asks to events', () => {
+    // No day anchor → the plain market read.
+    expect(parseIntent("what's happening with bitcoin").kind).toBe('analyze');
+    expect(parseIntent('how is BTC doing').kind).toBe('analyze');
+    // Personal book, even with "today".
+    expect(parseIntent("how's my pnl today").kind).toBe('portfolio');
+    // A causal "why … today" stays the driver read.
+    expect(parseIntent('why is btc moving today').kind).toBe('why_moving');
+  });
+
+  it('events is a flow interruption (answerable mid-wizard)', () => {
+    expect(isFlowInterruption({ kind: 'events' })).toBe(true);
+  });
+
   it('a single clear direction → directional_bet with that side', () => {
     const up = parseIntent('I think BTC goes up in the next hour');
     expect(up).toMatchObject({ kind: 'directional_bet', dir: 'up', horizon: 'hour' });

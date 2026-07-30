@@ -23,6 +23,8 @@ import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useBtcPositioning } from '@/lib/hooks/use-btc-positioning';
 import { useBtcNarrative } from '@/lib/hooks/use-btc-narrative';
+import { useMarketEvents } from '@/lib/hooks/use-market-events';
+import { eventGreetingLine, eventName, relTime, notableEvents } from '@/lib/insights/events';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
@@ -204,6 +206,10 @@ export function V2CopilotScreen({
   // "why is BTC moving?" answer. Slow poll (5 min) — chatter drifts over hours, and
   // x_search is the heaviest call, so this adds negligible load.
   const { data: narrative } = useBtcNarrative({ enabled: COPILOT_LIVE });
+  // Today's scheduled market-moving calendar (macro events + a news headline), for
+  // "what's happening today?" and the greeting heads-up. Slow poll (20 min) — a
+  // calendar barely changes intraday, so this adds negligible load.
+  const { data: events } = useMarketEvents({ enabled: COPILOT_LIVE });
   // Read the live spot the SAME way the top tape does — but imperatively from the
   // query cache at send-time (the tape's query already keeps it fresh), NOT via a
   // hook subscription, so this screen doesn't re-render every 1.5s and drag the
@@ -303,6 +309,21 @@ export function V2CopilotScreen({
 
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
+
+  // Fold today's biggest scheduled event into the greeting, once the calendar
+  // lands and only while the session is still fresh (just the greeting, no chat
+  // yet). Adjust-state-during-render (React's documented pattern, same as the
+  // dock's navPath reset) so the heads-up shows on the first paint after the feed
+  // arrives, not a beat later. The line uses only the event's released flag (no
+  // clock), so it's pure to build here. Guarded to run once.
+  const [greetedEvents, setGreetedEvents] = useState(false);
+  if (!greetedEvents && COPILOT_LIVE) {
+    const line = eventGreetingLine(events ?? null);
+    if (line && messages.length === 1 && messages[0]?.id === 'greet') {
+      setGreetedEvents(true);
+      setMessages([{ ...GREETING, text: [...GREETING.text, line] }]);
+    }
+  }
   // The share snapshot whose card dialog is open (null = closed). Set when the
   // trader taps "Share to X" under a shareable answer (fear & greed).
   const [shareCard, setShareCard] = useState<ShareCard | null>(null);
@@ -819,6 +840,9 @@ export function V2CopilotScreen({
       lean: lean ? { pick: lean.pick, confidence: lean.confidence } : null,
       vol: vol ?? null,
       fearGreed: insights?.sentiment ? { value: insights.sentiment.value, label: insights.sentiment.label } : null,
+      events: notableEvents(events ?? null)
+        .slice(0, 4)
+        .map((e) => ({ title: eventName(e), when: relTime(e, now) })),
       nextExpiryMins: nextExp && nextExp > now ? Math.max(1, Math.round((nextExp - now) / 60_000)) : null,
       wallet: acct.owner
         ? { connected: true, hasAccount: acct.wrapperExists, balance: fromQuote(acct.balanceBase) }
@@ -889,6 +913,7 @@ export function V2CopilotScreen({
       insights: insights ?? null,
       positioning: positioning ?? null,
       narrative: narrative ?? null,
+      events: events ?? null,
       candidates,
       now,
       spot,
@@ -979,11 +1004,14 @@ export function V2CopilotScreen({
       } else {
         reply = readReply(intent, now, spot, candidates);
         nextFlow = null;
-        // No rule match → hand the read long tail to Claude (if enabled + under the
-        // session cap), grounded in the same context. answerWithAI owns the exchange
-        // and falls back to THIS help reply on any failure. Money paths never reach
-        // here (they returned above), so Claude only ever sees reads.
-        if (intent.kind === 'help' && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
+        // Hand two kinds of read to Claude (if enabled + under the session cap),
+        // grounded in the same context, with a graceful fall back to the rule reply:
+        //  • `help` — the long tail the rule router couldn't place.
+        //  • `events` — "what's happening today?", so Claude can phrase the calendar
+        //    naturally and weave in the live mood (events are in the AiContext too).
+        // answerWithAI owns the exchange and falls back to THIS reply on any failure.
+        // Money paths never reach here (they returned above), so Claude only sees reads.
+        if ((intent.kind === 'help' || intent.kind === 'events') && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
           void answerWithAI(text, reply);
           return;
         }

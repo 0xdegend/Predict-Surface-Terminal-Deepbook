@@ -27,6 +27,9 @@ export interface AiContext {
   /** How big a move is priced in vs recently realized. */
   vol?: 'calm' | 'normal' | 'elevated' | null;
   fearGreed?: { value: number; label: string } | null;
+  /** Today's notable scheduled market events (macro calendar), most important first.
+   *  `when` is a coarse relative time ("in about 3 hours", "earlier today"). */
+  events?: { title: string; when: string }[] | null;
   /** The soonest tradeable expiry, in minutes (rounded), or null when none live. */
   nextExpiryMins?: number | null;
   wallet?: { connected: boolean; hasAccount: boolean; balance: number } | null;
@@ -84,6 +87,10 @@ export function formatAiContext(c: AiContext): string {
   }
   if (c.vol) lines.push(`Expected move: ${c.vol}.`);
   if (c.fearGreed) lines.push(`Fear and Greed index: ${c.fearGreed.value} out of 100 (${c.fearGreed.label}).`);
+  if (c.events && c.events.length) {
+    const list = c.events.slice(0, 4).map((e) => `${e.title} (${e.when})`).join('; ');
+    lines.push(`Today's scheduled market events: ${list}. These are just the schedule, not a prediction of the outcome.`);
+  }
   if (c.nextExpiryMins != null) lines.push(`Soonest market settles in about ${c.nextExpiryMins} minute${c.nextExpiryMins === 1 ? '' : 's'}.`);
   if (c.wallet) {
     if (!c.wallet.connected) lines.push('Wallet: not connected.');
