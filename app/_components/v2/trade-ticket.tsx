@@ -100,6 +100,7 @@ export function V2TradeTicket({
   const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
   const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
   const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
+  const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
   const stake = useV2TradeStore((s) => s.stake);
   const setStake = useV2TradeStore((s) => s.setStake);
   const leverage = useV2TradeStore((s) => s.leverage);
@@ -323,6 +324,17 @@ export function V2TradeTicket({
   function openReview() {
     if (!quotable || tooCloseToExpiry || insufficientFunds || !!acct.busy) return;
     setConfirmOpen(true);
+  }
+
+  // Set the range band from two typed prices (the faster alternative to tapping
+  // the curve). Snap both to the admission grid so they're real mintable strikes,
+  // and if they land on the same tick, push the upper one out by one tick so it's
+  // always a real band. The store sorts low/high, so order typed doesn't matter.
+  function setRangeFromInput(lo: number, hi: number) {
+    const a = toFloat(snapStrikeToAdmission(fromFloat(lo), admissionTickSize));
+    let b = toFloat(snapStrikeToAdmission(fromFloat(hi), admissionTickSize));
+    if (a === b) b = a + admStep;
+    setRangeBand(a, b);
   }
 
   async function handleMint() {
@@ -693,17 +705,20 @@ export function V2TradeTicket({
                   {anchorStrike != null ? (
                     <>
                       Lower level set at{' '}
-                      <span className="tabular-nums text-accent">{usd(anchorStrike)}</span> — now tap
+                      <span className="tabular-nums text-accent">{usd(anchorStrike)}</span>, now tap
                       the <span className="text-accent">upper</span> price on the curve.
                     </>
                   ) : (
                     <>
-                      Tap <span className="text-accent">two price levels</span> on the curve to bet
-                      BTC settles between them.
+                      <span className="text-accent">Type a low and high price</span> below, or tap
+                      two levels on the curve, to bet BTC settles between them.
                     </>
                   )}
                 </p>
               </div>
+              {/* Fast path: type the two prices directly. Snaps to the grid + sets
+                  the band, flipping to the same view a two-tap pick produces. */}
+              <RangeManualInput atm={atm} admStep={admStep} onSet={setRangeFromInput} disabled={tooCloseToExpiry} />
               <V2SmileChart market={market} pricer={pricer} />
             </>
           ) : (
@@ -931,6 +946,88 @@ function Row({ label, children }: { label: React.ReactNode; children: React.Reac
     <div className="flex items-center justify-between">
       <span className="text-text-3">{label}</span>
       <span className="text-text-1">{children}</span>
+    </div>
+  );
+}
+
+/**
+ * Type-a-range: two price inputs + Set, the fast alternative to tapping two points
+ * on the odds curve. Local string state so a field can be empty / mid-edit; the
+ * parent snaps to the admission grid and sorts low/high, so order and off-grid
+ * values are fine. Set stays disabled until both are positive and distinct; Enter
+ * in either field submits. Placeholders show example levels around the current
+ * price so the expected input is obvious.
+ */
+function RangeManualInput({
+  atm,
+  admStep,
+  onSet,
+  disabled,
+}: {
+  atm: number;
+  admStep: number;
+  onSet: (lo: number, hi: number) => void;
+  disabled?: boolean;
+}) {
+  const [lo, setLo] = useState('');
+  const [hi, setHi] = useState('');
+  const parse = (v: string): number | null => {
+    if (!/^\d[\d,]*(?:\.\d+)?$/.test(v.trim())) return null;
+    const n = Number(v.replace(/,/g, ''));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const loN = parse(lo);
+  const hiN = parse(hi);
+  const ready = !disabled && loN != null && hiN != null && loN !== hiN;
+  const submit = () => {
+    // Re-check inline (not via `ready`) so TS narrows loN/hiN to numbers here.
+    if (disabled || loN == null || hiN == null || loN === hiN) return;
+    onSet(loN, hiN);
+  };
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submit();
+    }
+  };
+  const field = (
+    value: string,
+    set: (v: string) => void,
+    label: string,
+    placeholder: string,
+  ) => (
+    <label className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className="text-[10px] uppercase tracking-wider text-text-3">{label}</span>
+      <div className="ctrl-soft flex items-center gap-1 rounded-md px-2 py-1.5 focus-within:border-white/20">
+        <span className="text-[10px] text-text-3">$</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={(e) => set(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-label={`Range ${label.toLowerCase()} price`}
+          className="w-full min-w-0 bg-transparent text-right font-mono tabular-nums text-text-1 outline-none placeholder:text-text-3/50"
+        />
+      </div>
+    </label>
+  );
+  return (
+    <div className="flex items-end gap-2">
+      {field(lo, setLo, 'Low', Math.round(atm - 3 * admStep).toLocaleString('en-US'))}
+      {field(hi, setHi, 'High', Math.round(atm + 3 * admStep).toLocaleString('en-US'))}
+      <button
+        type="button"
+        onClick={submit}
+        disabled={!ready}
+        className={`shrink-0 rounded-md px-3 py-2 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+          ready ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3 opacity-60'
+        }`}
+      >
+        Set
+      </button>
     </div>
   );
 }
