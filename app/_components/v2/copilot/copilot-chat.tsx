@@ -12,8 +12,9 @@
  * ticket. Nothing here signs or mints.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LuSparkles, LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins } from 'react-icons/lu';
+import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
+import { MASCOT_SRC } from '@/lib/mascot';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
@@ -130,10 +131,18 @@ export function CopilotChat({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* header */}
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-(--accent-soft) text-accent">
-          <LuSparkles size={13} />
-        </span>
+      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+        {/* Kelly's face — the fox mascot cropped into a circle for proper branding
+            (the confident "smart" expression). Decorative; the name sits beside it. */}
+        <span
+          aria-hidden
+          className="h-8 w-8 flex-none rounded-full bg-(--accent-soft) bg-no-repeat ring-1 ring-(--accent-line)"
+          style={{
+            backgroundImage: `url(${MASCOT_SRC.confident})`,
+            backgroundSize: '155%',
+            backgroundPosition: '50% 20%',
+          }}
+        />
         <div className="flex flex-col">
           <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Kelly</h2>
           <span className="text-[9.5px] uppercase tracking-wider text-text-3">Auto · beta · grounded in live data</span>
