@@ -32,9 +32,20 @@ export function ExpectedMoveBand({
         </div>
         {onShare && <ShareXButton onClick={onShare} label="Share the expected range" />}
       </div>
-      <div className="relative mb-2 mt-6 h-2.5 rounded-md border border-(--accent-line) bg-(--accent-soft)">
-        <div className="absolute top-[-6px] h-[22px] w-0.5 rounded bg-text-1" style={{ left: `${pos * 100}%` }}>
-          <span className="absolute left-1/2 top-[-3px] h-2 w-2 -translate-x-1/2 rounded-full bg-text-1" />
+      <div className="relative mb-2 mt-7 h-3">
+        {/* Frosted glass track: translucent accent fill, a center-weighted glow
+            (densest where the price most likely lands), a top sheen, and an inset
+            shadow for real depth. */}
+        <div className="absolute inset-0 overflow-hidden rounded-full border border-(--accent-line) bg-(--accent-soft) shadow-[inset_0_-2px_6px_rgba(0,0,0,0.5)]">
+          <div className="absolute inset-0 bg-[radial-gradient(130%_160%_at_50%_50%,rgba(77,214,176,0.28),transparent_72%)]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/15 to-transparent" />
+        </div>
+        {/* "Now" marker: a glassy needle with a glowing cap dot. */}
+        <div
+          className="absolute top-1/2 z-10 h-5.5 w-0.75 -translate-x-1/2 -translate-y-1/2 rounded-full bg-linear-to-b from-white via-white to-white/55 shadow-[0_0_10px_rgba(255,255,255,0.4)]"
+          style={{ left: `${pos * 100}%` }}
+        >
+          <span className="absolute left-1/2 -top-1.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full border border-white/70 bg-white shadow-[0_0_12px_3px_rgba(77,214,176,0.5)]" />
         </div>
       </div>
       <div className="flex justify-between font-mono text-[12px] tabular-nums text-text-2">

@@ -24,6 +24,8 @@ describe('parseIntent', () => {
   it('calendar / macro-event asks → events', () => {
     for (const m of [
       "what's happening today",
+      'what is happening today?', // spelled-out "what is" (the reported miss)
+      'what is going on today',
       'anything big today?',
       'is there FOMC today',
       'any events this week',
@@ -31,6 +33,7 @@ describe('parseIntent', () => {
       'what CPI is out today',
       "what's on the calendar",
       'any market-moving events',
+      'what are the events happening today',
       "what's going on this week",
     ]) {
       expect(parseIntent(m).kind, m).toBe('events');
@@ -40,6 +43,7 @@ describe('parseIntent', () => {
   it('does NOT route the plain reads / personal / causal asks to events', () => {
     // No day anchor → the plain market read.
     expect(parseIntent("what's happening with bitcoin").kind).toBe('analyze');
+    expect(parseIntent('what is happening').kind).toBe('analyze'); // "what is", but no day anchor
     expect(parseIntent('how is BTC doing').kind).toBe('analyze');
     // Personal book, even with "today".
     expect(parseIntent("how's my pnl today").kind).toBe('portfolio');
