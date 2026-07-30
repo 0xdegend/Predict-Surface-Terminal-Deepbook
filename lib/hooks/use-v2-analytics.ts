@@ -37,7 +37,6 @@ import {
   type Kpis,
   type Sentiment,
 } from '@/lib/analytics/v2-aggregate';
-import { classifyV2Traders, type V2TraderStyles } from '@/lib/analytics/v2-trader-style';
 import type { V2Market, V2OrderEvent, V2OpenInterest } from '@/lib/api/v2/types';
 
 export interface UseV2Analytics {
@@ -45,8 +44,6 @@ export interface UseV2Analytics {
   kpis: Kpis;
   sentiment: Sentiment;
   flow: FlowRow[];
-  /** Traders classified by how they bet, from the same order feeds. */
-  traderStyles: V2TraderStyles;
   isLoading: boolean;
   /** True once at least one market's feeds have resolved. */
   hasData: boolean;
@@ -125,7 +122,6 @@ export function useV2Analytics(initialMarkets: V2Market[], spot: number | null):
   const allOrders = useMemo(() => [...ordersByMarket.values()].flat(), [ordersByMarket]);
   const kpis = useMemo(() => kpisFromData(allOrders, activeMarkets.length), [allOrders, activeMarkets.length]);
   const sentiment = useMemo(() => sentimentFromOrders(allOrders), [allOrders]);
-  const traderStyles = useMemo(() => classifyV2Traders(ordersByMarket), [ordersByMarket]);
 
   const anyLoading = ordersQ.some((q) => q.isLoading);
   return {
@@ -133,7 +129,6 @@ export function useV2Analytics(initialMarkets: V2Market[], spot: number | null):
     kpis,
     sentiment,
     flow,
-    traderStyles,
     isLoading: anyLoading && flow.length === 0,
     hasData: ordersByMarket.size > 0,
   };

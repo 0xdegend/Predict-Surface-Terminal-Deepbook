@@ -1,11 +1,15 @@
 'use client';
 
 /**
- * V2StylesTool — how the active traders bet, for the new deployment (legacy
- * StylesTab's twin). A plain-language legend of the archetypes, the distribution
- * across classified traders, then the roster ranked by amount bet. Built on the
- * shared classifier (classifyV2Traders → classifyStyle) so a trader's archetype
- * matches everywhere; reuses the shared StyleBadge visuals.
+ * V2StylesTool — how traders bet, for the new deployment (legacy StylesTab's
+ * twin). A plain-language legend of the archetypes, the distribution across
+ * classified traders, then the roster ranked by amount bet. Built on the shared
+ * classifier (classifyV2Traders → classifyStyle) so a trader's archetype matches
+ * everywhere; reuses the shared StyleBadge visuals.
+ *
+ * Presentational only — the roster comes pre-classified from the cached
+ * `/api/v2/trader-styles` route (the whole retained ~8h window, not just the live
+ * flow-tape window), via useV2TraderStylesRoster.
  *
  * v2 has no in-app trader profile yet, so roster rows link out to the account on
  * the explorer rather than a /trader page.
@@ -57,13 +61,15 @@ export function V2StylesTool({ styles, loading }: { styles: V2TraderStyles; load
       <div className="glass-card overflow-hidden">
         <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Trader styles</div>
-          <div className="eyebrow mt-0.5 text-text-3">how {total} active traders bet</div>
+          <div className="eyebrow mt-0.5 text-text-3">
+            {total > 0 ? `how ${total} traders bet` : 'from the last few hours of bets'}
+          </div>
         </div>
         <div className="p-4">
           {loading ? (
             <BarsSkeleton />
           ) : distribution.length === 0 ? (
-            <div className="py-8 text-center text-[12px] text-text-3">Not enough trading history yet.</div>
+            <div className="py-8 text-center text-[12px] text-text-3">No recent bets to chart yet.</div>
           ) : (
             <div className="flex flex-col gap-2.5">
               {distribution.map((d) => {
@@ -99,7 +105,9 @@ export function V2StylesTool({ styles, loading }: { styles: V2TraderStyles; load
         {loading ? (
           <RowsSkeleton />
         ) : traders.length === 0 ? (
-          <div className="px-4 py-10 text-center text-[12px] text-text-3">No classified traders yet.</div>
+          <div className="px-4 py-10 text-center text-[12px] text-text-3">
+            No wallet has placed enough bets to read a style yet.
+          </div>
         ) : (
           <div className="rows-divided">
             {traders.map((t) => (

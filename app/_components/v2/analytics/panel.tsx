@@ -10,11 +10,17 @@
  * (there is no global flow endpoint, so it fans out across the active markets):
  * volume + bet counts from the activity rollups, direction/sentiment/flow from the
  * order events, implied vol from the live pricer.
+ *
+ * The Trader-styles roster is the ONE exception: it needs the whole retained
+ * ~8h window (not just the tight live window the flow tape uses), so it comes
+ * from its own cached server route via useV2TraderStylesRoster, fetched lazily
+ * only while that tab is open.
  */
 import { useState } from 'react';
 import { LuChartNoAxesCombined } from 'react-icons/lu';
 import { predictV2Config } from '@/config/predict';
 import { useV2Analytics } from '@/lib/hooks/use-v2-analytics';
+import { useV2TraderStylesRoster } from '@/lib/hooks/use-v2-trader-styles-roster';
 import type { V2Market } from '@/lib/api/v2/types';
 import { V2AnalyticsToolbar, type V2AnalyticsTool } from './toolbar';
 import { V2Pulse, V2MarketsTool, V2SentimentTool, V2VolTool } from './tools';
@@ -29,7 +35,10 @@ export function V2AnalyticsPanel({
   spot: number | null;
 }) {
   const [tool, setTool] = useState<V2AnalyticsTool>('pulse');
-  const { cells, kpis, sentiment, flow, traderStyles, isLoading } = useV2Analytics(markets, spot);
+  const { cells, kpis, sentiment, flow, isLoading } = useV2Analytics(markets, spot);
+  // Own the roster separately (whole retained window, cached server-side); only
+  // fan it out once the trader actually opens the Styles tab.
+  const roster = useV2TraderStylesRoster({ enabled: tool === 'styles' });
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
@@ -54,7 +63,7 @@ export function V2AnalyticsPanel({
           {tool === 'markets' && <V2MarketsTool cells={cells} />}
           {tool === 'sentiment' && <V2SentimentTool sentiment={sentiment} cells={cells} />}
           {tool === 'vol' && <V2VolTool cells={cells} />}
-          {tool === 'styles' && <V2StylesTool styles={traderStyles} loading={isLoading} />}
+          {tool === 'styles' && <V2StylesTool styles={roster.styles} loading={roster.loading} />}
           {tool === 'flow' && <V2FlowTape rows={flow} title="Live bets" />}
         </div>
       )}

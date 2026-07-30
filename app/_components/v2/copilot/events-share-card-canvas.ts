@@ -9,7 +9,7 @@
  * so it never drifts from the other cards. Amber is its one accent — the
  * "heads-up / market watch" identity, distinct from the fear & greed ramp.
  */
-import { SHARE_DIMS, roundRect, spaced } from '@/app/_components/positions/share-card-canvas';
+import { SHARE_DIMS, roundRect, spaced, getMascotMark } from '@/app/_components/positions/share-card-canvas';
 import { utcTime } from '@/lib/insights/events';
 import {
   fontFamily,
@@ -20,7 +20,6 @@ import {
   drawBrandHeader,
   drawFooter,
   siteSpans,
-  drawFox,
 } from '@/app/_components/v2/share/share-kit';
 
 const { W, H, P } = SHARE_DIMS;
@@ -52,6 +51,63 @@ function compactWhen(when: string): string {
  *  e.g. "13:30 UTC"), otherwise the compact relative phrase. */
 function pillLabel(e: { at: number | null; when: string }): string {
   return e.at != null ? utcTime(e.at) : compactWhen(e.when);
+}
+
+/**
+ * Kelly, emerging from a warm pool of light with soft feathered edges — no hard
+ * circle or ring. The fox is masked on an offscreen canvas (rendered at full DPR
+ * so it stays crisp): a radial mask dissolves every edge into the glow, and a
+ * stronger bottom fade melts the source art's cropped torso away entirely. The
+ * result reads as ambient art, not a pasted-on avatar.
+ */
+function drawFoxSoft(
+  ctx: CanvasRenderingContext2D,
+  mood: 'won' | 'lost' | 'smart' | 'thinking',
+  cx: number,
+  cy: number,
+  size: number,
+  accent: string,
+  dpr: number,
+) {
+  // Ambient glow behind Kelly — a soft, layered pool of warm light.
+  const glow = ctx.createRadialGradient(cx, cy - size * 0.06, 0, cx, cy - size * 0.06, size * 0.78);
+  glow.addColorStop(0, rgbA(accent, 0.22));
+  glow.addColorStop(0.5, rgbA(accent, 0.07));
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(cx - size, cy - size, size * 2, size * 2);
+
+  const fox = getMascotMark(mood);
+  if (!fox) return;
+
+  // Feather the fox on an offscreen buffer so we can fade to TRANSPARENT (revealing
+  // the glow seamlessly) rather than to a flat color patch.
+  const off = document.createElement('canvas');
+  off.width = Math.max(1, Math.round(size * dpr));
+  off.height = Math.max(1, Math.round(size * dpr));
+  const o = off.getContext('2d');
+  if (!o) {
+    ctx.drawImage(fox, cx - size / 2, cy - size / 2, size, size);
+    return;
+  }
+  o.scale(dpr, dpr);
+  o.drawImage(fox, 0, 0, size, size);
+
+  // destination-in keeps only where the mask is opaque; two masks multiply.
+  o.globalCompositeOperation = 'destination-in';
+  const radial = o.createRadialGradient(size / 2, size * 0.44, size * 0.12, size / 2, size * 0.44, size * 0.6);
+  radial.addColorStop(0, 'rgba(0,0,0,1)');
+  radial.addColorStop(0.72, 'rgba(0,0,0,1)');
+  radial.addColorStop(1, 'rgba(0,0,0,0)');
+  o.fillStyle = radial;
+  o.fillRect(0, 0, size, size);
+  const bottom = o.createLinearGradient(0, size * 0.5, 0, size * 0.95);
+  bottom.addColorStop(0, 'rgba(0,0,0,1)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0)');
+  o.fillStyle = bottom;
+  o.fillRect(0, 0, size, size);
+
+  ctx.drawImage(off, cx - size / 2, cy - size / 2, size, size);
 }
 
 /** The hero line, driven by the count so it always reads true. */
@@ -163,9 +219,9 @@ export function drawEventsCard(canvas: HTMLCanvasElement, data: EventsShareData,
   const colX0 = P + listW + 46;
   const colCx = (colX0 + (W - P)) / 2;
 
-  // The fox (Kelly), confident and on top of it, over a warm pool of light.
-  const foxSize = 196;
-  drawFox(ctx, 'smart', colCx - foxSize / 2, 150, foxSize, accent);
+  // The fox (Kelly), confident and on top of it — big, emerging from the glow with
+  // feathered edges so the source art's cropped bottom melts away (no hard circle).
+  drawFoxSoft(ctx, 'smart', colCx, 236, 300, accent, scale);
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
@@ -174,17 +230,17 @@ export function drawEventsCard(canvas: HTMLCanvasElement, data: EventsShareData,
   ctx.font = `600 14px ${sans}`;
   ctx.letterSpacing = '2px';
   ctx.fillStyle = accent;
-  ctx.fillText(spaced('KELLY IS WATCHING'), colCx, 392);
+  ctx.fillText(spaced('KELLY IS WATCHING'), colCx, 416);
   ctx.letterSpacing = '0px';
 
   ctx.font = `700 27px ${sans}`;
   ctx.fillStyle = PAL.t1;
-  ctx.fillText('Kelly reads the', colCx, 432);
-  ctx.fillText('market for you', colCx, 466);
+  ctx.fillText('Kelly reads the', colCx, 452);
+  ctx.fillText('market for you', colCx, 486);
 
   ctx.font = `400 17px ${sans}`;
   ctx.fillStyle = PAL.t2;
-  ctx.fillText('Ask: what’s happening today?', colCx, 508);
+  ctx.fillText('Ask: what’s happening today?', colCx, 528);
   ctx.textAlign = 'left';
 
   // Footer: calendar source (left) + site (right).

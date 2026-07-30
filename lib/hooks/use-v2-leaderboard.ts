@@ -30,6 +30,7 @@ import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
+import { mapPool, withRetry } from '@/lib/api/v2/fan-out';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
 import { predictV2Config } from '@/config/predict';
@@ -53,37 +54,6 @@ const eventKey = (o: V2OrderEvent): string => {
   const r = o as { event_digest?: string; digest?: string; event_index?: number };
   return r.event_digest ?? `${r.digest ?? ''}-${r.event_index ?? ''}-${o.kind ?? ''}-${o.order_id ?? ''}`;
 };
-
-/** Run `worker` over `items` with at most `limit` in flight. */
-async function mapPool(items: string[], limit: number, worker: (id: string) => Promise<void>): Promise<void> {
-  let cursor = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const idx = cursor++;
-      await worker(items[idx]);
-    }
-  });
-  await Promise.all(runners);
-}
-
-/**
- * Retry a fetch a few times before giving up. The beta indexer occasionally
- * drops a request under the fan-out; without this a single transient failure
- * silently evicts that market's — or a pinned trader's — orders for the whole
- * cycle, which is what made known traders blink on and off the board.
- */
-async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
-  let err: unknown;
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      err = e;
-      await new Promise((r) => setTimeout(r, 250 * (i + 1)));
-    }
-  }
-  throw err;
-}
 
 export interface UseV2Leaderboard {
   rows: V2LeaderboardRow[];
