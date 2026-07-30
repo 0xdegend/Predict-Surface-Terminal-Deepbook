@@ -3,6 +3,7 @@ import {
   topEvent,
   notableEvents,
   relTime,
+  utcTime,
   eventName,
   eventGreetingLine,
   buildEventsReply,
@@ -78,6 +79,14 @@ describe('prettyTitle', () => {
 
   it('falls back to a parentheses-stripped title for anything unmapped', () => {
     expect(prettyTitle('Widget Sentiment Survey (Flash)(Aug)')).toBe('Widget Sentiment Survey');
+  });
+});
+
+describe('utcTime', () => {
+  it('formats a timestamp as a zero-padded UTC clock label', () => {
+    expect(utcTime(Date.UTC(2026, 6, 30, 13, 30))).toBe('13:30 UTC');
+    expect(utcTime(Date.UTC(2026, 6, 30, 8, 5))).toBe('08:05 UTC');
+    expect(utcTime(Date.UTC(2026, 6, 30, 0, 0))).toBe('00:00 UTC');
   });
 });
 

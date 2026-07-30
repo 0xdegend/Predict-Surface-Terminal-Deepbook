@@ -796,8 +796,18 @@ describe('respondToIntent — events', () => {
     expect(r.text.join('\n')).toMatch(/not a prediction/i);
   });
 
-  it('says the calendar is unavailable when no feed loaded', () => {
+  it('offers a Share-to-X card carrying the event lineup', () => {
+    const r = respondToIntent({ kind: 'events' }, ctx({ events: eventsFeed }));
+    expect(r.share).toBeDefined();
+    expect(r.share).toMatchObject({ kind: 'events' });
+    if (r.share?.kind === 'events') {
+      expect(r.share.events[0]).toEqual({ title: 'US Fed Interest Rate Decision', at: NOW + 3 * HOUR, when: 'in about 3 hours' });
+    }
+  });
+
+  it('says the calendar is unavailable when no feed loaded, and offers no share', () => {
     const r = respondToIntent({ kind: 'events' }, ctx({ events: null }));
     expect(r.text[0]).toMatch(/can.t pull today.s calendar/i);
+    expect(r.share).toBeUndefined();
   });
 });

@@ -44,6 +44,7 @@ import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotRep
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
 import { FearGreedShareModal } from './fear-greed-share-modal';
+import { EventsShareModal } from './events-share-modal';
 import { PerfShareCardModal } from '@/app/_components/positions/perf-share-card-modal';
 import type { PerfShareData } from '@/app/_components/positions/perf-share-card-canvas';
 import {
@@ -884,11 +885,13 @@ export function V2CopilotScreen({
     try {
       const reply = await askKellyAI({ message: text, history, context }, controller.signal);
       if (reply.available && reply.text?.length) {
-        // When the trader asked about their performance and has a settled record,
-        // offer the SAME win-rate Share-to-X card the rule tier attaches — the chip
-        // + modal wiring (handleShare → perfShareData) already works for it.
+        // Carry the rule fallback's own Share-to-X card onto the AI answer (e.g. the
+        // "today's events" card), so the chip appears whether Kelly answered by rule
+        // or by Claude. Otherwise, offer the win-rate card on a performance question
+        // when the trader has a settled record (same chip + modal wiring).
         const share: ShareCard | undefined =
-          context.record && context.record.total > 0 && isPerformanceQuestion(text) ? { kind: 'win_rate' } : undefined;
+          fallback.share ??
+          (context.record && context.record.total > 0 && isPerformanceQuestion(text) ? { kind: 'win_rate' } : undefined);
         setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text!, share }]);
       } else showFallback();
     } catch {
@@ -1104,6 +1107,12 @@ export function V2CopilotScreen({
           label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
           onClose={() => setShareCard(null)}
         />
+        <EventsShareModal
+          open={shareCard?.kind === 'events'}
+          events={shareCard?.kind === 'events' ? shareCard.events : null}
+          headline={shareCard?.kind === 'events' ? shareCard.headline : null}
+          onClose={() => setShareCard(null)}
+        />
         <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />
       </>
     );
@@ -1168,6 +1177,12 @@ export function V2CopilotScreen({
         open={shareCard?.kind === 'fear_greed'}
         value={shareCard?.kind === 'fear_greed' ? shareCard.value : null}
         label={shareCard?.kind === 'fear_greed' ? shareCard.label : null}
+        onClose={() => setShareCard(null)}
+      />
+      <EventsShareModal
+        open={shareCard?.kind === 'events'}
+        events={shareCard?.kind === 'events' ? shareCard.events : null}
+        headline={shareCard?.kind === 'events' ? shareCard.headline : null}
         onClose={() => setShareCard(null)}
       />
       <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />

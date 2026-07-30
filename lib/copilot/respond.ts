@@ -22,7 +22,7 @@ import { buildMarketRead, directionStance, recommendation } from '@/lib/insights
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
 import { buildNarrative } from '@/lib/insights/narrative';
-import { buildEventsReply } from '@/lib/insights/events';
+import { buildEventsReply, notableEvents, eventName, relTime } from '@/lib/insights/events';
 import type { Positioning } from '@/lib/insights/positioning';
 import type { NarrativeFeed } from '@/lib/insights/narrative';
 import type { EventsFeed } from '@/lib/insights/events';
@@ -138,6 +138,7 @@ export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: stri
  *  history ref), so the two use different modals. The union leaves room for more. */
 export type ShareCard =
   | { kind: 'fear_greed'; value: number; label: string }
+  | { kind: 'events'; events: { title: string; at: number | null; when: string }[]; headline?: string | null }
   | { kind: 'win_rate' };
 
 export interface CopilotReply {
@@ -1437,7 +1438,15 @@ function whyMovingReply(ctx: CopilotContext): CopilotReply {
  *  screen may re-phrase this through the AI tier (events are also in the AiContext),
  *  falling back to exactly these lines. */
 function eventsReply(ctx: CopilotContext): CopilotReply {
-  return { text: buildEventsReply(ctx.events ?? null, ctx.now) };
+  const text = buildEventsReply(ctx.events ?? null, ctx.now);
+  const events = notableEvents(ctx.events ?? null)
+    .slice(0, 5)
+    .map((e) => ({ title: eventName(e), at: e.at, when: relTime(e, ctx.now) }));
+  // Offer a Share-to-X card only when there's a real lineup to show off (a
+  // quiet-calendar day has nothing worth posting).
+  const share: ShareCard | undefined =
+    events.length > 0 ? { kind: 'events', events, headline: ctx.events?.headline ?? null } : undefined;
+  return { text, share };
 }
 
 export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): CopilotReply {

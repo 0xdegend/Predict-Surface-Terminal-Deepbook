@@ -90,6 +90,16 @@ export function topEvent(feed: EventsFeed | null): MarketEvent | null {
   return notableEvents(feed)[0] ?? null;
 }
 
+/** The event's scheduled time as a UTC clock label, e.g. "13:30 UTC". Only valid
+ *  when the event has an exact time (`at != null`); UTC keeps it unambiguous for a
+ *  global audience and dodges any local-timezone drift. */
+export function utcTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm} UTC`;
+}
+
 /** A coarse, timezone-safe relative time for an event vs `now`. */
 export function relTime(evt: MarketEvent, now: number): string {
   if (evt.released || (evt.at != null && evt.at <= now)) {
