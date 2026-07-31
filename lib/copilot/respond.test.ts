@@ -369,6 +369,23 @@ describe('respondToIntent — surface-native analysis', () => {
     expect(r.text.join(' ')).toMatch(/couple of live expiries|check back/i);
   });
 
+  it('surface_shape → explains the current shape (height + tilt + slope)', () => {
+    const r = respondToIntent({ kind: 'surface_shape' }, sctx);
+    const blob = r.text.join(' ');
+    expect(r.bet).toBeUndefined();
+    expect(blob).toMatch(/height/i);
+    expect(blob).toMatch(/tilt/i);
+    expect(blob).toMatch(/slope/i); // two expiries → a front-to-back slope line
+    expect(blob).toMatch(/1% drop/);
+    expect(blob).toMatch(/1% pop/);
+    expect(blob).toMatch(/downside|upside|even/i);
+  });
+
+  it('surface_shape → no market to read → a graceful fallback', () => {
+    const r = respondToIntent({ kind: 'surface_shape' }, { ...sctx, candidates: [] });
+    expect(r.text.join(' ')).toMatch(/no live market|check back/i);
+  });
+
   // Deterministic upward-drifting tape, so a small up move has a real base rate.
   const CLOSES = Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i));
 
@@ -684,6 +701,8 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'skew' }, ctx()),
       respondToIntent({ kind: 'term_structure' }, ctx()),
       respondToIntent({ kind: 'no_arb' }, ctx()),
+      respondToIntent({ kind: 'surface_shape' }, ctx()),
+      respondToIntent({ kind: 'surface_shape' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })), // exercises the height verdict
       respondToIntent({ kind: 'reality_check', level: { kind: 'move', pct: 0.5 }, dir: 'up' }, ctx({ closes: Array.from({ length: 300 }, (_, i) => 66_000 * (1 + 0.0004 * i)) })),
       respondToIntent({ kind: 'recommend' }, ctx()),
       respondToIntent({ kind: 'markets_overview' }, ctx()),

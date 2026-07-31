@@ -125,7 +125,15 @@ const AUTO_ROTATE_SPEED = 0.1;
 // it eases toward (resting distance is ~14; min is 8), a gentle zoom, not a lunge.
 const FOCUS_EASE_MS = 850;
 const FOCUS_HOLD_MS = 2400;
-const FOCUS_DIST = 10.5;
+const FOCUS_DIST = 11.5;
+// Keep the focus glide FLATTERING (the "it rotates to an ugly angle" report): a
+// SMALL azimuth nudge toward the node instead of a full face (which, for an off-
+// centre strike, swung the camera to the wing where the surface goes edge-on), and
+// an elevation held in a pleasant band (never tilted flat). Much tighter than the
+// full ~66° orbit arc / near-horizontal polar the manual controls allow.
+const FOCUS_AZ_ARC = 0.42; // ≈24° each way from front-centre
+const FOCUS_POLAR_MIN = 0.95; // ≈54° from vertical
+const FOCUS_POLAR_MAX = 1.22; // ≈70°, short of the edge-on max
 // Reusable scratch for the focus camera glide — one controller exists, so keeping
 // these module-level honors the "zero per-frame allocations in the loop" budget.
 const _focusSph = new THREE.Spherical();
@@ -1371,7 +1379,7 @@ function FocusController({
 }) {
   const camera = useThree((s) => s.camera);
   const focus = useV2TradeStore((s) => s.focus);
-  const tween = useRef<{ start: number; fromAz: number; toAz: number; fromDist: number; toDist: number } | null>(null);
+  const tween = useRef<{ start: number; fromAz: number; toAz: number; fromDist: number; toDist: number; fromPolar: number; toPolar: number } | null>(null);
   const done = useRef(true);
 
   useEffect(() => {
@@ -1379,15 +1387,22 @@ function FocusController({
     if (!enabled || !focus || !c) return;
     const p = locate(mesh, surface, focus.marketId, focus.strike);
     if (!p) return;
-    // Azimuth that brings the node to front-centre (only x/z matter for the
-    // horizontal angle), clamped so we never swing behind the surface.
-    const az = Math.max(AZ_MIN, Math.min(AZ_MAX, Math.atan2(p.x - c.target.x, p.z - c.target.z)));
+    // A SMALL nudge toward the node (not a full face): the azimuth that would centre
+    // it, but clamped to a tight window around front so the camera never swings to
+    // the wing where the surface reads edge-on.
+    const faceAz = Math.atan2(p.x - c.target.x, p.z - c.target.z);
+    const az = Math.max(FRONT_AZ - FOCUS_AZ_ARC, Math.min(FRONT_AZ + FOCUS_AZ_ARC, faceAz));
+    // Hold the elevation in a flattering band — if the view had been tilted low
+    // (near edge-on), the glide lifts it back to a pleasant 3/4 angle.
+    const polar = c.getPolarAngle();
     tween.current = {
       start: performance.now(),
       fromAz: c.getAzimuthalAngle(),
       toAz: az,
       fromDist: c.getDistance(),
       toDist: FOCUS_DIST,
+      fromPolar: polar,
+      toPolar: Math.max(FOCUS_POLAR_MIN, Math.min(FOCUS_POLAR_MAX, polar)),
     };
     done.current = false;
     onStart();
@@ -1406,7 +1421,8 @@ function FocusController({
     const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
     const az = tw.fromAz + (tw.toAz - tw.fromAz) * e;
     const dist = tw.fromDist + (tw.toDist - tw.fromDist) * e;
-    _focusSph.set(dist, c.getPolarAngle(), az);
+    const polar = tw.fromPolar + (tw.toPolar - tw.fromPolar) * e;
+    _focusSph.set(dist, polar, az);
     _focusOff.setFromSpherical(_focusSph);
     camera.position.copy(c.target).add(_focusOff);
     c.update();

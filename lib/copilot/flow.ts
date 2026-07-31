@@ -59,7 +59,13 @@ export interface FlowResult {
   reply: CopilotReply;
 }
 
-const CANCEL = /\b(cancel|stop|never ?mind|quit|forget it|exit)\b/;
+// Cancel / clear the setup — a generous set of natural phrasings, since people
+// say this many ways ("clear the setup", "cancel the trade", "start over", "forget
+// it"). Deliberately EXCLUDES anything that's a valid wizard answer: no direction
+// words (up/down/above/below/drop/rise…), numbers, or "Nx", so a real answer is
+// never mistaken for a cancel. Checked before the answer is parsed (advanceFlow).
+const CANCEL =
+  /\b(cancel|clear|reset|stop|halt|never ?mind|nvm|quit|exit|abort|forget|scratch|start (?:over|again)|do ?over|call it off|back out|undo|no thanks?|not now|leave it|changed my mind|change my mind|second thoughts?|get rid|ditch|wipe|remove it|delete it)\b/;
 
 /** Prefer a market with room to finish the wizard, and re-pin before the current
  *  one closes — these markets are short, and a chat setup takes a while. */

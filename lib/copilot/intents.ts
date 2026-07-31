@@ -47,6 +47,10 @@ export type CopilotIntent =
   | { kind: 'skew' }
   | { kind: 'term_structure'; dir?: BetDirection }
   | { kind: 'no_arb' }
+  // "Why does the surface LOOK like this?" — a live read of the CURRENT shape
+  // (height / tilt / front-to-back slope), distinct from the definitional
+  // explain→surface ("what is the surface").
+  | { kind: 'surface_shape' }
   | { kind: 'busiest_strike'; scope: 'now' | 'all' }
   | { kind: 'surface_volume'; scope: 'now' | 'all' }
   | { kind: 'markets_overview' }
@@ -210,21 +214,57 @@ function wantsStrikeAnalysis(text: string): boolean {
 }
 
 /**
+ * A "place the bet now" confirmation, optionally carrying a stake and/or leverage
+ * OVERRIDE to apply to the bet Kelly just suggested: "trade it", "place it with 1
+ * dusdc", "do it, 5 dusdc at 2x". Returns the overrides (`{}` when none) when the
+ * message confirms, or `null` when it doesn't.
+ *
+ * The line between this and a NEW trade spec ("trade 66000, 2x, 6 dusdc" →
+ * start_trade): a confirmation REFERENCES the pending bet ("trade IT", "place
+ * THIS", a bare "yes"/"do it"), so any numbers are tweaks to THAT bet, not a fresh
+ * order. A spec that names a strike/side without an "it/this/the bet" anchor is not
+ * a confirm. A question ("should I trade it?") and a long ramble are not either.
+ */
+export function placeConfirmation(message: string): { stake?: number; leverage?: number } | null {
+  const t = message.toLowerCase().trim().replace(/[’]/g, "'").replace(/[.!?]+$/, '');
+  if (!t) return null;
+  if (t.split(/\s+/).length > 8) return null; // confirmations are short, not rambles
+  // A question is not a confirmation ("should I trade it", "do you think I should
+  // place it"). "do it" (a confirm) is spared — only "do i/we/you …" bails.
+  if (/^(?:should|shall|can|could|would|does|is|are|was|were|what|which|how|why|when|will|might|worth)\b/.test(t)) return null;
+  if (/^do (?:i|we|you)\b/.test(t)) return null;
+
+  // "<verb> it/this/that/(the|my) bet/trade/position" — the object keeps a bare
+  // "trade 66000" (a new spec) from matching. Plus standalone affirmations.
+  const refConfirm = /\b(?:trade|place|open|send|do|lock|buy|book)\s+(?:it|this|that|(?:the |my )?(?:bet|trade|position|order))\b/.test(t);
+  const bareConfirm = /^(?:yes|yep|yeah|yup|ok|okay|sure|confirm|do it|go|go for it|let'?s go|lets go|send it|lock it in|place it|trade it|open it)\b/.test(t);
+  if (!refConfirm && !bareConfirm) return null;
+
+  // Optional stake / leverage overrides for the pending bet.
+  const out: { stake?: number; leverage?: number } = {};
+  const lev = t.match(/\b(?:leverage|lev)\s*(?:to|of|is|at|=|:)?\s*(\d+(?:\.\d+)?)\s*x?\b/) ?? t.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
+  if (lev) out.leverage = parseFloat(lev[1]);
+  const stakeM =
+    t.match(/\b(\d[\d,]*(?:\.\d+)?)\s*dusdc\b/) ??
+    t.match(/\bwith\s+\$?(\d[\d,]*(?:\.\d+)?)\b/) ??
+    t.match(/\$(\d[\d,]*(?:\.\d+)?)\b/) ??
+    t.match(/\b(?:stake|bet|amount|risk|size|for)\s+\$?(\d[\d,]*(?:\.\d+)?)\b/);
+  if (stakeM) {
+    const n = parseFloat(stakeM[1].replace(/,/g, ''));
+    if (!(out.leverage != null && n === out.leverage)) out.stake = n; // don't read "2x" as a $2 stake
+  }
+  return out;
+}
+
+/**
  * A short "place the bet now" confirmation ("trade it", "place it", "yes", "do it")
  * — the typed equivalent of tapping the review card's Trade it / Place this bet
- * button. The screen only acts on it when a bet is actually pending, so a lone
- * "yes" with nothing set up just falls through. A parameter-packed message (a NEW
- * trade spec) or a long sentence is never a confirmation.
+ * button. Now just asks whether `placeConfirmation` matched (which ALSO accepts an
+ * inline stake/leverage — "trade it with 1 dusdc"); callers that want the override
+ * use `placeConfirmation` directly.
  */
 export function isPlaceConfirmation(message: string): boolean {
-  const t = message.toLowerCase().trim().replace(/[’]/g, "'").replace(/[.!]+$/, '');
-  if (!t || TRADE_PARAM.test(t)) return false;
-  if (t.split(/\s+/).length > 6) return false; // confirmations are short
-  // "<verb> it/this/that/(the|my) bet/trade/position" — the object keeps a bare
-  // "trade 66000" (a new spec) from matching.
-  if (/\b(?:trade|place|open|send|do|lock)\s+(?:it|this|that|(?:the |my )?(?:bet|trade|position|order))\b/.test(t)) return true;
-  // Standalone affirmations.
-  return /^(?:yes|yep|yeah|yup|ok|okay|sure|confirm|do it|go|go for it|let'?s go|lets go|send it|lock it in|place it|trade it|open it)$/.test(t);
+  return placeConfirmation(message) !== null;
 }
 
 /** "What are the odds BTC is above $67k / of a 1% move up?" — a question about the
@@ -283,6 +323,30 @@ function wantsSkew(text: string): boolean {
  *  ask — doesn't get caught here.) */
 function wantsNoArb(text: string): boolean {
   return /arbitrage|no[- ]?arb|arb[- ]?free|mispric|is the surface (?:ok|healthy|clean|arb|fair|right(?! now))|surface (?:healthy|clean|broken|glitch)/.test(text);
+}
+
+/** "Why does the surface look like this? / why is it so steep / tilted / lopsided?
+ *  / what's up with the surface shape?" — a live read of the surface's CURRENT
+ *  APPEARANCE (its height, tilt, and front-to-back slope). Distinct from the
+ *  definitional "what is the surface" (that stays the explainer): this REQUIRES an
+ *  appearance/shape cue, which a bare "what is the surface" doesn't have. Anchored
+ *  on the word "surface" so it never fires on an unrelated "why is it steep". */
+function wantsSurfaceShape(text: string): boolean {
+  if (!/\bsurface\b/.test(text)) return false;
+  // A shape / appearance cue — the thing that separates "why does it LOOK like
+  // this" from the definitional "what is the surface" (which has no such cue).
+  const appearance =
+    /\blook(?:s|ing)?\b|\bshaped?\b|\blike (?:this|that)\b|\bthis way\b|\bthe way it (?:does|looks|is)\b|\bsteep(?:er)?\b|\bskewed?\b|\btilt(?:ed|ing)?\b|\blopsided\b|\bleaning?\b|\bslop(?:e|es|ed|ing)\b|\bcurv(?:e|ed|y)\b|\bbent\b|\bwavy\b|\bjagged\b|\bhump(?:ed)?\b|\bflat\b|\bdip(?:s|ping|ped)?\b|\bspik(?:e|es|ing|ed|y)\b|\bwarped\b|\bweird\b|\bstrange\b|\bodd\b|\bfunny\b|\boff\b|\bdifferent\b|\bcrazy\b|\buneven\b|\bshape\b|\bbright\b|\bglow(?:ing|y)?\b|\bcolou?rful\b|\bred\b|\bgreen\b/.test(
+      text,
+    );
+  if (!appearance) return false;
+  // A "why", a "what does it look like", a "what's with", or an explain/read cue.
+  return (
+    /\bwhy\b/.test(text) ||
+    /\bwhat(?:'?s| is| does| are)\b/.test(text) ||
+    /\bhow come\b/.test(text) ||
+    /\bexplain\b|\bread (?:me )?(?:the )?surface\b|make sense of/.test(text)
+  );
 }
 
 /** "Which strike has the most volume? / busiest strike? / where's the action?" —
@@ -657,6 +721,15 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsFlow(text)) return { kind: 'flow' };
   if (wantsPositioning(text)) return { kind: 'positioning' };
 
+  // "Why does the surface LOOK like this? / why so steep / tilted?" — a live read
+  // of the current shape. BEFORE the glossary, because the glossary's definitional
+  // "what does the surface …" pattern would otherwise swallow "what does the
+  // surface look like now"; the shape read requires an appearance cue that the
+  // definitional "what is the surface" lacks, so that one still falls through. Run
+  // on RAW text so "what's up with the surface shape" survives (the NON_DIRECTIONAL
+  // strip removes "what's up", which would drop the interrogative).
+  if (wantsSurfaceShape(raw)) return { kind: 'surface_shape' };
+
   // Newcomer glossary ("what's a call option?", "what is implied volatility?", "how
   // does Skew work?"). BEFORE the live vol/skew/term reads so a definitional "what
   // is …" wins, while a live ask ("what's the volatility now") has no definitional
@@ -760,7 +833,7 @@ export function parseIntent(message: string): CopilotIntent {
 const FLOW_INTERRUPT_KINDS: ReadonlySet<CopilotIntent['kind']> = new Set<CopilotIntent['kind']>([
   'analyze', 'why_moving', 'events', 'positioning', 'flow', 'options_market',
   'volatility', 'skew', 'metric', 'reality_check', 'explain', 'no_arb',
-  'term_structure', 'markets_overview', 'balance', 'portfolio', 'track_record',
+  'term_structure', 'surface_shape', 'markets_overview', 'balance', 'portfolio', 'track_record',
 ]);
 
 /** True when `intent` is a question we should answer mid-wizard, pausing (not

@@ -207,6 +207,23 @@ describe('trade wizard — validation', () => {
     expect(s.flow).toBeNull();
     expect(s.reply.text.join(' ')).toMatch(/cancel/i);
   });
+
+  it('cancels on many natural phrasings (clear / reset / start over / forget it …)', () => {
+    for (const m of [
+      'clear the setup', 'cancel the trade', 'clear it', 'reset', 'start over',
+      'forget it', 'forget the setup', 'scratch that', 'call it off', 'nvm',
+      'undo', 'no thanks', 'not now', 'changed my mind', 'do over',
+    ]) {
+      const s = advanceFlow({ step: 'strike' }, m, ctx);
+      expect(s.flow, m).toBeNull();
+      expect(s.reply.text.join(' '), m).toMatch(/cancel/i);
+    }
+  });
+
+  it('a real direction answer is NOT mistaken for a cancel', () => {
+    expect(advanceFlow({ step: 'direction', strikePrice: 65_000 }, 'above', ctx).flow).not.toBeNull();
+    expect(advanceFlow({ step: 'direction', strikePrice: 65_000 }, 'below', ctx).flow).not.toBeNull();
+  });
 });
 
 describe('trade wizard — market runway', () => {

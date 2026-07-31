@@ -28,7 +28,7 @@ import { MASCOT_SRC } from '@/lib/mascot';
 import { fromQuote } from '@/config/scale';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotRead } from './copilot-read';
-import { parseIntent, type CopilotIntent } from '@/lib/copilot/intents';
+import { parseIntent, placeConfirmation, type CopilotIntent } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { marketRows, volState, bias as pulseBias } from '@/lib/copilot/pulse';
 import { askKellyAI, type AiContext, type AiTurn } from '@/lib/copilot/ai';
@@ -77,6 +77,15 @@ const DOCK_CHIPS = [
 // Module-level id counter so message ids stay unique across panel remounts.
 let _mid = 0;
 const nextId = () => `kd${_mid++}`;
+
+/** The most recent bet Kelly suggested in the thread — the one "trade it" acts on. */
+function latestBet(messages: ChatMessage[]): BetSuggestion | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const b = messages[i];
+    if (b.role === 'assistant' && b.bet) return b.bet;
+  }
+  return undefined;
+}
 
 function handoffText(kind: CopilotIntent['kind']): string {
   switch (kind) {
@@ -354,6 +363,31 @@ function KellyPanel({
   function handleSend(text: string) {
     const t = text.trim();
     if (!t || busy) return;
+
+    // "Trade it" / "trade it with 1 dusdc" / "place it at 2x" → act on the bet Kelly
+    // just suggested (with an optional stake/leverage override), instead of starting
+    // a fresh trade. Primes the ticket with those exact terms and takes the trader to
+    // the trade view to review + sign (the dock never signs).
+    const confirm = placeConfirmation(t);
+    if (confirm) {
+      const base = latestBet(messages);
+      if (base) {
+        if (base.expiry <= Date.now()) {
+          pushReply(t, { text: ['That market just expired, so I can’t place that one. Ask me for a fresh bet and I’ll set it right up.'] });
+          return;
+        }
+        pushUser(t);
+        handlePlaceBet({ ...base, amount: confirm.stake ?? base.amount, leverage: confirm.leverage ?? base.leverage });
+        return;
+      }
+      // Nothing suggested yet. A BARE confirm → a nudge; a SIZED confirm ("trade it
+      // with 1 dusdc") names real params, so fall through to start a fresh trade.
+      if (confirm.stake == null && confirm.leverage == null) {
+        pushReply(t, { text: ['Ask me for a bet first and I’ll place it. Try “safe up bet”, or say “set up a trade”.'] });
+        return;
+      }
+    }
+
     const now = Date.now();
     const intent = parseIntent(t);
 

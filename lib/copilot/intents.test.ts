@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIntent, isPlaceConfirmation, isFlowInterruption, type CopilotIntent } from './intents';
+import { parseIntent, isPlaceConfirmation, placeConfirmation, isFlowInterruption, type CopilotIntent } from './intents';
 
 describe('parseIntent', () => {
   it('empty / greeting → help', () => {
@@ -237,6 +237,29 @@ describe('parseIntent', () => {
     // The "is the surface right?" (correct) sense still routes to the no-arb check.
     expect(parseIntent('is the surface right').kind).toBe('no_arb');
     expect(parseIntent('is the surface healthy').kind).toBe('no_arb');
+  });
+
+  it('"why does the surface look like this?" → surface_shape (a live shape read)', () => {
+    for (const m of [
+      'why is the surface looking like this',
+      'why does the surface look like that',
+      'why is the surface shaped this way',
+      'why is the surface so steep',
+      'why is the surface tilted',
+      'why does the surface look so lopsided',
+      "what's up with the surface shape",
+      'what does the surface look like right now',
+      'explain why the surface looks like this',
+      'why is the surface so red today',
+    ]) {
+      expect(parseIntent(m).kind, m).toBe('surface_shape');
+    }
+    // Definitional "what is the surface" (no appearance cue) stays the explainer,
+    // and "how do I read the surface" stays the how-to explainer.
+    expect(parseIntent('what is the surface')).toMatchObject({ kind: 'explain', topic: 'surface' });
+    expect(parseIntent('how do I read the surface')).toMatchObject({ kind: 'explain', topic: 'surface' });
+    // A bare "why is it so steep" (no surface noun) is NOT a surface_shape read.
+    expect(parseIntent('why is it so steep').kind).not.toBe('surface_shape');
   });
 
   it('overall volume/activity → surface_volume; naming a strike stays busiest_strike', () => {
@@ -498,8 +521,45 @@ describe('isPlaceConfirmation', () => {
       'what are the odds',
       'analyze BTC',
       'no',
+      'should I trade it', // a question, not a confirm
+      'do you think I should place it now', // a question
     ]) {
       expect(isPlaceConfirmation(m), m).toBe(false);
+    }
+  });
+});
+
+describe('placeConfirmation (confirm + inline stake/leverage override)', () => {
+  it('a bare confirm returns an empty override object', () => {
+    for (const m of ['trade it', 'place it', 'do it', 'yes', 'send it']) {
+      expect(placeConfirmation(m), m).toEqual({});
+    }
+  });
+
+  it('"trade it with 1 dusdc" carries the stake so the pending bet is placed at that size', () => {
+    expect(placeConfirmation('trade it with 1 dusdc')).toEqual({ stake: 1 });
+    expect(placeConfirmation('trade it with 1 DUSDC')).toEqual({ stake: 1 });
+    expect(placeConfirmation('do it, 2 dusdc')).toEqual({ stake: 2 });
+    expect(placeConfirmation('place it with $5')).toEqual({ stake: 5 });
+    expect(placeConfirmation('trade it for 3 dusdc')).toEqual({ stake: 3 });
+  });
+
+  it('carries leverage, and both together', () => {
+    expect(placeConfirmation('trade it at 2x')).toEqual({ leverage: 2 });
+    expect(placeConfirmation('place it with 5 dusdc at 2x')).toEqual({ stake: 5, leverage: 2 });
+    // A bare "2x" is leverage, never a $2 stake.
+    expect(placeConfirmation('trade it 2x')).toEqual({ leverage: 2 });
+  });
+
+  it('returns null for non-confirmations (a new spec, a question, unrelated)', () => {
+    for (const m of [
+      'strike 66000, 2x, 6 dusdc', // a fresh spec → start_trade, not a confirm
+      'I want to place a bet at 65000 with 2x leverage',
+      'should I trade it with 1 dusdc',
+      'what are the odds',
+      'analyze BTC',
+    ]) {
+      expect(placeConfirmation(m), m).toBeNull();
     }
   });
 });

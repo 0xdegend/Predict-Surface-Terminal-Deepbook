@@ -786,6 +786,93 @@ function noArbReply(ctx: CopilotContext): CopilotReply {
   };
 }
 
+/**
+ * "Why does the surface look like this?" — a plain-language read of the surface's
+ * CURRENT shape, so a trader who doesn't know how to read it understands what
+ * they're seeing. Three parts, each a real thing on the picture:
+ *   • Height — how big a move is priced in (calm vs busy) on the nearest market.
+ *   • Tilt   — which side sits higher (a drop vs a pop priced richer), the "lean".
+ *   • Slope  — how the expected move changes from the nearest to the furthest
+ *              market (why it rises or dips going back in time).
+ * All from the SAME functions the vol / skew / term reads use, so it can never
+ * contradict them. No jargon (no "vol"/"skew"/"tilt-word soup"): plain shapes.
+ */
+function surfaceShapeReply(ctx: CopilotContext): CopilotReply {
+  const open = ctx.candidates.filter((c) => c.market.expiry > ctx.now).sort((a, b) => a.market.expiry - b.market.expiry);
+  if (open.length === 0) return NO_MARKET;
+  const near = open[0];
+  const far = open[open.length - 1];
+  const f = near.pricer.forward;
+  const spotNow = ctx.spot ?? f;
+
+  const text: string[] = [
+    'Here’s why the surface looks the way it does right now. Left to right is the price BTC could finish at, front to back is how far out the market closes, and the height and color show how big a move is priced in.',
+  ];
+
+  // Height — the size of the priced move on the nearest market, judged against
+  // what BTC has actually been doing lately (the same verdict as the vol read).
+  const sigmaNear = Math.sqrt(Math.max(0, totalVariance(f, f, near.pricer.svi)));
+  const moveUsd = spotNow * sigmaNear;
+  const minutes = Math.max(1, Math.round((near.market.expiry - ctx.now) / 60_000));
+  const realized = realizedTenorSigma(ctx.closes, minutes);
+  let height = `Height: over the next ${windowLabel(near.market.expiry, ctx.now)} it prices about a $${num(moveUsd, 0)} move up or down. `;
+  if (realized && realized > 0) {
+    const ratio = sigmaNear / realized;
+    height +=
+      ratio > 1.15
+        ? 'That’s bigger than BTC has actually been moving lately, so the surface sits tall and bright, and bets on a large move pay more.'
+        : ratio < 0.87
+          ? 'That’s smaller than BTC has actually been moving lately, so the surface sits low and calm, and the safer bets cost less.'
+          : 'That’s about what BTC has actually been moving lately, so the surface sits at a normal height.';
+  } else {
+    height += 'The taller and brighter it is, the bigger the move being priced in.';
+  }
+  text.push(height);
+
+  // Tilt — a 1% drop vs a 1% pop, the plain-words version of the lean. Same math
+  // as the skew read, so the two never disagree.
+  const d = 0.01;
+  const pUp = upFair(f * (1 + d), f, near.pricer.svi);
+  const pDown = 1 - upFair(f * (1 - d), f, near.pricer.svi);
+  const ratioTilt = pDown / Math.max(1e-6, pUp);
+  text.push(
+    ratioTilt > 1.15
+      ? `Tilt: it leans to the downside. A 1% drop is priced at about ${pct(pDown, 0)} versus ${pct(pUp, 0)} for a 1% pop, so the left side sits a little higher. That usually means the market is paying up for protection against a fall.`
+      : ratioTilt < 0.87
+        ? `Tilt: it leans to the upside. A 1% pop is priced at about ${pct(pUp, 0)} versus ${pct(pDown, 0)} for a 1% drop, so the right side sits a little higher. That usually means more appetite for an upside move.`
+        : `Tilt: it’s fairly even. A 1% drop and a 1% pop price about the same (${pct(pDown, 0)} versus ${pct(pUp, 0)}), so neither side sits much higher than the other.`,
+  );
+
+  // Slope — how the priced move changes from the nearest to the furthest market
+  // (why the surface climbs or dips going back). Only when there's a second expiry.
+  if (far.market.expiry > near.market.expiry) {
+    const ff = far.pricer.forward;
+    const sigmaFar = Math.sqrt(Math.max(0, totalVariance(ff, ff, far.pricer.svi)));
+    const moveFarUsd = (ctx.spot ?? ff) * sigmaFar;
+    text.push(
+      moveFarUsd > moveUsd * 1.1
+        ? `Slope: it rises toward the back. The furthest market (${timeLeftLabel(far.market.expiry, ctx.now)}) prices a bigger move, about $${num(moveFarUsd, 0)}, because more time gives price more room to run.`
+        : moveFarUsd < moveUsd * 0.9
+          ? `Slope: it dips toward the back. The furthest market (${timeLeftLabel(far.market.expiry, ctx.now)}) prices a smaller move, about $${num(moveFarUsd, 0)}, right now.`
+          : 'Slope: it’s fairly flat front to back. The nearest and furthest markets price a similar-sized move right now.',
+    );
+  }
+
+  // Jaggedness — a spot where the odds don't line up (a brief data blip). The same
+  // checker the no-arb read runs; only mentioned when it actually fires.
+  if (ctx.surfaceInputs && ctx.surfaceInputs.length >= 2) {
+    const surface = buildSurface(ctx.surfaceInputs, { nowMs: ctx.now });
+    if (surface.hasButterfly || surface.hasCalendar) {
+      text.push(
+        'One part also looks a little jagged right now. That’s almost always a brief data blip, not a real opening, so I’d avoid those exact price targets until it settles.',
+      );
+    }
+  }
+
+  text.push('Want to act on it? Tell me a direction and I’ll set up a bet, or say “set up a trade”.');
+  return { text };
+}
+
 /* ------------------------- soft recommendation --------------------------- */
 // A steer, not advice: which way the blended market lean points (Up / Down /
 // Range). Same data + threshold as the read's "leaning …" headline, so they
@@ -1542,6 +1629,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return termStructureReply(intent.dir, ctx);
     case 'no_arb':
       return noArbReply(ctx);
+    case 'surface_shape':
+      return surfaceShapeReply(ctx);
     case 'reality_check':
       return realityCheckReply(intent.level, intent.dir, ctx);
     case 'directional_bet':

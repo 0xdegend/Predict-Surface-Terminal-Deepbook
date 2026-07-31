@@ -39,7 +39,7 @@ import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
-import { parseIntent, isPlaceConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
+import { parseIntent, placeConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -943,16 +943,24 @@ export function V2CopilotScreen({
     // it first. Prefer the pending suggestion; otherwise place whatever's loaded in
     // the ticket right now (a bet the trader edited, or picked on the surface), so a
     // confirm never falls through to the generic help card. Nothing set up at all →
-    // a targeted nudge, not the help menu.
-    if (isPlaceConfirmation(text)) {
-      const bet = pendingBetRef.current ?? betFromSelection();
-      if (bet) {
+    // a targeted nudge, not the help menu. "trade it with 1 dusdc" / "at 2x" carries
+    // a stake/leverage OVERRIDE applied to that bet, so a size can be named inline.
+    const confirm = placeConfirmation(text);
+    if (confirm) {
+      const base = pendingBetRef.current ?? betFromSelection();
+      if (base) {
+        const bet = { ...base, amount: confirm.stake ?? base.amount, leverage: confirm.leverage ?? base.leverage };
         void placeBetDirect(bet, text);
         return;
       }
-      pushUser(text);
-      botAfterBeat(['Set up a bet first and I’ll place it. Try “safe up bet”, or say “set up a trade” and I’ll walk you through it.']);
-      return;
+      // Nothing suggested yet. A BARE confirm ("trade it" / "yes") → a nudge; but a
+      // SIZED confirm ("trade it with 1 dusdc") names real trade params, so fall
+      // through and start a fresh trade pre-filled with them (below).
+      if (confirm.stake == null && confirm.leverage == null) {
+        pushUser(text);
+        botAfterBeat(['Set up a bet first and I’ll place it. Try “safe up bet”, or say “set up a trade” and I’ll walk you through it.']);
+        return;
+      }
     }
 
     // A guided flow (if active) intercepts the reply; otherwise parse the intent —
