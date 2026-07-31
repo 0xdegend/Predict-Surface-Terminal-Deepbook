@@ -11,8 +11,8 @@
  * visible rows paint with real data on first render.
  */
 import { useQueries } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
 import { simulateLivePricer, type LivePricer } from '@/lib/sui/v2/pricer';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { qkV2 } from '@/lib/api/v2/client';
 
 export function useV2Pricers(
@@ -20,7 +20,8 @@ export function useV2Pricers(
   seeds: Record<string, LivePricer>,
   intervalMs = 20_000,
 ): Record<string, LivePricer> {
-  const client = useCurrentClient();
+  // Health-aware read client so the list keeps pricing if the primary node stalls.
+  const client = useV2ReadClient();
   const results = useQueries({
     queries: marketIds.map((id) => ({
       queryKey: qkV2.pricer(id),

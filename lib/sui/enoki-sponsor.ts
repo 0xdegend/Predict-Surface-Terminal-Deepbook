@@ -16,6 +16,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { toBase64, fromBase64 } from '@mysten/sui/utils';
 import { dAppKit } from '@/lib/sui/dapp-kit';
+import { v2ReadClient } from '@/lib/sui/grpc';
 import { enokiEnabled } from '@/config/enoki';
 
 /** Sponsorship is wired whenever Enoki auth is configured; the server route
@@ -126,8 +127,7 @@ async function assertSponsoredKindExecutes(core: SimulateCore, kindB64: string, 
 /** Bounded on-chain lookup of a digest (a few seconds), false if not found. */
 async function txLanded(digest: string): Promise<boolean> {
   try {
-    const found = dAppKit
-      .getClient()
+    const found = v2ReadClient()
       .core.waitForTransaction({ digest })
       .then(() => true);
     const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), 8_000));
@@ -149,7 +149,9 @@ export async function executeSponsored(
   /** Addresses the sponsored tx may touch (e.g. a cash-out destination). */
   allowedAddresses?: string[],
 ): Promise<string> {
-  const client = dAppKit.getClient();
+  // Health-aware client so the KIND build (which resolves the sender's coins) and
+  // the dry-run run against a synced node, not a stalled primary fullnode.
+  const client = v2ReadClient();
   // `coinWithBalance` resolves the sender's coins at build time, so the sender
   // must be set even for an onlyTransactionKind build (it's not serialized into
   // the kind — Enoki sets the real sender + gas when it sponsors).

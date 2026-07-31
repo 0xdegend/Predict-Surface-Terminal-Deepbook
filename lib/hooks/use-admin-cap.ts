@@ -10,7 +10,8 @@
  * the real enforcement is the Move `&AdminCap` requirement, which a non-owner
  * can't satisfy.
  */
-import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { predictConfig, feeRouterEnabled } from '@/config/predict';
 
@@ -26,7 +27,7 @@ interface OwnedObjectsClient {
 
 export function useAdminCap(): { isAdmin: boolean; adminCapId: string | null; isLoading: boolean } {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const owner = account?.address ?? null;
   const type = `${predictConfig.skewFeePackageId}::fee_router::AdminCap`;
 

@@ -8,14 +8,15 @@
  * router only when `feeBps > 0`; otherwise they use the plain `predict::mint`
  * path, so the app works identically before the router is published.
  */
-import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { predictConfig, feeRouterEnabled } from '@/config/predict';
 import { readSkewFeeBps } from '@/lib/sui/skew-fee';
 
 export function useSkewFee(): { feeBps: number; routerEnabled: boolean } {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const owner = account?.address ?? null;
 
   const q = useQuery({
@@ -53,7 +54,7 @@ export function useFeeConfig(): {
   isLoading: boolean;
   refetch: UseQueryResult<FeeConfigState | null>['refetch'];
 } {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const q = useQuery({
     queryKey: ['fee-config', predictConfig.feeConfigId],
     queryFn: async (): Promise<FeeConfigState | null> => {

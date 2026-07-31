@@ -8,7 +8,7 @@
  * node pulses a fill ripple back on the surface.
  */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { qk } from "@/lib/api/client";
 import { predictConfig } from "@/config/predict";
@@ -80,7 +80,7 @@ export function FlowPanel({
   mobile?: boolean;
   chart?: ReactNode;
 }) {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const now = useNow(serverNow);
   const mounted = useMounted();
   const acct = usePredictAccount();

@@ -10,7 +10,7 @@
  * fire a doomed simulate for a degenerate band.
  */
 import { useState } from 'react';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { predictConfig } from '@/config/predict';
 import { fromQuote, toQuote } from '@/config/scale';
@@ -32,7 +32,7 @@ import { dateUTC, countdown } from '@/lib/format';
 const MINT_CUTOFF_MS = 5_000;
 
 export function RangeTicket({ active, now }: { active: SmileInput; now: number }) {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const acct = usePredictAccount();
   const band = useSurfaceStore((s) => s.rangeSelection);
   const anchor = useSurfaceStore((s) => s.rangeAnchor);

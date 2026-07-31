@@ -11,7 +11,7 @@
  * `null` result means the owner never created a v2 account (no positions exist).
  */
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
 
 export const qkV2Trader = {
@@ -27,7 +27,7 @@ export interface UseV2TraderAccount {
 }
 
 export function useV2TraderAccount(owner?: string): UseV2TraderAccount {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const q = useQuery({
     queryKey: qkV2Trader.account(owner ?? ''),
     queryFn: async () => {

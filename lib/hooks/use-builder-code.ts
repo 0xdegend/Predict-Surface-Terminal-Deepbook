@@ -16,7 +16,8 @@
  * elsewhere. `hasForeignCode` exists to MEASURE how often that happens, so the
  * call can be made on evidence rather than guesswork.
  */
-import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { predictV2Config, builderCodeEnabled } from '@/config/predict';
 import {
@@ -46,7 +47,7 @@ export interface BuilderCodeStatus {
 }
 
 export function useBuilderCode(wrapperId: string | undefined): BuilderCodeStatus {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
 
   const q = useQuery({
     queryKey: qkBuilderCode.attached(wrapperId ?? ''),
@@ -122,7 +123,7 @@ export function useOwnedBuilderCodes(): OwnedBuilderCodes {
 
 export function useBuilderCodeAdmin(): BuilderCodeAdmin {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const owner = account?.address ?? null;
 
   const q = useQuery({

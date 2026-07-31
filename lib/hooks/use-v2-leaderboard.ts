@@ -28,7 +28,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { mapPool, withRetry } from '@/lib/api/v2/fan-out';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
@@ -79,7 +79,7 @@ export function useV2Leaderboard(): UseV2Leaderboard {
   // full account history is folded in so they never age out of the board.
   // Resolve address → account id once on-chain (deterministic + stable → cache
   // forever); the beta indexer files orders under the internal account id.
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const featured = predictV2Config.featuredWallets;
   const featuredQ = useQuery<string[]>({
     queryKey: ['v2', 'leaderboard', 'featured-account-ids', ...featured] as const,

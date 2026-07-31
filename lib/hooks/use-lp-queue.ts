@@ -9,7 +9,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { readLpQueues, type LpQueues, type LpQueueEntry } from '@/lib/sui/v2/lp-queue';
 
 export interface UseLpQueue {
@@ -21,7 +21,7 @@ export interface UseLpQueue {
 }
 
 export function useLpQueue(accountId?: string): UseLpQueue {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const q = useQuery<LpQueues>({
     queryKey: qkLpQueue.all,
     queryFn: () => readLpQueues(client.core as never),

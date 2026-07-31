@@ -10,7 +10,8 @@
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCurrentAccount, useCurrentClient } from '@mysten/dapp-kit-react';
+import { useCurrentAccount } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { qk } from '@/lib/api/client';
 import { predictConfig } from '@/config/predict';
@@ -20,7 +21,7 @@ import { useMounted } from '@/lib/hooks/use-mounted';
 
 export function BalancePill() {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const mounted = useMounted();
   const pathname = usePathname();
   const owner = account?.address ?? null;

@@ -2,8 +2,9 @@
 
 import { DAppKitProvider } from '@mysten/dapp-kit-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { dAppKit } from '@/lib/sui/dapp-kit';
+import { startGrpcHealthMonitor } from '@/lib/sui/grpc';
 import { Toaster } from './_components/toaster';
 import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
 import { TourLauncher } from './_components/tour/tour-launcher';
@@ -24,6 +25,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         },
       }),
   );
+
+  // Watch fullnode health and fail the gRPC endpoint over to a synced node when the
+  // primary stalls, returning to it automatically once it recovers (lib/sui/grpc.ts).
+  useEffect(() => {
+    startGrpcHealthMonitor();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -14,7 +14,7 @@
  * trade differently. The rail and this popover stay in sync through the store.
  */
 import { useEffect, useRef, useState } from "react";
-import { useCurrentClient } from "@mysten/dapp-kit-react";
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { LuX, LuArrowLeft } from "react-icons/lu";
 import { qk } from "@/lib/api/client";
@@ -122,7 +122,7 @@ function BinaryBody({
   now: number;
   onClose: () => void;
 }) {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const acct = usePredictAccount();
   const { feeBps } = useSkewFee();
 
@@ -514,7 +514,7 @@ function RangeBody({
   now: number;
   onClose: () => void;
 }) {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const acct = usePredictAccount();
   const { feeBps } = useSkewFee();
 

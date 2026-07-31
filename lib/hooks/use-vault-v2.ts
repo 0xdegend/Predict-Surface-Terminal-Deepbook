@@ -10,14 +10,14 @@
  *    = pool_value / total_supply.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { readVaultState, type VaultState } from '@/lib/sui/v2/plp';
 import { getVaultState, qkV2 } from '@/lib/api/v2/client';
 import { predictV2Config } from '@/config/predict';
 import type { V2VaultServerState } from '@/lib/api/v2/types';
 
 export function useVaultV2() {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const q = useQuery<VaultState>({
     queryKey: ['v2', 'vault-state'],
     queryFn: () => readVaultState(client.core),

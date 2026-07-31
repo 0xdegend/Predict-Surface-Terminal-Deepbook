@@ -13,7 +13,7 @@
  *    Pricing is chain-authoritative (quoteMarket); strike via selectDownHedge.
  */
 import { useMemo, useState } from 'react';
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { LuShieldCheck, LuCoins, LuTrendingDown, LuLayers, LuArrowDown } from 'react-icons/lu';
 import { usePredictAccount } from '@/lib/hooks/use-predict-account';
@@ -34,7 +34,7 @@ const MIN_RUNWAY_MS = 120_000; // skip oracles about to settle
 
 export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; serverNow: number }) {
   const acct = usePredictAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const now = useNow(serverNow);
   const mounted = useMounted();
 

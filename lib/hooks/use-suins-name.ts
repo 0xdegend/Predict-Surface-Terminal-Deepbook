@@ -7,12 +7,12 @@
  * are near-static) and deduped by TanStack, so the same address rendered in
  * multiple rows resolves once. Lookups are concurrency-limited in resolveDefaultName.
  */
-import { useCurrentClient } from '@mysten/dapp-kit-react';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { resolveDefaultName } from '@/lib/sui/suins';
 
 export function useSuinsName(address: string | null | undefined): string | null {
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
   const q = useQuery({
     queryKey: ['suins', address],
     queryFn: () => resolveDefaultName(client.core, address!),

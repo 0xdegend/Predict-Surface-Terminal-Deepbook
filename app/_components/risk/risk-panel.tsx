@@ -21,7 +21,8 @@ import {
   LuChevronLeft,
   LuChevronRight,
 } from "react-icons/lu";
-import { useCurrentAccount, useCurrentClient } from "@mysten/dapp-kit-react";
+import { useCurrentAccount } from "@mysten/dapp-kit-react";
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from "@tanstack/react-query";
 import { fromQuote } from "@/config/scale";
 import {
@@ -71,7 +72,7 @@ export function RiskPanel({
   serverNow: number;
 }) {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  const client = useV2ReadClient();
 
   const configQ = useQuery({
     queryKey: qk.predictConfig,

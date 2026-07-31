@@ -10,10 +10,11 @@
  * the v2 trade ticket; portfolio/order listing arrives with the indexer (Phase 3).
  */
 import { useState } from 'react';
-import { useCurrentAccount, useCurrentClient, useCurrentWallet } from '@mysten/dapp-kit-react';
+import { useCurrentAccount, useCurrentWallet } from '@mysten/dapp-kit-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Transaction } from '@mysten/sui/transactions';
+import { Transaction } from '@mysten/sui/transactions';
 import { fromBase64 } from '@mysten/sui/utils';
+import { useV2ReadClient } from '@/lib/sui/grpc';
 import { isEnokiWallet } from '@mysten/enoki';
 import { predictV2Config } from '@/config/predict';
 import { enokiEnabled } from '@/config/enoki';
@@ -44,7 +45,10 @@ export const qkV2Account = {
 
 export function usePredictAccountV2() {
   const account = useCurrentAccount();
-  const client = useCurrentClient();
+  // Health-aware gRPC client (not the wallet's session-pinned client): balance
+  // reads, tx build/execute, and confirmation all follow the endpoint failover, so
+  // a stalled primary fullnode can't strand the account or block trades.
+  const client = useV2ReadClient();
   const currentWallet = useCurrentWallet();
   const queryClient = useQueryClient();
   const owner = account?.address;
@@ -125,12 +129,15 @@ export function usePredictAccountV2() {
       if (gasless) {
         digest = await executeSponsored(tx, owner);
       } else {
-        // Sign with the wallet, execute via our own gRPC client. dapp-kit's
-        // combined signAndExecuteTransaction re-parses the wallet's raw response
-        // and can crash ("undefined 'txSignatures'") AFTER the tx already landed
-        // (seen live with Slush 2026-07-08). Sign-only returns a plain
-        // { bytes, signature }; execution then stays fully under our control.
-        const { bytes, signature } = await dAppKit.signTransaction({ transaction: tx });
+        // BUILD + EXECUTE via our own health-aware gRPC client so a stalled primary
+        // fullnode can't block trades: object refs + gas resolve on a synced node, the
+        // wallet signs the fully-built bytes (no re-resolution against its own pinned
+        // client), and we execute on the synced node. Sign-only (not signAndExecute)
+        // also dodges a dapp-kit crash that re-parses the wallet response and throws
+        // AFTER the tx already landed (Slush 2026-07-08).
+        tx.setSenderIfNotSet(owner);
+        const built = await tx.build({ client });
+        const { bytes, signature } = await dAppKit.signTransaction({ transaction: Transaction.from(built) });
         const result = await client.core.executeTransaction({
           transaction: fromBase64(bytes),
           signatures: [signature],
