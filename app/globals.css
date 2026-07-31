@@ -1030,3 +1030,53 @@ select:focus-visible,
 .typing-dot {
   animation: typingBounce 1.2s ease-in-out infinite;
 }
+
+/* Kelly dock — the always-present floating launcher (fox in a circle) + its
+   attention pulse. The right-side chat drawer slides via a Tailwind transform
+   transition on the component; these cover the button's entrance, a gentle idle
+   bob on the fox, and the periodic ring that draws the eye. All clamped to nil by
+   the reduced-motion block above. */
+@keyframes kellyFabIn {
+  from { opacity: 0; transform: scale(0.5) translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes kellyPing {
+  0% { transform: scale(0.9); opacity: 0.55; }
+  70%, 100% { transform: scale(2.1); opacity: 0; }
+}
+@keyframes kellyBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+/* A breathing accent glow behind the button so a dark fox on a dark page still
+   reads. Separate element from the button so it never fights the entrance/hover
+   transform. */
+@keyframes kellyGlow {
+  0%, 100% { opacity: 0.14; transform: scale(1); }
+  50% { opacity: 0.34; transform: scale(1.14); }
+}
+.kelly-fab {
+  animation: kellyFabIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  /* Bright accent ring + lift so the circle's outline pops on any backdrop it
+     lands over, independent of how dark the fox itself is. */
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.55),
+    0 0 18px -2px var(--accent-glow),
+    0 6px 22px rgba(0, 0, 0, 0.5);
+}
+.kelly-fab-fox {
+  animation: kellyBob 4.5s ease-in-out infinite;
+  /* Teal-tinted disc behind the mascot so it separates from a dark page. */
+  background-color: color-mix(in srgb, var(--accent) 20%, var(--bg-1));
+}
+.kelly-halo {
+  background: var(--accent);
+  filter: blur(9px);
+  animation: kellyGlow 2.8s ease-in-out infinite;
+}
+.kelly-ping {
+  border: 1.5px solid var(--accent);
+  animation: kellyPing 2.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.kelly-hint { animation: fadeIn 0.3s ease both; }

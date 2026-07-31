@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { startGrpcHealthMonitor } from '@/lib/sui/grpc';
 import { Toaster } from './_components/toaster';
+import { KellyDock } from './_components/v2/copilot/kelly-dock';
 import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
 import { TourLauncher } from './_components/tour/tour-launcher';
 import { TourOverlay } from './_components/tour/tour-overlay';
@@ -38,6 +39,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         {/* Registers "Sign in with Google" (Enoki zkLogin) into the wallet list. */}
         <RegisterEnokiWallets />
         {children}
+        {/* Always-present "Ask Kelly" launcher + chat drawer (self-hides on the
+            full co-pilot page and the auth popup). */}
+        <KellyDock />
         <Toaster />
         {/* Guided tour for the Latest (v2) Trade screen. TourLauncher auto-opens
             it once per browser on first landing at /v2 (it self-gates by route);

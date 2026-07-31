@@ -384,6 +384,28 @@ describe('parseIntent', () => {
     expect(parseIntent('how are liquidations looking').kind).toBe('metric');
   });
 
+  it('newcomer options + product questions → explain glossary (BTC options / how Skew works)', () => {
+    expect(parseIntent('what is a call option?')).toMatchObject({ kind: 'explain', topic: 'call_put' });
+    expect(parseIntent('what is a put?')).toMatchObject({ kind: 'explain', topic: 'call_put' });
+    expect(parseIntent('what is an option')).toMatchObject({ kind: 'explain', topic: 'option' });
+    expect(parseIntent('what is a strike price')).toMatchObject({ kind: 'explain', topic: 'strike' });
+    expect(parseIntent('what is expiry')).toMatchObject({ kind: 'explain', topic: 'expiry' });
+    expect(parseIntent('what is implied volatility')).toMatchObject({ kind: 'explain', topic: 'implied_vol' });
+    expect(parseIntent('what does volatility mean')).toMatchObject({ kind: 'explain', topic: 'implied_vol' });
+    expect(parseIntent('what is the premium')).toMatchObject({ kind: 'explain', topic: 'premium' });
+    expect(parseIntent('what does in the money mean')).toMatchObject({ kind: 'explain', topic: 'moneyness' });
+    expect(parseIntent('what is the surface')).toMatchObject({ kind: 'explain', topic: 'surface' });
+    expect(parseIntent('what is the vault')).toMatchObject({ kind: 'explain', topic: 'vault' });
+    expect(parseIntent('how does skew work')).toMatchObject({ kind: 'explain', topic: 'predict' });
+    expect(parseIntent('what is skew')).toMatchObject({ kind: 'explain', topic: 'predict' });
+  });
+
+  it('live-data asks are NOT stolen by the newcomer glossary', () => {
+    expect(parseIntent("what's the volatility right now")).toMatchObject({ kind: 'volatility' });
+    expect(parseIntent("what's the skew")).toMatchObject({ kind: 'skew' });
+    expect(parseIntent('which expiry is better')).toMatchObject({ kind: 'term_structure' });
+  });
+
   it('"what\'s the best value / underpriced?" → best_value', () => {
     for (const m of ["what's the best value right now?", 'where is the value', 'which strike is underpriced', 'best bet right now', 'good value bet']) {
       expect(parseIntent(m).kind, m).toBe('best_value');

@@ -1197,8 +1197,44 @@ const EXPLAINERS: Record<ExplainTopic, string[]> = {
     'I always show the exact odds and payout before you place anything. Say “safe up bet” or “longshot down bet” to see one.',
   ],
   predict: [
-    'This is a prediction market on BTC: you bet which way the price goes by a set close time, using the live surface on the left.',
-    'I’m Kelly, your Predict co-pilot. I can read the market, find or analyze a strike, suggest a bet and place it for you. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
+    'This app is a prediction market for BTC: you bet which way the price goes by a set close time, using the live surface on the left instead of a plain list. Pick UP, DOWN, or a range, set your stake, and you see the exact odds and payout before you confirm.',
+    'I’m Kelly, your co-pilot. I can read the market, find or analyze a bet, and set one up for you, though you always sign it yourself. Try “analyze BTC”, “safe up bet”, or “what’s a range bet?”.',
+  ],
+  option: [
+    'An option is really just a bet on where a price goes by a set time. On Skew you don’t need the finance jargon: you pick a direction, UP or DOWN, choose a close time, and stake an amount. That’s the whole thing.',
+    'Say “analyze BTC” for a live read, or “safe up bet” and I’ll show you a real one with the exact odds.',
+  ],
+  call_put: [
+    'A call is a bet that the price goes UP; a put is a bet that it goes DOWN. Skew keeps it that simple, no options desk required: you just pick UP or DOWN.',
+    'Tell me a direction, like “up bet” or “down bet”, and I’ll set one up for you.',
+  ],
+  strike: [
+    'A strike is the price line your bet is measured against. An UP bet wins if BTC closes above your strike; a DOWN bet wins if it closes at or below it.',
+    'The closer the strike sits to where BTC trades now, the safer the bet and the smaller the payout. Say “find the 65k strike” to light one up on the surface.',
+  ],
+  expiry: [
+    'The expiry is the close time when your bet is settled. Skew runs short markets: some settle in about a minute, others over an hour.',
+    'At the expiry, BTC’s price is checked once and your bet either wins its payout or settles at $0. Ask “which expiry is better?” to compare the live ones.',
+  ],
+  implied_vol: [
+    'The volatility number is how big a price swing the market expects before the close. Higher means a wilder ride, so far-off bets get more likely and pay less.',
+    'You never have to calculate it: it’s already baked into every price and payout I show you. Ask “how volatile is BTC right now?” for the live reading.',
+  ],
+  premium: [
+    'The premium is just the cost of a bet, the amount you stake to open it. Skew shows it up front, with the exact payout next to it, before you confirm anything.',
+    'A more likely bet costs more for a smaller payout; a longshot costs less and pays more. Say “safe up bet” or “longshot” to compare.',
+  ],
+  moneyness: [
+    '“In the money” means your bet is currently winning, with the price on your side. “Out of the money” means it’s currently losing, and “at the money” means it’s right on the line.',
+    'It can flip until the close, since only the price AT the expiry counts. Ask “analyze my strike” to see where yours stands.',
+  ],
+  surface: [
+    'The surface is the live 3-D map on the left. Every point is a real bet: left to right is the price level, front to back is the close time, and the height and color show how lively that area is.',
+    'Tap any point to open a ticket for that exact bet, or just tell me what you want, like “safe up bet”, and I’ll find it. Say “what can I bet on?” to see the live markets.',
+  ],
+  vault: [
+    'The vault is the shared pool that pays the winners. When you win, your payout comes from it; when bets lose, the pool grows.',
+    'Anyone can supply the vault to earn a share of the spread, and that reward goes to the suppliers, not to the app. It’s optional, and separate from just placing bets.',
   ],
 };
 
@@ -1290,6 +1326,7 @@ function helpReply(): CopilotReply {
     text: [
       "I'm Kelly, your Predict co-pilot. I can read the BTC market for you, or set up a bet. Just tell me the direction.",
       'Try “analyze BTC”, “safe up bet”, or “longshot down bet for the next hour”.',
+      'New to this? Ask me “how does this work?”, “what’s a call option?”, or “what is the surface?” and I’ll explain in plain English.',
       "If I missed your question or you've got feedback, reach out to the dev on X and they'll take a look.",
     ],
     link: { label: 'Message the dev on X', href: 'https://x.com/0xdegend' },

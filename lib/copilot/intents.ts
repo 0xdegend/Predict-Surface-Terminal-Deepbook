@@ -24,8 +24,12 @@ export type MetricKind = 'fear_greed' | 'funding' | 'liquidations' | 'max_pain' 
 export type OddsLevel = { kind: 'strike'; price: number } | { kind: 'move'; pct: number };
 /** An explicit target on a directional bet: a win-chance (70%) or a payout (3×). */
 export type BetTarget = { kind: 'prob'; value: number } | { kind: 'payout'; mult: number };
-/** A "how does X work?" topic the co-pilot can explain in plain language. */
-export type ExplainTopic = 'leverage' | 'range' | 'binary' | 'settlement' | 'loss' | 'fees' | 'funds' | 'payout' | 'predict';
+/** A "how does X work?" topic the co-pilot can explain in plain language. The first
+ *  row is Skew's own mechanics; the second is newcomer options + product vocabulary
+ *  (mapped onto Skew's plain UP/DOWN framing) for people who don't know the surface. */
+export type ExplainTopic =
+  | 'leverage' | 'range' | 'binary' | 'settlement' | 'loss' | 'fees' | 'funds' | 'payout' | 'predict'
+  | 'option' | 'call_put' | 'strike' | 'expiry' | 'implied_vol' | 'premium' | 'moneyness' | 'surface' | 'vault';
 
 export type CopilotIntent =
   | { kind: 'analyze' }
@@ -514,6 +518,41 @@ function explainTopic(text: string): ExplainTopic | null {
   return null;
 }
 
+/**
+ * Newcomer glossary for options + product vocabulary, mapped onto Skew's plain
+ * UP/DOWN framing, for people who don't yet know the surface. Fires ONLY on a
+ * definitional lead ("what is X", "how does X work", "explain X"), so a live-data
+ * ask ("what's the volatility right now", "what's the skew") has no definitional
+ * cue and falls through to its own intent below. "How does Skew work"-style product
+ * questions reuse the existing `predict` explainer. Kept ahead of the live vol/skew/
+ * term reads in parseIntent so a plain "what is …" wins.
+ */
+function conceptGlossary(text: string): ExplainTopic | null {
+  const asks =
+    /\bwhat\b|\bhow\b|\bexplain\b|\bdefine\b|\bmeaning\b|\bdifference\b|tell me|\beli5\b|\bnew to\b|don'?t (?:know|understand|get)|never (?:used|heard|traded)|point of/.test(
+      text,
+    );
+  if (!asks) return null;
+
+  // Options vocabulary.
+  if (/what (?:is|are|'?s) (?:an? )?(?:call|put)s?\b|\b(?:call|put)s? (?:option|bet)\b|\bcall\b[^?]{0,14}\bput\b|\bput\b[^?]{0,14}\bcall\b|difference between (?:a )?(?:call|put)/.test(text)) return 'call_put';
+  if (/implied vol|what (?:is|are|'?s|does) (?:implied )?vol|vol(?:atility)?\b[^?]{0,20}\bmean\b|what[^?]{0,16}(?:volatility|vol)\b[^?]{0,16}(?:number|percent|%|figure)|understand[^?]{0,10}vol/.test(text)) return 'implied_vol';
+  if (/(?:what (?:is|are|'?s|does)|explain|meaning of) (?:an? |the )?strike|strike (?:price)?\b[^?]{0,10}\bmean\b/.test(text)) return 'strike';
+  if (/(?:what (?:is|are|'?s|does)|explain|meaning of) (?:an? |the )?expir|expir\w*[^?]{0,12}\bmean\b|how (?:do|does) (?:an? )?expir\w* work/.test(text)) return 'expiry';
+  if (/(?:what (?:is|are|'?s|does)|explain|meaning of) (?:the |a |an |option )?premium\b|premium\b[^?]{0,10}\bmean\b/.test(text) && !/coinbase|\betf\b|grayscale/.test(text)) return 'premium';
+  if (/in the money|out of the money|at the money|\bitm\b|\botm\b|moneyness/.test(text)) return 'moneyness';
+  if (/what (?:is|are|'?s) (?:an? )?options?\b|how (?:do|does) (?:an? )?options? work|options? explained|understand (?:btc )?options/.test(text)) return 'option';
+
+  // How Skew works (product) + the surface + the pool. Definitional only, so a live
+  // ask that merely names the surface ("how volatile is the surface now") falls
+  // through to the volatility read.
+  if (/(?:what (?:is|are|'?s|does)|explain|meaning of) (?:the )?surface|how (?:do|does|to)[^?]{0,14}(?:read|use)[^?]{0,14}(?:surface|chart|graph|map)|how (?:does|do) (?:the )?surface work|3 ?-? ?d (?:chart|graph|map|surface)|(?:chart|graph|map) on the left/.test(text)) return 'surface';
+  if (/(?:what (?:is|are|'?s|does)|explain|meaning of|how (?:does|do)) (?:the )?vault|liquidity pool|who pays (?:winners|me|out)|where[^?]{0,16}(?:payout|winnings|money)[^?]{0,10}come/.test(text)) return 'vault';
+  if (/how (?:does|do|can) (?:skew|this|it|you|the app|the site) work|what (?:is|'?s) skew\b|what[^?]{0,12}skew (?:app|do|about|is)|what makes skew|why (?:use )?skew|what can you do|what (?:is|'?s) this (?:app|thing|platform|site)|how (?:do i|to) use (?:this|skew|it)/.test(text)) return 'predict';
+
+  return null;
+}
+
 /** "Find / show / locate the $64,730 strike on the surface" — a request to LOCATE
  *  a specific strike (so we can light it up), not build or analyze one. Needs a
  *  find-style cue AND a concrete strike price. */
@@ -617,6 +656,14 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsOptionsMarket(text)) return { kind: 'options_market' };
   if (wantsFlow(text)) return { kind: 'flow' };
   if (wantsPositioning(text)) return { kind: 'positioning' };
+
+  // Newcomer glossary ("what's a call option?", "what is implied volatility?", "how
+  // does Skew work?"). BEFORE the live vol/skew/term reads so a definitional "what
+  // is …" wins, while a live ask ("what's the volatility now") has no definitional
+  // cue and falls through to them. AFTER the options-market/flow block so "what do
+  // options traders say" stays a live read.
+  const concept = conceptGlossary(text);
+  if (concept) return { kind: 'explain', topic: concept };
 
   // "What's happening today? / any events? / is there FOMC?" — today's scheduled
   // calendar. Before why_moving + analyze, since "happening today" trips the
