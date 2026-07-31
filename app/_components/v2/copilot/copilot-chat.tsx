@@ -59,6 +59,7 @@ export function CopilotChat({
   threadEnd,
   pinnedTop,
   suggestions,
+  hideHeader,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -69,6 +70,9 @@ export function CopilotChat({
   /** Open the share dialog for a shareable snapshot (fear & greed card). */
   onShare?: (share: ShareCard) => void;
   busy?: boolean;
+  /** Drop the built-in "Kelly" header — used when a host already shows one (the
+   *  dock drawer has its own title bar, so this avoids a doubled Kelly). */
+  hideHeader?: boolean;
   /** Live content pinned at the bottom of the thread (the open-bets tray) — part
    *  of the conversation flow, not a separate rail, so it scrolls with the chat. */
   threadEnd?: ReactNode;
@@ -130,24 +134,26 @@ export function CopilotChat({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* header */}
-      <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-        {/* Kelly's face — the fox mascot cropped into a circle for proper branding
-            (the confident "smart" expression). Decorative; the name sits beside it. */}
-        <span
-          aria-hidden
-          className="h-8 w-8 flex-none rounded-full bg-(--accent-soft) bg-no-repeat ring-1 ring-(--accent-line)"
-          style={{
-            backgroundImage: `url(${MASCOT_SRC.confident})`,
-            backgroundSize: '155%',
-            backgroundPosition: '50% 20%',
-          }}
-        />
-        <div className="flex flex-col">
-          <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Kelly</h2>
-          <span className="text-[9.5px] uppercase tracking-wider text-text-3">Auto · beta · grounded in live data</span>
+      {/* header (skipped when the host already renders one, e.g. the dock drawer) */}
+      {!hideHeader && (
+        <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+          {/* Kelly's face — the fox mascot cropped into a circle for proper branding
+              (the confident "smart" expression). Decorative; the name sits beside it. */}
+          <span
+            aria-hidden
+            className="h-8 w-8 flex-none rounded-full bg-(--accent-soft) bg-no-repeat ring-1 ring-(--accent-line)"
+            style={{
+              backgroundImage: `url(${MASCOT_SRC.confident})`,
+              backgroundSize: '155%',
+              backgroundPosition: '50% 20%',
+            }}
+          />
+          <div className="flex flex-col">
+            <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Kelly</h2>
+            <span className="text-[9.5px] uppercase tracking-wider text-text-3">Auto · beta · grounded in live data</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* pinned ambient read — sits under the header, above the scrolling thread */}
       {pinnedTop}

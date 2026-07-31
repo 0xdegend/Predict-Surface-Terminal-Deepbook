@@ -21,20 +21,26 @@
  * page until a user actually opens it.
  */
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { LuX } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { fromQuote } from '@/config/scale';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
+import { CopilotRead } from './copilot-read';
 import { parseIntent, type CopilotIntent } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
+import { marketRows, volState, bias as pulseBias } from '@/lib/copilot/pulse';
 import { askKellyAI, type AiContext, type AiTurn } from '@/lib/copilot/ai';
+import { eventGreetingLine } from '@/lib/insights/events';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
+import { useNow } from '@/lib/hooks/use-now';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useMarketEvents } from '@/lib/hooks/use-market-events';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 
 const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
@@ -51,9 +57,12 @@ const HANDOFF: ReadonlySet<CopilotIntent['kind']> = new Set([
   'create_account', 'get_tokens', 'onboarding', 'close_position', 'adjust_ticket',
 ]);
 
+// Same greeting as the full /v2/copilot page (copilot-screen.tsx), so the drawer
+// reads identically. Today's biggest market event is folded in as a third line
+// once the calendar lands (see the effect in KellyPanel).
 const GREETING: string[] = [
-  "Hey, I'm Kelly. Ask me anything about BTC or how this works.",
-  'Try “what’s a call option?”, “analyze BTC”, or “what’s happening today?”.',
+  "Hi, I'm Kelly, your Predict co-pilot. Tell me which way you think BTC goes and how bold you want to be, and I'll set the bet up for you.",
+  'Try “analyze BTC”, “safe up bet”, or say “set up a trade” and I’ll walk you through it step by step.',
 ];
 
 const DOCK_CHIPS = [
@@ -199,6 +208,19 @@ function KellyPanel({
   const { data: insights } = useBtcInsights({ enabled: COPILOT_LIVE });
   const { data: events } = useMarketEvents({ enabled: COPILOT_LIVE });
   const acct = usePredictAccountV2();
+  // Recent spot path for the ambient read's sparkline + the vol verdict. Shares
+  // the ticket's cached key (60s), fetched once — no polling on the surface.
+  const { data: candles } = useQuery<BtcCandles>({
+    queryKey: ['insights', 'btc', 'candles'],
+    queryFn: async () => {
+      const r = await fetch('/api/insights/btc/candles');
+      if (!r.ok) throw new Error(`candles ${r.status}`);
+      return (await r.json()) as BtcCandles;
+    },
+    enabled: COPILOT_LIVE,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
 
   // Slide-in on mount, slide-out when the parent flags `closing`.
   const [shown, setShown] = useState(false);
@@ -221,12 +243,38 @@ function KellyPanel({
     };
   }, [onClose]);
 
+  // Fold today's biggest scheduled event into the greeting once the calendar
+  // lands, but only while the thread is still the base greeting (no chat yet).
+  // An effect (not adjust-during-render) since `messages` lives in the parent;
+  // guarded on the base line count so a reopen never double-folds.
+  useEffect(() => {
+    if (!COPILOT_LIVE) return;
+    const line = eventGreetingLine(events ?? null);
+    if (!line) return;
+    setMessages((m) => {
+      const only = m.length === 1 ? m[0] : null;
+      if (only && only.role === 'assistant' && only.text.length === GREETING.length) {
+        return [{ ...only, text: [...only.text, line] }];
+      }
+      return m;
+    });
+  }, [events, setMessages]);
+
   const onScreen = shown && !closing;
 
   const candidates: BetCandidate[] = markets.flatMap((m) => {
     const p = pricers[m.expiry_market_id];
     return p ? [{ market: m, pricer: p }] : [];
   });
+
+  // Ambient "surface read" pinned above the thread — built from the SAME pulse
+  // functions the full page uses (lean + vol verdict + soonest chance-up), so the
+  // drawer's read can never contradict it. Renders nothing until there's a lean
+  // or a vol read (i.e. nothing in showcase / non-live mode).
+  const now = useNow(0);
+  const lean = pulseBias(insights ?? null);
+  const vol = volState(candidates, candles?.closes, now);
+  const upChance = marketRows(candidates, spot, now)[0]?.upChance ?? null;
 
   const readWallet = () => ({
     connected: !!acct.owner,
@@ -384,6 +432,8 @@ function KellyPanel({
             onEditBet={() => router.push('/v2/copilot')}
             busy={busy}
             suggestions={DOCK_CHIPS}
+            hideHeader
+            pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={upChance} closes={candles?.closes ?? null} />}
           />
         </div>
       </div>
