@@ -21,6 +21,7 @@ import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { V2TradeTicket } from './trade-ticket';
 import { V2PriceChart } from './price-chart';
+import { StaleFeedOverlay } from './stale-feed-overlay';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -32,7 +33,14 @@ type TicketProps = { market: V2Market | null; pricer?: LivePricer; serverNow: nu
 export function V2TicketRail({ market, pricer, serverNow }: TicketProps) {
   const isDesktop = useMediaQuery(DESKTOP_MQ);
   if (!isDesktop) return null;
-  return <V2TradeTicket market={market} pricer={pricer} serverNow={serverNow} />;
+  return (
+    // Positioned so the stale-feed overlay can blur + block the ticket (and its
+    // "Loading live price…" state) when the upstream spot feed freezes.
+    <div className="relative">
+      <V2TradeTicket market={market} pricer={pricer} serverNow={serverNow} />
+      <StaleFeedOverlay />
+    </div>
+  );
 }
 
 /** Mobile slide-up trade ticket. Renders nothing on desktop. */
@@ -91,7 +99,7 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
             <LuX size={16} />
           </button>
         </div>
-        <div className="scroll-quiet min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
+        <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
           {/* Mobile: the chart renders inside binary step 1 (read-only — taps scroll
               the sheet), only mounted while the sheet is open + a market is picked.
               Its strike/win-zone overlays track the payout slider live. */}
@@ -108,6 +116,8 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
               ) : null
             }
           />
+          {/* Blurs the ticket + blocks trading when the upstream spot feed freezes. */}
+          <StaleFeedOverlay />
         </div>
       </div>
     </>

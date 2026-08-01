@@ -29,6 +29,7 @@ import {
 } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
 import { PriceBandPrimitive, WinZonePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
+import { StaleFeedOverlay } from './stale-feed-overlay';
 import { getPythHistory, getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
@@ -364,6 +365,8 @@ export function V2PriceChart({
         <span className="font-mono text-[13px] tabular-nums text-text-1">{spot == null ? '—' : price(spot)}</span>
       </div>
       <div ref={containerRef} className="h-full w-full" />
+      {/* When the upstream spot feed freezes, blur the (frozen) chart + say so. */}
+      <StaleFeedOverlay />
     </div>
   );
 }
