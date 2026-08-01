@@ -8,6 +8,7 @@
  * guard caps it and the wallet shows the exact figure at signing.
  */
 import { upFair, type SviFloat } from '@/lib/svi/svi';
+import { ACTIVE_V2_DEPLOYMENT, predictV2Config } from '@/config/predict';
 
 /**
  * The protocol's minimum mint-time stake — `constants::min_net_premium` on
@@ -139,6 +140,41 @@ export function admittedLeverageCap(
 }
 
 /**
+ * 7-29's admission cap (verified live against the chain). Two changes from 6-24:
+ *  1. Leverage is gated by CONFIDENCE — how far the odds sit from 50/50, i.e.
+ *     |2p − 1| — not raw probability. The chain admits the MOST leverage on
+ *     near-certain strikes (either direction) and the LEAST at a coin-flip, where
+ *     a leveraged position is likeliest to be knocked out. (6-24 did the opposite,
+ *     scaling up with raw p, which over-offered at 50/50 and aborted every mint.)
+ *  2. Within `no_leverage_window_ms` of expiry, leverage is disabled (1x). Every
+ *     short testnet market sits inside the 60-min window, so leverage there is 1x.
+ * `msToExpiry` is the market's time to expiry; `null` skips the window gate.
+ */
+export function admittedLeverageCap729(
+  entryProb: number,
+  maxAdmissionLeverage: number,
+  msToExpiry: number | null = null,
+): number {
+  const window = predictV2Config.noLeverageWindowMs;
+  if (window > 0 && msToExpiry != null && msToExpiry <= window) return 1;
+  const p = Math.min(Math.max(entryProb, 0), 1);
+  const confidence = Math.abs(2 * p - 1);
+  return 1 + (Math.max(1, maxAdmissionLeverage) - 1) * confidence;
+}
+
+/** The admission cap for the ACTIVE deployment: 7-29 = confidence curve + the
+ *  no-leverage window; 6-24 = the probability-only curve. */
+export function effectiveLeverageCap(
+  entryProb: number,
+  maxAdmissionLeverage: number,
+  msToExpiry: number | null = null,
+): number {
+  return ACTIVE_V2_DEPLOYMENT === '7-29'
+    ? admittedLeverageCap729(entryProb, maxAdmissionLeverage, msToExpiry)
+    : admittedLeverageCap(entryProb, maxAdmissionLeverage);
+}
+
+/**
  * The largest WHOLE-number leverage a trader may select at these odds — the
  * admitted cap floored to an integer preset, never below 1×. A hair of margin
  * (1e-6) keeps us safely under the chain's fixed-point `mul_div_down` cap at the
@@ -146,8 +182,12 @@ export function admittedLeverageCap(
  * offers a multiple the chain will reject (the market-wide `max_admission_leverage`
  * over-promises — a full 3× is unreachable below 100% odds).
  */
-export function maxSelectableLeverage(entryProb: number, maxAdmissionLeverage: number): number {
-  return Math.max(1, Math.floor(admittedLeverageCap(entryProb, maxAdmissionLeverage) - 1e-6));
+export function maxSelectableLeverage(
+  entryProb: number,
+  maxAdmissionLeverage: number,
+  msToExpiry: number | null = null,
+): number {
+  return Math.max(1, Math.floor(effectiveLeverageCap(entryProb, maxAdmissionLeverage, msToExpiry) - 1e-6));
 }
 
 /** Granularity of the continuous leverage slider — 0.1× steps. */
@@ -161,8 +201,12 @@ export const LEVERAGE_STEP = 0.1;
  * headroom — e.g. 2.7× at 50/50 instead of stopping at 2×. The pre-flight
  * simulate ([[enoki-sponsor]]) backstops any odds drift between quote and mint.
  */
-export function leverageSliderMax(entryProb: number, maxAdmissionLeverage: number): number {
-  const cap = admittedLeverageCap(entryProb, maxAdmissionLeverage) - 1e-6;
+export function leverageSliderMax(
+  entryProb: number,
+  maxAdmissionLeverage: number,
+  msToExpiry: number | null = null,
+): number {
+  const cap = effectiveLeverageCap(entryProb, maxAdmissionLeverage, msToExpiry) - 1e-6;
   return Math.max(1, Math.floor(cap / LEVERAGE_STEP) * LEVERAGE_STEP);
 }
 

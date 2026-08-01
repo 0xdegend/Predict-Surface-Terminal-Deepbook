@@ -15,7 +15,7 @@ describe('humanizeV2Error', () => {
     const raw =
       "MoveAbort in 7th command, abort code: 6, in '0xdb3e::strike_exposure_config::assert_mint_admission' (instruction 9)";
     expect(humanizeV2Error(raw)).toBe(
-      'That leverage is more than this market allows at these odds — lower it and retry.',
+      'That leverage is more than this market allows right now. Lower it and retry.',
     );
   });
 

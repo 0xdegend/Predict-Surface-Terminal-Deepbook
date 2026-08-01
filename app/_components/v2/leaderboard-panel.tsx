@@ -30,7 +30,7 @@ import {
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { num, compact } from '@/lib/format';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
@@ -57,10 +57,13 @@ export function V2LeaderboardPanel() {
   const account = useCurrentAccount();
   const mounted = useMounted();
   const [sort, setSort] = useState<V2SortKey>('points');
-  // Skew traders is the live board (complete, all-time from the on-chain scan). The
-  // All-traders board is still capped to the indexer's ~8h window, so it stays
-  // disabled until the account-list / global-order endpoint lands — visible but not
-  // navigable, so nobody reads a half-populated protocol board as the full picture.
+  // "Skew traders" (bets placed through the app) is the default landing tab on BOTH
+  // deployments: it's the app's own board, and now that a builder code is registered
+  // on 7-29 it populates from attributed trades. The "All traders" venue board is a
+  // secondary tab, enabled and navigable on 7-29 (the chain's own event index gives a
+  // complete board) but still locked ("Soon") on 6-24 (only a partial ~8h fan-out
+  // window there).
+  const allTradersReady = ACTIVE_V2_DEPLOYMENT === '7-29';
   const [scope, setScope] = useState<Scope>('skew');
   const [page, setPage] = useState(0);
 
@@ -145,7 +148,8 @@ export function V2LeaderboardPanel() {
           icon={LuGlobe}
           active={scope === 'all'}
           onClick={() => selectScope('all')}
-          disabled
+          count={allTradersReady && mounted && !loading ? allRows.length : undefined}
+          disabled={!allTradersReady}
         />
         <button
           onClick={refetch}

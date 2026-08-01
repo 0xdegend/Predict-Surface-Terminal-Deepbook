@@ -13,21 +13,28 @@
  * once the account model lands in Phase 2. (`up_price`/`range_price` are package-
  * private on-chain, so the fair mid is the only read-only price available here.)
  *
- * BCS layout verified from source (branch predict-testnet-6-24):
- *   Pricer  { expiry_market_id: address, forward: u64, svi: SVIParams }
- *   SVIParams { a: u64, b: u64, rho: I64, m: I64, sigma: u64 }
- *   I64     { magnitude: u64, is_negative: bool }
+ * BCS layout differs by deployment (verified from deployed source):
+ *   6-24: Pricer { expiry_market_id: address, forward: u64, svi: SVIParams }
+ *         SVIParams { a: u64, b: u64, rho: I64, m: I64, sigma: u64 }  (all 1e9)
+ *   7-29: Pricer { expiry_market_id, forward: u64, svi: PricingSVI, +4 u64 source
+ *         timestamps } ; PricingSVI { a_magnitude: u128, a_is_negative: bool,
+ *         b: u128, rho: I64, m: I64, sigma: u64 } — a/b at 1e18, rho/m/sigma at 1e9
+ *         (scales confirmed from pricing.move::variance_sqrt_and_d2). The standard
+ *         SVI formula in lib/svi is unchanged once each field is de-scaled to float.
+ *   I64 { magnitude: u64, is_negative: bool }
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
-import { predictV2Config, ACTIVE_NETWORK, v2Target } from '@/config/predict';
-import { toFloat, signedToFloat } from '@/config/scale';
+import { predictV2Config, ACTIVE_NETWORK, ACTIVE_V2_DEPLOYMENT, v2Target } from '@/config/predict';
+import { toFloat, signedToFloat, toFloat18, signedToFloat18 } from '@/config/scale';
 import { upFair, dnFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 
 /* ------------------------------- BCS shapes ------------------------------ */
 
 const I64 = bcs.struct('I64', { magnitude: bcs.u64(), is_negative: bcs.bool() });
+
+// 6-24 Pricer
 const SVIParamsBcs = bcs.struct('SVIParams', {
   a: bcs.u64(),
   b: bcs.u64(),
@@ -39,6 +46,25 @@ const PricerBcs = bcs.struct('Pricer', {
   expiry_market_id: bcs.Address,
   forward: bcs.u64(),
   svi: SVIParamsBcs,
+});
+
+// 7-29 Pricer (a/b are u128; trailing source-timestamp fields are read past but unused)
+const PricingSVIBcs = bcs.struct('PricingSVI', {
+  a_magnitude: bcs.u128(),
+  a_is_negative: bcs.bool(),
+  b: bcs.u128(),
+  rho: I64,
+  m: I64,
+  sigma: bcs.u64(),
+});
+const Pricer729Bcs = bcs.struct('Pricer729', {
+  expiry_market_id: bcs.Address,
+  forward: bcs.u64(),
+  svi: PricingSVIBcs,
+  pyth_ts: bcs.u64(),
+  bs_spot_ts: bcs.u64(),
+  bs_fwd_ts: bcs.u64(),
+  bs_svi_ts: bcs.u64(),
 });
 
 /* ------------------------------- client ---------------------------------- */
@@ -92,9 +118,7 @@ export function buildLoadPricerCall(tx: Transaction, marketId: string) {
       tx.object(c.shared.protocolConfig),
       tx.object(c.shared.oracleRegistry),
       tx.object(c.asset.pythFeedId),
-      tx.object(c.asset.bsSpotFeedId),
-      tx.object(c.asset.bsForwardFeedId),
-      tx.object(c.asset.bsSviFeedId),
+      ...c.asset.bsFeedIds.map((id) => tx.object(id)),
       tx.object(c.clockId),
     ],
   });
@@ -127,7 +151,22 @@ export async function simulateLivePricer(
   if (!last?.returnValues?.length) {
     throw new Error('load_live_pricer returned no Pricer (read-only call expected)');
   }
-  const p = PricerBcs.parse(new Uint8Array(last.returnValues[0].bcs));
+  const bytes = new Uint8Array(last.returnValues[0].bcs);
+  if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+    const p = Pricer729Bcs.parse(bytes);
+    return {
+      expiryMarketId: p.expiry_market_id,
+      forward: toFloat(p.forward),
+      svi: {
+        a: signedToFloat18(p.svi.a_magnitude, p.svi.a_is_negative),
+        b: toFloat18(p.svi.b),
+        rho: signedToFloat(p.svi.rho.magnitude, p.svi.rho.is_negative),
+        m: signedToFloat(p.svi.m.magnitude, p.svi.m.is_negative),
+        sigma: toFloat(p.svi.sigma),
+      },
+    };
+  }
+  const p = PricerBcs.parse(bytes);
   return {
     expiryMarketId: p.expiry_market_id,
     forward: toFloat(p.forward),

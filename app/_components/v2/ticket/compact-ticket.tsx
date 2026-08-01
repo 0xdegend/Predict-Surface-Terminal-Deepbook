@@ -72,7 +72,7 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   // `max_admission_leverage` — that ceiling (e.g. 3×) is only the p→1 asymptote, so
   // offering it at real odds always aborts with strike_exposure_config #6. The
   // slider exposes the fractional headroom up to this cap (continuous on-chain).
-  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage), market.expiry - Date.now());
   const lev = Math.min(leverage, maxLev);
   const stakeBase = toQuote(Math.max(0, stake));
   // Budget mint: the chain derives the quantity at execution from its own live

@@ -11,12 +11,15 @@
  * by mint and consumed by redeem. `Auth` is consumed per call — see account.ts.
  */
 import { Transaction } from '@mysten/sui/transactions';
-import { predictV2Config, v2Target } from '@/config/predict';
+import { predictV2Config, v2Target, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import { addGenerateAuth, addDeposit } from './account';
 import { addSetBuilderCode } from './builder-code';
 
 const c = () => predictV2Config;
+
+/** u64 max — used as a "no cap" sentinel for 7-29's added cost ceiling. */
+const U64_MAX = 18446744073709551615n;
 
 export interface MintParams {
   marketId: string;
@@ -87,6 +90,10 @@ export interface MintBudgetParams {
   minQuantity: bigint;
   /** 1e9-scaled (1e9 = 1x). */
   leverage: bigint;
+  /** All-in cost cap in DUSDC base units — a slippage guard the 7-29 contract added
+   *  to mint_exact_amount. Ignored on 6-24 (which has no such arg); defaults to no
+   *  cap on 7-29 (the `amount` premium budget already bounds the spend). */
+  maxCost?: bigint;
   /** Optional: deposit this many base units into the wrapper in the same PTB first. */
   deposit?: bigint;
   /** Attribute this account to our BuilderCode before minting (see buildMintTx). */
@@ -120,6 +127,9 @@ export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
       tx.pure.u64(p.amount),
       tx.pure.u64(p.minQuantity),
       tx.pure.u64(p.leverage),
+      // 7-29 inserted an all-in cost cap here; 6-24 has no such arg. Default U64_MAX
+      // (no cap) keeps 6-24 behavior parity — the `amount` budget already bounds spend.
+      ...(ACTIVE_V2_DEPLOYMENT === '7-29' ? [tx.pure.u64(p.maxCost ?? U64_MAX)] : []),
       tx.object(c().accumulatorRootId),
       tx.object(c().clockId),
     ],
@@ -133,6 +143,11 @@ export interface RedeemParams {
   orderId: bigint; // u256
   /** Base units to close (0/equal-to-open = full close). */
   closeQuantity: bigint;
+  /** Close-side slippage floors the 7-29 contract added to redeem_live (1e9-scaled
+   *  min probability, and min proceeds in base units). Ignored on 6-24; default 0 =
+   *  no floor on 7-29 (accept the live mark), matching 6-24 behavior. */
+  minProbability?: bigint;
+  minProceeds?: bigint;
 }
 
 /** redeem_live — close (part of) a position on a still-live market (needs a Pricer). */
@@ -150,6 +165,11 @@ export function buildRedeemLiveTx(p: RedeemParams): Transaction {
       pricer,
       tx.pure.u256(p.orderId),
       tx.pure.u64(p.closeQuantity),
+      // 7-29 inserted close-side slippage floors here; 6-24 has neither. Default 0
+      // (no floor) keeps 6-24 behavior parity.
+      ...(ACTIVE_V2_DEPLOYMENT === '7-29'
+        ? [tx.pure.u64(p.minProbability ?? 0n), tx.pure.u64(p.minProceeds ?? 0n)]
+        : []),
       tx.object(c().accumulatorRootId),
       tx.object(c().clockId),
     ],
@@ -158,12 +178,37 @@ export function buildRedeemLiveTx(p: RedeemParams): Transaction {
 }
 
 /**
- * redeem_settled — claim a settled position. Uses the settlement price (no live
- * Pricer, no Auth — the payout is deterministic); takes the account + propbook
- * registries and the pyth feed instead. Payout lands in the owner's account.
+ * redeem_settled — claim a settled position. The settlement price is deterministic,
+ * so there is no live Pricer. The two live deployments differ in shape (both verified
+ * by live dry-run):
+ *
+ * - 7-29: owner-auth path — redeem_settled(market, wrapper, auth, config, order_id,
+ *   close_quantity, root, clock). Takes an Auth hot potato (like redeem_live), and NO
+ *   registries/pyth (the settlement price is stored on the market at settle time).
+ * - 6-24: permissionless path — takes the account + propbook registries + the pyth
+ *   feed and NO Auth.
+ *
+ * Payout lands in the owner's account either way.
  */
 export function buildRedeemSettledTx(p: RedeemParams): Transaction {
   const tx = new Transaction();
+  if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+    const auth = addGenerateAuth(tx);
+    tx.moveCall({
+      target: v2Target('expiry_market', 'redeem_settled'),
+      arguments: [
+        tx.object(p.marketId),
+        tx.object(p.wrapperId),
+        auth,
+        tx.object(c().shared.protocolConfig),
+        tx.pure.u256(p.orderId),
+        tx.pure.u64(p.closeQuantity),
+        tx.object(c().accumulatorRootId),
+        tx.object(c().clockId),
+      ],
+    });
+    return tx;
+  }
   tx.moveCall({
     target: v2Target('expiry_market', 'redeem_settled'),
     arguments: [

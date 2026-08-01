@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   quantityForStake,
   winPayout,
   knockoutProbability,
   priceMoveToKnockout,
   admittedLeverageCap,
+  admittedLeverageCap729,
   maxSelectableLeverage,
   leverageSliderMax,
   LEVERAGE_STEP,
@@ -32,6 +33,36 @@ describe('admittedLeverageCap (strike_exposure_config::admitted_leverage_cap)', 
   });
   it('never below 1× and treats a sub-1× market cap as 1×', () => {
     expect(admittedLeverageCap(0.5, 0.4)).toBe(1);
+  });
+});
+
+describe('admittedLeverageCap729 (7-29 confidence curve)', () => {
+  // Verified live: cap = 1 + (Lmax−1)·|2p−1| — MOST leverage at the certainty
+  // extremes, 1× at a coin-flip (the opposite of the 6-24 raw-probability curve).
+  it('is 1× at 50/50 and scales up with confidence', () => {
+    expect(admittedLeverageCap729(0.5, 3, null)).toBeCloseTo(1, 6);
+    expect(admittedLeverageCap729(0.75, 3, null)).toBeCloseTo(2, 6);
+    expect(admittedLeverageCap729(0.25, 3, null)).toBeCloseTo(2, 6);
+  });
+  it('reaches the full market cap at both certainty extremes', () => {
+    expect(admittedLeverageCap729(1, 3, null)).toBeCloseTo(3, 6);
+    expect(admittedLeverageCap729(0, 3, null)).toBeCloseTo(3, 6);
+  });
+});
+
+describe('7-29 no-leverage window (verified: leverage is 1× within 60 min of expiry)', () => {
+  it('forces 1× inside the window regardless of odds, restores the curve outside', async () => {
+    vi.stubEnv('NEXT_PUBLIC_PREDICT_DEPLOYMENT', '7-29');
+    vi.resetModules();
+    const q = await import('./quote');
+    const within = 10 * 60_000; // 10 min < 60 min window (every testnet market)
+    const outside = 90 * 60_000; // 90 min > window
+    expect(q.admittedLeverageCap729(0.99, 3, within)).toBe(1); // even near-certain → 1×
+    expect(q.leverageSliderMax(0.99, 3, within)).toBe(1);
+    expect(q.leverageSliderMax(0.5, 3, within)).toBe(1);
+    expect(q.admittedLeverageCap729(0.75, 3, outside)).toBeCloseTo(2, 6); // curve returns
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });
 

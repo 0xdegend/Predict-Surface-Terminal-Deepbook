@@ -26,6 +26,8 @@ import {
   type IPriceLine,
   type AutoscaleInfo,
   type UTCTimestamp,
+  type AreaData,
+  type WhitespaceData,
 } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
 import { PriceBandPrimitive, WinZonePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
@@ -55,14 +57,27 @@ function obsMs(o: PythObservation): number | null {
 }
 
 /**
- * Observations → ascending {time, value}, ONE point per second (last value in
- * the second wins). Legacy parity (see chart/price-chart.tsx): per-second
- * decimation rejects the feed's sub-second noise — bid/ask flip, multi-publisher
- * jitter, momentary outliers — which otherwise renders as a jagged zig-zag AND
- * makes the price scale constantly re-expand and snap back. BTC moves only a few
- * dollars per second, so the resulting ~1/sec line is both smooth and honest.
+ * A feed gap longer than this (seconds) BREAKS the line instead of drawing a
+ * straight segment across the missing time. The feed publishes ~1/sec, so a
+ * multi-second hole is a real stall (a keeper hiccup) — bridging it would paint
+ * price action that never happened: a fake flat plateau when the gap is quiet, a
+ * fake vertical cliff when price moved during it. An honest break reads as "no
+ * data here" and the line resumes when the feed does. 5s clears normal 1-3s
+ * jitter so a healthy feed never fragments.
  */
-function toSeries(obs: PythObservation[]): { time: UTCTimestamp; value: number }[] {
+const GAP_BREAK_S = 5;
+
+type ChartPoint = AreaData<UTCTimestamp> | WhitespaceData<UTCTimestamp>;
+
+/**
+ * Observations → ascending points, ONE per second (last value in the second
+ * wins). Per-second decimation rejects the feed's sub-second noise — bid/ask
+ * flip, multi-publisher jitter, momentary outliers — which otherwise renders as a
+ * jagged zig-zag AND makes the price scale constantly re-expand and snap back. BTC
+ * moves only a few dollars per second, so the resulting ~1/sec line is smooth and
+ * honest. Real feed gaps get a whitespace break (see GAP_BREAK_S).
+ */
+function toSeries(obs: PythObservation[]): ChartPoint[] {
   const bySec = new Map<number, number>();
   // Sort by full ms so, within a second, the chronologically LAST tick wins.
   for (const o of [...obs].sort((a, b) => (obsMs(a) ?? 0) - (obsMs(b) ?? 0))) {
@@ -71,9 +86,20 @@ function toSeries(obs: PythObservation[]): { time: UTCTimestamp; value: number }
     if (v == null || ms == null) continue;
     bySec.set(Math.floor(ms / 1000), v);
   }
-  return [...bySec.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([time, value]) => ({ time: time as UTCTimestamp, value }));
+  const entries = [...bySec.entries()].sort((a, b) => a[0] - b[0]);
+  const out: ChartPoint[] = [];
+  let prevSec: number | null = null;
+  for (const [time, value] of entries) {
+    // Break the line across a real gap: a whitespace point (time, no value) right
+    // after the last real point severs the segment so nothing is drawn across the
+    // hole. The series still ends on a value point (whitespace only precedes one).
+    if (prevSec != null && time - prevSec > GAP_BREAK_S) {
+      out.push({ time: (prevSec + 1) as UTCTimestamp });
+    }
+    out.push({ time: time as UTCTimestamp, value });
+    prevSec = time;
+  }
+  return out;
 }
 
 export function V2PriceChart({
@@ -274,6 +300,11 @@ export function V2PriceChart({
     if (v == null || ms == null) return;
     const t = Math.floor(ms / 1000); // one point per second, same as the history
     if (t < lastTimeRef.current) return; // can't update an older point
+    // Feed just resumed after a gap: break the line first (same rule as history)
+    // so the live edge doesn't bridge the stall with a fake segment.
+    if (lastTimeRef.current > 0 && t - lastTimeRef.current > GAP_BREAK_S) {
+      series.update({ time: (lastTimeRef.current + 1) as UTCTimestamp });
+    }
     series.update({ time: t as UTCTimestamp, value: v });
     lastTimeRef.current = t;
   }, [latestQ.data]);

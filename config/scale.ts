@@ -63,6 +63,21 @@ export function signedToFloat(magnitude: IntLike, negative: boolean): number {
   return negative ? -f : f;
 }
 
+/* 1e18 variant — the 7-29 Pricer's SVI `a` and `b` are scaled by 1e18 (u128), not
+ * 1e9. rho/m/sigma stay 1e9. See lib/sui/v2/pricer.ts. */
+export const FLOAT_SCALING_18 = 1e18;
+
+/** 1e18-scaled integer → float (7-29 SVI a/b). */
+export function toFloat18(scaled: IntLike): number {
+  return toNumber(scaled) / FLOAT_SCALING_18;
+}
+
+/** Signed-magnitude 1e18 value → float (7-29 SVI a). */
+export function signedToFloat18(magnitude: IntLike, negative: boolean): number {
+  const f = toFloat18(magnitude);
+  return negative ? -f : f;
+}
+
 /**
  * Parse an on-chain i64::I64 event field. The Move I64 is { bits: u64, ... } in
  * raw events; deserialized BCS commonly surfaces as { negative: bool, magnitude }

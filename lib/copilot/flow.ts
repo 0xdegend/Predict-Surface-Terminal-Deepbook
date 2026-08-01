@@ -174,7 +174,7 @@ const minStake = () => fromQuote(MIN_STAKE_BASE);
  *  ticket's leverage slider uses. */
 function maxLeverageFor(strikeFloat: number, isUp: boolean, market: V2Market, pricer: LivePricer): number {
   const entryProb = directionFair(strikeFloat, pricer.forward, pricer.svi, isUp);
-  return leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  return leverageSliderMax(entryProb, toFloat(market.max_admission_leverage), market.expiry - Date.now());
 }
 
 /** Snap + band-check a candidate strike against the market's quotable range. */

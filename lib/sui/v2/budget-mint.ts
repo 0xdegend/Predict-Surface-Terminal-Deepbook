@@ -67,7 +67,7 @@ export function planBinaryBudgetMint(p: BinaryBetParams): BinaryMintPlan {
 
   // Cap leverage by the protocol's probability-scaled admission curve (not the
   // market-wide max), exactly as the ticket does.
-  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage), market.expiry - Date.now());
   const lev = Math.min(p.leverage, maxLev);
   const stakeBase = toQuote(Math.max(0, p.stake));
   const amount = mintAmountBase(stakeBase);

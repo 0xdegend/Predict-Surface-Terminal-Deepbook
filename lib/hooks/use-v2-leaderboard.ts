@@ -29,11 +29,11 @@
 import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useV2ReadClient } from '@/lib/sui/grpc';
-import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
+import { getV2Markets, getMarketOrders, getAccountOrders, getV2AllOrders, qkV2 } from '@/lib/api/v2/client';
 import { mapPool, withRetry } from '@/lib/api/v2/fan-out';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import { aggregateV2Leaderboard } from '@/lib/leaderboard/v2-aggregate';
 import type { V2LeaderboardRow } from '@/lib/leaderboard/v2';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
@@ -48,6 +48,11 @@ const ORDERS_PER_MARKET = 500;
 /** In-flight order fetches. Browsers cap ~6 sockets/host anyway; this just keeps
  *  that pipe full without scheduling 500 requests at once. */
 const CONCURRENCY = 12;
+/** 7-29 only: how far back (per event type) the ONE global order scan pages. The
+ *  chain's event index serves the whole stream, so a single deep scan replaces the
+ *  per-market fan-out; the walk stops early when the feed ends, so this is a cap,
+ *  not a fixed cost. Sized to capture a busy account's full recent run. */
+const GLOBAL_ORDERS = 800;
 
 /** Stable identity for an order event, to dedupe the market + account feeds. */
 const eventKey = (o: V2OrderEvent): string => {
@@ -118,27 +123,42 @@ export function useV2Leaderboard(): UseV2Leaderboard {
   const q = useQuery<V2LeaderboardRow[]>({
     queryKey: [...qkV2.markets, 'leaderboard', ...mergeAccountIds.sort()] as const,
     queryFn: async ({ signal }) => {
-      // 1. The full retained market roster, newest-first, deduped by id.
-      const raw = await getV2Markets(MARKET_LIMIT, { signal });
-      const byId = new Map<string, V2Market>();
-      for (const m of raw) {
-        const prev = byId.get(m.expiry_market_id);
-        if (!prev || m.checkpoint_timestamp_ms > prev.checkpoint_timestamp_ms) byId.set(m.expiry_market_id, m);
-      }
-      const ids = [...byId.values()]
-        .sort((a, b) => b.checkpoint_timestamp_ms - a.checkpoint_timestamp_ms)
-        .map((m) => m.expiry_market_id);
-
-      // 2. Fan the per-market order feeds out (bounded). One market's feed
-      //    failing must not sink the whole board.
       const byMarket = new Map<string, V2OrderEvent[]>();
-      await mapPool(ids, CONCURRENCY, async (id) => {
-        try {
-          byMarket.set(id, await withRetry(() => getMarketOrders(id, ORDERS_PER_MARKET, { signal })));
-        } catch {
-          /* skip a single genuinely-unavailable market feed */
+
+      if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+        // 7-29: the chain's own event index serves the WHOLE order stream, so ONE
+        // global paged scan replaces the per-market fan-out (which on 7-29 would
+        // re-query the same global newest-page once per market — costly + thin).
+        // Bucket by market so the aggregator's redeem→mint join behaves identically.
+        const all = await getV2AllOrders(GLOBAL_ORDERS, { signal });
+        for (const o of all) {
+          const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
+          if (!mid) continue;
+          const list = byMarket.get(mid);
+          if (list) list.push(o);
+          else byMarket.set(mid, [o]);
         }
-      });
+      } else {
+        // 6-24: no global endpoint — fan the per-market feeds out across the full
+        // retained market roster (newest-first, deduped by id). One market's feed
+        // failing must not sink the whole board.
+        const raw = await getV2Markets(MARKET_LIMIT, { signal });
+        const byId = new Map<string, V2Market>();
+        for (const m of raw) {
+          const prev = byId.get(m.expiry_market_id);
+          if (!prev || m.checkpoint_timestamp_ms > prev.checkpoint_timestamp_ms) byId.set(m.expiry_market_id, m);
+        }
+        const ids = [...byId.values()]
+          .sort((a, b) => b.checkpoint_timestamp_ms - a.checkpoint_timestamp_ms)
+          .map((m) => m.expiry_market_id);
+        await mapPool(ids, CONCURRENCY, async (id) => {
+          try {
+            byMarket.set(id, await withRetry(() => getMarketOrders(id, ORDERS_PER_MARKET, { signal })));
+          } catch {
+            /* skip a single genuinely-unavailable market feed */
+          }
+        });
+      }
 
       // 3. Fold each completeness account's full history into its market buckets
       //    (connected wallet + featured pins), creating buckets for markets that

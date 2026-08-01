@@ -30,7 +30,7 @@ const V2_ABORTS: Record<string, string> = {
   'strike_exposure_config:1': 'The odds moved outside the tradeable 1%–99% band. Pick a level nearer the current price.',
   'strike_exposure_config:4': 'Bets need at least a $1 stake (before fees). Add a little and try again.',
   'strike_exposure_config:5': 'Leverage can’t be below 1×.',
-  'strike_exposure_config:6': 'That leverage is more than this market allows at these odds — lower it and retry.',
+  'strike_exposure_config:6': 'That leverage is more than this market allows right now. Lower it and retry.',
   // account
   'account:0': 'This account belongs to a different wallet. Reconnect the one that created it.',
   'account:1': 'Not enough balance in your account — deposit a bit more DUSDC first.',

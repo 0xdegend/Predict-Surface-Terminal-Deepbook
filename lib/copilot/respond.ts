@@ -552,7 +552,7 @@ function adjustReply(adj: { stake?: number; leverage?: number; strike?: number; 
     return { text: [`$${num(strike, 0)} is too far from the current $${num(spotNow, 0)} to trade on this market. Pick a strike nearer the price.`] };
   }
   const stake = adj.stake ?? sel?.stake ?? 5;
-  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage), market.expiry - Date.now());
   const leverage = Math.min(Math.max(1, adj.leverage ?? sel?.leverage ?? 1), maxLev);
   const win = fromQuote(winPayout(quantityForStake(toQuote(stake), entryProb, leverage), entryProb, leverage));
   const payoutMult = stake > 0 ? win / stake : 1;

@@ -1,0 +1,649 @@
+/**
+ * lib/api/v2/onchain.ts — the 7-29 read layer.
+ *
+ * The 7-29 deployment has NO HTTP indexer, so these functions reconstruct the same
+ * shapes the beta indexer returned (V2Market, PythObservation) directly from the
+ * chain's own event index via `suix_queryEvents`. They are dispatched to from
+ * client.ts when ACTIVE_V2_DEPLOYMENT === '7-29', behind the identical function
+ * signatures and TanStack keys, so no consumer or UI changes.
+ *
+ * Pure functions (no React) — work from Server Components, queryFns, and scripts.
+ * `suix_queryEvents` is the chain's index, served by CORS-friendly public JSON-RPC
+ * proxies (Mysten's own fullnode has deprecated JSON-RPC). We try a primary + a
+ * fallback so a single proxy hiccup doesn't blank the app.
+ */
+import { Transaction } from '@mysten/sui/transactions';
+import { SuiGrpcClient } from '@mysten/sui/grpc';
+import { predictV2Config } from '@/config/predict';
+import { PredictApiError } from '@/lib/api/client';
+import type {
+  V2Market,
+  PythObservation,
+  V2MarketState,
+  V2Settlement,
+  V2OrderEvent,
+  V2OpenInterest,
+  V2VaultFlush,
+  V2VaultProfit,
+  V2VaultSupplyFill,
+  V2VaultWithdrawFill,
+  V2VaultServerState,
+  V2VaultCurrent,
+  V2Position,
+} from './types';
+
+interface GetOptions {
+  revalidate?: number | false;
+  signal?: AbortSignal;
+}
+
+/** Ordered JSON-RPC endpoints that serve `suix_queryEvents` with open CORS. */
+const EVENT_RPCS: string[] = [
+  process.env.NEXT_PUBLIC_SUI_EVENT_RPC || 'https://rpc-testnet.suiscan.xyz',
+  'https://sui-testnet-rpc.publicnode.com',
+];
+
+// A browser sends its own UA; Node's default UA can trip the proxies' WAF, so set
+// one server-side only (browsers forbid the header anyway).
+const SERVER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
+interface SuiEvent {
+  type?: string;
+  timestampMs?: string | number;
+  parsedJson?: Record<string, unknown>;
+}
+
+/** Resilient JSON-RPC call across the endpoint list (server-only UA; browser CORS-ok). */
+async function rpcCall<T>(method: string, params: unknown[], opts?: GetOptions): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (typeof window === 'undefined') headers['User-Agent'] = SERVER_UA;
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
+  let lastErr: unknown;
+  for (const url of EVENT_RPCS) {
+    try {
+      const res = await fetch(url, { method: 'POST', headers, body, cache: 'no-store', signal: opts?.signal });
+      if (!res.ok) throw new PredictApiError(`${method} → ${res.status}`, res.status, url);
+      const j = (await res.json()) as { result?: T; error?: { message?: string } };
+      if (j.error) throw new PredictApiError(j.error.message ?? `${method} error`, 0, url);
+      return j.result as T;
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') throw e;
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(`${method}: all endpoints failed`);
+}
+
+interface EventPage {
+  data: SuiEvent[];
+  nextCursor: unknown;
+  hasNextPage: boolean;
+}
+
+/** One `suix_queryEvents` page (descending), starting from `cursor` (null = newest). */
+async function queryEventsPage(filter: unknown, cursor: unknown, limit: number, opts?: GetOptions): Promise<EventPage> {
+  const r = await rpcCall<{ data?: SuiEvent[]; nextCursor?: unknown; hasNextPage?: boolean }>(
+    'suix_queryEvents',
+    [filter, cursor ?? null, limit, true],
+    opts,
+  );
+  return { data: r?.data ?? [], nextCursor: r?.nextCursor ?? null, hasNextPage: Boolean(r?.hasNextPage) };
+}
+
+/** Newest `limit` events in ONE page. The public proxies cap a page at 50, so
+ *  callers that need more history must page (see `queryEventsPaged`). */
+async function queryEvents(filter: unknown, limit: number, opts?: GetOptions): Promise<SuiEvent[]> {
+  return (await queryEventsPage(filter, null, limit, opts)).data;
+}
+
+/** Page back (newest → older) until `total` events are gathered or the feed ends.
+ *  The 50-per-page proxy cap means a dense feed (pyth is ~1 obs/sec) returns only
+ *  ~50s of history in one page — this walks the cursor to restore a full window. */
+async function queryEventsPaged(filter: unknown, total: number, opts?: GetOptions): Promise<SuiEvent[]> {
+  const PAGE = 50;
+  const out: SuiEvent[] = [];
+  let cursor: unknown = null;
+  for (let i = 0; out.length < total && i < Math.ceil(total / PAGE) + 1; i++) {
+    const page = await queryEventsPage(filter, cursor, PAGE, opts);
+    out.push(...page.data);
+    if (!page.hasNextPage || !page.nextCursor || page.data.length === 0) break;
+    cursor = page.nextCursor;
+  }
+  return out.slice(0, total);
+}
+
+const n = (v: unknown): number => Number(v ?? 0);
+const s = (v: unknown): string => String(v ?? '0');
+
+/* -------------------------------- markets -------------------------------- */
+
+function toMarket(e: SuiEvent): V2Market | null {
+  const p = e.parsedJson;
+  if (!p || typeof p.expiry_market_id !== 'string') return null;
+  return {
+    expiry_market_id: p.expiry_market_id,
+    pool_vault_id: s(p.pool_vault_id),
+    propbook_underlying_id: n(p.propbook_underlying_id),
+    expiry: n(p.expiry),
+    checkpoint_timestamp_ms: n(e.timestampMs),
+    tick_size: s(p.tick_size),
+    admission_tick_size: s(p.admission_tick_size),
+    max_expiry_allocation: s(p.max_expiry_allocation),
+    initial_expiry_cash: s(p.initial_expiry_cash),
+    liquidation_ltv: n(p.liquidation_ltv),
+    max_admission_leverage: n(p.max_admission_leverage),
+    backing_buffer_lambda: n(p.backing_buffer_lambda),
+    base_fee: s(p.base_fee),
+    min_fee: s(p.min_fee),
+    min_entry_probability: s(p.min_entry_probability),
+    max_entry_probability: s(p.max_entry_probability),
+    expiry_fee_window_ms: n(p.expiry_fee_window_ms),
+    expiry_fee_max_multiplier: n(p.expiry_fee_max_multiplier),
+    trading_loss_rebate_rate: n(p.trading_loss_rebate_rate),
+    kind: 'market_created',
+  };
+}
+
+/** Newest-first `MarketCreated` rows — the drop-in for the beta `/markets`. The
+ *  v2-discovery layer filters these to the active/tradeable set downstream. */
+export async function onchainMarkets(limit = 100, opts?: GetOptions): Promise<V2Market[]> {
+  const evs = await queryEvents(
+    { MoveEventType: `${predictV2Config.packages.predict}::config_events::MarketCreated` },
+    limit,
+    opts,
+  );
+  return evs.map(toMarket).filter((m): m is V2Market => m !== null);
+}
+
+/* ------------------------------- pyth spot ------------------------------- */
+
+function toObservation(e: SuiEvent): PythObservation | null {
+  const obs = (e.parsedJson?.observation ?? null) as Record<string, unknown> | null;
+  const v = (obs?.value ?? null) as Record<string, unknown> | null;
+  if (!v || v.price_magnitude == null) return null;
+  return {
+    propbook_oracle_id: s(e.parsedJson?.propbook_oracle_id),
+    pyth_source_id: n(v.pyth_source_id),
+    price_magnitude: s(v.price_magnitude),
+    price_is_negative: Boolean(v.price_is_negative),
+    exponent_magnitude: n(v.exponent_magnitude),
+    exponent_is_negative: Boolean(v.exponent_is_negative),
+    source_timestamp_ms: n(obs?.source_timestamp_ms),
+    checkpoint_timestamp_ms: n(e.timestampMs),
+  };
+}
+
+/** Newest-first raw Pyth spot observations from the propbook `pyth_feed` module.
+ *  Pages the cursor for limits over 50 so the price chart gets its full dense
+ *  window (not just the ~50s a single capped page returns). */
+export async function onchainPythObservations(limit = 300, opts?: GetOptions): Promise<PythObservation[]> {
+  const filter = { MoveModule: { package: predictV2Config.packages.propbook, module: 'pyth_feed' } };
+  const evs = limit <= 50 ? await queryEvents(filter, limit, opts) : await queryEventsPaged(filter, limit, opts);
+  return evs.map(toObservation).filter((o): o is PythObservation => o !== null);
+}
+
+/** Unwrap Sui's `{ type, fields }` move-struct JSON node down to its `fields`. */
+const fieldsOf = (node: unknown): Record<string, unknown> => {
+  const o = node as { fields?: Record<string, unknown> } | null;
+  if (o && typeof o === 'object' && o.fields) return o.fields;
+  return (node as Record<string, unknown>) ?? {};
+};
+
+/**
+ * The LIVE latest Pyth spot, read straight off the `PythFeed` object's
+ * `lane.latest` via `sui_getObject` — fresh to the second, unlike the event index
+ * which trails the chain ~20s. Same `PythObservation` shape as the history feed so
+ * the top-price tape and chart live-edge match. Drives `getPythLatest` on 7-29.
+ */
+export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservation | null> {
+  const res = await rpcCall<{ data?: { content?: unknown } }>(
+    'sui_getObject',
+    [predictV2Config.asset.pythFeedId, { showContent: true }],
+    opts,
+  );
+  const content = fieldsOf(res?.data?.content);
+  const latest = fieldsOf(fieldsOf(content.lane).latest);
+  const value = fieldsOf(latest.value);
+  if (value.price_magnitude == null) return null;
+  return {
+    propbook_oracle_id: '0',
+    pyth_source_id: n(value.pyth_source_id),
+    price_magnitude: s(value.price_magnitude),
+    price_is_negative: Boolean(value.price_is_negative),
+    exponent_magnitude: n(value.exponent_magnitude),
+    exponent_is_negative: Boolean(value.exponent_is_negative),
+    source_timestamp_ms: n(latest.source_timestamp_ms),
+    checkpoint_timestamp_ms: n(latest.update_timestamp_ms),
+  };
+}
+
+/* --------------------- gRPC view getters (market state) ------------------- */
+
+const GRPC_URL = process.env.NEXT_PUBLIC_SUI_GRPC_URL || 'https://rpc-testnet.suiscan.xyz';
+const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
+let _grpc: SuiGrpcClient | null = null;
+const grpc = (): SuiGrpcClient => (_grpc ??= new SuiGrpcClient({ network: 'testnet', baseUrl: GRPC_URL }));
+
+interface SimResult {
+  $kind?: string;
+  commandResults?: { returnValues?: { bcs: Uint8Array }[] }[];
+  FailedTransaction?: { status?: { error?: unknown } };
+}
+
+/** Run a read-only PTB and return [command][returnValue] BCS bytes. */
+async function inspectReturns(tx: Transaction): Promise<Uint8Array[][]> {
+  tx.setSender(ZERO);
+  const res = (await grpc().simulateTransaction({
+    transaction: tx,
+    include: { commandResults: true },
+    checksEnabled: false,
+  })) as SimResult;
+  if (res.$kind === 'FailedTransaction') {
+    throw new PredictApiError(
+      `inspect failed: ${JSON.stringify(res.FailedTransaction?.status?.error ?? {}).slice(0, 120)}`,
+      0,
+      GRPC_URL,
+    );
+  }
+  return (res.commandResults ?? []).map((c) => (c.returnValues ?? []).map((r) => new Uint8Array(r.bcs)));
+}
+
+const u64LE = (b: Uint8Array): bigint => {
+  let v = 0n;
+  for (let i = 7; i >= 0; i--) v = (v << 8n) | BigInt(b[i] ?? 0);
+  return v;
+};
+const optU64 = (b: Uint8Array): bigint | null => ((b[0] ?? 0) === 0 ? null : u64LE(b.subarray(1)));
+const boolAt = (b: Uint8Array): boolean => (b[0] ?? 0) !== 0;
+
+// Config fields that have no per-market getter — uniform protocol/template
+// constants (deployment.testnet.json futureMarketTemplate). max_expiry_allocation
+// varies by cadence but no consumer of getV2MarketState reads it, so a default is
+// fine here (the bulk /markets list carries the exact per-cadence value).
+const TEMPLATE = {
+  base_fee: '20000000',
+  min_fee: '5000000',
+  min_entry_probability: '10000000',
+  max_entry_probability: '990000000',
+  max_expiry_allocation: '50000000000',
+  initial_expiry_cash: '10000000000',
+} as const;
+
+// Getter order: value getters (u64) then flags/options. Mirrors expiry_market.move.
+const STATE_FNS = [
+  'expiry', 'tick_size', 'admission_tick_size', 'max_admission_leverage',
+  'liquidation_ltv', 'backing_buffer_lambda', 'expiry_fee_window_ms',
+  'expiry_fee_max_multiplier', 'trading_loss_rebate_rate', // 0..8 = u64
+  'mint_paused', 'reference_tick', 'is_settled', 'try_settlement_price', // 9..12
+] as const;
+
+/**
+ * Full per-market state via on-chain view getters (works for EXPIRED markets a
+ * position still references, which the bulk /markets list has dropped). Returns
+ * the same V2MarketState shape as the beta indexer.
+ */
+export async function onchainMarketState(marketId: string): Promise<V2MarketState> {
+  const pkg = predictV2Config.packages.predict;
+  const tx = new Transaction();
+  for (const fn of STATE_FNS) {
+    tx.moveCall({ target: `${pkg}::expiry_market::${fn}`, arguments: [tx.object(marketId)] });
+  }
+  const cmds = await inspectReturns(tx);
+  const at = (i: number) => cmds[i][0];
+  const market: V2Market = {
+    expiry_market_id: marketId,
+    pool_vault_id: predictV2Config.shared.poolVault,
+    propbook_underlying_id: predictV2Config.asset.propbookUnderlyingId,
+    expiry: Number(u64LE(at(0))),
+    checkpoint_timestamp_ms: 0, // creation time isn't a getter; unused by state consumers
+    tick_size: u64LE(at(1)).toString(),
+    admission_tick_size: u64LE(at(2)).toString(),
+    max_expiry_allocation: TEMPLATE.max_expiry_allocation,
+    initial_expiry_cash: TEMPLATE.initial_expiry_cash,
+    liquidation_ltv: Number(u64LE(at(4))),
+    max_admission_leverage: Number(u64LE(at(3))),
+    backing_buffer_lambda: Number(u64LE(at(5))),
+    base_fee: TEMPLATE.base_fee,
+    min_fee: TEMPLATE.min_fee,
+    min_entry_probability: TEMPLATE.min_entry_probability,
+    max_entry_probability: TEMPLATE.max_entry_probability,
+    expiry_fee_window_ms: Number(u64LE(at(6))),
+    expiry_fee_max_multiplier: Number(u64LE(at(7))),
+    trading_loss_rebate_rate: Number(u64LE(at(8))),
+    kind: 'market_created',
+  };
+  const referenceTick = optU64(at(10));
+  const settlementPrice = boolAt(at(11)) ? optU64(at(12)) : null;
+  const settlement: V2Settlement | null =
+    settlementPrice != null ? { settlement_price: settlementPrice.toString() } : null;
+  return {
+    expiry_market_id: marketId,
+    market,
+    reference_tick: referenceTick != null ? referenceTick.toString() : null,
+    mint_paused: boolAt(at(9)),
+    settlement,
+  };
+}
+
+/* ------------------------------ account orders --------------------------- */
+
+const ORDER_EVENTS: Record<string, string> = {
+  OrderMinted: 'order_minted',
+  LiveOrderRedeemed: 'live_order_redeemed',
+  SettledOrderRedeemed: 'settled_order_redeemed',
+  LiquidatedOrderRedeemed: 'liquidated_order_redeemed',
+};
+
+/**
+ * Scan the newest N of each order-event type and keep the rows matching `match`,
+ * merged newest-first. `suix_queryEvents` can't filter by a struct field, so we
+ * over-scan each type and filter client-side. On a low-volume testnet with short
+ * market cadences (1m/5m/1h) that captures a market's or account's full lifecycle;
+ * very old rows past the scan window fall off (the bounded-window property the beta
+ * indexer's 500-cap also had). A complete account history would key by tx `Sender`.
+ *
+ * `deep` PAGES the cursor per type (up to `perType` raw rows) instead of taking a
+ * single 50-row page. This matters for account/single-market history: mints and
+ * redeems are SEPARATE event streams, so on a busy window a redeem's `OrderMinted`
+ * can sit past the newest 50 mints — and without its mint a closed row loses its
+ * cost basis, side and strike (PnL then reads as the full payout). Paging both
+ * streams to the same depth keeps every redeem joined to its mint. Fan-outs across
+ * many markets (the leaderboard) stay shallow (`deep=false`) to bound request count.
+ */
+async function scanOrderEvents(
+  match: (p: Record<string, unknown>) => boolean,
+  perType: number,
+  opts?: GetOptions,
+  deep = false,
+): Promise<V2OrderEvent[]> {
+  const pkg = predictV2Config.packages.predict;
+  const types = Object.keys(ORDER_EVENTS);
+  const scans = await Promise.all(
+    types.map((evt) => {
+      const filter = { MoveEventType: `${pkg}::order_events::${evt}` };
+      return (deep ? queryEventsPaged(filter, perType, opts) : queryEvents(filter, perType, opts)).catch(
+        () => [] as SuiEvent[],
+      );
+    }),
+  );
+  const rows: V2OrderEvent[] = [];
+  types.forEach((evt, i) => {
+    for (const e of scans[i]) {
+      const p = e.parsedJson;
+      if (!p || !match(p)) continue;
+      rows.push({ ...(p as Record<string, unknown>), kind: ORDER_EVENTS[evt], checkpoint_timestamp_ms: n(e.timestampMs) });
+    }
+  });
+  rows.sort((a, b) => (b.checkpoint_timestamp_ms ?? 0) - (a.checkpoint_timestamp_ms ?? 0));
+  return rows;
+}
+
+/**
+ * An account's order EVENT log (mints + redeems), newest-first — the source the
+ * portfolio/history/leaderboard fold from. Matched on `account_id`, which every
+ * order event carries.
+ */
+export async function onchainAccountOrders(
+  accountId: string,
+  limit = 500,
+  opts?: GetOptions,
+): Promise<V2OrderEvent[]> {
+  const want = accountId.toLowerCase();
+  const perType = Math.min(500, Math.max(limit, 200));
+  // Deep: page each stream so an account's mints and redeems are gathered over the
+  // same window and stay joined (see scanOrderEvents) — portfolio, history and the
+  // performance card all fold from this, so a truncated/mis-joined log corrupts them.
+  const rows = await scanOrderEvents((p) => String(p.account_id).toLowerCase() === want, perType, opts, true);
+  return rows.slice(0, limit);
+}
+
+/**
+ * The account's OPEN positions (drop-in for `/accounts/{id}/positions`), folded
+ * from its order log: net-open per `position_root_id` = Σ minted quantity − Σ
+ * closed quantity. Each `OrderMinted` already carries every field the portfolio
+ * normalizer reads (ticks, entry_probability, leverage, net_premium, order_id,
+ * minted_at_ms), so an open position is just its mint with the open quantity and a
+ * proportionally-scaled cost basis. Fully-closed roots are dropped; settled/closed
+ * history comes from the order log itself (getAccountOrders).
+ */
+export async function onchainAccountPositions(accountId: string, opts?: GetOptions): Promise<V2Position[]> {
+  const orders = await onchainAccountOrders(accountId, 500, opts);
+  const terms = new Map<string, V2OrderEvent>(); // the mint (position terms)
+  const minted = new Map<string, bigint>();
+  const mintedPremium = new Map<string, bigint>();
+  const closed = new Map<string, bigint>();
+  for (const o of orders) {
+    const root = String(o.position_root_id ?? o.order_id ?? '');
+    if (!root) continue;
+    if (o.kind === 'order_minted') {
+      minted.set(root, (minted.get(root) ?? 0n) + big(o.quantity));
+      mintedPremium.set(root, (mintedPremium.get(root) ?? 0n) + big(o.net_premium));
+      if (!terms.has(root)) terms.set(root, o);
+    } else {
+      closed.set(root, (closed.get(root) ?? 0n) + big(o.quantity_closed));
+    }
+  }
+  const positions: V2Position[] = [];
+  for (const [root, mint] of terms) {
+    const totalMinted = minted.get(root) ?? 0n;
+    const remaining = totalMinted - (closed.get(root) ?? 0n);
+    if (remaining <= 0n) continue; // fully closed → not an open position
+    // Cost basis of the still-open portion (proportional to what remains).
+    const premium = totalMinted > 0n ? (mintedPremium.get(root)! * remaining) / totalMinted : 0n;
+    positions.push({
+      expiry_market_id: String(mint.expiry_market_id ?? ''),
+      order_id: mint.order_id,
+      position_root_id: root,
+      lower_tick: mint.lower_tick,
+      higher_tick: mint.higher_tick,
+      open_quantity: remaining.toString(),
+      quantity: totalMinted.toString(),
+      net_premium: premium.toString(),
+      entry_probability: mint.entry_probability,
+      leverage: mint.leverage,
+      opened_at_ms: n(mint.minted_at_ms ?? mint.checkpoint_timestamp_ms),
+    } as V2Position);
+  }
+  return positions;
+}
+
+/**
+ * The GLOBAL order-event stream (every market + every account), newest-first — the
+ * drop-in for the legacy indexer's global mint/redeem feeds that the leaderboard
+ * folds by owner. 7-29's chain event index serves the WHOLE stream, so the board
+ * needs ONE paged scan per type here, not the 6-24 per-market fan-out (which on
+ * 7-29 would re-query the same global newest-page once per market). `perType` caps
+ * how far back each type pages; the walk stops early when the feed ends, so on a
+ * quiet testnet this is a handful of pages, not the full cap.
+ */
+export async function onchainAllOrders(perType = 800, opts?: GetOptions): Promise<V2OrderEvent[]> {
+  return scanOrderEvents(() => true, perType, opts, true);
+}
+
+/**
+ * A market's order EVENT log (mints + redeems), newest-first — the per-market flow
+ * feed (drop-in for the beta `/markets/:id/orders`). Matched on `expiry_market_id`.
+ */
+export async function onchainMarketOrders(
+  marketId: string,
+  limit = 60,
+  opts?: GetOptions,
+): Promise<V2OrderEvent[]> {
+  const want = marketId.toLowerCase();
+  const perType = Math.min(500, Math.max(limit, 120));
+  const rows = await scanOrderEvents((p) => String(p.expiry_market_id).toLowerCase() === want, perType, opts);
+  return rows.slice(0, limit);
+}
+
+const big = (v: unknown): bigint => {
+  try {
+    return BigInt(String(v ?? '0').split('.')[0] || '0');
+  } catch {
+    return 0n;
+  }
+};
+
+/**
+ * Open interest for one market (drop-in for `/markets/:id/open-interest`), folded
+ * from the market's order log: net-open per position = minted quantity − closed
+ * quantity. `open_quantity` is the max payout at risk (each unit pays $1). Floor
+ * shares have no read-only source on 7-29, so they report 0 — the risk panel's
+ * primary exposure figure is open_quantity, exact within the scan window (short
+ * market cadences keep a whole market's life in the window).
+ */
+export async function onchainMarketOpenInterest(
+  marketId: string,
+  opts?: GetOptions,
+): Promise<V2OpenInterest> {
+  const want = marketId.toLowerCase();
+  // Deep: one focused market — page so a busy market's full open set is counted
+  // (max payout at risk / exposure), not just the newest 50 orders.
+  const rows = await scanOrderEvents((p) => String(p.expiry_market_id).toLowerCase() === want, 300, opts, true);
+  const minted = new Map<string, bigint>();
+  const closed = new Map<string, bigint>();
+  for (const r of rows) {
+    const root = String(r.position_root_id ?? r.order_id ?? '');
+    if (!root) continue;
+    if (r.kind === 'order_minted') minted.set(root, (minted.get(root) ?? 0n) + big(r.quantity));
+    else closed.set(root, (closed.get(root) ?? 0n) + big(r.quantity_closed));
+  }
+  let open_order_count = 0;
+  let openQty = 0n;
+  for (const [root, m] of minted) {
+    const rem = m - (closed.get(root) ?? 0n);
+    if (rem > 0n) {
+      open_order_count += 1;
+      openQty += rem;
+    }
+  }
+  return {
+    expiry_market_id: marketId,
+    open_order_count,
+    open_quantity: openQty.toString(),
+    open_floor_shares: '0',
+  };
+}
+
+/* -------------------------------- vault ---------------------------------- */
+
+/** Vault events are DEFINED in `vault_events` and EMITTED by the `plp` module;
+ *  MoveEventType (by struct type) is the filter these proxies honor. */
+const vaultEventType = (name: string) => `${predictV2Config.packages.predict}::vault_events::${name}`;
+
+function toFlush(e: SuiEvent): V2VaultFlush | null {
+  const p = e.parsedJson;
+  if (!p) return null;
+  return {
+    checkpoint_timestamp_ms: n(e.timestampMs),
+    epoch: n(p.epoch),
+    pool_value: s(p.pool_value),
+    total_supply: s(p.total_supply),
+    active_market_nav: s(p.active_market_nav),
+    market_count: n(p.market_count),
+    supplies_filled: n(p.supplies_filled),
+    withdrawals_filled: n(p.withdrawals_filled),
+    requests_processed: n(p.requests_processed),
+    idle_balance_after: s(p.idle_balance_after),
+    total_supply_after: s(p.total_supply_after),
+  };
+}
+
+/** Keeper flush history, newest-first (drop-in for `/vaults/:id/flushes`). Each
+ *  FlushExecuted marks the pool: pool_value / total_supply is the NAV-per-share. */
+export async function onchainVaultFlushes(limit = 200, opts?: GetOptions): Promise<V2VaultFlush[]> {
+  const evs = await queryEvents({ MoveEventType: vaultEventType('FlushExecuted') }, limit, opts);
+  return evs.map(toFlush).filter((f): f is V2VaultFlush => f !== null);
+}
+
+/** Realized profit per market settlement, newest-first (`/vaults/:id/profit`). */
+export async function onchainVaultProfit(limit = 200, opts?: GetOptions): Promise<V2VaultProfit[]> {
+  const evs = await queryEvents({ MoveEventType: vaultEventType('ExpiryProfitMaterialized') }, limit, opts);
+  return evs
+    .map((e): V2VaultProfit | null => {
+      const p = e.parsedJson;
+      if (!p) return null;
+      return {
+        checkpoint_timestamp_ms: n(e.timestampMs),
+        expiry_market_id: s(p.expiry_market_id),
+        lp_profit: s(p.lp_profit),
+        protocol_profit: s(p.protocol_profit),
+        profit_basis_after: s(p.profit_basis_after),
+        // extra (allowed by index sig) — completes V2VaultCurrent in onchainVaultState
+        protocol_reserve_balance_after: s(p.protocol_reserve_balance_after),
+        pending_protocol_profit_after: s(p.pending_protocol_profit_after),
+      };
+    })
+    .filter((x): x is V2VaultProfit => x !== null);
+}
+
+/** Executed LP deposits (DUSDC → PLP at flush), newest-first. */
+export async function onchainVaultSupplyFills(limit = 30, opts?: GetOptions): Promise<V2VaultSupplyFill[]> {
+  const evs = await queryEvents({ MoveEventType: vaultEventType('SupplyFilled') }, limit, opts);
+  return evs
+    .map((e): V2VaultSupplyFill | null => {
+      const p = e.parsedJson;
+      if (!p) return null;
+      return {
+        checkpoint_timestamp_ms: n(e.timestampMs),
+        pool_vault_id: s(p.pool_vault_id),
+        account_id: s(p.account_id),
+        recipient: s(p.recipient),
+        request_index: n(p.index),
+        dusdc_amount: s(p.dusdc_amount),
+        shares_minted: s(p.shares_minted),
+        kind: 'supply_filled',
+      };
+    })
+    .filter((x): x is V2VaultSupplyFill => x !== null);
+}
+
+/** Executed LP withdrawals (PLP → DUSDC at flush), newest-first. */
+export async function onchainVaultWithdrawFills(limit = 30, opts?: GetOptions): Promise<V2VaultWithdrawFill[]> {
+  const evs = await queryEvents({ MoveEventType: vaultEventType('WithdrawFilled') }, limit, opts);
+  return evs
+    .map((e): V2VaultWithdrawFill | null => {
+      const p = e.parsedJson;
+      if (!p) return null;
+      return {
+        checkpoint_timestamp_ms: n(e.timestampMs),
+        pool_vault_id: s(p.pool_vault_id),
+        account_id: s(p.account_id),
+        recipient: s(p.recipient),
+        request_index: n(p.index),
+        shares_burned: s(p.shares_burned),
+        dusdc_amount: s(p.dusdc_amount),
+        kind: 'withdraw_filled',
+      };
+    })
+    .filter((x): x is V2VaultWithdrawFill => x !== null);
+}
+
+/**
+ * Vault NAV state (drop-in for `/vaults/:id/state`). Full pool value + latest flush
+ * come from the newest FlushExecuted; reserve / profit-basis fields from the newest
+ * ExpiryProfitMaterialized. If no flush is in the scan window both are null and the
+ * caller falls back to the on-chain vault views (useVaultV2).
+ */
+export async function onchainVaultState(opts?: GetOptions): Promise<V2VaultServerState> {
+  const poolVaultId = predictV2Config.shared.poolVault;
+  const [flushes, profit] = await Promise.all([
+    onchainVaultFlushes(1, opts).catch(() => [] as V2VaultFlush[]),
+    onchainVaultProfit(1, opts).catch(() => [] as V2VaultProfit[]),
+  ]);
+  const flush = flushes[0] ?? null;
+  const prof = profit[0] ?? null;
+  const current: V2VaultCurrent | null = flush
+    ? {
+        idle_balance_after: s(flush.idle_balance_after),
+        total_supply: s(flush.total_supply),
+        pool_value: s(flush.pool_value),
+        active_market_nav: s(flush.active_market_nav),
+        protocol_reserve_balance_after: s(prof?.protocol_reserve_balance_after ?? '0'),
+        pending_protocol_profit_after: s(prof?.pending_protocol_profit_after ?? '0'),
+        profit_basis_after: s(prof?.profit_basis_after ?? '0'),
+        fee_incentive_reserve_after: null,
+      }
+    : null;
+  return { pool_vault_id: poolVaultId, current, latest_flush: flush };
+}

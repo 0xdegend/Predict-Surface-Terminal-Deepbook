@@ -150,6 +150,19 @@ export type Deployment = 'legacy' | 'v2';
  */
 export const V2_READY = true;
 
+/**
+ * Which testnet Predict deployment the "Latest" experience reads/writes against.
+ *
+ * This is an INVISIBLE backbone switch — same routes, same components, same copy,
+ * same UI. It only repoints contract IDs + the data source. Default '6-24' (the
+ * current live deployment); set NEXT_PUBLIC_PREDICT_DEPLOYMENT=7-29 to target the
+ * new one. Mainnet is unaffected. A cutover / rollback is this one env var. See the
+ * predict-migration-7-29 notes for the full plan.
+ */
+export type PredictDeployment = '6-24' | '7-29';
+export const ACTIVE_V2_DEPLOYMENT: PredictDeployment =
+  process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT === '7-29' ? '7-29' : '6-24';
+
 export interface PredictV2Config {
   network: SuiNetwork;
   deployment: 'v2';
@@ -182,6 +195,15 @@ export interface PredictV2Config {
    * claim. See lib/sui/v2/builder-code.ts.
    */
   builderCodeId: string;
+  /**
+   * Window (ms before expiry) during which the protocol admits NO leverage above
+   * 1x for normal-probability bets — `strike_exposure_config::no_leverage_window_ms`,
+   * verified live on 7-29 = 3_600_000 (60 min). Every short testnet market sits
+   * inside it, so leverage is 1x there; it only opens up on markets further from
+   * expiry. 0 = no such window (6-24 used a probability-only admission curve).
+   * See lib/sui/v2/quote.ts.
+   */
+  noLeverageWindowMs: number;
   /** Per-owner balances/accounting live behind a shared AccumulatorRoot. */
   accumulatorRootId: string;
   clockId: string;
@@ -189,14 +211,19 @@ export interface PredictV2Config {
   plpCoinType: string;
   /** DEEP staking is part of the new vault; coin type for stake/unstake flows. */
   deepPackageId: string;
-  /** The tradeable underlying + its four oracle feed objects (for load_live_pricer). */
+  /** The tradeable underlying + its oracle feed objects (for load_live_pricer). */
   asset: {
     name: string;
     propbookUnderlyingId: number;
+    /** Pyth spot feed object id. Read by the pricer AND directly by the spot /
+     *  chart / portfolio hooks, so it stays a named field. */
     pythFeedId: string;
-    bsSpotFeedId: string;
-    bsForwardFeedId: string;
-    bsSviFeedId: string;
+    /**
+     * Block-Scholes oracle feed object ids passed to `load_live_pricer`, in call
+     * order, AFTER the pyth feed. Length is deployment-specific: 6-24 has three
+     * (spot, forward, svi); 7-29 has two (value store, svi store). See pricer.ts.
+     */
+    bsFeedIds: string[];
   };
   /** Rolling market cadences (markets are created on schedule; discover via /markets). */
   cadences: {
@@ -249,6 +276,7 @@ const V2_TESTNET: PredictV2Config = {
   builderCodeId:
     process.env.NEXT_PUBLIC_BUILDER_CODE_ID ||
     '0x3d916a9be41e850028b342029301e4d7ec19a1c3a843b55ec256d789cfdf2194',
+  noLeverageWindowMs: 0, // 6-24 used a probability-only admission curve (no window)
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
   quote: {
@@ -263,9 +291,12 @@ const V2_TESTNET: PredictV2Config = {
     name: 'BTC_USD',
     propbookUnderlyingId: 1,
     pythFeedId: '0xc78d7de16217d46d21b92ae475da799448be30b71a758dc6d7bb3ac2f1c35afb',
-    bsSpotFeedId: '0xcdc5fa7364e60fd2504aa96f65b707dc0734e507a919b1a7d7d63164fd67b745',
-    bsForwardFeedId: '0xe72c734ea8d8dcbc9183d9d8f96f51aaa1fb5034d5ed33ac60d67d261e15b48a',
-    bsSviFeedId: '0xdc2f8270676bd05fb28491e8d4a41a495722fda7a454926dd66dbba256a21c69',
+    // 6-24 pricer takes three block-scholes feeds: spot, forward, svi (this order).
+    bsFeedIds: [
+      '0xcdc5fa7364e60fd2504aa96f65b707dc0734e507a919b1a7d7d63164fd67b745',
+      '0xe72c734ea8d8dcbc9183d9d8f96f51aaa1fb5034d5ed33ac60d67d261e15b48a',
+      '0xdc2f8270676bd05fb28491e8d4a41a495722fda7a454926dd66dbba256a21c69',
+    ],
   },
   cadences: [
     { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
@@ -285,6 +316,83 @@ const V2_TESTNET: PredictV2Config = {
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
+/**
+ * 7-29 deployment (branch predict-testnet-7-29, deployed 2026-07-30). Selected when
+ * NEXT_PUBLIC_PREDICT_DEPLOYMENT=7-29. Every id verified on-chain + against
+ * deployment.testnet.json (sourceCommit 4c3c62c) during Phase 0 (2026-08-01).
+ *
+ * ⚠️ Phase 1 = config only. There is NO 7-29 HTTP indexer, so serverUrl /
+ * oracleServerUrl stay empty; Phase 3 wires on-chain gRPC reads behind the existing
+ * lib/api/v2/client.ts seams. The pricer already handles the 3-feed shape via
+ * asset.bsFeedIds (Phase-0 dry-run confirmed). Do NOT flip the default to 7-29 until
+ * Phases 2-3 land and the Phase-5 checks pass.
+ */
+const V2_TESTNET_729: PredictV2Config = {
+  network: 'testnet',
+  deployment: 'v2',
+  grpcUrl: 'https://fullnode.testnet.sui.io:443',
+  serverUrl: '', // no 7-29 HTTP indexer — on-chain gRPC reads land in Phase 3
+  oracleServerUrl: '', // ditto — pyth spot moves to on-chain reads in Phase 3
+  packages: {
+    predict: '0xd94387c857ab56857f5f2750f2ba959fb007306f977a24290342433aef090298',
+    account: '0xdabedf28ee547a20cb4ed30d4ff3dab686ff2926add584822466efded14cec4a',
+    propbook: '0x756ab217b8b7cbbe7a9e45a5cc385347cb43f74aac0102772336a24cf48ab9cb',
+    // 7-29 folds block-scholes into propbook; this is the price-updater's oracle
+    // package (writers.priceUpdater.blockScholesOraclePackage). No code reads it.
+    blockScholesOracle: '0x87cc43db9b6c1e8b174841221e8e4bde5ab8fc8aaffacc58699c77e9e6340ff6',
+    fixedMath: '0xd81b1e5a28d616b8ff9eeda2241866ece02767fc4f368bec23b8eb57334f3d2d',
+  },
+  shared: {
+    protocolConfig: '0x19a07f5be96ca7b47e8b2ec39d7caf40e1fbb7d4156a699bfecda807d1d3d427',
+    poolVault: '0x90454f005b8eca464317ffb31adf5e39da94a9304b11b9501d5668d0103bbb0a',
+    registry: '0xafc24283eec35728da1184eea118c41067bbde153447f9946e0667672f18a383',
+    oracleRegistry: '0xec1a1aa6aeffb45aae40cba097714e711acc28739faa005e1932de608189667f',
+    accountRegistry: '0x316fa986a919b2f69884bfeec2a8668bf671a4d05c1c434ad6d9647a41d2ccb2',
+  },
+  // Registered 2026-08-01 (index 1) via /v2/admin. owner = 0x33a8c3…f3f4 (founder
+  // key) — PERMANENT, no on-chain setter. Verified live: a BuilderCode from the 7-29
+  // predict package whose internal owner == the founder wallet. This attaches to each
+  // trader's account at mint (builderCodeEnabled=true) so the native builder fee
+  // accrues to us. Override with NEXT_PUBLIC_BUILDER_CODE_ID to point at a code owned
+  // by a different wallet (register it from that wallet at /v2/admin first).
+  builderCodeId:
+    process.env.NEXT_PUBLIC_BUILDER_CODE_ID ||
+    '0x28808f158cbc3bdc0876dbc5dd2268e7801b21433f1daf878361fadf0b4dc76a',
+  noLeverageWindowMs: 3_600_000, // 60 min: verified live — leverage is 1x within this window of expiry
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x6',
+  quote: {
+    coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
+    currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
+    decimals: 6,
+    symbol: 'DUSDC',
+  },
+  plpCoinType: '0xd94387c857ab56857f5f2750f2ba959fb007306f977a24290342433aef090298::plp::PLP',
+  deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0x980be0a52ea3f1e5243d5d5cd116c4de9107abb07fdbe134314996302a97c524',
+    // 7-29 pricer takes two block-scholes feeds: value store, then svi store.
+    // Phase-0 dry-run confirmed the 3-total-feed load_live_pricer (vs 6-24's four).
+    bsFeedIds: [
+      '0x24b684a5f9168bbe792e1e10aece0353e5e5f8f9be3d07acded253644f1c3d4c',
+      '0x8400d1ea44291177bd02ff33d49be5785cc809cdf280f7e2f05f72866af05dca',
+    ],
+  },
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 2, name: '1h', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '3' },
+  ],
+  // 7-29 is a fresh deployment — no demo wallets to feature yet. Opt in via
+  // NEXT_PUBLIC_FEATURED_WALLETS, or fill after we know who has traded.
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+  faucetUrl: 'https://tally.so/r/Xx102L',
+};
+
 // Mainnet v2 placeholders — fill on the eventual mainnet redeploy.
 const V2_MAINNET: PredictV2Config = {
   ...V2_TESTNET,
@@ -301,15 +409,22 @@ const V2_MAINNET: PredictV2Config = {
   featuredWallets: [],
 };
 
-const V2_CONFIGS: Record<SuiNetwork, PredictV2Config> = {
-  testnet: V2_TESTNET,
-  mainnet: V2_MAINNET,
+/** Testnet has two selectable deployments (6-24 default, 7-29 via the env switch);
+ *  mainnet has one. */
+const V2_TESTNET_BY_DEPLOYMENT: Record<PredictDeployment, PredictV2Config> = {
+  '6-24': V2_TESTNET,
+  '7-29': V2_TESTNET_729,
 };
 
-export const predictV2Config: PredictV2Config = V2_CONFIGS[ACTIVE_NETWORK];
+function selectV2Config(network: SuiNetwork): PredictV2Config {
+  if (network === 'testnet') return V2_TESTNET_BY_DEPLOYMENT[ACTIVE_V2_DEPLOYMENT];
+  return V2_MAINNET;
+}
+
+export const predictV2Config: PredictV2Config = selectV2Config(ACTIVE_NETWORK);
 
 export function getPredictV2Config(network: SuiNetwork = ACTIVE_NETWORK): PredictV2Config {
-  return V2_CONFIGS[network];
+  return selectV2Config(network);
 }
 
 /** True when the active-network v2 deployment has a server wired (testnet does). */

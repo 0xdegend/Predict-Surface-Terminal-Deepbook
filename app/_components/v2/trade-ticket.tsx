@@ -207,7 +207,7 @@ export function V2TradeTicket({
   // market-wide `max_admission_leverage` (e.g. 3×) is only the p→1 asymptote, so a
   // preset at it always aborts strike_exposure_config #6 at real odds. Clamp the
   // working value too, so a stale store pick can never mint above the live cap.
-  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage));
+  const maxLev = leverageSliderMax(entryProb, toFloat(market.max_admission_leverage), market.expiry - now);
   const lev = Math.min(leverage, maxLev);
 
   // Leverage risk (verified from source, predict-testnet-6-24 — see

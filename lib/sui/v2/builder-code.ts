@@ -25,11 +25,18 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2Target } from '@/config/predict';
+import { predictV2Config, v2Target, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import { addGenerateAuth, simulate, SIM_SENDER, type SimulateCapableClient } from './account';
 
 const c = () => predictV2Config;
 const ACC = (module: string, fn: string) => `${c().packages.account}::${module}::${fn}` as const;
+
+/** The registry entry that mints+shares a new BuilderCode. Renamed across
+ *  deployments (same args: registry, protocolConfig, index): 6-24 =
+ *  `create_builder_code`, 7-29 = `create_and_share_builder_code`. Verified live
+ *  against each package's `registry` module ABI. */
+const REGISTER_BUILDER_CODE_FN =
+  ACTIVE_V2_DEPLOYMENT === '7-29' ? 'create_and_share_builder_code' : 'create_builder_code';
 
 /* ------------------------------- builders -------------------------------- */
 
@@ -74,7 +81,7 @@ export function buildUnsetBuilderCodeTx(wrapperId: string): Transaction {
 export function buildRegisterBuilderCodeTx(index: bigint = 0n): Transaction {
   const tx = new Transaction();
   tx.moveCall({
-    target: v2Target('registry', 'create_builder_code'),
+    target: v2Target('registry', REGISTER_BUILDER_CODE_FN),
     arguments: [
       tx.object(c().shared.registry),
       tx.object(c().shared.protocolConfig),
