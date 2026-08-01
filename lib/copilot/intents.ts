@@ -84,9 +84,21 @@ const BET_WORDS = ['bet', 'trade', 'buy', 'play', 'position', 'stake', 'wager', 
 // "What / when is the next market" — asks WHICH market, not for a read of it.
 const NEXT_MARKET_PHRASES = ['next market', 'soonest market', 'current market', 'which market', 'nearest market', 'upcoming market', 'next round', 'next one', 'what market'];
 const NEXT_QUALIFIERS = ['next', 'soonest', 'current', 'upcoming', 'coming', 'nearest', 'which', 'live', 'open', 'available'];
-// "Set up a trade / walk me through it" — start the guided step-by-step wizard.
-// Matched on the RAW text before the "set up"→UP stripping below.
-const START_TRADE_PHRASES = ['set up a trade', 'set up trade', 'setup a trade', 'set up my trade', 'set up a bet', 'set up a position', 'build a trade', 'build a bet', 'create a trade', 'make a trade', 'place a trade', 'walk me through', 'guide me', 'step by step', 'help me set up', 'help me place', 'guided trade'];
+// "Set up a trade / open a trade / walk me through it" — start the guided step-by-
+// step wizard. Matched on the RAW text before the "set up"→UP stripping below. The
+// "<verb> a trade/bet/position" phrasings are safe next to a direction word: a
+// "safe up" between the verb and object breaks the contiguous match, so a
+// directional request ("open a safe up bet") still routes to a one-shot suggestion.
+const START_TRADE_PHRASES = [
+  'set up a trade', 'set up trade', 'setup a trade', 'set up my trade', 'set up a bet', 'set up a position',
+  'open a trade', 'open a bet', 'open a position', 'open my trade',
+  'start a trade', 'start a bet', 'start a position',
+  'new trade', 'new bet',
+  'enter a trade', 'enter a bet', 'put on a trade',
+  'build a trade', 'build a bet', 'create a trade', 'create a bet',
+  'make a trade', 'make a bet', 'place a trade', 'place a bet',
+  'walk me through', 'guide me', 'step by step', 'help me set up', 'help me place', 'guided trade',
+];
 // Explicit trade PARAMETERS — "strike 66000", "leverage 2", "2x", "6 dusdc". A
 // message carrying any of these is building a SPECIFIC trade, so it routes to the
 // guided wizard (which fills what's given and asks for the rest) even when phrased
@@ -228,7 +240,7 @@ function wantsStrikeAnalysis(text: string): boolean {
 export function placeConfirmation(message: string): { stake?: number; leverage?: number } | null {
   const t = message.toLowerCase().trim().replace(/[’]/g, "'").replace(/[.!?]+$/, '');
   if (!t) return null;
-  if (t.split(/\s+/).length > 8) return null; // confirmations are short, not rambles
+  if (t.split(/\s+/).length > 10) return null; // confirmations are short, not rambles
   // A question is not a confirmation ("should I trade it", "do you think I should
   // place it"). "do it" (a confirm) is spared — only "do i/we/you …" bails.
   if (/^(?:should|shall|can|could|would|does|is|are|was|were|what|which|how|why|when|will|might|worth)\b/.test(t)) return null;
@@ -240,9 +252,14 @@ export function placeConfirmation(message: string): { stake?: number; leverage?:
   const bareConfirm = /^(?:yes|yep|yeah|yup|ok|okay|sure|confirm|do it|go|go for it|let'?s go|lets go|send it|lock it in|place it|trade it|open it)\b/.test(t);
   if (!refConfirm && !bareConfirm) return null;
 
-  // Optional stake / leverage overrides for the pending bet.
+  // Optional stake / leverage overrides for the pending bet. Leverage is read from
+  // either order — "leverage 2" / "lev 2x", "2x leverage" / "2 leverage", or a bare
+  // "2x" — so "trade it with 1 dusdc and 2x leverage" lands lev 2, stake 1.
   const out: { stake?: number; leverage?: number } = {};
-  const lev = t.match(/\b(?:leverage|lev)\s*(?:to|of|is|at|=|:)?\s*(\d+(?:\.\d+)?)\s*x?\b/) ?? t.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
+  const lev =
+    t.match(/\b(?:leverage|lev)\s*(?:to|of|is|at|=|:)?\s*(\d+(?:\.\d+)?)\s*x?\b/) ??
+    t.match(/\b(\d+(?:\.\d+)?)\s*x?\s*(?:leverage|lev)\b/) ??
+    t.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
   if (lev) out.leverage = parseFloat(lev[1]);
   const stakeM =
     t.match(/\b(\d[\d,]*(?:\.\d+)?)\s*dusdc\b/) ??

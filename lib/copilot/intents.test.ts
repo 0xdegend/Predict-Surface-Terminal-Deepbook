@@ -351,10 +351,19 @@ describe('parseIntent', () => {
     expect(parseIntent('down bet on the next market')).toMatchObject({ kind: 'directional_bet', dir: 'down' });
   });
 
-  it('"set up a trade" / guided phrasings → start_trade', () => {
+  it('"set up a trade" / "open a trade" / guided phrasings → start_trade', () => {
     for (const m of [
       'I want to set up a trade',
       'set up a trade',
+      'open a trade for me', // the reported lapse
+      'open a bet',
+      'open a position for me',
+      'start a trade',
+      'start a bet please',
+      'new trade',
+      'enter a trade',
+      'make a bet',
+      'place a bet for me',
       'build a trade',
       'walk me through a trade',
       'guide me',
@@ -362,6 +371,16 @@ describe('parseIntent', () => {
     ]) {
       expect(parseIntent(m).kind, m).toBe('start_trade');
     }
+  });
+
+  it('a DIRECTION between the verb and object still routes to a one-shot suggestion, not the wizard', () => {
+    // "open a safe down trade" must stay a DOWN suggestion (the direction breaks the
+    // "open a trade" phrase match), same as "set up a quick safe down trade".
+    expect(parseIntent('open a safe down trade for me')).toMatchObject({ kind: 'directional_bet', dir: 'down' });
+    expect(parseIntent('start a safe up bet')).toMatchObject({ kind: 'directional_bet', dir: 'up' });
+    // But "open the trade" / "open it" are place-confirmations (handled before parse).
+    expect(isPlaceConfirmation('open the trade')).toBe(true);
+    expect(isPlaceConfirmation('open a trade for me')).toBe(false); // a fresh setup, not a confirm
   });
 
   it('a parameter-packed message → start_trade, however it is phrased', () => {
@@ -382,9 +401,11 @@ describe('parseIntent', () => {
     expect(parseIntent("what's coming up").kind).not.toBe('directional_bet');
   });
 
-  it('a bet verb with no clear side → help (never guesses direction)', () => {
-    expect(parseIntent('place a bet for me').kind).toBe('help');
+  it('a bare bet verb (no side, no "a trade/bet" object) → help (never guesses direction)', () => {
+    // "place a bet for me" now starts the wizard (it asks the side) — see the
+    // start_trade phrasings test. A bare verb with no object still can't be guessed.
     expect(parseIntent('I want to trade').kind).toBe('help');
+    expect(parseIntent('buy').kind).toBe('help');
   });
 
   it('does not fire a bet on direction-word substrings (whole-word matching)', () => {
@@ -549,6 +570,13 @@ describe('placeConfirmation (confirm + inline stake/leverage override)', () => {
     expect(placeConfirmation('place it with 5 dusdc at 2x')).toEqual({ stake: 5, leverage: 2 });
     // A bare "2x" is leverage, never a $2 stake.
     expect(placeConfirmation('trade it 2x')).toEqual({ leverage: 2 });
+  });
+
+  it('handles "trade it with 1 dusdc and 2x leverage" (the reported phrase) either word order', () => {
+    expect(placeConfirmation('trade it with 1 dusdc and 2x leverage')).toEqual({ stake: 1, leverage: 2 });
+    expect(placeConfirmation('trade it with 1 dusdc and 2 leverage')).toEqual({ stake: 1, leverage: 2 });
+    expect(placeConfirmation('place it with 1 dusdc at 3x leverage')).toEqual({ stake: 1, leverage: 3 });
+    expect(placeConfirmation('do it, leverage 2, 5 dusdc')).toEqual({ stake: 5, leverage: 2 });
   });
 
   it('returns null for non-confirmations (a new spec, a question, unrelated)', () => {
