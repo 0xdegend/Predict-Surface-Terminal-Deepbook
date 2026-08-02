@@ -42,6 +42,7 @@ import { HUE, IconChip } from '../ui/metric';
 import { InfoTip } from '../ui/info-tip';
 import { Modal } from '../ui/modal';
 import { SuccessModal } from '../ui/success-modal';
+import { Skel } from '@/app/_components/page-skeletons';
 import { ConnectGate } from '../positions/connect-gate';
 import { PerformanceCard } from '../positions/performance-card';
 import { PerfShareCardModal } from '../positions/perf-share-card-modal';
@@ -133,7 +134,11 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
 
   // Real trade history from the order event log (authoritative). Sample rows
   // fill the tab only while the account has no real positions at all.
-  const { history: realHistory } = useV2History(acct.accountId, marketMap, acct.owner);
+  const { history: realHistory, isLoading: historyLoading } = useV2History(
+    acct.accountId,
+    marketMap,
+    acct.owner,
+  );
   const { history, stats } = useMemo(
     () => derivePortfolioHistory([], demoActive ? demoHistory(serverNow) : realHistory),
     [demoActive, serverNow, realHistory],
@@ -395,6 +400,10 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         ) : (
           <PositionList view={posView} positions={open} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />
         )
+      ) : historyLoading && !demoActive && stats.total === 0 ? (
+        // First load of the order log (the owner tx-sender read takes a beat) —
+        // show the section's real shape, not a flash of the "no trades" empty state.
+        <HistorySkeleton />
       ) : stats.total === 0 ? (
         <EmptyState
           icon={LuHistory}
@@ -877,6 +886,52 @@ function EmptyState({
         <p className="text-[12px] leading-relaxed text-text-3">{description}</p>
       </div>
       {action}
+    </div>
+  );
+}
+
+/** Loading placeholder for the History tab — mirrors the Performance card + the
+ *  Trade-history table so the tab paints its real shape while the order log
+ *  loads, instead of flashing empty space or a premature "no trades" state. */
+function HistorySkeleton() {
+  return (
+    <div role="status" aria-busy="true">
+      <span className="sr-only">Loading trade history…</span>
+      <Section title="Performance">
+        <div className="glass-card flex flex-col gap-4 p-4" aria-hidden>
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="glass-inset flex flex-col gap-2 p-3">
+                <Skel className="h-3 w-16" />
+                <Skel className="h-6 w-20" />
+              </div>
+            ))}
+          </div>
+          <Skel className="h-28 w-full rounded-lg" />
+        </div>
+      </Section>
+      <Section title="Trade history">
+        <div className="glass-card flex flex-col overflow-hidden p-3" aria-hidden>
+          {/* header row */}
+          <div className="mb-1 flex items-center gap-3 px-1 pb-2">
+            <Skel className="h-3 w-24" />
+            <Skel className="h-3 w-16" />
+            <Skel className="ml-auto h-3 w-12" />
+            <Skel className="h-3 w-12" />
+            <Skel className="h-3 w-12" />
+          </div>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 border-t border-white/5 px-1 py-3">
+              <Skel className="h-4 w-4 rounded-full" />
+              <Skel className="h-4 w-28" />
+              <Skel className="h-4 w-14" />
+              <Skel className="ml-auto h-4 w-12" />
+              <Skel className="h-4 w-12" />
+              <Skel className="h-4 w-10" />
+            </div>
+          ))}
+        </div>
+      </Section>
     </div>
   );
 }
