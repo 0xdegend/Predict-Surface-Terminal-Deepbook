@@ -30,6 +30,7 @@ import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useV2ReadClient } from '@/lib/sui/grpc';
 import { getV2Markets, getMarketOrders, getAccountOrders, getV2AllOrders, qkV2 } from '@/lib/api/v2/client';
+import { onchainSkewOwners, onchainOwnerOrders } from '@/lib/api/v2/onchain';
 import { mapPool, withRetry } from '@/lib/api/v2/fan-out';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
@@ -160,25 +161,46 @@ export function useV2Leaderboard(): UseV2Leaderboard {
         });
       }
 
-      // 3. Fold each completeness account's full history into its market buckets
-      //    (connected wallet + featured pins), creating buckets for markets that
-      //    aged out of the roster. One failing fetch can't sink the board.
-      await Promise.all(
-        mergeAccountIds.map(async (id) => {
-          try {
-            const orders = await withRetry(() => getAccountOrders(id, 500, { signal }));
-            for (const o of orders) {
-              const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
-              if (!mid) continue;
-              const list = byMarket.get(mid);
-              if (list) list.push(o);
-              else byMarket.set(mid, [o]);
+      // 3. Fold in complete per-user history so real traders always appear, even when
+      //    a high-frequency bot buries them in the windowed scan above.
+      const foldOwnerOrders = (orders: V2OrderEvent[]) => {
+        for (const o of orders) {
+          const mid = (o.expiry_market_id ?? o.market_id) as string | undefined;
+          if (!mid) continue;
+          const list = byMarket.get(mid);
+          if (list) list.push(o);
+          else byMarket.set(mid, [o]);
+        }
+      };
+      if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+        // Read each by TX SENDER (server-side filtered → whale-immune). The union of
+        // the connected wallet, config-featured pins, and everyone who has attributed
+        // a trade to us — so app users are never absent from the venue board.
+        const skewOwners = predictV2Config.builderCodeId
+          ? await onchainSkewOwners(predictV2Config.builderCodeId, { signal }).catch(() => [] as string[])
+          : [];
+        const owners = [
+          ...new Set(
+            [...(acct.owner ? [acct.owner] : []), ...predictV2Config.featuredWallets, ...skewOwners].map((o) =>
+              o.toLowerCase(),
+            ),
+          ),
+        ];
+        await Promise.all(
+          owners.map(async (o) => foldOwnerOrders(await onchainOwnerOrders(o, 200, { signal }).catch(() => []))),
+        );
+      } else {
+        // 6-24: the indexer isn't bot-buried, so fold by account id (its native key).
+        await Promise.all(
+          mergeAccountIds.map(async (id) => {
+            try {
+              foldOwnerOrders(await withRetry(() => getAccountOrders(id, 500, { signal })));
+            } catch {
+              /* the board still stands without this account's merge */
             }
-          } catch {
-            /* the board still stands without this account's merge */
-          }
-        }),
-      );
+          }),
+        );
+      }
 
       // 4. Dedupe each bucket by event identity (a market in both feeds).
       for (const [mid, list] of byMarket) {

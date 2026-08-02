@@ -14,7 +14,8 @@
  * lib/leaderboard/skew-traders.ts). Server-only (called from the /api/v2/leaderboard
  * route via the cache), so the scan never runs in the browser.
  */
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { onchainSkewOwners, onchainOwnerOrders } from '@/lib/api/v2/onchain';
 import { aggregateV2Leaderboard } from './v2-aggregate';
 import type { V2LeaderboardRow } from './v2';
 import type { V2OrderEvent } from '@/lib/api/v2/types';
@@ -119,17 +120,38 @@ export function filterSkewEvents(all: V2OrderEvent[], builderCodeId: string): V2
 }
 
 /**
- * The complete, all-time Skew leaderboard: scan every order-event type, keep the
- * Skew-attributed slice, and fold it with the SAME aggregator the fan-out board uses
- * (so points / PnL / holding time are computed identically). Server-only. Returns an
- * empty board when no builder code is configured for this network.
+ * The 7-29 Skew slice, read the whale-proof way. The global order stream there is
+ * dominated by a high-frequency bot, so scanning it + filtering to our code loses our
+ * users the moment the bot buries them. Instead we (1) discover the app's own users
+ * from the tiny `BuilderCodeSet` stream (accounts that opted into our code), then
+ * (2) read each owner's orders by TX SENDER (server-side filtered, whale-immune), and
+ * (3) keep the attributed slice. Bounded by app-user count, not venue volume.
+ */
+async function fetchSkewEvents729(builderCodeId: string, signal?: AbortSignal): Promise<V2OrderEvent[]> {
+  const owners = await onchainSkewOwners(builderCodeId, { signal });
+  const perOwner = await Promise.all(
+    owners.map((o) => onchainOwnerOrders(o, 200, { signal }).catch(() => [] as V2OrderEvent[])),
+  );
+  return filterSkewEvents(perOwner.flat(), builderCodeId);
+}
+
+/**
+ * The complete, all-time Skew leaderboard: gather the Skew-attributed slice (7-29 via
+ * the whale-proof owner scan above, 6-24 via the GraphQL event scan) and fold it with
+ * the SAME aggregator the fan-out board uses (so points / PnL / holding time are
+ * computed identically). Server-only. Empty when no builder code is configured.
  */
 export async function fetchSkewLeaderboardRows(signal?: AbortSignal): Promise<V2LeaderboardRow[]> {
   const builderCodeId = predictV2Config.builderCodeId;
   if (!builderCodeId) return [];
 
-  const perType = await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)));
-  const skew = filterSkewEvents(perType.flat(), builderCodeId);
+  const skew =
+    ACTIVE_V2_DEPLOYMENT === '7-29'
+      ? await fetchSkewEvents729(builderCodeId, signal)
+      : filterSkewEvents(
+          (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)))).flat(),
+          builderCodeId,
+        );
 
   // The aggregator folds a Map<marketId, events[]>; group by market so its holding
   // time / redeem-join logic behaves exactly as it does on the fan-out board.

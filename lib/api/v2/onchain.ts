@@ -462,6 +462,75 @@ export async function onchainAllOrders(perType = 800, opts?: GetOptions): Promis
 }
 
 /**
+ * Distinct owner addresses that have attached OUR BuilderCode, from the
+ * `builder_code_events::BuilderCodeSet` stream (kept when `builder_code_id === codeId`).
+ * That event fires only when an account opts into a code, so this stream is TINY and
+ * whale-proof: it's the app's own user set, not the whole venue. The robust seed for
+ * the Skew board (see fetchSkewLeaderboardRows) and the leaderboard's app-user fold.
+ */
+export async function onchainSkewOwners(codeId: string, opts?: GetOptions): Promise<string[]> {
+  if (!codeId) return [];
+  const evs = await queryEventsPaged(
+    { MoveEventType: `${predictV2Config.packages.predict}::builder_code_events::BuilderCodeSet` },
+    300,
+    opts,
+  );
+  const owners = new Set<string>();
+  for (const e of evs) {
+    const p = e.parsedJson;
+    if (p && String(p.builder_code_id) === codeId && p.owner) owners.add(String(p.owner));
+  }
+  return [...owners];
+}
+
+interface TxBlock {
+  digest?: string;
+  events?: { type?: string; parsedJson?: Record<string, unknown> }[];
+}
+
+/** The `order_events` struct name in a fully-qualified event type IF it's from OUR
+ *  predict package and one we fold on, else null. */
+function orderStructOf(type: string | undefined): keyof typeof ORDER_EVENTS | null {
+  if (!type) return null;
+  const m = type.match(/^(.+)::order_events::(\w+)$/);
+  if (!m || m[1] !== predictV2Config.packages.predict) return null;
+  return (m[2] in ORDER_EVENTS ? m[2] : null) as keyof typeof ORDER_EVENTS | null;
+}
+
+/**
+ * One owner's order log, read by TRANSACTION SENDER (`suix_queryTransactionBlocks`
+ * FromAddress) rather than by scanning the global event stream. This is the key to
+ * surviving a high-frequency bot: the RPC filters by the owner server-side, so we get
+ * exactly their txs (and the order events inside them) no matter how many other
+ * accounts trade — unlike the account-id scan, which filters the whale-dominated
+ * stream client-side and loses an account once it's buried. Newest-first; timestamps
+ * come from each event's own `minted_at_ms` / `redeemed_at_ms`.
+ */
+export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetOptions): Promise<V2OrderEvent[]> {
+  const rows: V2OrderEvent[] = [];
+  let cursor: unknown = null;
+  const PAGE = 50;
+  for (let i = 0; rows.length < maxTx * 2 && i < Math.ceil(maxTx / PAGE) + 1; i++) {
+    const r = await rpcCall<{ data?: TxBlock[]; nextCursor?: unknown; hasNextPage?: boolean }>(
+      'suix_queryTransactionBlocks',
+      [{ filter: { FromAddress: owner }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
+      opts,
+    ).catch(() => ({ data: [] as TxBlock[], nextCursor: null, hasNextPage: false }));
+    for (const tx of r?.data ?? []) {
+      for (const ev of tx.events ?? []) {
+        const struct = orderStructOf(ev.type);
+        if (!struct) continue;
+        const p = ev.parsedJson ?? {};
+        rows.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
+      }
+    }
+    if (!r?.hasNextPage || !r?.nextCursor) break;
+    cursor = r.nextCursor;
+  }
+  return rows;
+}
+
+/**
  * A market's order EVENT log (mints + redeems), newest-first — the per-market flow
  * feed (drop-in for the beta `/markets/:id/orders`). Matched on `expiry_market_id`.
  */
