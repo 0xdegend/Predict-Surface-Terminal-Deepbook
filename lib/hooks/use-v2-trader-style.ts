@@ -17,10 +17,13 @@ import { classifyV2Traders } from '@/lib/analytics/v2-trader-style';
 import type { V2OrderEvent } from '@/lib/api/v2/types';
 import type { TraderStyle } from '@/lib/analytics/trader-style';
 
-export function useV2TraderStyle(accountId?: string): { style: TraderStyle | null; loading: boolean } {
+export function useV2TraderStyle(
+  accountId?: string,
+  owner?: string,
+): { style: TraderStyle | null; loading: boolean } {
   const q = useQuery<V2OrderEvent[]>({
     queryKey: qkV2.accountOrders(accountId ?? ''),
-    queryFn: () => getAccountOrders(accountId!),
+    queryFn: () => getAccountOrders(accountId!, owner),
     enabled: !!accountId,
     staleTime: 15_000,
   });

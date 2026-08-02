@@ -18,10 +18,11 @@ import type { PastPrediction } from '@/lib/portfolio/history';
 export function useV2History(
   accountId: string | undefined,
   marketMap?: Map<string, V2Market>,
+  owner?: string,
 ): { history: PastPrediction[]; isLoading: boolean } {
   const q = useQuery<V2OrderEvent[]>({
     queryKey: qkV2.accountOrders(accountId ?? ''),
-    queryFn: () => getAccountOrders(accountId!),
+    queryFn: () => getAccountOrders(accountId!, owner),
     enabled: !!accountId,
     refetchInterval: 15_000,
   });

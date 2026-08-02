@@ -14,8 +14,19 @@ import { predictV2Config } from '@/config/predict';
 import { InfoTip } from '../../ui/info-tip';
 import { StyleBadge } from '../../analytics/style-badge';
 
-export function V2TraderStyleCard({ accountId, enabled }: { accountId?: string; enabled: boolean }) {
-  const { style, loading } = useV2TraderStyle(enabled ? accountId : undefined);
+export function V2TraderStyleCard({
+  accountId,
+  owner,
+  enabled,
+}: {
+  accountId?: string;
+  /** The trader's wallet — the whale-immune tx-sender read key on 7-29. Shares the
+   *  profile's account-orders cache, so passing it keeps every reader's queryFn
+   *  identical (an account-id-only fetch would race in an empty result). */
+  owner?: string;
+  enabled: boolean;
+}) {
+  const { style, loading } = useV2TraderStyle(enabled ? accountId : undefined, owner);
 
   return (
     <div className="glass-card mb-6 p-4">

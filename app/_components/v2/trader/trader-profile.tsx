@@ -55,12 +55,12 @@ export function V2TraderProfile({ address }: { address: string }) {
 
   // Archetype for the profile share card — shares the accountOrders cache with the
   // style card + positions, so it's already loaded, not an extra fetch.
-  const { style } = useV2TraderStyle(accLoading ? undefined : accountId);
+  const { style } = useV2TraderStyle(accLoading ? undefined : accountId, owner);
 
   // Win rate over settled bets — derived the SAME way as the trader's own
   // Portfolio (derivePortfolioHistory), and off the same cached account-orders
   // query as the style card, so it's authoritative and not an extra fetch.
-  const { history, isLoading: histLoading } = useV2History(accLoading ? undefined : accountId);
+  const { history, isLoading: histLoading } = useV2History(accLoading ? undefined : accountId, undefined, owner);
   const winStats = useMemo(() => derivePortfolioHistory([], history).stats, [history]);
   const winRate = winStats.total > 0 ? winStats.winRate : null;
   // Running win-rate curve for the trend chart (last point = winRate). Plotted
@@ -188,7 +188,7 @@ export function V2TraderProfile({ address }: { address: string }) {
       )}
 
       {/* Trading style — derived archetype + the evidence behind it */}
-      <V2TraderStyleCard accountId={accountId} enabled={!accLoading} />
+      <V2TraderStyleCard accountId={accountId} owner={owner} enabled={!accLoading} />
 
       {/* Open positions — copyable into the trade ticket */}
       <div className="mb-3 flex items-center justify-between gap-2">

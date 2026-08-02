@@ -32,7 +32,7 @@ export function V2PositionsPanel() {
   // SSR has no wallet but the client restores one synchronously — branch on the
   // owner only after mount so the server and first client paint match.
   const mounted = useMounted();
-  const { positions, isLoading } = useV2PortfolioPositions(acct.accountId);
+  const { positions, isLoading } = useV2PortfolioPositions(acct.accountId, acct.owner);
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
   const { celebrate, overlay: claimCelebration } = useClaimCelebration();
 

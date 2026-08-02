@@ -101,7 +101,10 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const now = useNow(serverNow);
   // Enriched real positions + the market map (shared with the trade-rail panel so
   // the two never drift). Sample rows + history stay local to this panel.
-  const { positions: real, isLoading: positionsLoading, marketMap } = useV2PortfolioPositions(acct.accountId);
+  const { positions: real, isLoading: positionsLoading, marketMap } = useV2PortfolioPositions(
+    acct.accountId,
+    acct.owner,
+  );
 
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
   const [fundMode, setFundMode] = useState<FundMode | null>(null);
@@ -130,7 +133,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
 
   // Real trade history from the order event log (authoritative). Sample rows
   // fill the tab only while the account has no real positions at all.
-  const { history: realHistory } = useV2History(acct.accountId, marketMap);
+  const { history: realHistory } = useV2History(acct.accountId, marketMap, acct.owner);
   const { history, stats } = useMemo(
     () => derivePortfolioHistory([], demoActive ? demoHistory(serverNow) : realHistory),
     [demoActive, serverNow, realHistory],

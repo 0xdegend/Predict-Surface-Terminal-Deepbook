@@ -18,7 +18,9 @@ import {
   onchainPythLatest,
   onchainMarketState,
   onchainAccountOrders,
+  onchainOwnerOrders,
   onchainAccountPositions,
+  onchainOwnerPositions,
   onchainMarketOrders,
   onchainAllOrders,
   onchainMarketOpenInterest,
@@ -100,9 +102,14 @@ export const getV2MarketState = (marketId: string, o?: GetOptions) =>
  *  wallet owner — positions/orders are keyed under account_id). This is the
  *  portfolio's PRIMARY source (useV2Positions); on 7-29 it is reconstructed from
  *  the order log by folding net-open per position (see lib/api/v2/onchain.ts). */
-export const getAccountPositions = (accountId: string, o?: GetOptions) =>
+export const getAccountPositions = (accountId: string, owner?: string, o?: GetOptions) =>
   ACTIVE_V2_DEPLOYMENT === '7-29'
-    ? onchainAccountPositions(accountId, o)
+    ? // Prefer the owner (tx-sender) read: whale-immune and complete. The account-id
+      // scan only survives while the account isn't buried in the global stream, so
+      // it's a fallback for the rare caller that has no owner to hand.
+      owner
+      ? onchainOwnerPositions(owner, o)
+      : onchainAccountPositions(accountId, o)
     : beta<V2Position[]>(`/accounts/${accountId}/positions`, o);
 
 /** The account's order EVENT log (mints + redeems) — the source for trade
@@ -110,9 +117,15 @@ export const getAccountPositions = (accountId: string, o?: GetOptions) =>
  *  server DEFAULTS to only 50 rows and hard-caps at 500 (verified live
  *  2026-07-18), so request the full 500 explicitly — the 50-row default was
  *  silently truncating active wallets' history. */
-export const getAccountOrders = (accountId: string, limit = 500, o?: GetOptions) =>
+export const getAccountOrders = (accountId: string, owner?: string, limit = 500, o?: GetOptions) =>
   ACTIVE_V2_DEPLOYMENT === '7-29'
-    ? onchainAccountOrders(accountId, limit, o)
+    ? // Owner (tx-sender) read first — whale-immune. onchainAccountOrders (the
+      // global-stream scan filtered by account_id) is only a fallback: under a
+      // high-frequency bot it returns nothing once the account's events roll past
+      // the scan window (verified live: owner path 5 events, account-id path 0).
+      owner
+      ? onchainOwnerOrders(owner, 300, o)
+      : onchainAccountOrders(accountId, limit, o)
     : beta<V2OrderEvent[]>(`/accounts/${accountId}/orders?limit=${limit}`, o);
 
 /** Vault NAV + latest flush — pool_value/total_supply give the live share price.

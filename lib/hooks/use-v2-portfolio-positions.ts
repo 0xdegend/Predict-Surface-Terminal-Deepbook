@@ -38,8 +38,8 @@ export interface UseV2PortfolioPositions {
   marketMap: Map<string, V2Market>;
 }
 
-export function useV2PortfolioPositions(accountId?: string): UseV2PortfolioPositions {
-  const { positions: rawPositions, isLoading } = useV2Positions(accountId);
+export function useV2PortfolioPositions(accountId?: string, owner?: string): UseV2PortfolioPositions {
+  const { positions: rawPositions, isLoading } = useV2Positions(accountId, owner);
 
   // Every market a position references (from the raw rows — no join needed yet).
   const positionMarketIds = useMemo(
@@ -83,7 +83,7 @@ export function useV2PortfolioPositions(accountId?: string): UseV2PortfolioPosit
   // on it) is understated. Same TanStack key as useV2History ⇒ one shared fetch.
   const ordersQ = useQuery<V2OrderEvent[]>({
     queryKey: qkV2.accountOrders(accountId ?? ''),
-    queryFn: () => getAccountOrders(accountId!),
+    queryFn: () => getAccountOrders(accountId!, owner),
     enabled: !!accountId,
     refetchInterval: 15_000,
   });

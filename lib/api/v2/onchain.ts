@@ -52,7 +52,12 @@ interface SuiEvent {
   type?: string;
   timestampMs?: string | number;
   parsedJson?: Record<string, unknown>;
+  /** Stable event position, for incremental cursoring (see scanEventsSince). */
+  id?: { txDigest?: string; eventSeq?: string };
 }
+
+/** A stable event-id string ("txDigest:eventSeq") for cursor comparison. */
+const eventId = (e: SuiEvent): string => `${e.id?.txDigest ?? ''}:${e.id?.eventSeq ?? ''}`;
 
 /** Resilient JSON-RPC call across the endpoint list (server-only UA; browser CORS-ok). */
 async function rpcCall<T>(method: string, params: unknown[], opts?: GetOptions): Promise<T> {
@@ -111,6 +116,41 @@ async function queryEventsPaged(filter: unknown, total: number, opts?: GetOption
     cursor = page.nextCursor;
   }
   return out.slice(0, total);
+}
+
+/**
+ * Page newest-first collecting only events NEWER than `sinceCursor` (an event-id from
+ * a prior scan), stopping at that event, the page budget, or the feed end. The
+ * incremental primitive behind the leaderboard indexer: each cycle pulls just the gap
+ * since last time, so the persisted tally accumulates completely no matter how much
+ * total volume floods the stream. Returns the new events (newest-first) and the cursor
+ * to store for next time (the newest event seen, or `sinceCursor` when nothing is new).
+ */
+export async function scanEventsSince(
+  filter: unknown,
+  sinceCursor: string | null,
+  maxPages: number,
+  opts?: GetOptions,
+): Promise<{ events: SuiEvent[]; cursor: string | null }> {
+  const collected: SuiEvent[] = [];
+  let pageCursor: unknown = null;
+  let newest: string | null = null;
+  let caughtUp = false;
+  for (let i = 0; i < maxPages && !caughtUp; i++) {
+    const page = await queryEventsPage(filter, pageCursor, 50, opts);
+    if (page.data.length === 0) break;
+    if (newest === null) newest = eventId(page.data[0]);
+    for (const e of page.data) {
+      if (sinceCursor && eventId(e) === sinceCursor) {
+        caughtUp = true;
+        break;
+      }
+      collected.push(e);
+    }
+    if (!page.hasNextPage || !page.nextCursor) break;
+    pageCursor = page.nextCursor;
+  }
+  return { events: collected, cursor: newest ?? sinceCursor };
 }
 
 const n = (v: unknown): number => Number(v ?? 0);
@@ -408,7 +448,23 @@ export async function onchainAccountOrders(
  * history comes from the order log itself (getAccountOrders).
  */
 export async function onchainAccountPositions(accountId: string, opts?: GetOptions): Promise<V2Position[]> {
-  const orders = await onchainAccountOrders(accountId, 500, opts);
+  return foldOpenPositions(await onchainAccountOrders(accountId, 500, opts));
+}
+
+/**
+ * The SAME open-positions fold, but read by the account's OWNER wallet via the
+ * whale-immune tx-sender path (onchainOwnerOrders). Use this whenever the owner is
+ * known (the connected wallet, or a viewed trader profile): the account-id scan
+ * loses a real account the moment a high-frequency bot buries it in the global
+ * stream, whereas the sender filter always returns exactly this owner's trades.
+ */
+export async function onchainOwnerPositions(owner: string, opts?: GetOptions): Promise<V2Position[]> {
+  return foldOpenPositions(await onchainOwnerOrders(owner, 300, opts));
+}
+
+/** Net-open per `position_root_id` (Σ minted − Σ closed) → the still-open positions
+ *  (fully-closed roots dropped). Shared by the account-id and owner reads above. */
+function foldOpenPositions(orders: V2OrderEvent[]): V2Position[] {
   const terms = new Map<string, V2OrderEvent>(); // the mint (position terms)
   const minted = new Map<string, bigint>();
   const mintedPremium = new Map<string, bigint>();
@@ -459,6 +515,46 @@ export async function onchainAccountPositions(accountId: string, opts?: GetOptio
  */
 export async function onchainAllOrders(perType = 800, opts?: GetOptions): Promise<V2OrderEvent[]> {
   return scanOrderEvents(() => true, perType, opts, true);
+}
+
+/** Per-order-event-type cursors (struct name → last-seen event id). */
+export type OrderCursors = Record<string, string | null>;
+
+/**
+ * Incrementally scan every order-event type since its stored cursor, returning the NEW
+ * events (mapped to V2OrderEvent) and the advanced cursors. The leaderboard indexer
+ * calls this each cycle and folds the result into KV-persisted tallies, so no trade is
+ * ever dropped — the opposite of a windowed re-scan. `maxPagesPerType` bounds a single
+ * catch-up (a long idle gap under heavy flood is rare and self-heals next cycle).
+ */
+export async function scanOrderEventsSince(
+  cursors: OrderCursors,
+  maxPagesPerType = 40,
+  opts?: GetOptions,
+): Promise<{ events: V2OrderEvent[]; cursors: OrderCursors }> {
+  const pkg = predictV2Config.packages.predict;
+  const types = Object.keys(ORDER_EVENTS);
+  const results = await Promise.all(
+    types.map((evt) =>
+      scanEventsSince(
+        { MoveEventType: `${pkg}::order_events::${evt}` },
+        cursors[evt] ?? null,
+        maxPagesPerType,
+        opts,
+      ).catch(() => ({ events: [] as SuiEvent[], cursor: cursors[evt] ?? null })),
+    ),
+  );
+  const events: V2OrderEvent[] = [];
+  const next: OrderCursors = { ...cursors };
+  types.forEach((evt, i) => {
+    for (const e of results[i].events) {
+      const p = e.parsedJson;
+      if (!p) continue;
+      events.push({ ...(p as Record<string, unknown>), kind: ORDER_EVENTS[evt], checkpoint_timestamp_ms: n(e.timestampMs) });
+    }
+    next[evt] = results[i].cursor;
+  });
+  return { events, cursors: next };
 }
 
 /**

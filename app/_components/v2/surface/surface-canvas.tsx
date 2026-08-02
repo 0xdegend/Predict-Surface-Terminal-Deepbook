@@ -241,7 +241,7 @@ export function SurfaceCanvasV2({
   // bands + settled bets are excluded; `locate` drops any whose market isn't a
   // surface row). Gated to the live surface below (not stress/scrub previews).
   const acct = usePredictAccountV2();
-  const { positions: accountPositions } = useV2PortfolioPositions(acct.accountId);
+  const { positions: accountPositions } = useV2PortfolioPositions(acct.accountId, acct.owner);
   const positionPins = useMemo(
     () =>
       accountPositions.filter(

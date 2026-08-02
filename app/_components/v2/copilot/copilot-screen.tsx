@@ -1332,12 +1332,12 @@ function CopilotOpenBets({
   recordRef: MutableRefObject<CopilotRecord | null>;
 }) {
   const acct = usePredictAccountV2();
-  const { positions, marketMap } = useV2PortfolioPositions(acct.accountId);
+  const { positions, marketMap } = useV2PortfolioPositions(acct.accountId, acct.owner);
   // The authoritative settled history (same source the Portfolio page uses), folded
   // into the win/loss stats + equity curve the chat's track-record answers + share
   // card read. Lives here (not in the screen) so history's ~15s poll re-renders only
   // this isolated subtree, never the heavy surface.
-  const { history } = useV2History(acct.accountId, marketMap);
+  const { history } = useV2History(acct.accountId, marketMap, acct.owner);
   const record = useMemo<CopilotRecord>(() => {
     const { stats } = derivePortfolioHistory([], history);
     return { stats, curve: equityCurve(history).map((p) => p.cumulative), lastTrade: history[0] ?? null };

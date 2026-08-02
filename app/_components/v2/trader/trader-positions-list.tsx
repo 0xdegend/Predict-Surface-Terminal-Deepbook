@@ -34,7 +34,10 @@ export function V2TraderPositionsList({
   /** Open a share card for one of this trader's bets. */
   onShare: (card: TraderShareCard) => void;
 }) {
-  const { positions, isLoading } = useV2PortfolioPositions(enabled ? accountId : undefined);
+  const { positions, isLoading } = useV2PortfolioPositions(
+    enabled ? accountId : undefined,
+    enabled ? trader : undefined,
+  );
   const { copyBinary, copyRange } = useV2CopyTrade();
   const now = useNow(0);
 
