@@ -133,7 +133,11 @@ export function CopilotChat({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    // flex-1 (not just h-full): every mount wraps this in a flex column, and
+    // flex-grow fills reliably where a percentage height won't resolve — e.g. the
+    // grid-stretched <aside> on the copilot page. Without it the chat collapsed to
+    // its content height and sat at the top, stranding the composer above the dock.
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       {/* header (skipped when the host already renders one, e.g. the dock drawer) */}
       {!hideHeader && (
         <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">

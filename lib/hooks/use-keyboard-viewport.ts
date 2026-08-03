@@ -27,15 +27,25 @@ const KEYBOARD_MIN_PX = 140;
 
 export function useKeyboardViewport(): void {
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return; // no VisualViewport API → leave the dvh layout as-is (fine when closed)
     const root = document.documentElement;
+    // `chat-page` locks the shell to --kvh (globals.css) so this viewport-locked
+    // screen never document-scrolls — even when `100dvh` overshoots the visible
+    // area (mobile browser toolbar) — leaving the thread as the only scroller.
+    root.classList.add('chat-page');
+
+    const vv = window.visualViewport;
+    if (!vv) {
+      // No VisualViewport API: fall back to the dvh layout (still fine unscrolled).
+      return () => root.classList.remove('chat-page');
+    }
 
     const update = () => {
       // Keyboard overlap = layout viewport height − what's actually visible.
       const overlap = window.innerHeight - vv.height - vv.offsetTop;
       const open = overlap > KEYBOARD_MIN_PX;
       root.classList.toggle('kb-open', open);
+      // The REAL visible height (tracks toolbar show/hide AND the keyboard), which
+      // the shell is sized to — precise where `dvh` drifts.
       root.style.setProperty('--kvh', `${Math.round(vv.height)}px`);
     };
 
@@ -45,7 +55,7 @@ export function useKeyboardViewport(): void {
     return () => {
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
-      root.classList.remove('kb-open');
+      root.classList.remove('kb-open', 'chat-page');
       root.style.removeProperty('--kvh');
     };
   }, []);

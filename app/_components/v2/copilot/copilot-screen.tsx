@@ -1140,14 +1140,11 @@ export function V2CopilotScreen({
   return (
     <>
       <CopilotAutoAdvance markets={markets} serverNow={serverNow} />
-      {/* main is CAPPED to the viewport (fixed height, flex-none) so ONLY the
-          message thread scrolls inside it — the composer and dock stay put, never
-          scrolling with the content. One stretchable row (grid-rows-1 = 1fr) +
-          overflow-hidden makes the thread the internal scroller. Mobile height =
-          viewport − chrome(4rem) − dock(5rem); desktop has no dock. The shell is
-          dvh, so this fixed height matches the visible area exactly (no gap). When
-          the keyboard opens, globals.css re-sizes .copilot-main to fit above it. */}
-      <main className="copilot-main grid h-[calc(100dvh-9rem)] flex-none grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1fr)_400px]">
+      {/* Mobile: fill the shell, which globals.css has locked to the real visible
+          height (--kvh) — so ONLY the message thread scrolls (grid-rows-1 = 1fr +
+          overflow-hidden), the composer stays pinned above the dock, and the page
+          never document-scrolls. Desktop locks to the viewport with a fixed height. */}
+      <main className="copilot-main grid flex-1 grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px]">
         {/* Left — the cockpit: a live stat bar, a markets rail, and the surface
             (the hero). It reacts to the conversation: a suggested or clicked bet
             lights up here, and you trade it in place (surface click-to-mint) or via

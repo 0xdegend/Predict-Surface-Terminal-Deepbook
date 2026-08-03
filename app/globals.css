@@ -1081,24 +1081,70 @@ select:focus-visible,
 }
 .kelly-hint { animation: fadeIn 0.3s ease both; }
 
-/* On-screen keyboard handling (mobile only). `useKeyboardViewport` sets `kb-open`
-   + `--kvh` (the visible height above the keyboard) on <html> while a keyboard is
-   up. We then collapse the shell to that visible height, drop the fixed dock and
-   its clearance padding, and size a `.copilot-main` screen to the space that's
-   left — so a bottom-pinned composer sits right on top of the keyboard instead of
-   being stranded above the floating dock. Desktop (lg+) is untouched. */
+/* Viewport-locked chat page (mobile only). `useKeyboardViewport` publishes the
+   REAL visible height as `--kvh` (from the VisualViewport API) and marks the shell
+   `chat-page`. We lock the shell to `--kvh` and clip it, so the page CANNOT
+   document-scroll (which is what opened the gap: `100dvh` overshoots the visible
+   area when the browser toolbar is showing, making the shell taller than the
+   screen). The message thread scrolls internally instead, and the composer stays
+   pinned above the dock whether the user scrolls or not.
+
+   Keyboard up: `--kvh` shrinks to the space above the keyboard, so the shell (and
+   the composer with it) follows automatically; we just hide the dock + its
+   clearance so the composer sits right on the keyboard. Desktop (lg+) is untouched. */
+/* chat-page viewport lock (see useKeyboardViewport) */
 @media (max-width: 1023px) {
-  html.kb-open .v2-shell {
+  /* Lock the DOCUMENT itself, not just the shell. The shell clips its own
+     overflow, but the body could still scroll it around inside the taller layout
+     viewport — on mobile the visible (visual) viewport is shorter than the full
+     layout viewport, so dragging pulls the reclaimed URL-bar area into view: an
+     empty band below the docked nav, and the chrome sliding off the top. With the
+     body pinned and clipped, the page cannot scroll at all — only the message
+     thread does. `position: fixed` on the body is what actually stops iOS Safari
+     rubber-banding (overflow:hidden alone doesn't). */
+  html.chat-page,
+  html.chat-page body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  html.chat-page body {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    /* Drop the global floating-dock clearance (the base `body { padding-bottom:
+       5rem }` below lg): on the chat page the dock is in the shell flow, and that
+       80px sitting under the --kvh shell is what made the body taller than the
+       viewport — the scrollable empty band under the nav. */
+    padding-bottom: 0;
+  }
+  html.chat-page .v2-shell {
+    height: var(--kvh, 100dvh);
     min-height: 0;
+    overflow: hidden;
+  }
+  html.chat-page .v2-content {
+    min-height: 0;
+    /* No floating-dock clearance here: on the chat page the dock is docked into
+       the shell flow (below), so it occupies real space and the composer sits
+       directly on top of it. Keeping the old 80px clearance is exactly what let
+       the gap open — see the dock rule. */
+    padding-bottom: 0;
+  }
+  /* Dock the bottom nav into the --kvh shell flow (not viewport-fixed) so the
+     composer and the dock live in the SAME box. Viewport-fixed, the dock anchored
+     to the true viewport bottom while the composer was pinned inside the shell —
+     two different coordinate systems that drift apart when the mobile URL bar
+     collapses on scroll, opening an empty band between the input and the nav. In
+     flow they are adjacent siblings and can never separate, scrolled or not.
+     `relative` (not `static`) keeps its z-50 stacking. */
+  html.chat-page .v2-dock {
+    position: relative;
   }
   html.kb-open .v2-content {
     padding-bottom: 0;
   }
   html.kb-open .v2-dock {
     display: none;
-  }
-  html.kb-open .copilot-main {
-    flex: none;
-    height: calc(var(--kvh, 100dvh) - 4rem);
   }
 }
