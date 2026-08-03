@@ -1108,18 +1108,40 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
         ? `You've also got ${fmt(free)} DUSDC free to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
         : `You've also got ${fmt(free)} DUSDC free to trade.`;
 
+  // A "how am I doing / how's my performance" question is really about the RECORD,
+  // not just the open book — so when the trader has settled bets, fold their win
+  // rate, realized PnL, best win, and current streak into the answer (same numbers
+  // the Portfolio history + track-record card show). Null when there's nothing
+  // settled yet, so a brand-new trader's answer is unchanged.
+  const rec = ctx.record;
+  const recordLine = (): string | null => {
+    if (!rec || rec.stats.total === 0) return null;
+    const s = rec.stats;
+    const wins = `${s.wins} win${s.wins === 1 ? '' : 's'}`;
+    const losses = `${s.losses} loss${s.losses === 1 ? '' : 'es'}`;
+    const bestBit = s.best > 0 ? `, best win ${signedUsd(s.best)}` : '';
+    const streakBit =
+      s.streak && s.streak.count >= 2
+        ? ` You’re on a ${s.streak.count}-bet ${s.streak.result === 'won' ? 'winning' : 'losing'} run.`
+        : '';
+    return `Your track record so far: ${wins} and ${losses} (${pct(s.winRate, 0)} win rate), ${signedUsd(s.realizedPnl)} realized${bestBit}.${streakBit}`;
+  };
+
   // Still loading positions, or genuinely none open.
   const nothingOpen = !p || (p.openCount === 0 && p.claimableCount === 0 && p.settledLostCount === 0);
   if (nothingOpen) {
-    return {
-      text: [
-        "You don't have any open bets right now.",
-        free > 0
-          ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
-          : 'Your DUSDC balance is $0.00. Say “get test tokens” and I’ll drop some in so you can place your first bet.',
-        'Say “set up a trade” or tell me a direction whenever you’re ready.',
-      ],
-    };
+    const rl = recordLine();
+    const text = [
+      "You don't have any open bets right now.",
+      ...(rl ? [rl] : []),
+      free > 0
+        ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
+        : 'Your DUSDC balance is $0.00. Say “get test tokens” and I’ll drop some in so you can place your first bet.',
+      'Say “set up a trade” or tell me a direction whenever you’re ready.',
+    ];
+    // With a settled record, offer the shareable track-record card (same as the
+    // win-rate answer) so "top wins" are one tap from being shown off.
+    return rl ? { text, share: { kind: 'win_rate' } } : { text };
   }
 
   const text: string[] = [];
@@ -1159,6 +1181,8 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   if (p!.settledLostCount > 0 && p!.openCount === 0 && p!.claimableCount === 0) {
     text.push(`${p!.settledLostCount} settled ${p!.settledLostCount === 1 ? 'bet' : 'bets'} didn't win this time.`);
   }
+  const rl = recordLine();
+  if (rl) text.push(rl);
   text.push(freeLine());
   text.push('Want to add another? Say “set up a trade”, or “analyze BTC” for a read.');
   return { text };

@@ -485,6 +485,36 @@ describe('respondToIntent — portfolio (how am I doing + balances)', () => {
     expect(blob).toMatch(/\$290\.00|ready to trade/);
   });
 
+  const REC = {
+    stats: { total: 5, wins: 3, losses: 2, winRate: 0.6, realizedPnl: 42.5, staked: 100, best: 30, worst: -15, streak: { result: 'won' as const, count: 2 }, unclaimed: 0 },
+    lastTrade: null,
+  };
+
+  it('a "how is my performance" answer surfaces the settled track record (win rate, realized, best win)', () => {
+    const noOpen = { ...PF, openCount: 0, openValue: 0, openExposure: 0, unrealized: 0, best: undefined, worst: undefined };
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: noOpen, record: REC }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/60% win rate/);
+    expect(blob).toMatch(/\+\$42\.50 realized/);
+    expect(blob).toMatch(/best win \+\$30\.00/);
+    expect(blob).toMatch(/2-bet winning run/);
+    expect(r.share).toEqual({ kind: 'win_rate' }); // "top wins" are one tap from sharing
+  });
+
+  it('the track record rides along even when bets are open', () => {
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: PF, record: REC }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/2 open bets/); // still leads with the live book
+    expect(blob).toMatch(/60% win rate/); // and folds in the record
+  });
+
+  it('no settled bets yet → no track-record line, no share (unchanged for a new trader)', () => {
+    const empty = { stats: { total: 0, wins: 0, losses: 0, winRate: 0, realizedPnl: 0, staked: 0, best: 0, worst: 0, streak: null, unclaimed: 0 }, lastTrade: null };
+    const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: funded, portfolio: { ...PF, openCount: 0, best: undefined, worst: undefined }, record: empty }));
+    expect(r.text.join(' ')).not.toMatch(/track record/i);
+    expect(r.share).toBeUndefined();
+  });
+
   it('not connected → asks them to connect', () => {
     const r = respondToIntent({ kind: 'portfolio' }, ctx({ wallet: { connected: false, hasAccount: false, accountBase: 0n, walletBase: undefined } }));
     expect(r.text.join(' ')).toMatch(/connect/i);
