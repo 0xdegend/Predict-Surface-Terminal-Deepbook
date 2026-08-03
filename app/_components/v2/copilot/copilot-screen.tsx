@@ -1134,11 +1134,13 @@ export function V2CopilotScreen({
   return (
     <>
       <CopilotAutoAdvance markets={markets} serverNow={serverNow} />
-      {/* Desktop: lock main to the viewport (flex-none so the explicit height wins
-          over flex-1's basis, grid-rows-1 so the single row is 1fr of that fixed
-          height) → each column scrolls INTERNALLY instead of growing the page.
-          Mobile: normal flow (flex-1), the page scrolls as usual. */}
-      <main className="grid flex-1 grid-cols-1 gap-px bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-1 lg:overflow-hidden">
+      {/* ONE stretchable row (grid-rows-1 = 1fr) + overflow-hidden → the chat fills
+          its area exactly and scrolls INTERNALLY, so a short thread leaves no gap
+          and the composer pins just above the dock. Mobile fills the shell via
+          flex-1 (the layout's dvh height + dock padding already bound it, so the
+          fill is dock-aware and needs no hardcoded calc). Desktop locks to the
+          viewport with an explicit height. */}
+      <main className="grid flex-1 grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px]">
         {/* Left — the cockpit: a live stat bar, a markets rail, and the surface
             (the hero). It reacts to the conversation: a suggested or clicked bet
             lights up here, and you trade it in place (surface click-to-mint) or via
@@ -1150,7 +1152,7 @@ export function V2CopilotScreen({
             live market. Once a bet is live it shows at the bottom of the thread
             here (and on the surface as a gem), so the trader can watch it perform
             and close it in place — inside the chat — without leaving for /portfolio. */}
-        <aside className="flex min-h-[62vh] min-w-0 flex-col bg-bg-0 lg:min-h-0">
+        <aside className="flex min-h-0 min-w-0 flex-col bg-bg-0">
           <CopilotChat
             messages={messages}
             onSend={handleSend}

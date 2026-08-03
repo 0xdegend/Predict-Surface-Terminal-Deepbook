@@ -209,7 +209,10 @@ export function CopilotChat({
             rows={1}
             placeholder="Ask, or say “safe up bet”…"
             aria-label="Message Kelly"
-            className="scroll-quiet min-w-0 flex-1 resize-none bg-transparent py-1 text-[12.5px] leading-snug text-text-1 placeholder:text-text-3 focus:outline-none"
+            // 16px on mobile is intentional: iOS Safari force-zooms a focused field
+            // under 16px (which also overflows the layout). The dense 12.5px is kept
+            // for the desktop rail (lg+), where there's no touch-zoom.
+            className="scroll-quiet min-w-0 flex-1 resize-none bg-transparent py-1 text-[16px] leading-snug text-text-1 placeholder:text-text-3 focus:outline-none lg:text-[12.5px]"
           />
           <button
             type="submit"
