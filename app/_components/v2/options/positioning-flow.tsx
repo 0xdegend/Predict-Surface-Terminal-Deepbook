@@ -48,7 +48,7 @@ export function PositioningFlow({ positioning, insights, intel }: { positioning:
 
       <div className="glass rounded-lg p-4">
         {verdict && (
-          <p className="mb-4 rounded-md border border-(--accent-line) bg-(--accent-soft) px-3.5 py-3 text-[13px] leading-relaxed text-text-1">{verdict}</p>
+          <p className="glass-accent mb-4 rounded-md px-3.5 py-3 text-[13px] leading-relaxed text-text-1">{verdict}</p>
         )}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -133,7 +133,7 @@ export function PositioningFlow({ positioning, insights, intel }: { positioning:
           </Cell>
         </div>
 
-        {cross && <p className="mt-4 border-t border-line-soft pt-3 text-[12.5px] leading-relaxed text-text-2">{cross}</p>}
+        {cross && <p className="glass-divider-top mt-4 pt-3 text-[12.5px] leading-relaxed text-text-2">{cross}</p>}
       </div>
     </section>
   );

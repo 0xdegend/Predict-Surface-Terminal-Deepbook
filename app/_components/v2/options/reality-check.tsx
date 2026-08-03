@@ -45,7 +45,7 @@ export function RealityCheck({
         <Stat label={<Term plain="Actual move / hour" pro="Realized 1h move" />} value={`${realizedPct.toFixed(2)}%`} tone="up" />
         <Stat label="Gap" value={`${gap >= 0 ? '+' : ''}${gap.toFixed(2)}%`} tone={calmer ? 'down' : 'up'} />
       </div>
-      <p className="mt-3 rounded-md border border-(--accent-line) bg-(--accent-soft) px-3 py-2.5 text-[12.5px] leading-relaxed text-text-1">
+      <p className="glass-accent mt-3 rounded-md px-3 py-2.5 text-[12.5px] leading-relaxed text-text-1">
         {calmer ? (
           <>
             BTC has been <b className="text-accent">calmer</b> than the surface is pricing. Near-the-money bets can look a

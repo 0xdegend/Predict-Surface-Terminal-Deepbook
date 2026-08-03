@@ -8,7 +8,8 @@
  * the read. Every number is real (the engine's `buildConsensus`) — no crowd market is
  * mixed in, because Polymarket's BTC markets are longer-dated than ours.
  */
-import { num } from '@/lib/format';
+import { num, timeLeftWords } from '@/lib/format';
+import { useNow } from '@/lib/hooks/use-now';
 import { useVocab } from './vocab';
 import type { Consensus } from '@/lib/insights';
 
@@ -22,17 +23,26 @@ export function ProbabilityConsensus({
   consensus,
   strikePrice,
   isUp,
-  timeLabel,
+  expiryMs,
   onBet,
 }: {
   consensus: Consensus | null;
   strikePrice: number | null;
   isUp: boolean;
-  timeLabel: string;
+  /** The selected market's expiry (ms). The countdown ticks off a live 1s clock
+   *  here, not the parent's Pyth-driven `now`, so seconds read smoothly instead of
+   *  jumping when a price tick arrives. */
+  expiryMs: number | null;
   onBet: () => void;
 }) {
   const { mode } = useVocab();
+  // Live 1s wall-clock (shared interval) so the "by 45 sec" horizon ticks down
+  // smoothly. Called before the early return to keep hook order stable. Seed 0 is
+  // never shown (this card only renders client-side, once consensus data loads).
+  const now = useNow(0);
   if (!consensus || strikePrice == null) return null;
+
+  const timeLabel = expiryMs != null ? timeLeftWords(expiryMs - now) : '';
 
   const bandLeft = consensus.low * 100;
   const bandWidth = Math.max(0.5, (consensus.high - consensus.low) * 100);
@@ -69,15 +79,23 @@ export function ProbabilityConsensus({
                 <span className="h-2 w-2 flex-none rounded-sm" style={{ background: SRC_COLOR[s.key] }} />
                 {mode === 'pro' ? s.label : s.plainLabel}
               </span>
-              <span className="relative h-2 rounded bg-white/[0.045]">
-                <span className="absolute inset-y-0 left-0 rounded" style={{ width: `${s.prob * 100}%`, background: SRC_COLOR[s.key], opacity: 0.82 }} />
+              {/* Frosted glass meter: a concave translucent track (inset shadow +
+                  hairline) with a filled bar that carries a top-light sheen, so the
+                  reads read as lit glass rather than flat swatches. */}
+              <span className="relative h-2 overflow-hidden rounded-full bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/5">
+                <span
+                  className="absolute inset-y-0 left-0 overflow-hidden rounded-full"
+                  style={{ width: `${s.prob * 100}%`, background: SRC_COLOR[s.key], opacity: 0.85 }}
+                >
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/30 to-transparent" />
+                </span>
               </span>
               <span className="text-right font-mono text-[13px] tabular-nums text-text-1">{Math.round(s.prob * 100)}%</span>
             </div>
           ))}
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+        <div className="glass-divider-top mt-3 flex flex-wrap items-center justify-between gap-3 pt-3">
           <p className="min-w-[240px] flex-1 text-[12.5px] leading-relaxed text-text-1">{consensus.synthesis}</p>
           <div className="flex items-center gap-2.5">
             <span

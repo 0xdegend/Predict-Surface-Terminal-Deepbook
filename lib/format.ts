@@ -142,6 +142,21 @@ export function countdown(expiryMs: number, nowMs: number = Date.now()): string 
   return `${s}s`;
 }
 
+/** Time-left in natural words for a sentence — "now" / "45 sec" / "3 min" / "2h" /
+ *  "1d". Reads seconds under a minute so a market with a few seconds left shows
+ *  "20 sec" instead of rounding down to a confusing "0 min". Pass a live clock as
+ *  the remaining ms so it ticks smoothly. Used in the consensus question. */
+export function timeLeftWords(ms: number): string {
+  if (ms <= 0) return 'now';
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${Math.max(1, sec)} sec`;
+  const m = Math.round(ms / 60_000);
+  if (m < 60) return `${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
 /** Compact "time since" for a past ms-epoch — "now" / "12s" / "4m" / "2h" / "3d".
  *  Drives the live flow tape's age column (recompute on a ticking clock). */
 export function ago(tsMs: number, nowMs: number = Date.now()): string {

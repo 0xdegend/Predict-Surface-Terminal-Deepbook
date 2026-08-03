@@ -62,7 +62,7 @@ import {
 import { startFlow, advanceFlow, resumeHint, type TradeFlow } from '@/lib/copilot/flow';
 import { summarizePositions, winningClaimPayout, type PortfolioSummary, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { derivePortfolioHistory, equityCurve, type WinStats, type PastPrediction } from '@/lib/portfolio/history';
-import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
+import { planBinaryBudgetMint, planRangeBudgetMint } from '@/lib/sui/v2/budget-mint';
 import { aggregateStrikeVolume, busiestStrikeReply, surfaceVolumeReply, type StrikeVolume } from '@/lib/copilot/strike-volume';
 import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-match';
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
@@ -343,6 +343,11 @@ export function V2CopilotScreen({
   // suggestion). Lets a typed "trade it" open the ticket, like tapping the button.
   // A ref (not state) so tracking it never re-renders the heavy surface.
   const pendingBetRef = useRef<BetSuggestion | null>(null);
+  // The range currently set up + shown on a card (a recommendation, or one the
+  // trader sized). Mirrors pendingBetRef for the range side, so a typed "trade it
+  // with $10 at 2x" places the visible band. Only one of the two is ever set — a
+  // bet reply clears the range ref and vice-versa.
+  const pendingRangeRef = useRef<RangeSuggestion | null>(null);
   // Latest roll-up of the trader's own positions, written by the open-bets tray
   // (which already subscribes to them) so "how's my portfolio?" reads it without
   // this screen subscribing — keeps the surface out of the per-tick re-render.
@@ -405,16 +410,21 @@ export function V2CopilotScreen({
     openTicketSheet();
     setFlow(null);
     pendingBetRef.current = null; // it's placed — a later "trade it" shouldn't re-open it
+    pendingRangeRef.current = null;
   }
 
   // Load a recommended RANGE into the range ticket + light the band on the surface —
   // the same store path a range picked off the surface uses (setMode('range') then
-  // two picks anchor + close the band). Only highlights + pre-fills; never signs.
+  // two picks anchor + close the band). A sized range also carries the stake +
+  // leverage, so the ticket opens fully filled in. Only highlights + pre-fills;
+  // never signs.
   function applyRange(range: RangeSuggestion) {
     selectMarket(range.marketId);
     setMode('range');
     pickRangeLevel(range.lower); // anchor
     pickRangeLevel(range.higher); // close the band (order-independent — the store sorts them)
+    if (range.amount != null) setStake(range.amount);
+    if (range.leverage != null) setLeverage(range.leverage);
     markPicked();
   }
 
@@ -424,6 +434,7 @@ export function V2CopilotScreen({
     applyRange(range);
     openTicketSheet();
     setFlow(null);
+    pendingRangeRef.current = null; // it's placed — a later "trade it" shouldn't re-open it
   }
 
   // Every open market we can price — shared by the one-shot responder and the
@@ -695,6 +706,75 @@ export function V2CopilotScreen({
     }
   }
 
+  // Typed "trade it" on a RANGE → place the band directly, the range twin of
+  // placeBetDirect: the SAME budget mint the range ticket runs (planRangeBudgetMint),
+  // with leverage. Anything that needs the tested ticket UI — no account, low funds,
+  // an expiring market — falls back to opening the ticket so the trader is never
+  // left stuck or silently failing.
+  async function placeRangeDirect(range: RangeSuggestion, userText: string) {
+    pushUser(userText);
+    setFlow(null); // confirming ends any wizard, whether it places or hands off
+    const now = Date.now();
+    const market = markets.find((m) => m.expiry_market_id === range.marketId);
+    const pricer = market ? pricers[range.marketId] : undefined;
+    const st0 = useV2TradeStore.getState();
+    const stake = range.amount ?? st0.stake;
+    const leverage = range.leverage ?? st0.leverage;
+    const plan =
+      market && pricer
+        ? planRangeBudgetMint({ market, forward: pricer.forward, svi: pricer.svi, lower: range.lower, higher: range.higher, stake, leverage })
+        : null;
+
+    const expired = !market || range.expiry <= now || isTooCloseToExpiry(market, now);
+    const walletKnown = acct.walletDusdcBase !== undefined;
+    const fundable = !!plan && walletKnown && plan.maxCost <= acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+    const canAutoPlace = !!plan && !expired && plan.probOk && plan.stakeOk && acct.wrapperExists && fundable && !acct.busy;
+
+    if (!canAutoPlace) {
+      // Hand off to the ticket to finish (connect / create account / add funds /
+      // pick another market), and say why.
+      handlePlaceRange(range);
+      const why = !acct.owner
+        ? 'connect your wallet and place it there'
+        : expired
+          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          : !acct.wrapperExists
+            ? 'let’s set up your trading account in the ticket first'
+            : !walletKnown
+              ? 'I’m still loading your balance — place it from the ticket'
+              : !fundable
+                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                : 'finish placing it from the ticket';
+      setThinking(true);
+      replyTimer.current = setTimeout(() => {
+        pushBot([`I’ve opened your ticket — ${why}.`]);
+        setThinking(false);
+      }, 500);
+      return;
+    }
+
+    applyRange(range); // light the band up on the surface while it lands
+    pendingRangeRef.current = null;
+    const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
+    setThinking(true);
+    try {
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      if (digest) {
+        pulseFill({ marketId: range.marketId, strike: (plan!.lower + plan!.higher) / 2, isUp: true });
+        pushBot([`Done — your range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
+      } else {
+        // It didn't place — keep the range pending so "trade it" can retry it.
+        pendingRangeRef.current = range;
+        pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or open the ticket to place it yourself.']);
+      }
+    } catch {
+      pendingRangeRef.current = range;
+      pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or open the ticket to place it yourself.']);
+    } finally {
+      setThinking(false);
+    }
+  }
+
   // Volume questions — the surface holds pricing, not volume, so pull the recent
   // bets from the ORDERS feed and bucket them by strike. `mode` picks the answer:
   // 'busiest' names the single hottest strike; 'overview' reads the whole surface
@@ -872,6 +952,30 @@ export function V2CopilotScreen({
     };
   }
 
+  // The range twin of betFromSelection: reconstruct the band the trader is looking
+  // at from the live ticket, so a typed "trade it" places a range picked on the
+  // surface (or a recommendation loaded into the ticket) even with no pending
+  // suggestion. Range mode + a completed band only; placeRangeDirect re-quotes and
+  // gates everything else, so the odds fields here are unused placeholders.
+  function rangeFromSelection(): RangeSuggestion | null {
+    const st = useV2TradeStore.getState();
+    if (st.mode !== 'range' || !st.marketId || st.rangeLowerPrice == null || st.rangeHigherPrice == null) return null;
+    const market = markets.find((m) => m.expiry_market_id === st.marketId);
+    if (!market) return null;
+    return {
+      marketId: market.expiry_market_id,
+      expiry: market.expiry,
+      lower: st.rangeLowerPrice,
+      higher: st.rangeHigherPrice,
+      prob: 0,
+      payoutMult: 1,
+      conviction: 'even',
+      timeLeftLabel: '',
+      amount: st.stake,
+      leverage: st.leverage,
+    };
+  }
+
   // Compact, already-known facts for the Claude read tier — built ONLY in the send
   // handler (never during render): reads refs + the query cache imperatively. Lean
   // by design (one short line per fact, unknowns dropped) so grounding is cheap.
@@ -990,10 +1094,20 @@ export function V2CopilotScreen({
     // a stake/leverage OVERRIDE applied to that bet, so a size can be named inline.
     const confirm = placeConfirmation(text);
     if (confirm) {
+      // A binary target wins if one's set up (pending suggestion or a binary ticket);
+      // otherwise place a set-up RANGE (a recommendation, or a band on the ticket) —
+      // "trade it with $10 at 2x" sizes either. Only one side is ever active at once
+      // (a bet reply clears the range ref and the store mode picks the other apart).
       const base = pendingBetRef.current ?? betFromSelection();
       if (base) {
         const bet = { ...base, amount: confirm.stake ?? base.amount, leverage: confirm.leverage ?? base.leverage };
         void placeBetDirect(bet, text);
+        return;
+      }
+      const baseRange = pendingRangeRef.current ?? rangeFromSelection();
+      if (baseRange) {
+        const range = { ...baseRange, amount: confirm.stake ?? baseRange.amount, leverage: confirm.leverage ?? baseRange.leverage };
+        void placeRangeDirect(range, text);
         return;
       }
       // Nothing suggested yet. A BARE confirm ("trade it" / "yes") → a nudge; but a
@@ -1001,7 +1115,7 @@ export function V2CopilotScreen({
       // through and start a fresh trade pre-filled with them (below).
       if (confirm.stake == null && confirm.leverage == null) {
         pushUser(text);
-        botAfterBeat(['Set up a bet first and I’ll place it. Try “safe up bet”, or say “set up a trade” and I’ll walk you through it.']);
+        botAfterBeat(['Set up a bet first and I’ll place it. Try “safe up bet”, a “recommend a range”, or say “set up a trade”.']);
         return;
       }
     }
@@ -1086,11 +1200,13 @@ export function V2CopilotScreen({
     if (reply.bet) {
       applyBet(reply.bet);
       pendingBetRef.current = reply.bet;
+      pendingRangeRef.current = null; // a bet is now the "trade it" target, not a range
     } else if (reply.range) {
       // "What range should I trade?" → load the band into the range ticket + light
-      // it on the surface. A range isn't the "trade it" target (that's binary), so
-      // clear any pending binary suggestion so a later "trade it" can't fire it.
+      // it on the surface, and make it the "trade it" target so "trade it with $10
+      // at 2x" places THIS range. Clear the binary side so only one is ever active.
       applyRange(reply.range);
+      pendingRangeRef.current = reply.range;
       pendingBetRef.current = null;
     } else if (reply.highlight) {
       // "Find me the $X strike" → light it up on the surface (no bet suggested).
@@ -1105,6 +1221,7 @@ export function V2CopilotScreen({
       pulseFocus({ marketId: h.marketId, strike: h.strikePrice, isUp: h.isUp });
     } else if (nextFlow) {
       pendingBetRef.current = null;
+      pendingRangeRef.current = null; // mid-wizard (binary) — no stale range to "trade it"
     }
     setFlow(nextFlow);
     pushExchange(text, reply);

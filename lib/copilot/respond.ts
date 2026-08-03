@@ -143,6 +143,11 @@ export interface RangeSuggestion {
   payoutMult: number;
   conviction: Conviction;
   timeLeftLabel: string;
+  /** Set when the trader has sized the range ("trade it with $10 at 2x") — the
+   *  stake + leverage the placement mints with, mirroring BetSuggestion. A bare
+   *  recommendation leaves them unset (the ticket's current values are used). */
+  amount?: number;
+  leverage?: number;
 }
 
 /** A one-tap onboarding step the chat renders as a button. `connect` is guidance

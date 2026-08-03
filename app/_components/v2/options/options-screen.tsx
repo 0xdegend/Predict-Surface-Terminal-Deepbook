@@ -36,6 +36,7 @@ import { PositioningFlow } from './positioning-flow';
 import { ProbabilityConsensus } from './consensus';
 import { VocabProvider } from './vocab';
 import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, expectedMove, type EngineCandidate, type MarketExpiry, type MarketRead } from '@/lib/insights';
+import { timeLeftWords } from '@/lib/format';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { OptionsShareModal } from './options-share-modal';
 import { ShareXButton } from '../share/share-x-button';
@@ -51,15 +52,6 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 // credits (insights + candles are gated).
 const OPTIONS_LIVE = process.env.NEXT_PUBLIC_OPTIONS_LIVE === '1';
 
-/** Compact "time left" for the consensus question ("3 min" / "2h" / "1d"). */
-function fmtTime(ms: number): string {
-  if (ms <= 0) return 'now';
-  const m = Math.round(ms / 60_000);
-  if (m < 60) return `${m} min`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.round(h / 24)}d`;
-}
 
 export function V2OptionsScreen({
   markets: initialMarkets,
@@ -211,7 +203,7 @@ export function V2OptionsScreen({
       sigmaPct: em.sigma * 100,
       lowPrice: em.lowPrice,
       highPrice: em.highPrice,
-      horizon: fmtTime(selected.expiry - pulseNow),
+      horizon: timeLeftWords(selected.expiry - pulseNow),
     });
   };
   const shareOdds = (r: LadderRung) => {
@@ -222,7 +214,7 @@ export function V2OptionsScreen({
       strike: r.strike,
       chancePct: r.chanceAbove * 100,
       payoutX: r.payoutUp,
-      horizon: fmtTime(selected.expiry - pulseNow),
+      horizon: timeLeftWords(selected.expiry - pulseNow),
       isUp: true,
     });
   };
@@ -267,7 +259,7 @@ export function V2OptionsScreen({
             consensus={consensus}
             strikePrice={consensusStrike}
             isUp={consensusIsUp}
-            timeLabel={selected ? fmtTime(selected.expiry - pulseNow) : ''}
+            expiryMs={selected?.expiry ?? null}
             onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
           />
         </div>

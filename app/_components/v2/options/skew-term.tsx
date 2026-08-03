@@ -41,7 +41,7 @@ export function SkewTerm({ expiries, arb, now }: { expiries: MarketExpiry[]; arb
           <div key={r.marketId} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5">
             <span className="font-mono text-[11px] tabular-nums text-text-1">{(r.iv * 100).toFixed(0)}%</span>
             <div
-              className="w-full rounded-t border border-b-0 border-(--accent-line) bg-(--accent-soft)"
+              className="w-full rounded-t border border-b-0 border-(--accent-line) bg-(--accent-soft) bg-[linear-gradient(180deg,rgba(255,255,255,0.16),transparent_42%)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]"
               style={{ height: `${Math.max(8, (r.iv / maxIv) * 100)}%` }}
             />
             <span className="text-[10.5px] text-text-3">{expiryLabel(r.expiryMs, now)}</span>
