@@ -3,17 +3,24 @@ import {
   topEvent,
   notableEvents,
   relTime,
+  relDay,
   utcTime,
   eventName,
   eventGreetingLine,
   buildEventsReply,
+  buildUpcomingEventsReply,
+  upcomingEvents,
+  startOfUtcDay,
   prettyTitle,
   type EventsFeed,
   type MarketEvent,
 } from './events';
 
+// 2026-07-25T17:20:00Z (a Saturday) — the fixed "now" all the relative phrasing is
+// asserted against.
 const NOW = 1_785_000_000_000;
 const HOUR = 3_600_000;
+const DAY = 86_400_000;
 
 function ev(p: Partial<MarketEvent> = {}): MarketEvent {
   return {
@@ -32,6 +39,16 @@ function ev(p: Partial<MarketEvent> = {}): MarketEvent {
 
 function feed(events: MarketEvent[], headline: string | null = null): EventsFeed {
   return { available: true, asOf: NOW, events, headline };
+}
+
+/** An event scheduled `n` whole days from the top of today (importance 3 by default
+ *  so it counts as notable), for the upcoming-calendar tests. */
+function upEv(nDays: number, p: Partial<MarketEvent> = {}): MarketEvent {
+  return ev({ importance: 3, date: startOfUtcDay(NOW) + nDays * DAY, ...p });
+}
+
+function feedUpcoming(upcoming: MarketEvent[], headline: string | null = null): EventsFeed {
+  return { available: true, asOf: NOW, events: [], upcoming, headline };
 }
 
 describe('notableEvents / topEvent', () => {
@@ -154,5 +171,81 @@ describe('buildEventsReply', () => {
     expect(joined).toMatch(/Bitcoin steadies ahead of the Fed/);
     expect(joined).toMatch(/not a prediction/i);
     expect(joined).not.toMatch(/—/); // no em dash
+  });
+});
+
+describe('relDay (plain, timezone-safe day labels)', () => {
+  it('names today / tomorrow, a weekday within the week, then a short date', () => {
+    const day = (n: number) => startOfUtcDay(NOW) + n * DAY;
+    expect(relDay(day(0), NOW)).toBe('today');
+    // A time earlier the same day still reads as today.
+    expect(relDay(NOW - 5 * HOUR, NOW)).toBe('today');
+    expect(relDay(day(1), NOW)).toBe('tomorrow');
+    expect(relDay(day(3), NOW)).toBe('Tuesday'); // 2026-07-28
+    expect(relDay(day(6), NOW)).toBe('Friday'); // 2026-07-31
+    // A week or more out switches to an unambiguous short date.
+    expect(relDay(day(7), NOW)).toBe('Sat Aug 1');
+    expect(relDay(day(10), NOW)).toBe('Tue Aug 4');
+  });
+});
+
+describe('upcomingEvents (horizon window + chronological)', () => {
+  const f = feedUpcoming([
+    upEv(0, { title: 'CPI' }),
+    upEv(2, { title: 'Fed Rate Decision' }),
+    upEv(6, { title: 'Jobs' }),
+    upEv(12, { title: 'GDP' }),
+    upEv(20, { title: 'PCE' }),
+    upEv(3, { importance: 2, title: 'Retail' }), // routine → excluded
+  ]);
+
+  it('keeps only notable events inside a rolling 7 days for a week', () => {
+    expect(upcomingEvents(f, NOW, 'week').map((e) => e.title)).toEqual(['CPI', 'Fed Rate Decision', 'Jobs']);
+  });
+
+  it('reaches ~31 days for a month and stays in date order', () => {
+    expect(upcomingEvents(f, NOW, 'month').map((e) => e.title)).toEqual(['CPI', 'Fed Rate Decision', 'Jobs', 'GDP', 'PCE']);
+  });
+
+  it('returns nothing without an upcoming list', () => {
+    expect(upcomingEvents(feed([]), NOW, 'week')).toEqual([]);
+    expect(upcomingEvents(null, NOW, 'month')).toEqual([]);
+  });
+});
+
+describe('buildUpcomingEventsReply', () => {
+  it('explains when it cannot pull the calendar', () => {
+    expect(buildUpcomingEventsReply(null, NOW, 'week')[0]).toMatch(/can.t pull the economic calendar/i);
+  });
+
+  it('says the window is quiet when nothing notable is scheduled', () => {
+    const out = buildUpcomingEventsReply(feedUpcoming([], 'Bitcoin drifts sideways'), NOW, 'month');
+    expect(out[0]).toMatch(/nothing major/i);
+    expect(out[0]).toMatch(/this month/i);
+    expect(out.join(' ')).toMatch(/Bitcoin drifts sideways/);
+  });
+
+  it('lists the events with day labels, in order, always with the caveat', () => {
+    const f = feedUpcoming([
+      upEv(0, { title: 'CPI Inflation', country: 'US' }),
+      upEv(3, { title: 'Fed Interest Rate Decision', country: null }), // Sat + 3 = Tuesday
+      upEv(6, { title: 'Nonfarm Payrolls', country: 'US' }),
+    ]);
+    const out = buildUpcomingEventsReply(f, NOW, 'week');
+    const joined = out.join('\n');
+    expect(out[0]).toMatch(/this week/i);
+    expect(joined).toMatch(/• US CPI Inflation \(today\)/);
+    expect(joined).toMatch(/• Fed Interest Rate Decision \(Tuesday\)/);
+    expect(joined).toMatch(/• US Nonfarm Payrolls \(Friday\)/);
+    expect(joined).toMatch(/not a prediction/i);
+    expect(joined).not.toMatch(/—/); // no em dash
+  });
+
+  it('caps the list and notes the remainder', () => {
+    const many = Array.from({ length: 14 }, (_, i) => upEv(i * 2, { title: `Event ${i}` }));
+    const out = buildUpcomingEventsReply(feedUpcoming(many), NOW, 'month');
+    const bullets = out.filter((l) => l.startsWith('•'));
+    expect(bullets).toHaveLength(10); // month cap
+    expect(out.join('\n')).toMatch(/plus \d+ more/i);
   });
 });

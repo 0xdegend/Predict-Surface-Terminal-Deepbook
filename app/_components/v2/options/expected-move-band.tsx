@@ -4,6 +4,8 @@
  * ExpectedMoveBand — the surface's ±1σ expected range to the front expiry, with a
  * marker for where the price sits now. "About 2 in 3 of the time it lands in here."
  */
+import Link from 'next/link';
+import { LuSparkles } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { Term } from './vocab';
 import { ShareXButton } from '../share/share-x-button';
@@ -52,8 +54,19 @@ export function ExpectedMoveBand({
         <span>${num(em.lowPrice, 0)}</span>
         <span>${num(em.highPrice, 0)}</span>
       </div>
-      <div className="mt-2.5 text-[12px] text-text-2">
-        <Term plain={`A move of about ±${pct}% either way`} pro={`±${pct}% · 1σ`} />
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <div className="text-[12px] text-text-2">
+          <Term plain={`A move of about ±${pct}% either way`} pro={`±${pct}% · 1σ`} />
+        </div>
+        {/* Bridge to Kelly: she recommends a range bet off this exact expected move,
+            so the read here turns straight into a tradeable band. */}
+        <Link
+          href="/v2/copilot?ask=Recommend%20a%20range"
+          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--accent-line) bg-(--accent-soft) px-2.5 py-1 text-[10.5px] font-medium text-accent transition-colors hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        >
+          <LuSparkles size={11} />
+          Ask Kelly for a range
+        </Link>
       </div>
     </div>
   );

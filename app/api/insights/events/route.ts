@@ -1,10 +1,12 @@
 /**
- * /api/insights/events — today's market-moving CALENDAR for Kelly.
+ * /api/insights/events — the market-moving CALENDAR for Kelly (today + ahead).
  *
  * Pulls the macro schedule via Clawby `calendar_economic_data` (a Fed decision,
- * CPI, jobs) over a window around "now", keeps the notable rows (importance 2+),
- * and tacks on the top crypto news headline via `article_list`. Feeds both the
- * co-pilot's "what's happening today?" answer and Kelly's greeting heads-up.
+ * CPI, jobs) from the top of today through the next ~month, keeps the notable rows
+ * (importance 3), and tacks on the top crypto news headline via `article_list`.
+ * Returns two views off that one fetch: `events` (today only, importance-first —
+ * the greeting + "what's happening today?" reply) and `upcoming` (today → +~month,
+ * chronological — the "events this week / this month?" reply).
  *
  * SERVER-ONLY (the Clawby key is a per-account secret). Cached in-process (20-min
  * TTL + single-flight, since a calendar barely moves intraday), degrades to
@@ -12,27 +14,21 @@
  */
 import { NextResponse } from 'next/server';
 import type { EventsFeed, MarketEvent } from '@/lib/insights/events';
-import { NOTABLE_IMPORTANCE, prettyTitle } from '@/lib/insights/events';
+import { NOTABLE_IMPORTANCE, prettyTitle, startOfUtcDay } from '@/lib/insights/events';
 import { relay, asList, hasClawbyKey, toNum } from '@/lib/insights/clawby-server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const TTL_MS = 1_200_000; // 20 minutes — a calendar barely changes intraday.
+const DAY_MS = 86_400_000;
 // Cross-midnight floor: always look at least this far back, so a release just
 // before midnight still reads as "recent" right after the date rolls over.
 const WINDOW_BACK_MS = 6 * 3_600_000;
-const WINDOW_FWD_MS = 24 * 3_600_000; // through the rest of today + a little slack
-const MAX_EVENTS = 6;
-
-/** Midnight UTC of the day `ms` falls in. We anchor the lookback here so the day's
- *  MORNING releases (PCE / CPI / jobs print ~12:30-14:00 UTC) still count as
- *  "today's event" when asked in the evening — a fixed 6h lookback dropped them a
- *  few hours after they printed, so Kelly wrongly read "nothing major today". */
-function startOfUtcDay(ms: number): number {
-  const d = new Date(ms);
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
+// Look a month + a little slack ahead, so "this week" and "this month" have data.
+const WINDOW_FWD_DAYS = 35;
+const MAX_EVENTS = 6; // today's lineup
+const MAX_UPCOMING = 40; // the month-ahead lineup (grouped by day downstream)
 
 /** Trimmed string, or null for empty / missing. */
 function str(v: unknown): string | null {
@@ -68,6 +64,9 @@ function toEvent(row: Record<string, unknown>, now: number): MarketEvent | null 
   const exact = toNum(row.has_exact_publish_time) === 1;
   const ts = toNum(row.publish_timestamp);
   const at = exact && ts != null ? ts : null;
+  // The DAY is kept even when the exact time isn't, so a future release can still
+  // be placed on the calendar ("this week" / "this month").
+  const date = ts != null ? startOfUtcDay(ts) : null;
   const actual = str(row.published_value);
   const released = actual != null || (ts != null && ts <= now);
   return {
@@ -75,6 +74,7 @@ function toEvent(row: Record<string, unknown>, now: number): MarketEvent | null 
     country: str(row.country_name) ?? str(row.country_code),
     importance,
     at,
+    date,
     released,
     forecast: str(row.forecast_value),
     previous: str(row.previous_value) ?? str(row.revised_previous_value),
@@ -94,36 +94,52 @@ async function fetchHeadline(): Promise<string | null> {
 
 async function build(): Promise<EventsFeed> {
   const asOf = Date.now();
+  const todayStart = startOfUtcDay(asOf);
   let events: MarketEvent[] = [];
+  let upcoming: MarketEvent[] = [];
 
   try {
-    // Whole of today (UTC) plus a cross-midnight floor, so both a morning release
-    // hours ago and one that just printed before midnight are covered.
-    const start_time = Math.min(startOfUtcDay(asOf), asOf - WINDOW_BACK_MS);
+    // Top of today (UTC) plus a cross-midnight floor for the lookback, through a
+    // month ahead for the upcoming view — one fetch feeds both.
+    const start_time = Math.min(todayStart, asOf - WINDOW_BACK_MS);
     const rows = asList(
       await relay('calendar_economic_data', {
         start_time,
-        end_time: asOf + WINDOW_FWD_MS,
+        end_time: todayStart + WINDOW_FWD_DAYS * DAY_MS,
         language: 'en',
       }),
     );
-    const ranked = rows
+    const notable = rows
       .map((r) => toEvent(r, asOf))
-      .filter((e): e is MarketEvent => e != null && e.importance >= NOTABLE_IMPORTANCE)
-      // Most important first, then US events, then soonest (unknown times last).
-      .sort(
-        (a, b) =>
-          b.importance - a.importance || usRank(a) - usRank(b) || (a.at ?? Infinity) - (b.at ?? Infinity),
-      );
-    // Collapse near-identical prints, keeping the highest-ranked instance.
-    const seen = new Set<string>();
-    events = ranked.filter((e) => (seen.has(dedupeKey(e)) ? false : (seen.add(dedupeKey(e)), true))).slice(0, MAX_EVENTS);
+      .filter((e): e is MarketEvent => e != null && e.importance >= NOTABLE_IMPORTANCE);
+
+    // Today's lineup: importance-first (unchanged), collapsing same-day variants.
+    const seenToday = new Set<string>();
+    events = notable
+      .filter((e) => e.date != null && e.date >= todayStart && e.date < todayStart + DAY_MS)
+      .sort((a, b) => b.importance - a.importance || usRank(a) - usRank(b) || (a.at ?? Infinity) - (b.at ?? Infinity))
+      .filter((e) => (seenToday.has(dedupeKey(e)) ? false : (seenToday.add(dedupeKey(e)), true)))
+      .slice(0, MAX_EVENTS);
+
+    // The upcoming calendar: today → +month, chronological. Dedupe keys the DAY in
+    // too, so a monthly release recurring on different days stays (only same-day
+    // QoQ/YoY variants collapse).
+    const seenUp = new Set<string>();
+    upcoming = notable
+      .filter((e) => e.date != null)
+      .sort((a, b) => a.date! - b.date! || b.importance - a.importance || usRank(a) - usRank(b) || (a.at ?? Infinity) - (b.at ?? Infinity))
+      .filter((e) => {
+        const k = `${dedupeKey(e)}|${e.date}`;
+        return seenUp.has(k) ? false : (seenUp.add(k), true);
+      })
+      .slice(0, MAX_UPCOMING);
   } catch {
     events = []; // no calendar → still return an (empty) available feed.
+    upcoming = [];
   }
 
   const headline = await fetchHeadline();
-  return { available: true, asOf, events, headline };
+  return { available: true, asOf, events, upcoming, headline };
 }
 
 // In-process cache + single-flight, so bursty traffic never fans out to Clawby.

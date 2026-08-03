@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { respondToIntent, timeLeftLabel, type CopilotContext, type BetCandidate } from './respond';
+import { startOfUtcDay } from '@/lib/insights/events';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -829,24 +830,31 @@ describe('respondToIntent — track record (last trade / win rate / loss rate)',
 
 describe('respondToIntent — events', () => {
   const HOUR = 3_600_000;
+  const DAY = 86_400_000;
+  const todayStart = startOfUtcDay(NOW);
   const eventsFeed = {
     available: true as const,
     asOf: NOW,
     events: [
-      { title: 'Fed Interest Rate Decision', country: 'US', importance: 3, at: NOW + 3 * HOUR, released: false, forecast: null, previous: null, actual: null, effect: null },
+      { title: 'Fed Interest Rate Decision', country: 'US', importance: 3, at: NOW + 3 * HOUR, date: todayStart, released: false, forecast: null, previous: null, actual: null, effect: null },
+    ],
+    upcoming: [
+      { title: 'Fed Interest Rate Decision', country: 'US', importance: 3, at: NOW + 3 * HOUR, date: todayStart, released: false, forecast: null, previous: null, actual: null, effect: null },
+      { title: 'Nonfarm Payrolls', country: 'US', importance: 3, at: null, date: todayStart + 4 * DAY, released: false, forecast: null, previous: null, actual: null, effect: null },
+      { title: 'GDP', country: 'US', importance: 3, at: null, date: todayStart + 12 * DAY, released: false, forecast: null, previous: null, actual: null, effect: null },
     ],
     headline: null,
   };
 
   it('answers with the scheduled-calendar read and no bet', () => {
-    const r = respondToIntent({ kind: 'events' }, ctx({ events: eventsFeed }));
+    const r = respondToIntent({ kind: 'events', range: 'today' }, ctx({ events: eventsFeed }));
     expect(r.bet).toBeUndefined();
     expect(r.text.join('\n')).toMatch(/Fed Interest Rate Decision \(in about 3 hours\)/);
     expect(r.text.join('\n')).toMatch(/not a prediction/i);
   });
 
   it('offers a Share-to-X card carrying the event lineup', () => {
-    const r = respondToIntent({ kind: 'events' }, ctx({ events: eventsFeed }));
+    const r = respondToIntent({ kind: 'events', range: 'today' }, ctx({ events: eventsFeed }));
     expect(r.share).toBeDefined();
     expect(r.share).toMatchObject({ kind: 'events' });
     if (r.share?.kind === 'events') {
@@ -854,9 +862,61 @@ describe('respondToIntent — events', () => {
     }
   });
 
+  it('answers the week/month horizon from the upcoming list, in date order with day labels', () => {
+    const week = respondToIntent({ kind: 'events', range: 'week' }, ctx({ events: eventsFeed }));
+    const wj = week.text.join('\n');
+    expect(wj).toMatch(/this week/i);
+    expect(wj).toMatch(/• US Fed Interest Rate Decision \(today\)/);
+    expect(wj).toMatch(/• US Nonfarm Payrolls \(/); // within the week
+    expect(wj).not.toMatch(/GDP/); // 12 days out → beyond the week
+    // Share pills carry the day label, not a wall-clock time (at: null).
+    if (week.share?.kind === 'events') expect(week.share.events[0].at).toBeNull();
+
+    const month = respondToIntent({ kind: 'events', range: 'month' }, ctx({ events: eventsFeed }));
+    expect(month.text.join('\n')).toMatch(/GDP/); // reaches into the month
+  });
+
   it('says the calendar is unavailable when no feed loaded, and offers no share', () => {
-    const r = respondToIntent({ kind: 'events' }, ctx({ events: null }));
+    const r = respondToIntent({ kind: 'events', range: 'today' }, ctx({ events: null }));
     expect(r.text[0]).toMatch(/can.t pull today.s calendar/i);
     expect(r.share).toBeUndefined();
+  });
+});
+
+describe('respondToIntent — range_bet', () => {
+  it('recommends a mintable band around the forward, from the surface, no binary bet', () => {
+    const r = respondToIntent({ kind: 'range_bet', conviction: 'even', horizon: 'soonest' }, ctx());
+    expect(r.bet).toBeUndefined();
+    expect(r.range).toBeDefined();
+    const rg = r.range!;
+    expect(rg.marketId).toBe('m-soon'); // the soonest candidate
+    // A real, ordered band straddling the forward (65,000), snapped to the grid.
+    expect(rg.lower).toBeLessThan(rg.higher);
+    expect(rg.lower).toBeLessThan(65_000);
+    expect(rg.higher).toBeGreaterThan(65_000);
+    expect(Number.isInteger(rg.lower)).toBe(true); // $1 admission tick in the fixture
+    // Honest, quotable odds + a matching payout.
+    expect(rg.prob).toBeGreaterThan(0);
+    expect(rg.prob).toBeLessThan(1);
+    expect(rg.payoutMult).toBeCloseTo(1 / rg.prob, 5);
+    // The copy names the band and stays honest (no advice).
+    const joined = r.text.join(' ');
+    expect(joined).toMatch(new RegExp(`\\$${rg.lower.toLocaleString('en-US')}`));
+    expect(joined).toMatch(/between/i);
+    expect(joined).toMatch(/not financial advice/i);
+    expect(joined).not.toMatch(/—/); // no em dash
+  });
+
+  it('safe = a wider band (higher win chance) than a longshot', () => {
+    const safe = respondToIntent({ kind: 'range_bet', conviction: 'safe', horizon: 'soonest' }, ctx()).range!;
+    const shot = respondToIntent({ kind: 'range_bet', conviction: 'longshot', horizon: 'soonest' }, ctx()).range!;
+    expect(safe.higher - safe.lower).toBeGreaterThan(shot.higher - shot.lower);
+    expect(safe.prob).toBeGreaterThan(shot.prob);
+  });
+
+  it('falls back cleanly when there is no live market', () => {
+    const r = respondToIntent({ kind: 'range_bet', conviction: 'even', horizon: 'soonest' }, ctx({ candidates: [] }));
+    expect(r.range).toBeUndefined();
+    expect(r.text[0]).toMatch(/no live market/i);
   });
 });

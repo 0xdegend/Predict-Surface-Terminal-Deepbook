@@ -22,6 +22,9 @@ export type MetricKind = 'fear_greed' | 'funding' | 'liquidations' | 'max_pain' 
 
 /** A price level to quote odds at: an absolute strike, or a % move from spot. */
 export type OddsLevel = { kind: 'strike'; price: number } | { kind: 'move'; pct: number };
+/** The horizon of a calendar/events question: today's lineup, or the week / month
+ *  ahead. Defaults to `today` when the question names no window. */
+export type EventRange = 'today' | 'week' | 'month';
 /** An explicit target on a directional bet: a win-chance (70%) or a payout (3×). */
 export type BetTarget = { kind: 'prob'; value: number } | { kind: 'payout'; mult: number };
 /** A "how does X work?" topic the co-pilot can explain in plain language. The first
@@ -38,6 +41,10 @@ export type CopilotIntent =
   | { kind: 'start_trade' }
   | { kind: 'metric'; metric: MetricKind }
   | { kind: 'recommend' }
+  // "What range should I trade in? / recommend a range / a safe range band" — Kelly
+  // recommends a price band to bet stays-inside, sized off the surface's expected
+  // move. `conviction` widens (safer) or tightens (longshot) the band.
+  | { kind: 'range_bet'; conviction: Conviction; horizon: Horizon }
   | { kind: 'balance' }
   | { kind: 'portfolio' }
   | { kind: 'track_record'; focus: 'last' | 'win_rate' | 'loss_rate'; ask?: 'win' | 'lose' }
@@ -62,9 +69,10 @@ export type CopilotIntent =
   | { kind: 'flow' }
   | { kind: 'options_market' }
   | { kind: 'why_moving' }
-  // "What's happening today? / any events? / is there FOMC?" — today's scheduled
-  // market-moving calendar (macro events + a news headline), from Clawby.
-  | { kind: 'events' }
+  // "What's happening today? / any events this week? / anything on the calendar
+  // this month?" — the scheduled market-moving calendar from Clawby. `range` picks
+  // the horizon: today's lineup, or the upcoming week / month.
+  | { kind: 'events'; range: EventRange }
   // Onboarding: get-started guidance, create the trading account, get test tokens.
   | { kind: 'onboarding' }
   | { kind: 'create_account' }
@@ -165,6 +173,37 @@ function metricFrom(text: string): MetricKind | null {
  *  already a bet); this catches the undecided "up or down"-style questions. */
 function wantsRecommendation(text: string): boolean {
   return /\bshould i\b|\brecommend|which way|\bup or down\b|\bdown or up\b|what should i|your (?:call|pick|take)|which is better|what do you think i should|pick for me|or range\b/.test(text);
+}
+
+/** "What range should I trade in? / recommend a range / a safe range to bet / build
+ *  me a tight range" — asks Kelly to RECOMMEND a price band, not to explain what a
+ *  range bet is (that stays the glossary). Requires the "range" noun plus an action
+ *  or "what/which range" phrasing; the definitional asks are excluded up front. */
+function wantsRangeBet(text: string): boolean {
+  // Personal book / definitional asks belong to other intents.
+  if (/\bmy (?:range|bet|position|trade)\b/.test(text)) return false;
+  if (!/\brange\b/.test(text)) return false;
+  // "up or down or range?" is a directional STEER (→ recommend), naming range as one
+  // option among the sides, not a request to size a specific band. Bail when both
+  // sides are named, or on the explicit "or range" either/or phrasing.
+  if (/\bor range\b/.test(text) || (/\bup\b/.test(text) && /\bdown\b/.test(text))) return false;
+  // "what is a range bet? / how do range bets work?" stays a glossary answer.
+  if (/what(?:'?s| is| are)?\b[^?]{0,14}\ba range\b|how (?:do(?:es)?|to)\b[^?]{0,20}\brange\b/.test(text)) return false;
+  return (
+    /\bwhat range\b|\bwhich range\b|\brange should i\b|\bshould i\b[^?]{0,24}\brange\b/.test(text) ||
+    /\b(?:recommend|suggest|pick|choose|give me|show me|set up|find|build|best|good|ideal|safe|wide|tight|narrow)\b[^?]{0,18}\brange\b/.test(text) ||
+    /\brange\b[^?]{0,18}\b(?:to (?:trade|bet|play|pick)|bet on|trade)\b/.test(text) ||
+    /\btrade\b[^?]{0,12}\brange\b/.test(text)
+  );
+}
+
+/** How wide a recommended range should be, as a Conviction the reply maps to a
+ *  multiple of the expected move. "wide" reads as safer (more likely to contain the
+ *  settlement), "tight/narrow" as a longshot; otherwise the shared safe/longshot cues. */
+function rangeWidthFrom(text: string): Conviction {
+  if (/\b(?:wide|wider|widest)\b/.test(text)) return 'safe';
+  if (/\b(?:tight|tighter|narrow|narrower|precise)\b/.test(text)) return 'longshot';
+  return convictionFrom(text);
 }
 
 /** "What's my (wallet) balance? / how much DUSDC do I have?" — show their funds. */
@@ -528,23 +567,37 @@ function wantsEvents(text: string): boolean {
   if (/\bmy (?:bet|position|trade|money|stake|pnl|p&l)\b/.test(text)) return false;
   // Named macro events / explicit calendar language — a strong signal on its own.
   if (/\bfomc\b|\bcpi\b|\bpce\b|\bnfp\b|\bnonfarm\b|\bjobs report\b|\bpowell\b|(?:interest )?rate (?:decision|hike|cut|meeting)|economic (?:calendar|data|events?)|\bmacro (?:calendar|events?|data)\b|market[- ]moving/.test(text)) return true;
-  const day = /\btoday\b|\btonight\b|this week|coming up|on tap/.test(text);
+  const day = HORIZON_CUE.test(text);
   // A calendar/events noun that's being asked about.
   if (/\b(?:any|what|which|the)\b[^?]{0,16}\bevents?\b/.test(text)) return true;
   if (/on (?:the )?(?:calendar|docket|agenda)/.test(text)) return true;
   if (/\b(?:events?|calendar|docket|agenda|scheduled?)\b/.test(text) && day) return true;
   // "what's happening / went on / anything happen(ed) big", but ONLY when anchored
-  // to a day, so the plain "what's happening" market read still routes to `analyze`.
+  // to a horizon, so the plain "what's happening" market read still routes to `analyze`.
   if (
-    /\b(?:what'?s|whats|what is|what are|anything|any big|is there anything)\b[^?]{0,24}\b(?:today|this week|coming up|on tap)\b/.test(text) &&
+    new RegExp(`\\b(?:what'?s|whats|what is|what are|anything|any big|is there anything)\\b[^?]{0,24}${HORIZON_CUE.source}`).test(text) &&
     /\b(?:happen(?:ed|ing|s)?|going on|big|important|scheduled?|planned|calendar|events?)\b/.test(text)
   )
     return true;
-  // "What happened today?" — a bare recap ask with no "events" noun; day-anchored so
-  // it doesn't swallow the plain market read. Routes to events (the calendar + the
-  // day's news headline) instead of dead-ending at help.
-  if (/\bwhat\b[^?]{0,20}\bhappen(?:ed|ing|s)?\b[^?]{0,16}\b(?:today|tonight|this week)\b/.test(text)) return true;
+  // "What happened today / this week?" — a bare recap ask with no "events" noun;
+  // horizon-anchored so it doesn't swallow the plain market read. Routes to events
+  // (the calendar + the day's news headline) instead of dead-ending at help.
+  if (new RegExp(`\\bwhat\\b[^?]{0,20}\\bhappen(?:ed|ing|s)?\\b[^?]{0,16}${HORIZON_CUE.source}`).test(text)) return true;
   return false;
+}
+
+/** The time-window cues that anchor an events question (today / week / month), so
+ *  a generic "what's happening" only routes to the calendar when scoped to one.
+ *  Kept in one place so `wantsEvents` and `eventsRange` agree on what counts. */
+const HORIZON_CUE = /\b(?:today|tonight|this week|next week|week ahead|this month|month ahead|coming (?:up|days?|weeks?)|upcoming|on tap|rest of (?:the )?(?:week|month))\b/;
+
+/** Which horizon an events question is asking about. Month cues win over week over
+ *  today, so "events this week and month" leans to the wider month view. Defaults
+ *  to today when no window is named. */
+export function eventsRange(text: string): EventRange {
+  if (/\bthis month\b|\bmonth ahead\b|\bcoming weeks?\b|\bnext few weeks\b|\bthe month\b|\brest of (?:the )?month\b|\bmonthly\b/.test(text)) return 'month';
+  if (/\bthis week\b|\bnext week\b|\bweek ahead\b|\bcoming (?:up|days?|week)\b|\bupcoming\b|\bon tap\b|\brest of (?:the )?week\b/.test(text)) return 'week';
+  return 'today';
 }
 
 /** A live move/direction cue ("pumping", "dropping", "up", "red") and a market
@@ -588,7 +641,7 @@ function busiestScope(text: string): 'now' | 'all' {
 function explainTopic(text: string): ExplainTopic | null {
   if (!/\bwhat\b|\bhow\b|\bexplain\b|tell me|\bwhy\b|meaning|difference|point of|what if|\bdo you\b|\bcan (?:i|you)\b|\bis (?:this|it|there)\b|\bdo i\b|\bare (?:there|the|these)\b/.test(text)) return null;
   if (/\bleverage\b|knock ?out/.test(text)) return 'leverage';
-  if (/\brange bet\b|\ba range\b|range market|range work/.test(text)) return 'range';
+  if (/\brange bets?\b|\ba range\b|range market|range work/.test(text)) return 'range';
   if (/(?:up|down) bet (?:mean|work|is|do)|what.{0,14}(?:up|down) bet|\bbinary\b|up ?\/ ?down/.test(text)) return 'binary';
   if (/settl(?:e|es|ed|ing|ement|ements)|how.{0,14}(?:expir|close)|when.{0,14}(?:it |they )?(?:pay|resolve)/.test(text)) return 'settlement';
   if (/if i lose|lose more|lose my|can i lose|what.{0,10}(?:happens|the).{0,14}los|\blosing\b/.test(text)) return 'loss';
@@ -747,6 +800,13 @@ export function parseIntent(message: string): CopilotIntent {
   // strip removes "what's up", which would drop the interrogative).
   if (wantsSurfaceShape(raw)) return { kind: 'surface_shape' };
 
+  // "What range should I trade in? / recommend a range" — a RANGE recommendation
+  // (a price band to bet stays-inside), sized off the surface's expected move.
+  // BEFORE the glossary (so "recommend a range" isn't read as the definitional
+  // "what's a range bet") and before recommend/analyze (which "should i" trips).
+  // wantsRangeBet excludes the definitional asks, so those still fall to the glossary.
+  if (wantsRangeBet(text)) return { kind: 'range_bet', conviction: rangeWidthFrom(text), horizon: horizonFrom(text) };
+
   // Newcomer glossary ("what's a call option?", "what is implied volatility?", "how
   // does Skew work?"). BEFORE the live vol/skew/term reads so a definitional "what
   // is …" wins, while a live ask ("what's the volatility now") has no definitional
@@ -758,7 +818,9 @@ export function parseIntent(message: string): CopilotIntent {
   // "What's happening today? / any events? / is there FOMC?" — today's scheduled
   // calendar. Before why_moving + analyze, since "happening today" trips the
   // analyze cue and a named event should beat the causal/plain reads.
-  if (wantsEvents(text)) return { kind: 'events' };
+  // Range reads from RAW text: NON_DIRECTIONAL strips "coming up" out of `text`,
+  // which would otherwise hide that horizon cue.
+  if (wantsEvents(text)) return { kind: 'events', range: eventsRange(raw) };
 
   // "Why is BTC moving? / what's driving this? / any news?" — the causal read.
   // Before the surface + directional + analyze branches, since it carries move and

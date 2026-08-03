@@ -12,19 +12,21 @@
  * ticket. Nothing here signs or mints.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins } from 'react-icons/lu';
+import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins, LuBrackets } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
-import type { BetSuggestion, OnboardAction, ShareCard } from '@/lib/copilot/respond';
+import type { BetSuggestion, RangeSuggestion, OnboardAction, ShareCard } from '@/lib/copilot/respond';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   text: string[];
   bet?: BetSuggestion;
+  /** A recommended range band (loaded into the range ticket + lit on the surface). */
+  range?: RangeSuggestion;
   /** An onboarding step rendered as a one-tap button (create account / get tokens). */
   action?: OnboardAction;
   /** A snapshot the message can offer to share as an image card (fear & greed). */
@@ -33,7 +35,7 @@ export interface ChatMessage {
   link?: { label: string; href: string };
 }
 
-const CHIPS = ['Set up a trade', 'Analyze BTC', 'Next market', 'Safe UP bet', 'Longshot UP bet', 'Safe DOWN bet'];
+const CHIPS = ['Set up a trade', 'Recommend a range', 'Analyze BTC', 'Safe UP bet', 'Longshot UP bet', 'Safe DOWN bet'];
 
 /** The composer grows with the text up to ~3 lines (px), then scrolls. */
 const MAX_INPUT_H = 76;
@@ -52,6 +54,7 @@ export function CopilotChat({
   messages,
   onSend,
   onPlaceBet,
+  onPlaceRange,
   onEditBet,
   onAction,
   onShare,
@@ -64,6 +67,9 @@ export function CopilotChat({
   messages: ChatMessage[];
   onSend: (text: string) => void;
   onPlaceBet: (bet: BetSuggestion) => void;
+  /** Place a recommended range (opens the range ticket). Optional — hosts that don't
+   *  trade ranges (the coming-soon preview) can omit it. */
+  onPlaceRange?: (range: RangeSuggestion) => void;
   onEditBet: () => void;
   /** Run an onboarding action (create trading account / get test tokens). */
   onAction?: (kind: OnboardAction['kind']) => void;
@@ -165,7 +171,7 @@ export function CopilotChat({
       {/* thread */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onEditBet={onEditBet} onAction={onAction} onShare={onShare} busy={busy} />
+          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onPlaceRange={onPlaceRange} onEditBet={onEditBet} onAction={onAction} onShare={onShare} busy={busy} />
         ))}
         {busy && <TypingBubble />}
         {threadEnd}
@@ -238,6 +244,7 @@ const LINE_DELAY = 110;
 function MessageBubble({
   message,
   onPlaceBet,
+  onPlaceRange,
   onEditBet,
   onAction,
   onShare,
@@ -245,6 +252,7 @@ function MessageBubble({
 }: {
   message: ChatMessage;
   onPlaceBet: (bet: BetSuggestion) => void;
+  onPlaceRange?: (range: RangeSuggestion) => void;
   onEditBet: () => void;
   onAction?: (kind: OnboardAction['kind']) => void;
   onShare?: (share: ShareCard) => void;
@@ -274,6 +282,13 @@ function MessageBubble({
       {message.bet && (
         <div className="rise w-full" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
           <BetCard bet={message.bet} onPlace={() => onPlaceBet(message.bet!)} onEdit={onEditBet} />
+        </div>
+      )}
+      {/* A recommended range band lands the same way — its own card (not the binary
+          UP/DOWN one), placed into the range ticket on tap. */}
+      {message.range && onPlaceRange && (
+        <div className="rise w-full" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
+          <RangeCard range={message.range} onPlace={() => onPlaceRange(message.range!)} />
         </div>
       )}
       {/* An onboarding action button lands the same way — create account / get tokens. */}
@@ -452,6 +467,71 @@ function BetCard({ bet, onPlace, onEdit }: { bet: BetSuggestion; onPlace: () => 
           className="mt-2.5 w-full rounded-lg border border-(--accent-line) bg-(--accent-soft) py-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
           Place this bet →
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The recommended-range card: a price band to bet stays-inside, with odds/pays and
+ *  a live "inside / outside the band" read. Tapping Place loads the range ticket. */
+function RangeCard({ range, onPlace }: { range: RangeSuggestion; onPlace: () => void }) {
+  const now = useNow(0); // ticks each second → live countdown + flips to "expired"
+  const spot = useV2Spot(); // live BTC price (shared query, no extra fetch)
+  const remaining = range.expiry - now;
+  const expired = remaining <= 0;
+  const inside = spot != null && spot > range.lower && spot <= range.higher;
+  const widthLabel = range.conviction === 'safe' ? 'Wider' : range.conviction === 'longshot' ? 'Tighter' : 'Balanced';
+  return (
+    <div className={`glass-card w-[88%] overflow-hidden p-3 ${expired ? 'opacity-60' : ''}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-semibold text-accent">
+          <LuBrackets size={14} />
+          RANGE
+        </span>
+        <span
+          className="rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider text-accent"
+          style={{ background: 'color-mix(in srgb, var(--accent) 14%, transparent)' }}
+        >
+          {widthLabel}
+        </span>
+      </div>
+
+      <p className="mt-2 text-[11.5px] leading-snug text-text-2">
+        Wins if BTC settles between <span className="font-mono text-text-1">${num(range.lower, 0)}</span> and{' '}
+        <span className="font-mono text-text-1">${num(range.higher, 0)}</span>.
+      </p>
+      {spot != null && (
+        <p className="mt-1 text-[10.5px] text-text-3">
+          BTC is <span className="font-mono text-text-2">${num(spot, 0)}</span> right now
+          {!expired && <> · {inside ? 'inside the band' : 'outside the band'}</>}.
+        </p>
+      )}
+
+      <div className="mt-2.5 grid grid-cols-3 gap-2 border-t border-line pt-2.5 font-mono tabular-nums">
+        <Stat label="Odds">{pct(range.prob, 0)}</Stat>
+        <Stat label="Pays">{range.payoutMult.toFixed(2)}×</Stat>
+        <Stat label={expired ? 'Status' : 'Time left'}>
+          {expired ? (
+            <span className="text-down">Expired</span>
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              <LuClock size={10} />
+              {fmtCountdown(remaining)}
+            </span>
+          )}
+        </Stat>
+      </div>
+
+      {expired ? (
+        <p className="mt-2.5 text-[10.5px] text-text-3">This market has expired — ask me for a fresh range.</p>
+      ) : (
+        <button
+          type="button"
+          onClick={onPlace}
+          className="mt-2.5 w-full rounded-lg border border-(--accent-line) bg-(--accent-soft) py-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        >
+          Place this range →
         </button>
       )}
     </div>

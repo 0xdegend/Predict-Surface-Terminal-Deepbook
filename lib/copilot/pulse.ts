@@ -152,6 +152,9 @@ export function suggestChips(opts: {
   if (opts.arb === 'watch') out.push('Any mispricings right now?');
 
   out.push(`Safe ${dir} bet`);
+  // A range bet shines when moves are contained, so offer it unless vol is running
+  // hot (a wide expected move makes staying-in-a-band a poor deal).
+  if (opts.vol !== 'elevated') out.push('Recommend a range');
   out.push("What's the best bet right now?");
 
   if (opts.hasPortfolio) out.push("How's my portfolio?");

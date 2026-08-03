@@ -41,7 +41,7 @@ import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
-import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
+import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
 import { FearGreedShareModal } from './fear-greed-share-modal';
@@ -407,6 +407,25 @@ export function V2CopilotScreen({
     pendingBetRef.current = null; // it's placed — a later "trade it" shouldn't re-open it
   }
 
+  // Load a recommended RANGE into the range ticket + light the band on the surface —
+  // the same store path a range picked off the surface uses (setMode('range') then
+  // two picks anchor + close the band). Only highlights + pre-fills; never signs.
+  function applyRange(range: RangeSuggestion) {
+    selectMarket(range.marketId);
+    setMode('range');
+    pickRangeLevel(range.lower); // anchor
+    pickRangeLevel(range.higher); // close the band (order-independent — the store sorts them)
+    markPicked();
+  }
+
+  // "Place this range" → re-apply it (the selection may have drifted to a newer
+  // market) and pop the ticket to review + place the range. Ends any wizard.
+  function handlePlaceRange(range: RangeSuggestion) {
+    applyRange(range);
+    openTicketSheet();
+    setFlow(null);
+  }
+
   // Every open market we can price — shared by the one-shot responder and the
   // guided wizard (which pins one with enough runway to finish).
   function liveCandidates(): BetCandidate[] {
@@ -435,7 +454,7 @@ export function V2CopilotScreen({
     pushUser(userText);
     setThinking(true);
     replyTimer.current = setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, action: reply.action, share: reply.share, link: reply.link }]);
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, range: reply.range, action: reply.action, share: reply.share, link: reply.link }]);
       setThinking(false);
     }, 600);
   }
@@ -582,6 +601,24 @@ export function V2CopilotScreen({
       grantFailRef.current = false;
     }
   }, [grant.failed]);
+
+  // Deep-link auto-ask: another page (e.g. the Options page's "Ask Kelly for a
+  // range" link) can open Kelly with `?ask=<question>` and have her answer it right
+  // away. Read from the URL directly (client-only, no Suspense needed), fire ONCE,
+  // and only once a market can actually be priced so the first reply isn't the
+  // "no live market" fallback. We strip the param after so a refresh/back doesn't
+  // re-ask. Live co-pilot only (the coming-soon backdrop ignores it).
+  const autoAskedRef = useRef(false);
+  useEffect(() => {
+    if (!COPILOT_LIVE || autoAskedRef.current) return;
+    const ask = new URLSearchParams(window.location.search).get('ask');
+    if (!ask) return;
+    if (liveCandidates().length === 0) return; // wait for a priceable market
+    autoAskedRef.current = true;
+    window.history.replaceState(null, '', window.location.pathname);
+    handleSend(ask);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricers]);
 
   // Typed "trade it" → place the bet directly (no in-app confirm step) using the
   // SAME budget mint the ticket runs. The "Trade it" BUTTON still opens the ticket
@@ -1032,7 +1069,10 @@ export function V2CopilotScreen({
         //    unhelpful "I don't have the events in my context" answer instead.
         // answerWithAI owns the exchange and falls back to THIS reply on any failure.
         // Money paths never reach here (they returned above), so Claude only sees reads.
-        const eventsHaveData = intent.kind === 'events' && notableEvents(events ?? null).length > 0;
+        // Only the TODAY lineup routes to the AI tier — the AiContext carries today's
+        // events, not the week/month ahead, so those always use the deterministic
+        // (fully-grounded) upcoming reply instead of being handed thin context.
+        const eventsHaveData = intent.kind === 'events' && intent.range === 'today' && notableEvents(events ?? null).length > 0;
         if ((intent.kind === 'help' || eventsHaveData) && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
           void answerWithAI(text, reply);
           return;
@@ -1046,6 +1086,12 @@ export function V2CopilotScreen({
     if (reply.bet) {
       applyBet(reply.bet);
       pendingBetRef.current = reply.bet;
+    } else if (reply.range) {
+      // "What range should I trade?" → load the band into the range ticket + light
+      // it on the surface. A range isn't the "trade it" target (that's binary), so
+      // clear any pending binary suggestion so a later "trade it" can't fire it.
+      applyRange(reply.range);
+      pendingBetRef.current = null;
     } else if (reply.highlight) {
       // "Find me the $X strike" → light it up on the surface (no bet suggested).
       const h = reply.highlight;
@@ -1109,6 +1155,7 @@ export function V2CopilotScreen({
                 messages={messages}
                 onSend={handleSend}
                 onPlaceBet={handlePlaceBet}
+                onPlaceRange={handlePlaceRange}
                 onEditBet={handleEditBet}
                 onAction={handleOnboardAction}
                 onShare={handleShare}
@@ -1161,6 +1208,7 @@ export function V2CopilotScreen({
             messages={messages}
             onSend={handleSend}
             onPlaceBet={handlePlaceBet}
+            onPlaceRange={handlePlaceRange}
             onEditBet={handleEditBet}
             onAction={handleOnboardAction}
             onShare={handleShare}

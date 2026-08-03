@@ -22,7 +22,7 @@ import { buildMarketRead, directionStance, recommendation } from '@/lib/insights
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
 import { buildNarrative } from '@/lib/insights/narrative';
-import { buildEventsReply, notableEvents, eventName, relTime } from '@/lib/insights/events';
+import { buildEventsReply, buildUpcomingEventsReply, upcomingEvents, notableEvents, eventName, relTime, relDay } from '@/lib/insights/events';
 import type { Positioning } from '@/lib/insights/positioning';
 import type { NarrativeFeed } from '@/lib/insights/narrative';
 import type { EventsFeed } from '@/lib/insights/events';
@@ -37,7 +37,7 @@ import type { WinStats, PastPrediction } from '@/lib/portfolio/history';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
-import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget, ExplainTopic } from './intents';
+import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget, ExplainTopic, EventRange } from './intents';
 
 const usd = (v: number) => `$${compact(v)}`;
 
@@ -127,6 +127,24 @@ export interface BetSuggestion {
   leverage?: number;
 }
 
+/** A concrete RANGE bet the UI loads into the trade store (range mode) + lights the
+ *  band on the surface. The two edges are already snapped to the mintable grid. Its
+ *  band is the surface's own expected move (see rangeReply), so Kelly and the Options
+ *  page's "expected range" agree. */
+export interface RangeSuggestion {
+  marketId: string;
+  expiry: number;
+  /** Lower / upper band price (admission-grid snapped). Wins if settlement lands in (lower, higher]. */
+  lower: number;
+  higher: number;
+  /** Chance settlement lands inside the band (0..1), read off the surface. */
+  prob: number;
+  /** Rough gross payout if it lands inside (≈ 1 / prob, before spread). */
+  payoutMult: number;
+  conviction: Conviction;
+  timeLeftLabel: string;
+}
+
 /** A one-tap onboarding step the chat renders as a button. `connect` is guidance
  *  only (no button — the wallet modal lives in the top bar); the other two run a
  *  real flow in the screen (createAccount / the starter-grant airdrop). */
@@ -147,6 +165,10 @@ export interface CopilotReply {
   /** A strike to light up on the surface WITHOUT suggesting a full bet — the screen
    *  loads it into the store selection. Used by "find me the $X strike". */
   highlight?: { marketId: string; strikePrice: number; isUp: boolean };
+  /** A recommended RANGE band. The screen loads it into the range ticket + lights
+   *  the band on the surface, and the chat renders a range card to place it. Used by
+   *  "what range should I trade in?". */
+  range?: RangeSuggestion;
   /** An onboarding action card (create account / get test tokens). The screen
    *  renders a button that runs the real flow. */
   action?: OnboardAction;
@@ -706,6 +728,53 @@ function volatilityReply(ctx: CopilotContext): CopilotReply {
 
   text.push('Tell me a direction and I’ll set up a bet for you, or say “set up a trade”.');
   return { text };
+}
+
+/** Conviction → how wide the recommended range is, as a multiple of the surface's
+ *  1σ expected move. A WIDER band is more likely to contain the settlement (safer,
+ *  pays less); a TIGHTER band is a longshot (pays more). The default (even) is the
+ *  ±1σ "expected range" the Options page draws, so Kelly and that page can't disagree. */
+const RANGE_WIDTH: Record<Conviction, number> = { safe: 1.5, even: 1.0, longshot: 0.6 };
+
+/** "What range should I trade in? / recommend a range / a safe range band" — Kelly
+ *  recommends a price band to bet stays-inside, built from the SAME SVI expected move
+ *  the Options page draws (sigma = sqrt(ATM total variance)). Both edges snap to the
+ *  mintable grid; the win chance is read straight off the surface. Returns a
+ *  `range` the screen loads into the range ticket + lights on the surface. */
+function rangeReply(ctx: CopilotContext, conviction: Conviction, horizon: Horizon): CopilotReply {
+  const cand = pickCandidate(ctx.candidates, horizon, ctx.now);
+  if (!cand) return NO_MARKET;
+  const { market, pricer } = cand;
+  const f = pricer.forward;
+  const sigma = Math.sqrt(Math.max(0, totalVariance(f, f, pricer.svi))); // 1σ move to expiry (fraction)
+  if (!(f > 0) || !(sigma > 0) || !Number.isFinite(sigma)) {
+    return { text: ["I can't read the surface's expected range just now. Give it a moment and ask again."] };
+  }
+  const k = RANGE_WIDTH[conviction];
+  const tick = toFloat(market.admission_tick_size);
+  let lower = toFloat(snapStrikeToAdmission(fromFloat(f * (1 - k * sigma)), market.admission_tick_size));
+  let higher = toFloat(snapStrikeToAdmission(fromFloat(f * (1 + k * sigma)), market.admission_tick_size));
+  // A very tight band can snap to one tick (or cross) — force at least a one-tick
+  // spread around the forward so it's a real, mintable range.
+  if (higher <= lower) {
+    lower = toFloat(snapStrikeToAdmission(fromFloat(f - tick), market.admission_tick_size));
+    higher = toFloat(snapStrikeToAdmission(fromFloat(f + tick), market.admission_tick_size));
+  }
+  // Honest win chance from the surface: P(lower < settle ≤ higher) = P(>lower) − P(>higher).
+  const prob = Math.max(0.02, Math.min(0.98, upFair(lower, f, pricer.svi) - upFair(higher, f, pricer.svi)));
+  const payoutMult = 1 / prob;
+  const spotNow = ctx.spot ?? f;
+  const widthPct = (((higher - lower) / 2) / f) * 100; // ± half-width as a % of price
+  const label = timeLeftLabel(market.expiry, ctx.now);
+  const convLead =
+    conviction === 'safe' ? 'a wider, safer' : conviction === 'longshot' ? 'a tighter, higher-paying' : 'a balanced';
+
+  const text = [
+    `For the market settling in ${label}, here's ${convLead} range: bet BTC stays between $${num(lower, 0)} and $${num(higher, 0)}.`,
+    `That's about ±${widthPct.toFixed(2)}% around the current $${num(spotNow, 0)}. The surface gives it roughly a ${pct(prob, 0)} chance of landing in there, paying about ${payoutMult.toFixed(2)}× if it does.`,
+    'I’ve loaded it into your ticket and lit the band on the surface. Review the amount and place it whenever you’re ready. Not financial advice.',
+  ];
+  return { text, range: { marketId: market.expiry_market_id, expiry: market.expiry, lower, higher, prob, payoutMult, conviction, timeLeftLabel: label } };
 }
 
 /** "Crash or pump?" — compare the priced chance of a 1% drop vs a 1% pop. */
@@ -1581,11 +1650,24 @@ function whyMovingReply(ctx: CopilotContext): CopilotReply {
   return { text: n.text };
 }
 
-/** "What's happening today? / any events? / is there FOMC?" — the day's scheduled
- *  market-moving calendar, composed by the shared engine (buildEventsReply). The
- *  screen may re-phrase this through the AI tier (events are also in the AiContext),
- *  falling back to exactly these lines. */
-function eventsReply(ctx: CopilotContext): CopilotReply {
+/** "What's happening today? / any events this week? / anything on the calendar this
+ *  month?" — the scheduled market-moving calendar, composed by the shared engine.
+ *  `range` picks today's lineup (buildEventsReply) or the week/month ahead
+ *  (buildUpcomingEventsReply). The screen may re-phrase the TODAY answer through the
+ *  AI tier (today's events are in the AiContext); week/month always use these
+ *  deterministic lines, since the AI context only carries today. */
+function eventsReply(ctx: CopilotContext, range: EventRange): CopilotReply {
+  if (range === 'week' || range === 'month') {
+    const text = buildUpcomingEventsReply(ctx.events ?? null, ctx.now, range);
+    // Share the upcoming lineup with DAY pills (at: null → the card shows the day
+    // label, not a wall-clock time, which is what matters for a future event).
+    const list = upcomingEvents(ctx.events ?? null, ctx.now, range)
+      .slice(0, 6)
+      .map((e) => ({ title: eventName(e), at: null as number | null, when: relDay(e.date ?? e.at ?? ctx.now, ctx.now) }));
+    const share: ShareCard | undefined =
+      list.length > 0 ? { kind: 'events', events: list, headline: ctx.events?.headline ?? null } : undefined;
+    return { text, share };
+  }
   const text = buildEventsReply(ctx.events ?? null, ctx.now);
   const events = notableEvents(ctx.events ?? null)
     .slice(0, 5)
@@ -1622,7 +1704,7 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
     case 'why_moving':
       return whyMovingReply(ctx);
     case 'events':
-      return eventsReply(ctx);
+      return eventsReply(ctx, intent.range);
     case 'onboarding':
       return onboardingReply(ctx);
     case 'create_account':
@@ -1637,6 +1719,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return metricReply(intent.metric, ctx);
     case 'recommend':
       return recommendReply(ctx);
+    case 'range_bet':
+      return rangeReply(ctx, intent.conviction, intent.horizon);
     case 'balance':
       return balanceReply(ctx);
     case 'portfolio':

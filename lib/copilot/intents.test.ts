@@ -58,7 +58,22 @@ describe('parseIntent', () => {
   });
 
   it('events is a flow interruption (answerable mid-wizard)', () => {
-    expect(isFlowInterruption({ kind: 'events' })).toBe(true);
+    expect(isFlowInterruption({ kind: 'events', range: 'today' })).toBe(true);
+  });
+
+  it('picks the horizon (today / week / month) an events question asks about', () => {
+    const range = (m: string) => {
+      const i = parseIntent(m);
+      return i.kind === 'events' ? i.range : `not-events:${i.kind}`;
+    };
+    expect(range('any events this week'), 'this week').toBe('week');
+    expect(range('what is on the calendar this month'), 'this month').toBe('month');
+    expect(range("what's coming up on the calendar"), 'coming up').toBe('week');
+    expect(range('any upcoming economic events'), 'upcoming').toBe('week');
+    expect(range('events over the coming weeks'), 'coming weeks').toBe('month');
+    // No window named → defaults to today.
+    expect(range('is there FOMC'), 'no window').toBe('today');
+    expect(range('what happened today'), 'today').toBe('today');
   });
 
   it('a single clear direction → directional_bet with that side', () => {
@@ -93,6 +108,40 @@ describe('parseIntent', () => {
     ]) {
       expect(parseIntent(m).kind, m).toBe('recommend');
     }
+  });
+
+  it('"what range should I trade in / recommend a range" → range_bet (with width)', () => {
+    const parse = (m: string) => parseIntent(m);
+    for (const m of [
+      'what range should I trade in?',
+      'recommend a range',
+      'suggest a range to bet',
+      'what range should I bet on',
+      'pick a good range for me',
+      'give me a range to trade',
+      'build me a range',
+    ]) {
+      expect(parse(m).kind, m).toBe('range_bet');
+    }
+    // Width cues map to conviction (wider = safer, tighter = longshot).
+    const width = (m: string) => {
+      const i = parse(m);
+      return i.kind === 'range_bet' ? i.conviction : `not-range:${i.kind}`;
+    };
+    expect(width('recommend a safe range'), 'safe').toBe('safe');
+    expect(width('a wide range to trade'), 'wide').toBe('safe');
+    expect(width('give me a tight range'), 'tight').toBe('longshot');
+    expect(width('a narrow range to bet'), 'narrow').toBe('longshot');
+    expect(width('what range should I trade'), 'default').toBe('even');
+  });
+
+  it('definitional range asks and the up/down/range steer do NOT route to range_bet', () => {
+    // "what's a range bet / how do range bets work" stays the glossary.
+    expect(parseIntent("what's a range bet?").kind).toBe('explain');
+    expect(parseIntent('how do range bets work').kind).toBe('explain');
+    // "up or down or range?" is a directional steer, not a band request.
+    expect(parseIntent('should I go up, down, or range?').kind).toBe('recommend');
+    expect(parseIntent('which way should I trade, up down or range?').kind).toBe('recommend');
   });
 
   it('a balance question → balance', () => {

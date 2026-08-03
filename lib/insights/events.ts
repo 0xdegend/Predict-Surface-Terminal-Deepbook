@@ -27,6 +27,10 @@ export interface MarketEvent {
   importance: number;
   /** Scheduled publish time (ms). Null when the feed has no exact time. */
   at: number | null;
+  /** The scheduled DAY (UTC midnight, ms). Present even when the exact time isn't,
+   *  so future events can be placed on the calendar ("this week" / "this month").
+   *  Null only when the feed carries no timestamp at all. */
+  date?: number | null;
   /** True once the number is out (actual published, or its time has passed). */
   released: boolean;
   forecast: string | null;
@@ -42,9 +46,17 @@ export interface EventsFeed {
   asOf: number;
   /** Today's notable events (importance 2+), most important first, then soonest. */
   events: MarketEvent[];
+  /** The notable calendar from today through the next ~month, in CHRONOLOGICAL
+   *  order — drives the "events this week / this month" answer. A superset of
+   *  `events` (which stays today-only so the greeting + today reply don't change).
+   *  Optional so older/mocked feeds without it still type-check. */
+  upcoming?: MarketEvent[];
   /** Top crypto news headline (plain title only), or null. */
   headline: string | null;
 }
+
+/** How far ahead the "upcoming events" answer looks. */
+export type EventHorizon = 'week' | 'month';
 
 /** Plain-language names for the common (noisy, jargon-y) calendar titles — the
  *  raw feed says "Personal consumption expenditure price index (MoM)(Jun)". First
@@ -166,6 +178,74 @@ export function buildEventsReply(feed: EventsFeed | null, now: number): string[]
   if (more.length) text.push(`Also today: ${more.join(', ')}.`);
 
   if (feed.headline) text.push(`In the news, the headline doing the rounds is: “${feed.headline}”.`);
+
+  text.push('This is just the schedule, not a prediction of which way price goes. Not financial advice.');
+  return text;
+}
+
+const DAY_MS = 86_400_000;
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Midnight UTC of the day `ms` falls in. Shared by the route (fetch window) and
+ *  the upcoming-events grouping, so both agree on where a day starts. */
+export function startOfUtcDay(ms: number): number {
+  const d = new Date(ms);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** A plain, timezone-safe day label for a future (or today's) event, relative to
+ *  `now`: "today" / "tomorrow", a weekday name within the week ("Tuesday"), then an
+ *  unambiguous short date once it's a week or more out ("Wed Aug 12"). Day-granular
+ *  and computed in UTC, matching how the calendar times are handled elsewhere. */
+export function relDay(dateMs: number, now: number): string {
+  const diffDays = Math.round((startOfUtcDay(dateMs) - startOfUtcDay(now)) / DAY_MS);
+  if (diffDays <= 0) return 'today';
+  if (diffDays === 1) return 'tomorrow';
+  const d = new Date(startOfUtcDay(dateMs));
+  if (diffDays <= 6) return WEEKDAYS[d.getUTCDay()];
+  return `${WEEKDAYS[d.getUTCDay()].slice(0, 3)} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/** The notable events falling within the horizon (a rolling 7 days for "week",
+ *  ~31 for "month"), starting from the top of today, in chronological order. Reads
+ *  the wide `upcoming` list the route builds; empty when the feed has none. */
+export function upcomingEvents(feed: EventsFeed | null, now: number, horizon: EventHorizon): MarketEvent[] {
+  if (!feed?.available || !feed.upcoming) return [];
+  const start = startOfUtcDay(now);
+  const end = start + (horizon === 'week' ? 7 : 31) * DAY_MS;
+  // Floor at the top of today so a late-yesterday row the route pulled in via its
+  // cross-midnight lookback can't slip in and get mislabelled "today".
+  return feed.upcoming
+    .filter((e) => e.importance >= NOTABLE_IMPORTANCE && e.date != null && e.date >= start && e.date < end)
+    .sort((a, b) => a.date! - b.date! || b.importance - a.importance || (a.at ?? Infinity) - (b.at ?? Infinity));
+}
+
+/**
+ * The "what's on the calendar this week / this month?" reply, line by line. Same
+ * honesty discipline as the today reply: it lists the notable scheduled events
+ * with a plain day label each, in date order, and always closes with a "schedule
+ * not a prediction" caveat. When nothing notable is in the window it says so.
+ */
+export function buildUpcomingEventsReply(feed: EventsFeed | null, now: number, horizon: EventHorizon): string[] {
+  if (!feed?.available) {
+    return ['I can’t pull the economic calendar right now. Give it a moment and ask again.'];
+  }
+  const label = horizon === 'week' ? 'this week' : 'this month';
+  const events = upcomingEvents(feed, now, horizon);
+  const text: string[] = [];
+
+  if (events.length === 0) {
+    text.push(`Nothing major is on the economic calendar ${label}, so BTC is mostly trading on its own flow rather than a scheduled event.`);
+    if (feed.headline) text.push(`In the news, the headline doing the rounds is: “${feed.headline}”. That’s what people are reading, not confirmed market impact.`);
+    return text;
+  }
+
+  const cap = horizon === 'week' ? 8 : 10;
+  const shown = events.slice(0, cap);
+  text.push(`Here are the big economic events ${label}. Markets can get jumpy around these, so moves may be sharper than usual:`);
+  for (const e of shown) text.push(`• ${eventName(e)} (${relDay(e.date ?? e.at ?? now, now)})`);
+  if (events.length > shown.length) text.push(`…plus ${events.length - shown.length} more on the calendar.`);
 
   text.push('This is just the schedule, not a prediction of which way price goes. Not financial advice.');
   return text;
