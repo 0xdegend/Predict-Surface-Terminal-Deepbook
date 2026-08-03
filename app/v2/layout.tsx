@@ -17,9 +17,11 @@ import { V2BottomNav } from '@/app/_components/v2/bottom-nav';
 
 export default function V2Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="v2-shell flex min-h-dvh flex-col">
       <V2Chrome />
-      <div className="flex flex-1 flex-col pb-20 lg:pb-0">{children}</div>
+      {/* v2-content: dock-clearance padding is dropped when the keyboard is up
+          (globals.css) so a viewport-locked screen can fill the space above it. */}
+      <div className="v2-content flex flex-1 flex-col pb-20 lg:pb-0">{children}</div>
       <V2BottomNav />
     </div>
   );

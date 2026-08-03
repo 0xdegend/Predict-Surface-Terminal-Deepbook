@@ -1080,3 +1080,25 @@ select:focus-visible,
   animation: kellyPing 2.8s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 .kelly-hint { animation: fadeIn 0.3s ease both; }
+
+/* On-screen keyboard handling (mobile only). `useKeyboardViewport` sets `kb-open`
+   + `--kvh` (the visible height above the keyboard) on <html> while a keyboard is
+   up. We then collapse the shell to that visible height, drop the fixed dock and
+   its clearance padding, and size a `.copilot-main` screen to the space that's
+   left — so a bottom-pinned composer sits right on top of the keyboard instead of
+   being stranded above the floating dock. Desktop (lg+) is untouched. */
+@media (max-width: 1023px) {
+  html.kb-open .v2-shell {
+    min-height: 0;
+  }
+  html.kb-open .v2-content {
+    padding-bottom: 0;
+  }
+  html.kb-open .v2-dock {
+    display: none;
+  }
+  html.kb-open .copilot-main {
+    flex: none;
+    height: calc(var(--kvh, 100dvh) - 4rem);
+  }
+}

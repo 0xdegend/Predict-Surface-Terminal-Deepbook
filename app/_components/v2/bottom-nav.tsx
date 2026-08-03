@@ -99,7 +99,7 @@ export function V2BottomNav() {
     <nav
       aria-label="Primary"
       aria-hidden={ticketSheetOpen}
-      className={`pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
+      className={`v2-dock pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
         ticketSheetOpen ? 'translate-y-[130%]' : 'translate-y-0'
       }`}
     >

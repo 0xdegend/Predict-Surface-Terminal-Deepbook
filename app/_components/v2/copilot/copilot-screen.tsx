@@ -27,6 +27,7 @@ import { useMarketEvents } from '@/lib/hooks/use-market-events';
 import { eventGreetingLine, eventName, relTime, notableEvents } from '@/lib/insights/events';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useKeyboardViewport } from '@/lib/hooks/use-keyboard-viewport';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
@@ -180,6 +181,11 @@ export function V2CopilotScreen({
   pricerSeeds: Record<string, LivePricer>;
   serverNow: number;
 }) {
+  // Lift the composer above the on-screen keyboard (mobile): publishes the visible
+  // height + a `kb-open` class that globals.css uses to collapse the shell and hide
+  // the dock while typing. No-op on desktop.
+  useKeyboardViewport();
+
   const markets = useV2Markets(initialMarkets);
   const marketId = useV2TradeStore((s) => s.marketId);
   const selectMarket = useV2TradeStore((s) => s.selectMarket);
@@ -1134,13 +1140,14 @@ export function V2CopilotScreen({
   return (
     <>
       <CopilotAutoAdvance markets={markets} serverNow={serverNow} />
-      {/* ONE stretchable row (grid-rows-1 = 1fr) + overflow-hidden → the chat fills
-          its area exactly and scrolls INTERNALLY, so a short thread leaves no gap
-          and the composer pins just above the dock. Mobile fills the shell via
-          flex-1 (the layout's dvh height + dock padding already bound it, so the
-          fill is dock-aware and needs no hardcoded calc). Desktop locks to the
-          viewport with an explicit height. */}
-      <main className="grid flex-1 grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px]">
+      {/* main is CAPPED to the viewport (fixed height, flex-none) so ONLY the
+          message thread scrolls inside it — the composer and dock stay put, never
+          scrolling with the content. One stretchable row (grid-rows-1 = 1fr) +
+          overflow-hidden makes the thread the internal scroller. Mobile height =
+          viewport − chrome(4rem) − dock(5rem); desktop has no dock. The shell is
+          dvh, so this fixed height matches the visible area exactly (no gap). When
+          the keyboard opens, globals.css re-sizes .copilot-main to fit above it. */}
+      <main className="copilot-main grid h-[calc(100dvh-9rem)] flex-none grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1fr)_400px]">
         {/* Left — the cockpit: a live stat bar, a markets rail, and the surface
             (the hero). It reacts to the conversation: a suggested or clicked bet
             lights up here, and you trade it in place (surface click-to-mint) or via
