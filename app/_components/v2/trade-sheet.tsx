@@ -88,15 +88,21 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
         }`}
       >
         {/* Grab handle + close */}
-        <div className="relative flex shrink-0 items-center justify-center px-4 pb-1.5 pt-2.5">
+        <div className="relative flex shrink-0 items-center justify-center px-4 pb-2 pt-3">
           <span aria-hidden className="h-1 w-9 rounded-full bg-white/20" />
+          {/* z-30 lifts the close hit-area ABOVE the scrollable ticket body below.
+              The button is taller than this slim handle row, so its lower half (the
+              visible ✕) overflows into the body — a later sibling that, without this
+              lift, painted over it and swallowed the tap on touch (the X did nothing
+              on mobile). z-30 also clears the stale-feed overlay (z-20), so the sheet
+              always closes. p-2 gives a comfortable finger target. */}
           <button
             type="button"
             onClick={close}
             aria-label="Close trade ticket"
-            className="absolute right-3 top-2 rounded-md p-1.5 text-text-3 transition-colors hover:text-text-1"
+            className="absolute right-2 top-1.5 z-30 rounded-md p-2 text-text-3 transition-colors hover:text-text-1"
           >
-            <LuX size={16} />
+            <LuX size={18} />
           </button>
         </div>
         <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
