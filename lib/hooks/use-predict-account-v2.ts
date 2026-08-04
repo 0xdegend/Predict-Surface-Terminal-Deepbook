@@ -23,7 +23,7 @@ import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor'
 import { humanizeV2Error } from '@/lib/sui/v2/abort';
 import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { toast } from '@/lib/store/toast-store';
-import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx } from '@/lib/sui/v2/account';
+import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx, buildCashOutTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
 import { qkV2 } from '@/lib/api/v2/client';
 import { useBuilderCode, qkBuilderCode } from '@/lib/hooks/use-builder-code';
@@ -119,7 +119,7 @@ export function usePredictAccountV2() {
     label: string,
     tx: Transaction,
     invalidate: readonly (readonly unknown[])[] = [],
-    opts?: { silentSuccess?: boolean },
+    opts?: { silentSuccess?: boolean; allowedAddresses?: string[] },
   ) {
     if (!owner) return null;
     setBusy(label);
@@ -127,7 +127,10 @@ export function usePredictAccountV2() {
     try {
       let digest: string;
       if (gasless) {
-        digest = await executeSponsored(tx, owner);
+        // `allowedAddresses` lets a sponsored tx touch an external address (a
+        // cash-out destination); Enoki rejects transfers to un-allowlisted
+        // addresses otherwise. Undefined for normal in-account flows.
+        digest = await executeSponsored(tx, owner, opts?.allowedAddresses);
       } else {
         // BUILD + EXECUTE via our own health-aware gRPC client so a stalled primary
         // fullnode can't block trades: object refs + gas resolve on a synced node, the
@@ -239,6 +242,32 @@ export function usePredictAccountV2() {
             qkV2Account.walletDusdc(owner),
           ])
         : Promise.resolve(null),
+    /**
+     * Cash out DUSDC to an EXTERNAL wallet (for zkLogin users who can't export a
+     * key). Drains the account free balance first, then wallet DUSDC, up to
+     * `amountBase`, and transfers it to `destination` in one gasless tx. The
+     * destination is allowlisted so the Enoki sponsor accepts the outbound
+     * transfer. Returns null on bad input (nothing to send, or account funds
+     * requested with no wrapper yet).
+     */
+    cashOut: (destination: string, amountBase: bigint) => {
+      if (!owner) return Promise.resolve(null);
+      const walletBase = walletDusdcQ.data ?? 0n;
+      const available = balanceBase + walletBase;
+      const amount = amountBase > available ? available : amountBase;
+      if (amount <= 0n) return Promise.resolve(null);
+      // Prefer the account's free balance (the allowlisted withdraw keeps the tx
+      // sponsorable); spill over to wallet coins only if needed.
+      const fromAccount = amount > balanceBase ? balanceBase : amount;
+      const fromWallet = amount - fromAccount;
+      if (fromAccount > 0n && !wrapperId) return Promise.resolve(null); // need the wrapper to pull account funds
+      return runTx(
+        'cash-out',
+        buildCashOutTx({ wrapperId: wrapperId ?? '', fromAccount, fromWallet, destination }),
+        [...(wrapperId ? [qkV2Account.balance(wrapperId)] : []), qkV2Account.walletDusdc(owner)],
+        { allowedAddresses: [destination, owner] },
+      );
+    },
     /** Builder-fee attribution for this account (attach happens inside the mint). */
     builderCode,
     mint: (p: Omit<MintParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) =>

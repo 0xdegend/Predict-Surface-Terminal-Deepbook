@@ -82,6 +82,54 @@ export function buildWithdrawTx(wrapperId: string, amount: bigint, owner: string
   return tx;
 }
 
+export interface CashOutParams {
+  /** The owner's AccountWrapper. Only needed when `fromAccount > 0`. */
+  wrapperId: string;
+  /** DUSDC base units to withdraw from the account's free balance. */
+  fromAccount: bigint;
+  /** DUSDC base units to take from the connected wallet's own coins. */
+  fromWallet: bigint;
+  /** External Sui address to receive the DUSDC. */
+  destination: string;
+}
+
+/**
+ * Cash out DUSDC to an external wallet in ONE transaction: withdraw from the
+ * account's free balance (via the allowlisted `account::withdraw_funds`) and/or
+ * take wallet coins, merge, and transfer the lot to `destination`. The v2 twin of
+ * the legacy predict-tx `buildCashOutTx` — for zkLogin (Google) users moving funds
+ * to a wallet they fully control, executed gaslessly via the Enoki sponsor (the
+ * sponsor must allowlist `destination`; the hook passes it through).
+ */
+export function buildCashOutTx(p: CashOutParams): Transaction {
+  const tx = new Transaction();
+  const coins: TransactionResult[] = [];
+  if (p.fromAccount > 0n) {
+    const auth = addGenerateAuth(tx);
+    coins.push(
+      tx.moveCall({
+        target: ACC('account', 'withdraw_funds'),
+        typeArguments: [c().quote.coinType],
+        arguments: [
+          tx.object(p.wrapperId),
+          auth,
+          tx.pure.u64(p.fromAccount),
+          tx.object(c().accumulatorRootId),
+          tx.object(c().clockId),
+        ],
+      }),
+    );
+  }
+  if (p.fromWallet > 0n) {
+    coins.push(tx.add(coinWithBalance({ type: c().quote.coinType, balance: p.fromWallet })));
+  }
+  if (coins.length === 0) throw new Error('Nothing to cash out');
+  const primary = coins[0];
+  if (coins.length > 1) tx.mergeCoins(primary, coins.slice(1));
+  tx.transferObjects([primary], tx.pure.address(p.destination));
+  return tx;
+}
+
 /* -------------------------------- reads ---------------------------------- */
 
 export interface SimulateCapableClient {

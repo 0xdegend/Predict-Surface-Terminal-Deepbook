@@ -14,20 +14,24 @@ import { useState } from 'react';
 import { isValidSuiAddress } from '@mysten/sui/utils';
 import { LuArrowRight, LuArrowLeft, LuTriangleAlert, LuCheck, LuExternalLink } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
-import { usePredictAccount } from '@/lib/hooks/use-predict-account';
+import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useCountUp } from '@/lib/hooks/use-count-up';
 import { fromQuote, toQuote } from '@/config/scale';
 import { quote as fmtQuote, shortId } from '@/lib/format';
-import { predictConfig } from '@/config/predict';
+import { predictV2Config } from '@/config/predict';
 
 type Step = 'form' | 'confirm' | 'success';
 
 export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const acct = usePredictAccount();
-  const sym = predictConfig.quote.symbol;
+  const acct = usePredictAccountV2();
+  const sym = predictV2Config.quote.symbol;
 
-  const walletBase = acct.dusdcBalance ?? 0n;
-  const availableBase = acct.tradingBalanceBase + walletBase;
+  // Account free balance + wallet DUSDC (walletDusdcBase is undefined while its
+  // first read is in flight). This is the NEW deployment's account model — the
+  // legacy usePredictAccount had no wrapper on this network, so cashOut returned
+  // null and the button did nothing.
+  const walletBase = acct.walletDusdcBase ?? 0n;
+  const availableBase = acct.balanceBase + walletBase;
   const available = fromQuote(availableBase);
 
   const [destination, setDestination] = useState('');
@@ -114,7 +118,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
           </p>
 
           <div className="glass-inset flex flex-col gap-2 p-4 font-mono text-[12px] tabular-nums">
-            <Row label="Trading account balance" value={`${fmtQuote(fromQuote(acct.tradingBalanceBase))} ${sym}`} />
+            <Row label="Trading account balance" value={`${fmtQuote(fromQuote(acct.balanceBase))} ${sym}`} />
             <Row label="Wallet" value={`${fmtQuote(fromQuote(walletBase))} ${sym}`} />
             <div className="hairline-fade my-1" />
             <Row label="Available to send" value={`${fmtQuote(available)} ${sym}`} strong />
@@ -177,7 +181,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
 
           <div className="glass-inset flex flex-col gap-2 p-4 font-mono text-[12px] tabular-nums">
             <Row label="To" value={shortId(dest, 10, 8)} strong />
-            <Row label="Network" value={predictConfig.network} />
+            <Row label="Network" value={predictV2Config.network} />
             <Row label="Gas" value="sponsored — free" />
           </div>
 
@@ -212,7 +216,7 @@ function CashOutSuccess({
   sym: string;
 }) {
   const shown = useCountUp(amount, 750);
-  const explorer = `https://suiscan.xyz/${predictConfig.network}/tx/${digest}`;
+  const explorer = `https://suiscan.xyz/${predictV2Config.network}/tx/${digest}`;
   return (
     <div className="flex flex-col items-center gap-5 py-3 text-center">
       <div className="relative flex h-16 w-16 items-center justify-center">
