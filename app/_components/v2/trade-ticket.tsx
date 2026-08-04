@@ -107,6 +107,7 @@ export function V2TradeTicket({
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const pickSeq = useV2TradeStore((s) => s.pickSeq);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
+  const pulseFocus = useV2TradeStore((s) => s.pulseFocus);
 
   // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
   // gas SUI). One tap drips a starter grant from the app treasury — the SAME
@@ -138,6 +139,10 @@ export function V2TradeTicket({
     maxWin: string;
     digest: string;
   } | null>(null);
+  // The just-placed binary bet's spot, captured at mint and released when the
+  // success modal closes — so the camera "make it pop" glide (FocusController)
+  // lands as the trader returns to the surface, not wasted behind the modal.
+  const revealFocus = useRef<{ marketId: string; strike: number; isUp: boolean } | null>(null);
 
   // Jump to the bet step on an external pick (surface node click, market-card
   // Up/Down) — the pick already chose side & level, so the next question is the
@@ -358,6 +363,13 @@ export function V2TradeTicket({
         strike: rangeMode ? (lowerStrike + higherStrike) / 2 : strike,
         isUp: rangeMode ? true : isUp,
       });
+      // Arm the camera "make it pop" reveal — the SAME glide Kelly uses when it
+      // opens a trade — but fire it when the success modal CLOSES (below), so the
+      // trader actually watches the camera land on their new position instead of
+      // it playing out behind the modal. Binary only: range bets don't get a
+      // surface pin, so there'd be nothing to reveal (matching the co-pilot, which
+      // focuses binary suggestions but not range bands).
+      revealFocus.current = rangeMode ? null : { marketId: market!.expiry_market_id, strike, isUp };
       setMintSuccess({
         headline,
         tone,
@@ -865,7 +877,15 @@ export function V2TradeTicket({
       {mintSuccess && (
         <MintSuccessModal
           open={!!mintSuccess}
-          onClose={() => setMintSuccess(null)}
+          onClose={() => {
+            setMintSuccess(null);
+            // Returning to the surface — glide the camera onto the bet just placed
+            // so it clearly "lands", then rides live via its PnL pin. No-op on
+            // mobile (FocusController is desktop-only) and for range bets.
+            const f = revealFocus.current;
+            revealFocus.current = null;
+            if (f) pulseFocus(f);
+          }}
           headline={mintSuccess.headline}
           tone={mintSuccess.tone}
           rows={mintSuccess.rows}
