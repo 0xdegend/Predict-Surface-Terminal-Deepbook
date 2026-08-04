@@ -16,6 +16,7 @@ import {
   PAL,
   rgbA,
   fitFont,
+  ellipsize,
   drawFrame,
   drawBrandHeader,
   drawFooter,
@@ -194,15 +195,17 @@ export function drawEventsCard(canvas: HTMLCanvasElement, data: EventsShareData,
     ctx.fillText(pillText, pillX + pillW / 2, midY + 1);
     ctx.letterSpacing = '0px';
 
-    // Title, fit to the space between chip and pill.
+    // Title, fit to the space between chip and pill. Shrink down to a 16px floor,
+    // then ellipsize if it STILL wouldn't fit — so a long event name can never run
+    // under the "when" pill (the overlap bug). The 16px gap before the pill is kept.
     const titleX = P + chip + 18;
     const titleMaxW = pillX - titleX - 16;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = PAL.t1;
-    const tPx = fitFont(ctx, e.title, 600, 24, titleMaxW, sans);
+    const tPx = fitFont(ctx, e.title, 600, 24, titleMaxW, sans, 16);
     ctx.font = `600 ${tPx}px ${sans}`;
-    ctx.fillText(e.title, titleX, midY + 1);
+    ctx.fillText(ellipsize(ctx, e.title, titleMaxW), titleX, midY + 1);
 
     // Hairline between rows.
     if (i < events.length - 1) {

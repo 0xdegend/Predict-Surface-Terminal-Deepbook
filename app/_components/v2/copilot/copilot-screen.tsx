@@ -426,6 +426,10 @@ export function V2CopilotScreen({
     if (range.amount != null) setStake(range.amount);
     if (range.leverage != null) setLeverage(range.leverage);
     markPicked();
+    // Reveal it on the surface (pause the spin, ease the camera in, flash it) so the
+    // range pick clearly "lands" — the same glide a binary gets, aimed at the band
+    // midpoint where its live-PnL pin sits.
+    pulseFocus({ marketId: range.marketId, strike: (range.lower + range.higher) / 2, isUp: true });
   }
 
   // "Place this range" → re-apply it (the selection may have drifted to a newer

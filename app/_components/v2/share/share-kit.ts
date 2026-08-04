@@ -53,7 +53,9 @@ export function rgbA(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
-/** Shrink a font until `text` fits `maxW` (weight/family fixed). Returns the px used. */
+/** Shrink a font until `text` fits `maxW` (weight/family fixed). Returns the px
+ *  used. `minPx` is the floor it won't shrink below — pass one at/under `startPx`
+ *  for small text (a floor above the start would leave the text unshrunk). */
 export function fitFont(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -61,14 +63,27 @@ export function fitFont(
   startPx: number,
   maxW: number,
   family: string,
+  minPx = 30,
 ): number {
   let px = startPx;
   ctx.font = `${weight} ${px}px ${family}`;
-  while (ctx.measureText(text).width > maxW && px > 30) {
+  while (ctx.measureText(text).width > maxW && px > minPx) {
     px -= 2;
     ctx.font = `${weight} ${px}px ${family}`;
   }
   return px;
+}
+
+/** Truncate `text` with a trailing "…" so it fits `maxW` at the CURRENT ctx.font.
+ *  The safety net behind `fitFont`: once a label is as small as we'll allow, this
+ *  guarantees it still can't run past its box (into a neighbouring pill). */
+export function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
+  if (maxW <= 0) return '';
+  if (ctx.measureText(text).width <= maxW) return text;
+  const ell = '…';
+  let t = text;
+  while (t.length > 0 && ctx.measureText(t + ell).width > maxW) t = t.slice(0, -1);
+  return t.trimEnd() + ell;
 }
 
 /** Greedy word-wrap for the current ctx.font, to `maxW`. */

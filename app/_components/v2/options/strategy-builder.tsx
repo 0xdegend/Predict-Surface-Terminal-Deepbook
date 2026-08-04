@@ -34,11 +34,16 @@ import {
   type Leg,
   type PresetKind,
 } from '@/lib/strategy/strategy';
+import { expectedMove } from '@/lib/insights';
 import { Term } from './vocab';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { SviFloat } from '@/lib/svi/svi';
 
-const DEFAULT_STAKE = 5;
+const DEFAULT_STAKE = 2;
+/** A leg is priceable only while its odds sit off the 0%/100% extremes — the same
+ *  band the ticket gates on. Outside it, `payout = 1/prob` and the notional fee
+ *  explode, so such a leg must never size a real bet. */
+const isQuotable = (prob: number) => prob > 0.005 && prob < 0.995;
 const sUsd = (v: number) => `${v < 0 ? '−' : '+'}$${num(Math.abs(v), 0)}`;
 
 /** A leg without its id — distributes over the union (unlike `Omit<Leg, 'id'>`,
@@ -71,8 +76,12 @@ export function StrategyBuilder({
   const admStep = market ? toFloat(market.admission_tick_size) : 1;
   const snap = (v: number) => toFloat(snapStrikeToAdmission(fromFloat(v), admissionTickSize));
   const atm = ready ? snap(forward) : 0;
-  // A grid-aligned preset width ~0.4% of spot — wide enough to be a real strangle.
-  const width = ready ? Math.max(admStep, Math.round((forward * 0.004) / admStep) * admStep) : admStep;
+  // Size preset strikes to the surface's OWN expected move (~1σ), not a fixed % of
+  // spot. On a short-dated market a fixed % lands the legs many σ out (≈0% fair),
+  // which blows up the payout multiple and the notional fee. Floored at one grid step.
+  const em = ready && svi ? expectedMove({ forward, svi }) : null;
+  const sigmaMove = em ? em.highPrice - em.forward : forward * 0.004;
+  const width = ready ? Math.max(admStep, Math.round(sigmaMove / admStep) * admStep) : admStep;
 
   const model = useMemo(() => {
     if (!ready || !svi || legs.length === 0) return null;
@@ -114,7 +123,11 @@ export function StrategyBuilder({
 
   // Placement guards: the mints deposit any shortfall from the wallet, so the real
   // ceiling is the wallet DUSDC covering the total deposit.
-  const plan = model ? planStrategyMints({ market, pricer, legs, balanceBase: acct.balanceBase }) : null;
+  // Every leg must be priceable before the payoff/stats mean anything — an out-of-
+  // band leg has an exploding payout + fee, so we flag it and hold back the numbers.
+  const allQuotable = !model || model.strategy.legs.every((e) => isQuotable(e.prob));
+
+  const plan = model && allQuotable ? planStrategyMints({ market, pricer, legs, balanceBase: acct.balanceBase }) : null;
   const insufficient =
     !!plan && acct.walletDusdcBase !== undefined && acct.walletDusdcBase < plan.totalDepositBase;
   const canPlace = !!plan && plan.allValid && !insufficient && !placing && !acct.busy;
@@ -208,36 +221,45 @@ export function StrategyBuilder({
             {/* Legs. */}
             <div className="mt-3 flex flex-col divide-y divide-line/60">
               {model!.strategy.legs.map((e) => (
-                <LegRow key={e.leg.id} leg={e.leg} prob={e.prob} payout={e.payout} onStake={setStake} onRemove={removeLeg} />
+                <LegRow key={e.leg.id} leg={e.leg} prob={e.prob} onStake={setStake} onRemove={removeLeg} />
               ))}
             </div>
 
-            {/* The combined payoff diagram. */}
-            <StrategyChart pts={model!.pts} xMin={model!.xMin} xMax={model!.xMax} stats={model!.stats} forward={forward} />
+            {allQuotable ? (
+              <>
+                {/* The combined payoff diagram. */}
+                <StrategyChart pts={model!.pts} xMin={model!.xMin} xMax={model!.xMax} stats={model!.stats} forward={forward} />
 
-            {/* The four desk numbers + chance of profit. */}
-            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Stat label="You pay">
-                <span className="tabular-nums text-text-1">${num(netCost, 2)}</span>
-              </Stat>
-              <Stat label="Max win">
-                <span className="tabular-nums text-up">{sUsd(stats!.maxWin)}</span>
-              </Stat>
-              <Stat label="Max loss">
-                <span className="tabular-nums text-down">{sUsd(stats!.maxLoss)}</span>
-              </Stat>
-              <Stat label={<Term plain="Chance of profit" pro="P(profit)" />}>
-                <span className="tabular-nums text-text-1">{pct(stats!.chanceOfProfit, 0)}</span>
-              </Stat>
-            </div>
-            <div className="mt-2 text-[11.5px] text-text-3">
-              Breakeven{stats!.breakevens.length === 1 ? '' : 's'}:{' '}
-              {stats!.breakevens.length ? (
-                <span className="tabular-nums text-text-2">{stats!.breakevens.map((b) => `$${num(b, 0)}`).join(' · ')}</span>
-              ) : (
-                <span className="text-text-3">none in range</span>
-              )}
-            </div>
+                {/* The four desk numbers + chance of profit. */}
+                <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                  <Stat label="You pay">
+                    <span className="tabular-nums text-text-1">${num(netCost, 2)}</span>
+                  </Stat>
+                  <Stat label="Max win">
+                    <span className="tabular-nums text-up">{sUsd(stats!.maxWin)}</span>
+                  </Stat>
+                  <Stat label="Max loss">
+                    <span className="tabular-nums text-down">{sUsd(stats!.maxLoss)}</span>
+                  </Stat>
+                  <Stat label={<Term plain="Chance of profit" pro="P(profit)" />}>
+                    <span className="tabular-nums text-text-1">{pct(stats!.chanceOfProfit, 0)}</span>
+                  </Stat>
+                </div>
+                <div className="mt-2 text-[11.5px] text-text-3">
+                  Breakeven{stats!.breakevens.length === 1 ? '' : 's'}:{' '}
+                  {stats!.breakevens.length ? (
+                    <span className="tabular-nums text-text-2">{stats!.breakevens.map((b) => `$${num(b, 0)}`).join(' · ')}</span>
+                  ) : (
+                    <span className="text-text-3">none in range</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 rounded-md border border-down/30 bg-down/10 px-3 py-2.5 text-[12px] leading-relaxed text-down">
+                One or more legs are too far from spot to price on this expiry (their chance rounds to 0%). Move them closer, or
+                use a preset — those size to this market&apos;s expected move.
+              </p>
+            )}
 
             {/* Place all. */}
             <div className="mt-4 flex flex-col gap-2">
@@ -246,6 +268,7 @@ export function StrategyBuilder({
                 legs={legs}
                 netCost={netCost}
                 canPlace={canPlace}
+                allQuotable={allQuotable}
                 insufficient={insufficient}
                 placing={placing}
                 progress={progress}
@@ -281,16 +304,17 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
 function LegRow({
   leg,
   prob,
-  payout,
   onStake,
   onRemove,
 }: {
   leg: Leg;
   prob: number;
-  payout: number;
   onStake: (id: string, stake: number) => void;
   onRemove: (id: string) => void;
 }) {
+  // Gross payout multiple a winner collects (before fees) = 1 / entry chance.
+  const quotable = isQuotable(prob);
+  const mult = prob > 0 ? 1 / prob : Infinity;
   const chip =
     leg.kind === 'range' ? (
       <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent">
@@ -309,9 +333,12 @@ function LegRow({
   return (
     <div className="flex items-center gap-2.5 py-2 font-mono text-[12px]">
       <span className="w-20 shrink-0">{chip}</span>
-      <span className="min-w-0 flex-1 truncate tabular-nums text-text-1">{level}</span>
+      <span className="flex min-w-0 flex-1 items-center gap-2 truncate">
+        <span className="tabular-nums text-text-1">{level}</span>
+        {!quotable && <span className="shrink-0 text-[10px] text-down">too far to price</span>}
+      </span>
       <span className="hidden shrink-0 tabular-nums text-text-3 sm:inline">
-        {(prob * 100).toFixed(0)}% · {payout.toFixed(2)}×
+        {quotable ? `${(prob * 100).toFixed(0)}% · ${mult.toFixed(2)}×` : '—'}
       </span>
       <div className="ctrl-soft inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 focus-within:border-white/20">
         <span className="text-[10px] text-text-3">$</span>
@@ -445,6 +472,7 @@ function PlaceButton({
   legs,
   netCost,
   canPlace,
+  allQuotable,
   insufficient,
   placing,
   progress,
@@ -454,6 +482,7 @@ function PlaceButton({
   legs: Leg[];
   netCost: number;
   canPlace: boolean;
+  allQuotable: boolean;
   insufficient: boolean;
   placing: boolean;
   progress: { done: number; total: number } | null;
@@ -481,9 +510,11 @@ function PlaceButton({
     ? progress
       ? `Placing ${progress.done + 1}/${progress.total}…`
       : 'Placing…'
-    : insufficient
-      ? 'Not enough DUSDC'
-      : `Place ${legs.length} bet${legs.length === 1 ? '' : 's'} · $${num(netCost, 0)}`;
+    : !allQuotable
+      ? 'Move legs closer to price'
+      : insufficient
+        ? 'Not enough DUSDC'
+        : `Place ${legs.length} bet${legs.length === 1 ? '' : 's'} · $${num(netCost, 0)}`;
   return (
     <button type="button" onClick={onPlace} disabled={!canPlace} className={`${base} ${enabled}`}>
       {label}

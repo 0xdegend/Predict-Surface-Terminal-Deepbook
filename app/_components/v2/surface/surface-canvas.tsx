@@ -126,12 +126,12 @@ const AUTO_ROTATE_SPEED = 0.1;
 const FOCUS_EASE_MS = 850;
 const FOCUS_HOLD_MS = 2400;
 const FOCUS_DIST = 11.5;
-// Keep the focus glide FLATTERING (the "it rotates to an ugly angle" report): a
-// SMALL azimuth nudge toward the node instead of a full face (which, for an off-
-// centre strike, swung the camera to the wing where the surface goes edge-on), and
-// an elevation held in a pleasant band (never tilted flat). Much tighter than the
-// full ~66° orbit arc / near-horizontal polar the manual controls allow.
-const FOCUS_AZ_ARC = 0.42; // ≈24° each way from front-centre
+// Keep the focus glide FLATTERING (the "it rotates to an ugly angle" report): on a
+// reveal, RE-CENTRE to the symmetric front instead of leaning toward the node — an
+// off-centre lean swung the camera to the wing where the surface reads edge-on. The
+// glide becomes a gentle dolly-in + re-level to the front view, never a turn. (The
+// elevation is still held in a pleasant band below, never tilted flat.)
+const FOCUS_AZ_ARC = 0; // recentre to front-centre on focus — no azimuth lean
 const FOCUS_POLAR_MIN = 0.95; // ≈54° from vertical
 const FOCUS_POLAR_MAX = 1.22; // ≈70°, short of the edge-on max
 // Reusable scratch for the focus camera glide — one controller exists, so keeping
@@ -234,18 +234,24 @@ export function SurfaceCanvasV2({
   const pickRangeLevel = useV2TradeStore((s) => s.pickRangeLevel);
   const clearRange = useV2TradeStore((s) => s.clearRange);
 
-  // The connected account's OPEN bets, pinned onto the surface at their
-  // (market, strike) so a trader watches them ride the landscape. Same query
-  // key as the positions rail → TanStack dedupes it to zero extra fetches.
-  // Only binary, still-open, non-sample rows on a live market get a pin (range
-  // bands + settled bets are excluded; `locate` drops any whose market isn't a
-  // surface row). Gated to the live surface below (not stress/scrub previews).
+  // The connected account's OPEN bets, pinned onto the surface so a trader watches
+  // them ride the landscape. Same query key as the positions rail → TanStack dedupes
+  // it to zero extra fetches. Still-open, non-sample rows on a live market get a pin:
+  // a binary at its strike, a range across its band. Settled bets are excluded, and
+  // `locate` drops any whose market isn't a surface row. Gated to the live surface
+  // below (not stress/scrub previews).
   const acct = usePredictAccountV2();
   const { positions: accountPositions } = useV2PortfolioPositions(acct.accountId, acct.owner);
   const positionPins = useMemo(
     () =>
       accountPositions.filter(
-        (p) => !p.settled && p.qty > 0 && !p.sample && p.direction !== 'Range' && p.marketId != null && p.strike != null,
+        (p) =>
+          !p.settled &&
+          p.qty > 0 &&
+          !p.sample &&
+          p.marketId != null &&
+          // Binary needs a strike; a range needs its band — both ride the surface.
+          (p.direction === 'Range' ? p.band != null : p.strike != null),
       ),
     [accountPositions],
   );
@@ -887,9 +893,13 @@ function SurfacePositionPins({
   const reduced = useMediaQuery('(prefers-reduced-motion: reduce)');
   return (
     <group>
-      {positions.map((p) => (
-        <PositionPin key={p.key} mesh={mesh} surface={surface} p={p} reduced={reduced} />
-      ))}
+      {positions.map((p) =>
+        p.direction === 'Range' ? (
+          <RangePositionPin key={p.key} mesh={mesh} surface={surface} p={p} reduced={reduced} />
+        ) : (
+          <PositionPin key={p.key} mesh={mesh} surface={surface} p={p} reduced={reduced} />
+        ),
+      )}
     </group>
   );
 }
@@ -1021,7 +1031,7 @@ function PositionPin({
         </Html>
       ) : nearExpiry ? (
         <Html position={[pos.x, gemY + 0.26, pos.z]} center zIndexRange={[20, 0]}>
-          <PinCountdownChip up={up} countdown={countdownLabel(ttlMs)} pnl={p.pnl ?? null} urgent={urgency > 0.6} />
+          <PinCountdownChip dir={up ? 'up' : 'down'} countdown={countdownLabel(ttlMs)} pnl={p.pnl ?? null} urgent={urgency > 0.6} />
         </Html>
       ) : null}
     </group>
@@ -1034,17 +1044,19 @@ function PositionPin({
  *  the eye far better than a static gem; hover still opens the full read (strike,
  *  leverage, delta). Brightens as the clock runs down. */
 function PinCountdownChip({
-  up,
+  dir,
   countdown,
   pnl,
   urgent,
 }: {
-  up: boolean;
+  dir: 'up' | 'down' | 'range';
   countdown: string;
   pnl: number | null;
   urgent: boolean;
 }) {
-  const dirColor = up ? UP_ACCENT : DOWN_ACCENT;
+  // Range is neutral (a band, not a side) — a left-right glyph in the accent teal.
+  const glyph = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '↔';
+  const dirColor = dir === 'down' ? DOWN_ACCENT : UP_ACCENT;
   const pnlColor = pnl == null ? 'var(--text-2)' : pnl >= 0 ? PNL_UP : PNL_DOWN;
   return (
     <div
@@ -1052,7 +1064,7 @@ function PinCountdownChip({
         urgent ? 'ring-1 ring-white/20' : ''
       }`}
     >
-      <span style={{ color: dirColor }}>{up ? '▲' : '▼'}</span>
+      <span style={{ color: dirColor }}>{glyph}</span>
       <span className={urgent ? 'text-text-1' : 'text-text-2'}>{countdown}</span>
       <span className="text-text-3">·</span>
       <span style={{ color: pnlColor }}>{pnl == null ? '—' : signed(pnl, 2)}</span>
@@ -1061,16 +1073,30 @@ function PinCountdownChip({
 }
 
 function PositionPinLabel({ p }: { p: V2PortfolioPosition }) {
+  const isRange = p.direction === 'Range';
   const up = p.direction === 'Up';
-  const dirColor = up ? UP_ACCENT : DOWN_ACCENT;
+  // Range is neutral teal (a band); binary carries its side's colour.
+  const dirColor = isRange ? UP_ACCENT : up ? UP_ACCENT : DOWN_ACCENT;
   const pnl = p.pnl ?? 0;
   const pnlColor = p.pnl == null ? 'var(--text-2)' : pnl >= 0 ? PNL_UP : PNL_DOWN;
   return (
     <div className="glass pointer-events-none w-max -translate-y-1 rounded-lg px-2.5 py-1.5 text-center shadow-[0_10px_24px_-10px_rgba(0,0,0,0.85)]">
       <div className="flex items-center justify-center gap-1.5 whitespace-nowrap font-mono text-[10.5px] tabular-nums">
-        <span style={{ color: dirColor }}>{up ? '▲ UP' : '▼ DOWN'}</span>
-        <span className="text-text-3">·</span>
-        <span className="text-text-1">{price(p.strike ?? 0, 0)}</span>
+        {isRange ? (
+          <>
+            <span style={{ color: dirColor }}>↔ RANGE</span>
+            <span className="text-text-3">·</span>
+            <span className="text-text-1">
+              {price(p.band?.lower ?? 0, 0)}–{price(p.band?.higher ?? 0, 0)}
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ color: dirColor }}>{up ? '▲ UP' : '▼ DOWN'}</span>
+            <span className="text-text-3">·</span>
+            <span className="text-text-1">{price(p.strike ?? 0, 0)}</span>
+          </>
+        )}
         {p.leverage != null && p.leverage > 1 && <span className="text-text-3">{p.leverage}×</span>}
       </div>
       <div className="mt-0.5 font-mono text-[11.5px] tabular-nums" style={{ color: pnlColor }}>
@@ -1078,6 +1104,132 @@ function PositionPinLabel({ p }: { p: V2PortfolioPosition }) {
         {p.deltaPp != null && <span className="ml-1 text-[9px] text-text-3">({signed(p.deltaPp, 1)}pt)</span>}
       </div>
     </div>
+  );
+}
+
+/**
+ * RangePositionPin — an OPEN range bet rendered ON the surface: a PnL-coloured
+ * payout band across its (lower, higher] with edge orbs, and a live-PnL gem
+ * floating at the band midpoint. The band twin of PositionPin, so a range bet
+ * rides the landscape and reads its live PnL exactly like an up/down bet — just
+ * shaped as a span, not a point. Colour = live PnL (winning teal / losing coral),
+ * the gem throbs + shows a countdown as expiry nears, and hover opens the full read.
+ */
+function RangePositionPin({
+  mesh,
+  surface,
+  p,
+  reduced,
+}: {
+  mesh: SurfaceMesh;
+  surface: Surface;
+  p: V2PortfolioPosition;
+  reduced: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const now = useNow(0); // shared 1s clock — ticks the countdown + urgency ramp
+  const gemMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const gemMeshRef = useRef<THREE.Mesh>(null);
+  const haloMatRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  const geom = useMemo(() => {
+    if (!p.marketId || !p.band) return null;
+    const lo = locate(mesh, surface, p.marketId, p.band.lower);
+    const hi = locate(mesh, surface, p.marketId, p.band.higher);
+    const mid = locate(mesh, surface, p.marketId, (p.band.lower + p.band.higher) / 2);
+    return lo && hi && mid ? { lo, hi, mid } : null;
+  }, [mesh, surface, p.marketId, p.band]);
+
+  const pnl = p.pnl ?? 0;
+  const color = p.pnl == null ? PNL_FLAT : pnl >= 0 ? PNL_UP : PNL_DOWN;
+
+  // Same urgency ramp as PositionPin — a near-expiry bet gets a bigger, faster gem.
+  const ttlMs = p.expiry != null ? p.expiry - now : Number.POSITIVE_INFINITY;
+  const urgency = Number.isFinite(ttlMs)
+    ? Math.max(0, Math.min(1, (PIN_NEAR_MS - ttlMs) / (PIN_NEAR_MS - PIN_PEAK_MS)))
+    : 0;
+  const nearExpiry = ttlMs < PIN_NEAR_MS;
+
+  useFrame((state) => {
+    const u = urgency;
+    const wave = reduced ? 0 : Math.sin(state.clock.elapsedTime * (2.2 + u * 7));
+    if (gemMatRef.current) gemMatRef.current.emissiveIntensity = (hovered ? 0.95 : 0.5) + u * 0.6 + (0.12 + u * 0.5) * wave;
+    if (gemMeshRef.current) gemMeshRef.current.scale.setScalar(1 + u * 0.55 + 0.12 * u * wave);
+    if (haloMatRef.current) haloMatRef.current.opacity = (0.1 + u * 0.32) * (0.75 + 0.25 * (wave + 1) * 0.5);
+  });
+
+  if (!geom) return null;
+  const { lo, hi, mid } = geom;
+  const gemY = mid.y + 0.3; // float the gem above the band's midpoint
+  const floorMidX = (lo.x + hi.x) / 2;
+  const floorW = Math.max(Math.abs(hi.x - lo.x), 0.02);
+
+  return (
+    <group>
+      {/* PnL-coloured payout zone on the floor between the two edges. */}
+      <mesh position={[floorMidX, 0.013, lo.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <planeGeometry args={[floorW, 0.42]} />
+        <meshBasicMaterial color={color} transparent opacity={0.14} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Edge orbs marking the band bounds, each on a faint drop-stem. */}
+      {[lo, hi].map((e, i) => (
+        <group key={i}>
+          <mesh position={[e.x, (e.y + 0.09) / 2, e.z]} raycast={() => null}>
+            <cylinderGeometry args={[0.004, 0.004, Math.max(e.y + 0.09, 0.01), 6]} />
+            <meshBasicMaterial color={color} transparent opacity={0.4} />
+          </mesh>
+          <mesh position={[e.x, e.y + 0.09, e.z]} raycast={() => null}>
+            <sphereGeometry args={[0.045, 16, 16]} />
+            <meshBasicMaterial color={color} transparent opacity={0.85} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Stem from the surface up to the gem at the band midpoint. */}
+      <mesh position={[mid.x, (mid.y + gemY) / 2, mid.z]} raycast={() => null}>
+        <cylinderGeometry args={[0.004, 0.004, Math.max(gemY - mid.y, 0.01), 6]} />
+        <meshBasicMaterial color={color} transparent opacity={0.4} />
+      </mesh>
+      {/* Glow halo — invisible at rest, blooms as expiry nears (opacity in frame). */}
+      <mesh position={[mid.x, gemY, mid.z]} raycast={() => null} scale={2.4}>
+        <sphereGeometry args={[0.078, 16, 16]} />
+        <meshBasicMaterial ref={haloMatRef} color={color} transparent opacity={0} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      {/* The gem — the hoverable hit target; colour = live PnL. */}
+      <mesh
+        ref={gemMeshRef}
+        position={[mid.x, gemY, mid.z]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+          if (typeof document !== 'undefined') document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={() => {
+          setHovered(false);
+          if (typeof document !== 'undefined') document.body.style.cursor = '';
+        }}
+      >
+        <octahedronGeometry args={[0.078, 0]} />
+        <meshStandardMaterial ref={gemMatRef} color={color} emissive={color} emissiveIntensity={0.5} roughness={0.3} metalness={0.1} />
+      </mesh>
+      {/* A flat diamond ring caps the gem — reads as "band", not an up/down chevron. */}
+      <mesh position={[mid.x, gemY + 0.14, mid.z]} rotation={[-Math.PI / 2, 0, 0]} raycast={() => null}>
+        <ringGeometry args={[0.032, 0.058, 4]} />
+        <meshBasicMaterial color="#eef2f5" side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Hover → full read; else a near-expiry bet keeps a live countdown on the gem. */}
+      {hovered ? (
+        <Html position={[mid.x, gemY + 0.34, mid.z]} center occlude zIndexRange={[30, 0]}>
+          <PositionPinLabel p={p} />
+        </Html>
+      ) : nearExpiry ? (
+        <Html position={[mid.x, gemY + 0.26, mid.z]} center zIndexRange={[20, 0]}>
+          <PinCountdownChip dir="range" countdown={countdownLabel(ttlMs)} pnl={p.pnl ?? null} urgent={urgency > 0.6} />
+        </Html>
+      ) : null}
+    </group>
   );
 }
 

@@ -366,10 +366,11 @@ export function V2TradeTicket({
       // Arm the camera "make it pop" reveal — the SAME glide Kelly uses when it
       // opens a trade — but fire it when the success modal CLOSES (below), so the
       // trader actually watches the camera land on their new position instead of
-      // it playing out behind the modal. Binary only: range bets don't get a
-      // surface pin, so there'd be nothing to reveal (matching the co-pilot, which
-      // focuses binary suggestions but not range bands).
-      revealFocus.current = rangeMode ? null : { marketId: market!.expiry_market_id, strike, isUp };
+      // it playing out behind the modal. A range glides to its band midpoint (where
+      // its live-PnL pin sits); a binary to its strike.
+      revealFocus.current = rangeMode
+        ? { marketId: market!.expiry_market_id, strike: (lowerStrike + higherStrike) / 2, isUp: true }
+        : { marketId: market!.expiry_market_id, strike, isUp };
       setMintSuccess({
         headline,
         tone,

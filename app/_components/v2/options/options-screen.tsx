@@ -55,6 +55,17 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 // credits (insights + candles are gated).
 const OPTIONS_LIVE = process.env.NEXT_PUBLIC_OPTIONS_LIVE === '1';
 
+/** The lower-page analytics, grouped into tabs so the page reads as a cockpit
+ *  rather than one long feed — and so the heavy tools (and the strategy builder's
+ *  wallet hook) only mount when their tab is opened. */
+type DeckTab = 'bet' | 'scan' | 'context' | 'build';
+const DECK_TABS: { key: DeckTab; label: string; hint: string }[] = [
+  { key: 'bet', label: 'This bet', hint: 'The odds and payoff for the strike you’ve picked.' },
+  { key: 'scan', label: 'Scan', hint: 'Where the surface is cheap versus recent history, across every expiry.' },
+  { key: 'context', label: 'Context', hint: 'Positioning and flow, the skew term structure, and a reality check.' },
+  { key: 'build', label: 'Build', hint: 'Combine several legs into one payoff, then place them together.' },
+];
+
 
 export function V2OptionsScreen({
   markets: initialMarkets,
@@ -198,6 +209,7 @@ export function V2OptionsScreen({
   // Share-to-X: the Options page's shareable snapshots, built from the SAME live
   // data the widgets show. Each opens the card dialog (an ad for the page).
   const [shareCard, setShareCard] = useState<OptionsShareCard | null>(null);
+  const [deckTab, setDeckTab] = useState<DeckTab>('bet');
   const shareMarketRead = () => {
     if (!intel.read) return;
     setShareCard({
@@ -269,57 +281,65 @@ export function V2OptionsScreen({
           <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} onShareOdds={shareOdds} />
         </div>
 
-        {/* Edge scanner — the cross-expiry value screener (drills the ladder's read
-            across every open expiry at once). */}
-        <div className="mt-4">
-          <OptionsEdgeScanner markets={markets} pricers={pricers} closes={liveCloses} now={pulseNow} onHighlight={highlightAt} onBet={betAt} />
-        </div>
+        {/* Analytics deck — grouped into tabs so the page stays a cockpit, not a
+            long feed. Only the active tab mounts, which also keeps the heavy tools
+            (and the strategy builder's wallet hook) off the page until asked for. */}
+        <div className="mt-5">
+          <SectionTabs tabs={DECK_TABS} active={deckTab} onChange={setDeckTab} />
 
-        {/* Probability consensus — the flagship, for the picked strike. */}
-        <div className="mt-4">
-          <ProbabilityConsensus
-            consensus={consensus}
-            strikePrice={consensusStrike}
-            isUp={consensusIsUp}
-            expiryMs={selected?.expiry ?? null}
-            onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
-          />
-        </div>
+          <div className="mt-4">
+            {deckTab === 'bet' && (
+              <div className="flex flex-col gap-4">
+                {/* Probability consensus — the flagship, for the picked strike. */}
+                <ProbabilityConsensus
+                  consensus={consensus}
+                  strikePrice={consensusStrike}
+                  isUp={consensusIsUp}
+                  expiryMs={selected?.expiry ?? null}
+                  onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
+                />
+                {/* Payoff & decay — how the picked bet behaves if BTC moves or time passes. */}
+                <GreeksScenario
+                  pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
+                  strike={consensusStrike}
+                  isUp={consensusIsUp}
+                  expiryMs={selected?.expiry ?? null}
+                  now={pulseNow}
+                  onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
+                />
+              </div>
+            )}
 
-        {/* Payoff & decay — how the selected bet behaves if BTC moves or time passes. */}
-        <div className="mt-4">
-          <GreeksScenario
-            pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
-            strike={consensusStrike}
-            isUp={consensusIsUp}
-            expiryMs={selected?.expiry ?? null}
-            now={pulseNow}
-            onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
-          />
-        </div>
+            {deckTab === 'scan' && (
+              /* Edge scanner — the cross-expiry value screener. */
+              <OptionsEdgeScanner markets={markets} pricers={pricers} closes={liveCloses} now={pulseNow} onHighlight={highlightAt} onBet={betAt} />
+            )}
 
-        {/* Positioning & flow — the "why behind the odds" (Clawby PRO). */}
-        <div className="mt-4">
-          <PositioningFlow positioning={livePositioning} insights={liveInsights} intel={intel} />
-        </div>
+            {deckTab === 'context' && (
+              <div className="flex flex-col gap-4">
+                {/* Positioning & flow — the "why behind the odds" (Clawby PRO). */}
+                <PositioningFlow positioning={livePositioning} insights={liveInsights} intel={intel} />
+                {/* Term structure + reality check. */}
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <SkewTerm expiries={intel.expiries} arb={intel.arb} now={pulseNow} />
+                  <RealityCheck
+                    pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
+                    expiryMs={selected?.expiry ?? null}
+                    now={pulseNow}
+                    closes={liveCloses}
+                  />
+                </div>
+              </div>
+            )}
 
-        {/* Strategy builder — combine legs on this expiry into one payoff + place all. */}
-        <div className="mt-4">
-          <StrategyBuilder
-            market={selected}
-            pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
-          />
-        </div>
-
-        {/* Term structure + reality check. */}
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <SkewTerm expiries={intel.expiries} arb={intel.arb} now={pulseNow} />
-          <RealityCheck
-            pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
-            expiryMs={selected?.expiry ?? null}
-            now={pulseNow}
-            closes={liveCloses}
-          />
+            {deckTab === 'build' && (
+              /* Strategy builder — combine legs on this expiry into one payoff + place all. */
+              <StrategyBuilder
+                market={selected}
+                pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
+              />
+            )}
+          </div>
         </div>
 
         {/* Share-to-X card dialog (market read / expected range / bold odds). */}
@@ -381,6 +401,43 @@ function MarketReadSkeleton() {
         <div className="h-3 w-3/4 animate-pulse rounded bg-white/5" />
         <div className="h-3 w-1/2 animate-pulse rounded bg-white/5" />
       </div>
+    </div>
+  );
+}
+
+/** The analytics-deck tab bar. A group of segmented buttons (aria-pressed, like the
+ *  vocab toggle) plus a one-line hint for the active tab, so switching sections
+ *  keeps the page short without hiding what each tab holds. */
+function SectionTabs({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: { key: DeckTab; label: string; hint: string }[];
+  active: DeckTab;
+  onChange: (k: DeckTab) => void;
+}) {
+  const hint = tabs.find((t) => t.key === active)?.hint ?? '';
+  return (
+    <div>
+      <div role="group" aria-label="Analytics sections" className="flex flex-wrap gap-1.5">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            aria-pressed={active === t.key}
+            onClick={() => onChange(t.key)}
+            className={`rounded-md px-3.5 py-1.5 text-[12.5px] font-medium ring-1 ring-inset transition ${
+              active === t.key
+                ? 'bg-(--accent-soft) text-accent ring-(--accent-line)'
+                : 'bg-bg-2 text-text-2 ring-line hover:text-text-1'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-[11.5px] text-text-3">{hint}</p>
     </div>
   );
 }
