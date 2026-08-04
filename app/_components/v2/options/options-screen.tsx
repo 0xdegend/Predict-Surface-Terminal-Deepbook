@@ -74,7 +74,7 @@ export function V2OptionsScreen({
   const storeIsUp = useV2TradeStore((s) => s.isUp);
 
   // Clawby-backed reads, gated on the live flag (zero credits behind the gate).
-  const { data: insights } = useBtcInsights({ enabled: OPTIONS_LIVE });
+  const { data: insights, loading: insightsLoading } = useBtcInsights({ enabled: OPTIONS_LIVE });
   const { data: positioning } = useBtcPositioning({ enabled: OPTIONS_LIVE });
   const { data: candles } = useQuery<BtcCandles>({
     queryKey: ['insights', 'btc', 'candles'],
@@ -231,7 +231,7 @@ export function V2OptionsScreen({
         {/* Hero: the read + expected move alongside the live surface. */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
           <div className="flex flex-col gap-3">
-            <MarketReadCard read={intel.read} onShare={shareMarketRead} />
+            <MarketReadCard read={intel.read} loading={mounted && insightsLoading} onShare={shareMarketRead} />
             <ExpectedMoveBand em={intel.expectedMove} spot={intel.spot} asset={intel.asset} onShare={shareExpectedRange} />
           </div>
           <div className="h-[44vh] min-h-80 overflow-hidden rounded-lg border border-line bg-bg-1">
@@ -296,8 +296,13 @@ export function V2OptionsScreen({
   );
 }
 
-function MarketReadCard({ read, onShare }: { read: MarketRead | null; onShare?: () => void }) {
-  if (!read) return null;
+function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; loading?: boolean; onShare?: () => void }) {
+  // While the read is still loading, hold the card's footprint with a skeleton that
+  // matches the final layout, so the real lines swap IN PLACE instead of the card
+  // popping in short and then resizing as the content lands (the "shrink then
+  // extend" jank on first landing). Once loaded-but-empty (no data / gated), it
+  // collapses to nothing as before.
+  if (!read) return loading ? <MarketReadSkeleton /> : null;
   return (
     <div className="glass rounded-lg p-4">
       <div className="flex items-start justify-between gap-2">
@@ -312,6 +317,28 @@ function MarketReadCard({ read, onShare }: { read: MarketRead | null; onShare?: 
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Placeholder for the Surface read that reserves ~the full read's height (a
+ *  headline plus three multi-line observations), so the card lands at a stable
+ *  size and the real copy fades in without a reflow. */
+function MarketReadSkeleton() {
+  return (
+    <div className="glass rounded-lg p-4" aria-hidden>
+      <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
+      {/* headline */}
+      <div className="mt-2.5 h-3.5 w-3/5 animate-pulse rounded bg-white/10" />
+      {/* three observations, each ~two wrapped rows (mirrors the trend / liquidation
+          / sentiment lines the loaded read fills in) */}
+      <div className="mt-3.5 space-y-2">
+        <div className="h-3 w-full animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-2/3 animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-11/12 animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-3/4 animate-pulse rounded bg-white/5" />
+        <div className="h-3 w-1/2 animate-pulse rounded bg-white/5" />
+      </div>
     </div>
   );
 }
