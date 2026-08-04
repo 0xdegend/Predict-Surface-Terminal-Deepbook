@@ -34,6 +34,9 @@ import { RealityCheck } from './reality-check';
 import { SkewTerm } from './skew-term';
 import { PositioningFlow } from './positioning-flow';
 import { ProbabilityConsensus } from './consensus';
+import { OptionsEdgeScanner } from './edge-scanner';
+import { GreeksScenario } from './greeks-scenario';
+import { StrategyBuilder } from './strategy-builder';
 import { VocabProvider } from './vocab';
 import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, expectedMove, type EngineCandidate, type MarketExpiry, type MarketRead } from '@/lib/insights';
 import { timeLeftWords } from '@/lib/format';
@@ -159,6 +162,19 @@ export function V2OptionsScreen({
     highlight(strike, isUp);
     openTicketSheet();
   }
+  // The scanner spans expiries, so its picks name their OWN market (which may differ
+  // from the page's selected one) — select that market first, then light/pre-fill.
+  function highlightAt(marketId: string, strike: number, isUp: boolean) {
+    selectMarket(marketId);
+    setMode('binary');
+    setIsUp(isUp);
+    setStrikePrice(strike);
+    markPicked();
+  }
+  function betAt(marketId: string, strike: number, isUp: boolean) {
+    highlightAt(marketId, strike, isUp);
+    openTicketSheet();
+  }
 
   const ladderPricer = selectedPricer ?? (selected ? pricers[selected.expiry_market_id] : undefined);
 
@@ -253,6 +269,12 @@ export function V2OptionsScreen({
           <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} onShareOdds={shareOdds} />
         </div>
 
+        {/* Edge scanner — the cross-expiry value screener (drills the ladder's read
+            across every open expiry at once). */}
+        <div className="mt-4">
+          <OptionsEdgeScanner markets={markets} pricers={pricers} closes={liveCloses} now={pulseNow} onHighlight={highlightAt} onBet={betAt} />
+        </div>
+
         {/* Probability consensus — the flagship, for the picked strike. */}
         <div className="mt-4">
           <ProbabilityConsensus
@@ -264,9 +286,29 @@ export function V2OptionsScreen({
           />
         </div>
 
+        {/* Payoff & decay — how the selected bet behaves if BTC moves or time passes. */}
+        <div className="mt-4">
+          <GreeksScenario
+            pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
+            strike={consensusStrike}
+            isUp={consensusIsUp}
+            expiryMs={selected?.expiry ?? null}
+            now={pulseNow}
+            onBet={() => consensusStrike != null && bet(consensusStrike, consensusIsUp)}
+          />
+        </div>
+
         {/* Positioning & flow — the "why behind the odds" (Clawby PRO). */}
         <div className="mt-4">
           <PositioningFlow positioning={livePositioning} insights={liveInsights} intel={intel} />
+        </div>
+
+        {/* Strategy builder — combine legs on this expiry into one payoff + place all. */}
+        <div className="mt-4">
+          <StrategyBuilder
+            market={selected}
+            pricer={ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null}
+          />
         </div>
 
         {/* Term structure + reality check. */}

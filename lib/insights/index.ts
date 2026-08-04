@@ -16,6 +16,8 @@ export * from './expected-move';
 export * from './engine';
 export * from './market-read';
 export * from './strike-analysis';
+export * from './edge-scan';
+export * from './greeks';
 export * from './positioning';
 export * from './positioning-read';
 export * from './consensus';
