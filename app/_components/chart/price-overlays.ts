@@ -199,10 +199,15 @@ class WinZoneRenderer implements IPrimitivePaneRenderer {
   }
 }
 
-// The live-edge marker's brand colour (matches the up/area line). Kept as an
-// "r,g,b" triple so the glow/ring can vary only the alpha.
-const PULSE_RGB = '77, 214, 176';
-const PULSE_CORE = '#4dd6b0';
+// The live-edge marker's two momentum colours (up = teal, down = coral), each as
+// an "r,g,b" triple so the glow/ring can vary only the alpha, plus a solid hex for
+// the core. Matches the up/down semantic colours used across the terminal.
+const PULSE_UP_RGB = '77, 214, 176';
+const PULSE_UP_CORE = '#4dd6b0';
+const PULSE_DOWN_RGB = '240, 121, 107';
+const PULSE_DOWN_CORE = '#f0796b';
+
+type PulseDir = 'up' | 'down';
 
 /**
  * A glowing, softly pulsing dot pinned to the chart's live edge — the "you are
@@ -224,6 +229,7 @@ export class LivePulsePrimitive implements ISeriesPrimitive<Time> {
   private _time: Time | null = null;
   private _value: number | null = null;
   private _animate = true;
+  private _momentum: PulseDir = 'up';
   private readonly _view = new LivePulsePaneView(this);
 
   attached(p: SeriesAttachedParameter<Time>) {
@@ -254,6 +260,11 @@ export class LivePulsePrimitive implements ISeriesPrimitive<Time> {
     this._animate = on;
     this._requestUpdate?.();
   }
+  /** Tint the dot by recent price direction (up = teal, down = coral). */
+  setMomentum(dir: PulseDir) {
+    this._momentum = dir;
+    this._requestUpdate?.();
+  }
 
   get series() {
     return this._series;
@@ -269,6 +280,9 @@ export class LivePulsePrimitive implements ISeriesPrimitive<Time> {
   }
   get animate() {
     return this._animate;
+  }
+  get momentum() {
+    return this._momentum;
   }
 }
 
@@ -291,7 +305,7 @@ class LivePulsePaneView implements IPrimitivePaneView {
     return 'top' as const;
   }
   renderer(): IPrimitivePaneRenderer {
-    return new LivePulseRenderer(this._x, this._y, this._source.animate);
+    return new LivePulseRenderer(this._x, this._y, this._source.animate, this._source.momentum);
   }
 }
 
@@ -300,9 +314,12 @@ class LivePulseRenderer implements IPrimitivePaneRenderer {
     private readonly _x: number | null,
     private readonly _y: number | null,
     private readonly _animate: boolean,
+    private readonly _momentum: PulseDir,
   ) {}
   draw(target: RenderTarget) {
     if (this._x == null || this._y == null) return;
+    const rgb = this._momentum === 'down' ? PULSE_DOWN_RGB : PULSE_UP_RGB;
+    const core = this._momentum === 'down' ? PULSE_DOWN_CORE : PULSE_UP_CORE;
     target.useBitmapCoordinateSpace((scope) => {
       const ctx = scope.context;
       const ratio = scope.horizontalPixelRatio;
@@ -317,21 +334,21 @@ class LivePulseRenderer implements IPrimitivePaneRenderer {
         const t = (Date.now() % PERIOD) / PERIOD; // 0 → 1
         ctx.beginPath();
         ctx.arc(cx, cy, r(4) + t * r(11), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${PULSE_RGB}, ${(1 - t) * 0.4})`;
+        ctx.strokeStyle = `rgba(${rgb}, ${(1 - t) * 0.4})`;
         ctx.lineWidth = Math.max(1, r(1));
         ctx.stroke();
       }
       // Soft radial glow under the core.
       const glowR = r(9);
       const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-      glow.addColorStop(0, `rgba(${PULSE_RGB}, 0.45)`);
-      glow.addColorStop(1, `rgba(${PULSE_RGB}, 0)`);
+      glow.addColorStop(0, `rgba(${rgb}, 0.45)`);
+      glow.addColorStop(1, `rgba(${rgb}, 0)`);
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
       ctx.fill();
       // Solid core + a bright centre so it reads as a live indicator, not a plot dot.
-      ctx.fillStyle = PULSE_CORE;
+      ctx.fillStyle = core;
       ctx.beginPath();
       ctx.arc(cx, cy, r(3), 0, Math.PI * 2);
       ctx.fill();

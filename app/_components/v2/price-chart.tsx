@@ -75,6 +75,16 @@ const SETTLE_USD = 0.5; // snap to target once within this (ends the glide)
 const WRITE_EPS_USD = 0.02; // skip a series write smaller than this (no-op churn)
 const PULSE_MS = 33; // idle repaint cadence (~30fps) that keeps the ring pulsing
 
+// Momentum tint: colour the line, fill, and pulse dot by recent direction. Compare
+// the live value to ~LOOKBACK seconds ago; a small deadband (never flips inside it)
+// keeps the tint from flickering when price is basically flat.
+const MOMENTUM_LOOKBACK_S = 45;
+const MOMENTUM_KEEP_S = 130; // rolling sample window kept for the lookup
+const UP_TOP = 'rgba(77, 214, 176, 0.22)';
+const UP_BOT = 'rgba(77, 214, 176, 0)';
+const DOWN_TOP = 'rgba(240, 121, 107, 0.22)';
+const DOWN_BOT = 'rgba(240, 121, 107, 0)';
+
 type ChartPoint = AreaData<UTCTimestamp> | WhitespaceData<UTCTimestamp>;
 
 /**
@@ -148,6 +158,12 @@ export function V2PriceChart({
   const lastPulseRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const animateRef = useRef(true);
+  // Momentum tint state: a rolling (time, value) buffer for the lookback, the
+  // current direction, and the last one actually painted (so we only re-apply the
+  // line/fill colours on a real flip, not every tick).
+  const samplesRef = useRef<{ t: number; v: number }[]>([]);
+  const momentumRef = useRef<'up' | 'down'>('up');
+  const appliedMomentumRef = useRef<'up' | 'down' | null>(null);
   // Fit + snap-to-live only on the first history load, so later refetches don't
   // yank the user's zoom/scroll back.
   const fittedRef = useRef(false);
@@ -176,6 +192,59 @@ export function V2PriceChart({
   // 500 = the propbook API's cap (~3.6 min of ticks) → a dense, legacy-count line.
   const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 30_000 });
   const latestQ = useQuery({ queryKey: qkV2.pythLatest, queryFn: () => getPythLatest(PID), refetchInterval: 1500 });
+
+  // Paint the current momentum onto the line, area fill, and pulse dot — but only
+  // when it actually flipped, so a steady trend doesn't re-apply options every tick.
+  const applyMomentum = useCallback(() => {
+    const dir = momentumRef.current;
+    if (appliedMomentumRef.current === dir) return;
+    appliedMomentumRef.current = dir;
+    const up = dir === 'up';
+    seriesRef.current?.applyOptions({
+      lineColor: up ? UP : DOWN,
+      topColor: up ? UP_TOP : DOWN_TOP,
+      bottomColor: up ? UP_BOT : DOWN_BOT,
+    });
+    pulseRef.current?.setMomentum(dir);
+  }, []);
+
+  // Recompute direction from the buffer: latest vs the sample ~LOOKBACK ago. Inside
+  // the deadband we KEEP the previous direction (hysteresis), so flat tape doesn't
+  // strobe the tint.
+  const recomputeMomentum = useCallback(() => {
+    const buf = samplesRef.current;
+    if (buf.length >= 2) {
+      const latest = buf[buf.length - 1];
+      const refTime = latest.t - MOMENTUM_LOOKBACK_S;
+      let ref = buf[0];
+      for (let i = buf.length - 1; i >= 0; i--) {
+        if (buf[i].t <= refTime) {
+          ref = buf[i];
+          break;
+        }
+      }
+      const delta = latest.v - ref.v;
+      const dead = Math.max(3, ref.v * 0.00005); // ~0.005%, floored at $3
+      if (delta > dead) momentumRef.current = 'up';
+      else if (delta < -dead) momentumRef.current = 'down';
+    }
+    applyMomentum();
+  }, [applyMomentum]);
+
+  // Record a sample (dedupe per second, keep it time-ordered, prune old) then
+  // re-evaluate the tint.
+  const ingestMomentum = useCallback(
+    (t: number, v: number) => {
+      const buf = samplesRef.current;
+      if (buf.length && buf[buf.length - 1].t === t) buf[buf.length - 1].v = v;
+      else if (!buf.length || t > buf[buf.length - 1].t) buf.push({ t, v });
+      else return; // out of order — ignore
+      const cutoff = t - MOMENTUM_KEEP_S;
+      while (buf.length > 1 && buf[0].t < cutoff) buf.shift();
+      recomputeMomentum();
+    },
+    [recomputeMomentum],
+  );
 
   // One step of the live-edge engine: chase `target` (freshest tick) with `disp`
   // (the drawn leading point) and keep the pulse dot on it. Called every animation
@@ -365,6 +434,12 @@ export function V2PriceChart({
       writtenValRef.current = 'value' in last ? last.value : 0;
       renderLive(); // re-place the (possibly newer) live point on top of history
     }
+    // Seed the momentum buffer from the fresh history so the tint is right on load
+    // (and stays correct after each 30s refetch); live ticks append onto it.
+    samplesRef.current = points
+      .filter((p): p is AreaData<UTCTimestamp> => 'value' in p)
+      .map((p) => ({ t: p.time as number, v: p.value }));
+    recomputeMomentum();
     // Adapt the axis labels to the actual window: minute labels read cleanest
     // (legacy parity), but collapse to duplicates once ticks fall closer than a
     // minute apart — so only show seconds when the window is short (< ~8 min,
@@ -378,7 +453,7 @@ export function V2PriceChart({
       chartRef.current?.timeScale().scrollToRealTime();
       fittedRef.current = true;
     }
-  }, [historyQ.data, renderLive]);
+  }, [historyQ.data, renderLive, recomputeMomentum]);
 
   // Ingest the live tick: set the engine's TARGET (the freshest per-second value);
   // the rAF loop glides the drawn edge toward it. When motion is off (reduced-
@@ -394,8 +469,9 @@ export function V2PriceChart({
     const t = Math.floor(ms / 1000);
     if (targetRef.current && t < targetRef.current.time) return; // never go backward
     targetRef.current = { time: t, value: v };
+    ingestMomentum(t, v);
     if (!animateRef.current) renderLive();
-  }, [latestQ.data, renderLive]);
+  }, [latestQ.data, renderLive, ingestMomentum]);
 
   // The animation loop that powers the glide + pulse. Runs only when motion is
   // allowed AND the tab is visible: reduced-motion users get a static dot and
