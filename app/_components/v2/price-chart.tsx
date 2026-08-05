@@ -14,7 +14,7 @@
  * slider or the odds curve moves the line/band in real time. The strike/band is
  * resolved against the selected market's admission grid (ATM from the live pricer).
  */
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   createChart,
   AreaSeries,
@@ -30,7 +30,7 @@ import {
   type WhitespaceData,
 } from 'lightweight-charts';
 import { useQuery } from '@tanstack/react-query';
-import { PriceBandPrimitive, WinZonePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
+import { PriceBandPrimitive, WinZonePrimitive, LivePulsePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
 import { StaleFeedOverlay } from './stale-feed-overlay';
 import { getPythHistory, getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -66,6 +66,14 @@ function obsMs(o: PythObservation): number | null {
  * jitter so a healthy feed never fragments.
  */
 const GAP_BREAK_S = 5;
+
+// Live-edge motion engine tuning. Between the ~1.5s Pyth polls the last point
+// GLIDES toward the freshest tick instead of snapping, so the line breathes and
+// the pulse dot rides it smoothly.
+const LERP = 0.18; // fraction of the remaining gap closed per animation frame
+const SETTLE_USD = 0.5; // snap to target once within this (ends the glide)
+const WRITE_EPS_USD = 0.02; // skip a series write smaller than this (no-op churn)
+const PULSE_MS = 33; // idle repaint cadence (~30fps) that keeps the ring pulsing
 
 type ChartPoint = AreaData<UTCTimestamp> | WhitespaceData<UTCTimestamp>;
 
@@ -128,7 +136,18 @@ export function V2PriceChart({
   // pick sits away from spot. Refs so the provider closure sees the latest.
   const strikeRangeRef = useRef<number | null>(null);
   const bandRangeRef = useRef<{ low: number; high: number } | null>(null);
-  const lastTimeRef = useRef(0);
+  // Live-edge engine (see renderLive): the pulse dot + the smooth glide of the
+  // leading point. `target` = freshest per-second tick; `disp` = what's actually
+  // drawn (chases target). `written*` dedupe redundant series writes; `lastPulse`
+  // throttles idle ring repaints; `raf`/`animate` drive the rAF loop.
+  const pulseRef = useRef<LivePulsePrimitive | null>(null);
+  const targetRef = useRef<{ time: number; value: number } | null>(null);
+  const dispRef = useRef<{ time: number; value: number } | null>(null);
+  const writtenTimeRef = useRef(0);
+  const writtenValRef = useRef(0);
+  const lastPulseRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const animateRef = useRef(true);
   // Fit + snap-to-live only on the first history load, so later refetches don't
   // yank the user's zoom/scroll back.
   const fittedRef = useRef(false);
@@ -157,6 +176,62 @@ export function V2PriceChart({
   // 500 = the propbook API's cap (~3.6 min of ticks) → a dense, legacy-count line.
   const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 30_000 });
   const latestQ = useQuery({ queryKey: qkV2.pythLatest, queryFn: () => getPythLatest(PID), refetchInterval: 1500 });
+
+  // One step of the live-edge engine: chase `target` (freshest tick) with `disp`
+  // (the drawn leading point) and keep the pulse dot on it. Called every animation
+  // frame while motion is on, or once per tick when it's off (reduced-motion). All
+  // state lives in refs so this closure is stable and never re-subscribes effects.
+  const renderLive = useCallback(() => {
+    const series = seriesRef.current;
+    const pulse = pulseRef.current;
+    const tgt = targetRef.current;
+    if (!series || !tgt) return;
+    const animate = animateRef.current;
+    let disp = dispRef.current;
+
+    if (!disp) {
+      // First point: place it exactly.
+      disp = { time: tgt.time, value: tgt.value };
+    } else if (tgt.time > disp.time) {
+      // A new second arrived. Bridge a real stall with an honest break; otherwise
+      // open the new second seeded at the current drawn value so it glides up to
+      // the tick (snap straight to it when motion is off).
+      if (tgt.time - disp.time > GAP_BREAK_S) {
+        series.update({ time: (disp.time + 1) as UTCTimestamp });
+        disp = { time: tgt.time, value: tgt.value };
+      } else {
+        disp = { time: tgt.time, value: animate ? disp.value : tgt.value };
+      }
+    } else {
+      // Same second: ease the value toward the tick (or snap when motion is off).
+      const next = animate ? disp.value + (tgt.value - disp.value) * LERP : tgt.value;
+      disp = { time: disp.time, value: Math.abs(tgt.value - next) < SETTLE_USD ? tgt.value : next };
+    }
+    dispRef.current = disp;
+
+    // Write the leading point only when it actually moved (advanced a second or
+    // shifted more than the epsilon) — avoids 60fps no-op churn once it settles.
+    let wrote = false;
+    if (disp.time !== writtenTimeRef.current || Math.abs(disp.value - writtenValRef.current) >= WRITE_EPS_USD) {
+      series.update({ time: disp.time as UTCTimestamp, value: disp.value });
+      writtenTimeRef.current = disp.time;
+      writtenValRef.current = disp.value;
+      wrote = true;
+    }
+
+    // Keep the pulse on the leading point. A series write already repainted, so
+    // reposition it then; when idle, still repaint at ~30fps so the ring animates.
+    if (pulse) {
+      const now = performance.now();
+      if (wrote) {
+        pulse.setPoint(disp.time as UTCTimestamp, disp.value);
+        lastPulseRef.current = now;
+      } else if (animate && now - lastPulseRef.current >= PULSE_MS) {
+        pulse.setPoint(disp.time as UTCTimestamp, disp.value);
+        lastPulseRef.current = now;
+      }
+    }
+  }, []);
 
   // Create the chart once.
   useEffect(() => {
@@ -246,11 +321,15 @@ export function V2PriceChart({
     series.attachPrimitive(band);
     const winZone = new WinZonePrimitive();
     series.attachPrimitive(winZone);
+    // The live-edge pulse dot rides on top of everything.
+    const pulse = new LivePulsePrimitive();
+    series.attachPrimitive(pulse);
 
     chartRef.current = chart;
     seriesRef.current = series;
     bandRef.current = band;
     winZoneRef.current = winZone;
+    pulseRef.current = pulse;
     return () => {
       chart.remove();
       chartRef.current = null;
@@ -261,6 +340,7 @@ export function V2PriceChart({
       higherLineRef.current = null;
       bandRef.current = null;
       winZoneRef.current = null;
+      pulseRef.current = null;
     };
   }, []);
 
@@ -271,7 +351,20 @@ export function V2PriceChart({
     const points = toSeries(historyQ.data);
     if (!points.length) return;
     series.setData(points);
-    lastTimeRef.current = points[points.length - 1].time as number;
+    // Resync the live engine to the fresh history tail. Keep any newer live point
+    // ahead of it (a 30s refetch trails the ~1.5s live edge), so the glide/dot
+    // don't jump backward; otherwise seed both from the tail.
+    const last = points[points.length - 1];
+    const tail = 'value' in last ? { time: last.time as number, value: last.value } : null;
+    if (tail) {
+      if (!targetRef.current || targetRef.current.time <= tail.time) {
+        targetRef.current = { ...tail };
+        dispRef.current = { ...tail };
+      }
+      writtenTimeRef.current = tail.time;
+      writtenValRef.current = 'value' in last ? last.value : 0;
+      renderLive(); // re-place the (possibly newer) live point on top of history
+    }
     // Adapt the axis labels to the actual window: minute labels read cleanest
     // (legacy parity), but collapse to duplicates once ticks fall closer than a
     // minute apart — so only show seconds when the window is short (< ~8 min,
@@ -285,29 +378,63 @@ export function V2PriceChart({
       chartRef.current?.timeScale().scrollToRealTime();
       fittedRef.current = true;
     }
-  }, [historyQ.data]);
+  }, [historyQ.data, renderLive]);
 
-  // Append the live tick (update, not setData — no zoom reset). Same per-second
-  // bucket + single clock as the history, so an intra-second tick REPLACES the
-  // current second's point (smooth live edge) and each new second advances it —
-  // legacy parity. Sub-second resolution here is what caused the jitter.
+  // Ingest the live tick: set the engine's TARGET (the freshest per-second value);
+  // the rAF loop glides the drawn edge toward it. When motion is off (reduced-
+  // motion), there's no loop, so render the snap right here. The per-second bucket
+  // + single clock match the history, so an intra-second tick refines the current
+  // second and each new second advances the edge (legacy parity).
   useEffect(() => {
-    const series = seriesRef.current;
     const d = latestQ.data;
-    if (!series || !d) return;
+    if (!d) return;
     const v = pythSpot(d);
     const ms = obsMs(d);
     if (v == null || ms == null) return;
-    const t = Math.floor(ms / 1000); // one point per second, same as the history
-    if (t < lastTimeRef.current) return; // can't update an older point
-    // Feed just resumed after a gap: break the line first (same rule as history)
-    // so the live edge doesn't bridge the stall with a fake segment.
-    if (lastTimeRef.current > 0 && t - lastTimeRef.current > GAP_BREAK_S) {
-      series.update({ time: (lastTimeRef.current + 1) as UTCTimestamp });
-    }
-    series.update({ time: t as UTCTimestamp, value: v });
-    lastTimeRef.current = t;
-  }, [latestQ.data]);
+    const t = Math.floor(ms / 1000);
+    if (targetRef.current && t < targetRef.current.time) return; // never go backward
+    targetRef.current = { time: t, value: v };
+    if (!animateRef.current) renderLive();
+  }, [latestQ.data, renderLive]);
+
+  // The animation loop that powers the glide + pulse. Runs only when motion is
+  // allowed AND the tab is visible: reduced-motion users get a static dot and
+  // snapped ticks (handled in the tick effect), and a hidden tab burns no frames.
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const start = () => {
+      if (rafRef.current != null) return;
+      const frame = () => {
+        renderLive();
+        rafRef.current = requestAnimationFrame(frame);
+      };
+      rafRef.current = requestAnimationFrame(frame);
+    };
+    const stop = () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+    const apply = () => {
+      const motion = !mq.matches;
+      animateRef.current = motion;
+      pulseRef.current?.setAnimate(motion);
+      if (motion && !document.hidden) start();
+      else {
+        stop();
+        renderLive(); // keep the edge current even without the loop
+      }
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    document.addEventListener('visibilitychange', apply);
+    return () => {
+      stop();
+      mq.removeEventListener('change', apply);
+      document.removeEventListener('visibilitychange', apply);
+    };
+  }, [renderLive]);
 
   // Draw the ticket's selection: binary = dashed strike line + win-zone shade;
   // range = the shaded band between the edges, marked with labeled "range start"

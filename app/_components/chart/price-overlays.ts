@@ -6,6 +6,7 @@
  * overlay that would drift). Deployment-agnostic — they only speak prices.
  */
 import type {
+  IChartApi,
   ISeriesApi,
   ISeriesPrimitive,
   IPrimitivePaneView,
@@ -194,6 +195,151 @@ class WinZoneRenderer implements IPrimitivePaneRenderer {
       ctx.fillStyle = this._isUp ? ZONE_UP_FILL : ZONE_DOWN_FILL;
       if (this._isUp) ctx.fillRect(0, 0, w, y); // win zone is ABOVE the strike
       else ctx.fillRect(0, y, w, h - y); // …or BELOW it
+    });
+  }
+}
+
+// The live-edge marker's brand colour (matches the up/area line). Kept as an
+// "r,g,b" triple so the glow/ring can vary only the alpha.
+const PULSE_RGB = '77, 214, 176';
+const PULSE_CORE = '#4dd6b0';
+
+/**
+ * A glowing, softly pulsing dot pinned to the chart's live edge — the "you are
+ * here, and it's live" marker. Positioned at an arbitrary (time, value), so the
+ * chart can glide it smoothly between ticks (see the price chart's lerp engine)
+ * and it always sits exactly on the line's leading point.
+ *
+ * Unlike the band/win-zone (which pin to the price scale only), this reads the
+ * time scale too — its x comes from `chart.timeScale().timeToCoordinate(time)` —
+ * so it tracks horizontally as the live edge advances and as the user scrolls.
+ * The expanding ring is time-based (`Date.now()`), so it animates as long as
+ * something requests repaints; `setAnimate(false)` freezes it to a static dot for
+ * reduced-motion. `setPoint(null, null)` hides it.
+ */
+export class LivePulsePrimitive implements ISeriesPrimitive<Time> {
+  private _series: ISeriesApi<'Area'> | null = null;
+  private _chart: IChartApi | null = null;
+  private _requestUpdate?: () => void;
+  private _time: Time | null = null;
+  private _value: number | null = null;
+  private _animate = true;
+  private readonly _view = new LivePulsePaneView(this);
+
+  attached(p: SeriesAttachedParameter<Time>) {
+    this._series = p.series as ISeriesApi<'Area'>;
+    this._chart = p.chart;
+    this._requestUpdate = p.requestUpdate;
+  }
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+  updateAllViews() {
+    this._view.update();
+  }
+  paneViews() {
+    return [this._view];
+  }
+
+  /** Move the dot to (time, value); pass nulls to hide. Requests a repaint — which
+   *  is also what advances the pulse animation each frame. */
+  setPoint(time: Time | null, value: number | null) {
+    this._time = time;
+    this._value = value;
+    this._requestUpdate?.();
+  }
+  setAnimate(on: boolean) {
+    this._animate = on;
+    this._requestUpdate?.();
+  }
+
+  get series() {
+    return this._series;
+  }
+  get chart() {
+    return this._chart;
+  }
+  get time() {
+    return this._time;
+  }
+  get value() {
+    return this._value;
+  }
+  get animate() {
+    return this._animate;
+  }
+}
+
+class LivePulsePaneView implements IPrimitivePaneView {
+  private _x: number | null = null;
+  private _y: number | null = null;
+  constructor(private readonly _source: LivePulsePrimitive) {}
+  update() {
+    const s = this._source.series;
+    const c = this._source.chart;
+    if (!s || !c || this._source.time == null || this._source.value == null) {
+      this._x = null;
+      this._y = null;
+      return;
+    }
+    this._x = c.timeScale().timeToCoordinate(this._source.time);
+    this._y = s.priceToCoordinate(this._source.value);
+  }
+  zOrder() {
+    return 'top' as const;
+  }
+  renderer(): IPrimitivePaneRenderer {
+    return new LivePulseRenderer(this._x, this._y, this._source.animate);
+  }
+}
+
+class LivePulseRenderer implements IPrimitivePaneRenderer {
+  constructor(
+    private readonly _x: number | null,
+    private readonly _y: number | null,
+    private readonly _animate: boolean,
+  ) {}
+  draw(target: RenderTarget) {
+    if (this._x == null || this._y == null) return;
+    target.useBitmapCoordinateSpace((scope) => {
+      const ctx = scope.context;
+      const ratio = scope.horizontalPixelRatio;
+      const cx = this._x! * scope.horizontalPixelRatio;
+      const cy = this._y! * scope.verticalPixelRatio;
+      const r = (px: number) => px * ratio; // media px → bitmap px (uniform)
+      ctx.save();
+      // Expanding, fading pulse ring — one cycle every PERIOD ms, radius growing
+      // outward from the core while its alpha falls to zero.
+      if (this._animate) {
+        const PERIOD = 1700;
+        const t = (Date.now() % PERIOD) / PERIOD; // 0 → 1
+        ctx.beginPath();
+        ctx.arc(cx, cy, r(4) + t * r(11), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${PULSE_RGB}, ${(1 - t) * 0.4})`;
+        ctx.lineWidth = Math.max(1, r(1));
+        ctx.stroke();
+      }
+      // Soft radial glow under the core.
+      const glowR = r(9);
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+      glow.addColorStop(0, `rgba(${PULSE_RGB}, 0.45)`);
+      glow.addColorStop(1, `rgba(${PULSE_RGB}, 0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
+      ctx.fill();
+      // Solid core + a bright centre so it reads as a live indicator, not a plot dot.
+      ctx.fillStyle = PULSE_CORE;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r(3), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r(1.1), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     });
   }
 }
