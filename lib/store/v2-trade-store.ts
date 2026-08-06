@@ -19,6 +19,14 @@ import { toQuote } from '@/config/scale';
 
 export type V2TradeMode = 'binary' | 'range';
 
+/** Context for a trade opened from a shared link (see use-v2-open-shared-trade):
+ *  who set it up, and any plain-language notes about what re-resolution changed.
+ *  Drives the "your friend set this up" banner on the ticket. */
+export interface SharedTradeContext {
+  ref?: string;
+  adjustments: string[];
+}
+
 /** The stake a fresh ticket seeds with, before we know the wallet balance. */
 export const STARTER_DEFAULT_STAKE = 10;
 /** Starter presets, biggest-first, used to right-size the default down. */
@@ -71,6 +79,11 @@ interface V2TradeState {
    *  lives in the always-visible right rail there). Mirrors surface-store. */
   ticketSheetOpen: boolean;
 
+  /** Set when this selection was loaded from a shared trade link; null otherwise.
+   *  Cleared whenever the user picks a different market (selectMarket) or dismisses
+   *  the ticket banner. */
+  sharedContext: SharedTradeContext | null;
+
   /** Select a market. `pinned` defaults to true (an explicit user pick); the
    *  auto-advancer passes false so its selections keep tracking the soonest. */
   selectMarket: (id: string, pinned?: boolean) => void;
@@ -97,6 +110,8 @@ interface V2TradeState {
   /** Mobile: open / close the slide-up trade-ticket sheet. */
   openTicketSheet: () => void;
   closeTicketSheet: () => void;
+  /** Attach / clear the shared-link context for the current selection. */
+  setSharedContext: (ctx: SharedTradeContext | null) => void;
 }
 
 export const useV2TradeStore = create<V2TradeState>((set) => ({
@@ -114,12 +129,23 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   fill: null,
   focus: null,
   ticketSheetOpen: false,
+  sharedContext: null,
 
   // Switching markets drops the pinned strike/band (a $63k strike is meaningless
   // on a different expiry's grid); the new market defaults to its own ATM until
-  // the user picks a level.
+  // the user picks a level. Also clears any shared-link banner — a different
+  // market means the trader has moved on from the friend's setup. (The shared-trade
+  // handoff sets sharedContext AFTER selectMarket, so it survives that one call.)
   selectMarket: (marketId, pinned = true) =>
-    set({ marketId, marketPinned: pinned, strikePrice: null, rangeLowerPrice: null, rangeHigherPrice: null, rangeAnchorPrice: null }),
+    set({
+      marketId,
+      marketPinned: pinned,
+      strikePrice: null,
+      rangeLowerPrice: null,
+      rangeHigherPrice: null,
+      rangeAnchorPrice: null,
+      sharedContext: null,
+    }),
   // Leaving range mode abandons a half-built band (legacy setTicketMode parity).
   setMode: (mode) => set(mode === 'binary' ? { mode, rangeAnchorPrice: null } : { mode }),
   setIsUp: (isUp) => set({ isUp }),
@@ -153,4 +179,5 @@ export const useV2TradeStore = create<V2TradeState>((set) => ({
   pulseFocus: (f) => set({ focus: { ...f, ts: Date.now() } }),
   openTicketSheet: () => set({ ticketSheetOpen: true }),
   closeTicketSheet: () => set({ ticketSheetOpen: false }),
+  setSharedContext: (sharedContext) => set({ sharedContext }),
 }));

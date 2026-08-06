@@ -50,6 +50,7 @@ import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, 
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
+import { SharedTradeBanner } from './share/shared-trade-banner';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { GlassError } from '@/app/_components/ui/glass-error';
 import { DirectionToggle } from '@/app/_components/ticket/direction-toggle';
@@ -644,6 +645,7 @@ export function V2TradeTicket({
 
   return (
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
+      <SharedTradeBanner />
       {grantCta}
       {/* Back to step 1 to change the strike (read-only on the bet step). Sits at
           the very top, above the guide, so it's the first thing on the bet step. */}
