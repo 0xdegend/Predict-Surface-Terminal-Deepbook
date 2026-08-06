@@ -191,3 +191,8 @@ export function recipeLabel(recipe: TradeRecipe): string {
   const tail = `${usd(recipe.stake)}${recipe.lev > 1 ? ` · ${recipe.lev}x` : ''}`;
   return `${head} · ${tail}`;
 }
+
+/** The sender's post copy for X / Telegram / WhatsApp. Plain, no em-dashes. */
+export function recipeShareText(recipe: TradeRecipe): string {
+  return `I set up a trade on Skew: ${recipeLabel(recipe)}. Open it and place it in a tap.`;
+}

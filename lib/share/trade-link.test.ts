@@ -5,6 +5,7 @@ import {
   normalizeRecipe,
   buildRecipe,
   recipeLabel,
+  recipeShareText,
   RECIPE_VERSION,
   type TradeRecipe,
 } from './trade-link';
@@ -150,5 +151,11 @@ describe('recipeLabel', () => {
 
   it('labels a range', () => {
     expect(recipeLabel(range)).toBe('BTC between $88,000 and $94,000 · $25');
+  });
+});
+
+describe('recipeShareText', () => {
+  it('wraps the label in the sender post copy', () => {
+    expect(recipeShareText(binary)).toBe('I set up a trade on Skew: BTC above $91,480 · $50 · 2x. Open it and place it in a tap.');
   });
 });

@@ -7,19 +7,39 @@
  * ticket. If every market of the recipe's shape has rolled over, it offers the live
  * markets instead of dead-ending.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useV2OpenSharedTrade } from '@/lib/hooks/use-v2-open-shared-trade';
 import type { TradeRecipe } from '@/lib/share/trade-link';
+
+/** Fire-and-forget attribution ping; never blocks or throws into the flow. */
+function beacon(kind: 'open' | 'convert', ref?: string) {
+  try {
+    fetch('/api/share/event', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind, ref }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
 
 export function OpenSharedTrade({ recipe }: { recipe: TradeRecipe }) {
   const { openSharedTrade } = useV2OpenSharedTrade();
   const [state, setState] = useState<'idle' | 'loading' | 'nomarket'>('idle');
 
+  // Landing viewed on a JS-running client → a real "open" (bots don't run this).
+  useEffect(() => {
+    beacon('open', recipe.ref);
+  }, [recipe.ref]);
+
   async function go() {
     setState('loading');
     const res = await openSharedTrade(recipe); // routes to /v2 on success
-    if (!res.ok) setState('nomarket');
+    if (res.ok) beacon('convert', recipe.ref);
+    else setState('nomarket');
   }
 
   if (state === 'nomarket') {

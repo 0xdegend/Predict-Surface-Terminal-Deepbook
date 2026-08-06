@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { LuExternalLink, LuArrowUpRight } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
@@ -28,6 +29,7 @@ export function MintSuccessModal({
   digest,
   network,
   positionsHref,
+  extraAction,
 }: {
   open: boolean;
   onClose: () => void;
@@ -45,6 +47,8 @@ export function MintSuccessModal({
   network: SuiNetwork;
   /** Where "View positions" should send the trader (differs by deployment). */
   positionsHref: string;
+  /** Optional extra action rendered under the money line (e.g. "Share this trade"). */
+  extraAction?: ReactNode;
 }) {
   const toneText = tone === 'up' ? 'text-up' : 'text-down';
   const explorer = digest ? `https://suiscan.xyz/${network}/tx/${digest}` : null;
@@ -110,6 +114,8 @@ export function MintSuccessModal({
             <span className={`text-[14px] font-semibold ${toneText}`}>{maxWin}</span>
           </div>
         </div>
+
+        {extraAction}
 
         {explorer && (
           <a

@@ -27,7 +27,8 @@
  * modal (MintSuccessModal), reusing both deployment-agnostic components. No async
  * re-quote step: v2 pricing is synchronous off the live Pricer every render.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { LuShare2 } from 'react-icons/lu';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
@@ -38,7 +39,7 @@ import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
 import { dateUTC, countdown, pct, signed, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
-import { isClosingSoon, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { isClosingSoon, isTooCloseToExpiry, cadenceOf } from '@/lib/markets/v2-discovery';
 import {
   snapStrikeToAdmission,
   binaryTicks,
@@ -51,6 +52,8 @@ import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
 import { SharedTradeBanner } from './share/shared-trade-banner';
+import { TradeShareModal } from './share/trade-share-modal';
+import { buildRecipe } from '@/lib/share/trade-link';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { GlassError } from '@/app/_components/ui/glass-error';
 import { DirectionToggle } from '@/app/_components/ticket/direction-toggle';
@@ -121,7 +124,29 @@ export function V2TradeTicket({
   });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [showCostDetails, setShowCostDetails] = useState(false);
+
+  // The current trade as a shareable, ref-less recipe (the share modal folds in the
+  // sender's name). Null until the config is complete enough to share: a range needs
+  // both edges; a binary is shareable with or without a pinned strike. Guarded on
+  // `market` because this runs before the no-market early return below.
+  const shareBase = useMemo(
+    () =>
+      market
+        ? buildRecipe({
+            tenor: cadenceOf(market),
+            mode,
+            isUp,
+            strike: strikePrice,
+            lower: rangeLowerPrice,
+            higher: rangeHigherPrice,
+            stake,
+            lev: leverage,
+          })
+        : null,
+    [market, mode, isUp, strikePrice, rangeLowerPrice, rangeHigherPrice, stake, leverage],
+  );
   // Two-step guided flow (legacy parity): 1 = side & level, 2 = bet (+ review
   // modal). An external pick (surface / market card) jumps straight to step 2.
   const [step, setStep] = useState<1 | 2>(1);
@@ -603,6 +628,15 @@ export function V2TradeTicket({
         You’ll preview the trade next; cost is an estimate. Your wallet shows the exact amount
         before you approve.
       </p>
+      {shareBase && (
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-line py-2 text-[11px] font-medium text-text-2 transition-colors hover:border-white/20 hover:text-text-1"
+        >
+          <LuShare2 size={12} /> Share this trade with a friend
+        </button>
+      )}
     </>
   );
 
@@ -897,8 +931,24 @@ export function V2TradeTicket({
           digest={mintSuccess.digest}
           network={predictV2Config.network}
           positionsHref="/v2/portfolio"
+          extraAction={
+            shareBase ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMintSuccess(null);
+                  setShareOpen(true);
+                }}
+                className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-line py-2.5 text-[12px] font-medium text-text-1 transition-colors hover:border-white/20"
+              >
+                <LuShare2 size={13} /> Share this trade with a friend
+              </button>
+            ) : undefined
+          }
         />
       )}
+
+      <TradeShareModal open={shareOpen} onClose={() => setShareOpen(false)} base={shareBase} />
 
       {/* Starter-grant confirmation — a gasless, popup-less drip is easy to miss
           on a toast alone (mirrors legacy). */}
