@@ -24,6 +24,22 @@ export type OpenSharedResult =
   | { ok: true; adjustments: string[]; ref?: string }
   | { ok: false; reason: 'no_market' };
 
+/**
+ * Is a live market currently available for this recipe, with enough runway to place?
+ * The landing page calls this on mount so it can show a "this market has closed" state
+ * upfront instead of a button that dead-ends. A plain module function (no hooks) so it
+ * is a stable import. The actual open re-resolves authoritatively, so a market that
+ * rolls between this check and the tap is still handled by openSharedTrade.
+ */
+export async function checkSharedTradeAvailable(recipe: TradeRecipe): Promise<boolean> {
+  try {
+    const markets = await getV2Markets(100);
+    return resolveRecipe(recipe, markets).ok;
+  } catch {
+    return false;
+  }
+}
+
 export function useV2OpenSharedTrade() {
   const router = useRouter();
   const selectMarket = useV2TradeStore((s) => s.selectMarket);

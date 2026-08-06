@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRecipe } from './resolve-recipe';
+import { resolveRecipe, SHARE_MIN_RUNWAY_MS } from './resolve-recipe';
 import type { TradeRecipe } from './trade-link';
 import type { V2Market } from '@/lib/api/v2/types';
 
@@ -64,7 +64,7 @@ const binary = (over: Partial<TradeRecipe> = {}): TradeRecipe => ({
 
 describe('resolveRecipe — market selection', () => {
   it('resolves a binary recipe onto the current 1m market', () => {
-    const res = resolveRecipe(binary(), [oneM('1m-a', 40)], NOW);
+    const res = resolveRecipe(binary(), [oneM('1m-a', 120)], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade).toMatchObject({ marketId: '1m-a', mode: 'binary', isUp: true, strike: 91480, lev: 2 });
@@ -72,12 +72,12 @@ describe('resolveRecipe — market selection', () => {
   });
 
   it('skips a market too close to expiry and picks the next of that tenor', () => {
-    const res = resolveRecipe(binary(), [oneM('1m-soon', 2), oneM('1m-ok', 40)], NOW);
+    const res = resolveRecipe(binary(), [oneM('1m-soon', 2), oneM('1m-ok', 120)], NOW);
     expect(res.ok && res.trade.marketId).toBe('1m-ok');
   });
 
   it('picks the soonest when several of the tenor are live', () => {
-    const res = resolveRecipe(binary(), [oneM('later', 55), oneM('sooner', 30)], NOW);
+    const res = resolveRecipe(binary(), [oneM('later', 180), oneM('sooner', 90)], NOW);
     expect(res.ok && res.trade.marketId).toBe('sooner');
   });
 
@@ -88,7 +88,7 @@ describe('resolveRecipe — market selection', () => {
   });
 
   it('falls back to another tenor with a note when the requested one is absent', () => {
-    const res = resolveRecipe(binary({ tenor: '5m' }), [oneM('1m-a', 40)], NOW);
+    const res = resolveRecipe(binary({ tenor: '5m' }), [oneM('1m-a', 120)], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade.marketId).toBe('1m-a');
@@ -96,15 +96,33 @@ describe('resolveRecipe — market selection', () => {
   });
 
   it('honours the requested tenor when multiple families are live', () => {
-    const res = resolveRecipe(binary({ tenor: '1h' }), [oneM('1m-a', 30), fiveM('5m-a', 90), oneH('1h-a', 300)], NOW);
+    const res = resolveRecipe(binary({ tenor: '1h' }), [oneM('1m-a', 120), fiveM('5m-a', 120), oneH('1h-a', 300)], NOW);
     expect(res.ok && res.trade.marketId).toBe('1h-a');
     expect(res.ok && res.trade.adjustments).toEqual([]);
   });
 });
 
+describe('resolveRecipe — share runway gate', () => {
+  it('requires a one-minute minimum runway', () => {
+    expect(SHARE_MIN_RUNWAY_MS).toBe(60_000);
+  });
+
+  it('skips a market with under a minute left for one with real runway', () => {
+    // 30s is well past the few-second too-close guard, but too short for a recipient to
+    // connect and confirm, so a shared link should not open onto it.
+    const res = resolveRecipe(binary(), [oneM('1m-30s', 30), oneM('1m-90s', 90)], NOW);
+    expect(res.ok && res.trade.marketId).toBe('1m-90s');
+  });
+
+  it('returns no_market when every live market has under a minute left', () => {
+    const res = resolveRecipe(binary(), [oneM('1m-30s', 30), fiveM('5m-45s', 45)], NOW);
+    expect(res).toEqual({ ok: false, reason: 'no_market' });
+  });
+});
+
 describe('resolveRecipe — leverage', () => {
   it('clamps leverage to the market max and notes it', () => {
-    const res = resolveRecipe(binary({ lev: 5 }), [oneM('1m-a', 40)], NOW);
+    const res = resolveRecipe(binary({ lev: 5 }), [oneM('1m-a', 120)], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade.lev).toBe(3);
@@ -114,7 +132,7 @@ describe('resolveRecipe — leverage', () => {
 
 describe('resolveRecipe — strike / band snapping', () => {
   it('leaves an omitted strike null (follow ATM)', () => {
-    const res = resolveRecipe(binary({ strike: undefined }), [oneM('1m-a', 40)], NOW);
+    const res = resolveRecipe(binary({ strike: undefined }), [oneM('1m-a', 120)], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade.strike).toBeNull();
@@ -122,13 +140,13 @@ describe('resolveRecipe — strike / band snapping', () => {
   });
 
   it('does not warn for negligible sub-dollar snapping on the $1 grid', () => {
-    const res = resolveRecipe(binary({ strike: 91480.4 }), [oneM('1m-a', 40)], NOW);
+    const res = resolveRecipe(binary({ strike: 91480.4 }), [oneM('1m-a', 120)], NOW);
     expect(res.ok && res.trade.strike).toBe(91480);
     expect(res.ok && res.trade.adjustments).toEqual([]);
   });
 
   it('snaps a strike to a coarse grid and notes the move', () => {
-    const res = resolveRecipe(binary({ strike: 91480 }), [oneM('1m-a', 40, { admission_tick_size: '100000000000' })], NOW); // $100 grid
+    const res = resolveRecipe(binary({ strike: 91480 }), [oneM('1m-a', 120, { admission_tick_size: '100000000000' })], NOW); // $100 grid
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade.strike).toBe(91500);
@@ -137,7 +155,7 @@ describe('resolveRecipe — strike / band snapping', () => {
 
   it('snaps a range band and keeps lower < higher', () => {
     const recipe: TradeRecipe = { v: 1, tenor: '1m', mode: 'range', lower: 91480, higher: 92030, stake: 25, lev: 1 };
-    const res = resolveRecipe(recipe, [oneM('1m-a', 40, { admission_tick_size: '100000000000' })], NOW);
+    const res = resolveRecipe(recipe, [oneM('1m-a', 120, { admission_tick_size: '100000000000' })], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade).toMatchObject({ lower: 91500, higher: 92000 });
@@ -146,7 +164,7 @@ describe('resolveRecipe — strike / band snapping', () => {
 
   it('widens a band whose edges snap to the same tick', () => {
     const recipe: TradeRecipe = { v: 1, tenor: '1m', mode: 'range', lower: 91480, higher: 91490, stake: 25, lev: 1 };
-    const res = resolveRecipe(recipe, [oneM('1m-a', 40, { admission_tick_size: '100000000000' })], NOW);
+    const res = resolveRecipe(recipe, [oneM('1m-a', 120, { admission_tick_size: '100000000000' })], NOW);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.trade.lower).toBe(91500);

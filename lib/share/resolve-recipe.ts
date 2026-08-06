@@ -6,8 +6,9 @@
  * market of the same cadence.
  *
  * What it does, and deliberately does not:
- *  - Picks the soonest still-mintable market of the recipe's tenor (falling back to
- *    the soonest of any tenor, with a note, if that family has none right now).
+ *  - Picks the soonest market of the recipe's tenor that still has real runway to open
+ *    (see SHARE_MIN_RUNWAY_MS), falling back to the soonest of any tenor, with a note,
+ *    if that family has none right now.
  *  - Snaps the strike / band edges onto that market's admission grid.
  *  - Clamps leverage to what the market admits.
  *  - Records plain-language `adjustments` for anything it changed, so the recipient
@@ -26,6 +27,15 @@ import { activeMarkets, cadenceOf, isTooCloseToExpiry, maxLeverageX, CADENCE_LAB
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { toFloat, fromFloat } from '@/config/scale';
 import type { TradeRecipe, RecipeMode } from './trade-link';
+
+/**
+ * Shared opens need real runway on the resolved market: the recipient still has to
+ * connect (possibly sign in for the first time) and confirm, so a shared link only
+ * opens onto a market with MORE than this much time left, even though a shorter one is
+ * technically still mintable. Several markets of each tenor run at once, so one almost
+ * always clears this bar, even for the 1-minute tenor.
+ */
+export const SHARE_MIN_RUNWAY_MS = 60_000;
 
 export interface ResolvedTrade {
   marketId: string;
@@ -53,8 +63,12 @@ const usd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
 
 /** Re-resolve a recipe onto the current live markets. `now` injectable for tests. */
 export function resolveRecipe(recipe: TradeRecipe, markets: V2Market[], now: number = Date.now()): ResolveResult {
-  // Only markets a mint can still safely land in before expiry.
-  const tradeable = activeMarkets(markets, now).filter((m) => !isTooCloseToExpiry(m, now));
+  // Only markets a mint can still safely land in before expiry, AND with enough runway
+  // for a link recipient to connect and confirm (SHARE_MIN_RUNWAY_MS) — not one that is
+  // seconds from rolling.
+  const tradeable = activeMarkets(markets, now).filter(
+    (m) => !isTooCloseToExpiry(m, now) && m.expiry - now > SHARE_MIN_RUNWAY_MS,
+  );
   if (!tradeable.length) return { ok: false, reason: 'no_market' };
 
   const adjustments: string[] = [];
