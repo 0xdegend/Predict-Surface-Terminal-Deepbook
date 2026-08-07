@@ -15,8 +15,15 @@
  * market roster and folding in the connected + featured wallets' full history; the
  * Skew board comes from the same route (its 6-24 GraphQL scan).
  *
- * Server-data only (the wallet is just for the "you" merge + highlight), so it renders
- * for any visitor.
+ * 7-29+: the indexer bot-immune-seeds only code/legacy/featured owners, so a FRESH
+ * connected wallet can still be buried by the high-frequency bot in the backfill
+ * window and miss the venue board. We guarantee "you always see yourself": fetch the
+ * connected wallet's own history by tx-sender (whale-immune) and fold its computed
+ * row into `all` when the indexer didn't already include it (the indexer row wins if
+ * present — it carries complete history + live open-position holding time).
+ *
+ * Server-data only for anyone else (the wallet is just for the "you" merge + highlight),
+ * so it renders for any visitor.
  */
 import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
@@ -27,7 +34,7 @@ import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
 import { predictV2Config, V2_IS_729_PLUS } from '@/config/predict';
 import { aggregateV2Leaderboard } from '@/lib/leaderboard/v2-aggregate';
-import type { V2LeaderboardRow } from '@/lib/leaderboard/v2';
+import { sortV2Rows, type V2LeaderboardRow } from '@/lib/leaderboard/v2';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 /** 7-29 reads finished boards from the indexer route; the fan-out below is 6-24 only. */
@@ -121,6 +128,24 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     placeholderData: keepPreviousData,
   });
 
+  // 7-29+ ONLY: the connected wallet's OWN standing, computed from its full history
+  // read by tx-sender (bot-immune). Folded into `all` below so a fresh trader the
+  // indexer hasn't captured yet still finds themselves on the venue board. Uses the
+  // exact points formula the boards use (aggregateV2Leaderboard), so a self-row and an
+  // indexer row for the same wallet are identical.
+  const selfQ = useQuery<V2LeaderboardRow[]>({
+    queryKey: ['v2', 'leaderboard', 'self', accountId ?? '', acct.owner ?? ''] as const,
+    enabled: IS_729 && !!accountId && !!acct.owner,
+    queryFn: async ({ signal }) => {
+      const orders = await getAccountOrders(accountId!, acct.owner!, 500, { signal });
+      if (orders.length === 0) return [];
+      // Market bucketing is irrelevant here (aggregate flattens all events) — one bucket.
+      return aggregateV2Leaderboard(new Map([['self', orders]]), predictV2Config.builderCodeId, Date.now());
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
   // 6-24 ONLY: reconstruct the venue board client-side from the per-market fan-out +
   // the connected/featured wallets' full history. Disabled on 7-29 (indexer serves it).
   const q = useQuery<V2LeaderboardRow[]>({
@@ -184,11 +209,19 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     placeholderData: keepPreviousData,
   });
 
-  // The venue board: from the indexer on 7-29, from the client fan-out on 6-24.
-  const rows = useMemo(
-    () => (IS_729 ? (boardsQ.data?.all ?? []) : (q.data ?? [])),
-    [boardsQ.data, q.data],
-  );
+  // The venue board: from the indexer on 7-29, from the client fan-out on 6-24. On
+  // 7-29+, fold in the connected wallet's self-row when the indexer hasn't captured it
+  // yet (the indexer row wins if present — complete history + live holding time), so a
+  // fresh trader always appears. Re-sorted by points to keep the ranking well-ordered.
+  const rows = useMemo(() => {
+    if (!IS_729) return q.data ?? [];
+    const all = boardsQ.data?.all ?? [];
+    const self = selfQ.data ?? [];
+    if (self.length === 0) return all;
+    const have = new Set(all.map((r) => r.owner.toLowerCase()));
+    const missing = self.filter((r) => !have.has(r.owner.toLowerCase()));
+    return missing.length ? sortV2Rows([...all, ...missing], 'points') : all;
+  }, [boardsQ.data, q.data, selfQ.data]);
   const skewRows = useMemo(() => boardsQ.data?.skew ?? [], [boardsQ.data]);
 
   const allLoading = IS_729 ? boardsQ.isLoading : q.isLoading;
