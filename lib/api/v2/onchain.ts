@@ -1,10 +1,10 @@
 /**
- * lib/api/v2/onchain.ts — the 7-29 read layer.
+ * lib/api/v2/onchain.ts — the on-chain read layer (7-29 and 8-06).
  *
- * The 7-29 deployment has NO HTTP indexer, so these functions reconstruct the same
+ * These deployments have NO HTTP indexer, so these functions reconstruct the same
  * shapes the beta indexer returned (V2Market, PythObservation) directly from the
  * chain's own event index via `suix_queryEvents`. They are dispatched to from
- * client.ts when ACTIVE_V2_DEPLOYMENT === '7-29', behind the identical function
+ * client.ts when `V2_IS_729_PLUS` (7-29 / 8-06), behind the identical function
  * signatures and TanStack keys, so no consumer or UI changes.
  *
  * Pure functions (no React) — work from Server Components, queryFns, and scripts.

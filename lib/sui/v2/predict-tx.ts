@@ -11,7 +11,7 @@
  * by mint and consumed by redeem. `Auth` is consumed per call — see account.ts.
  */
 import { Transaction } from '@mysten/sui/transactions';
-import { predictV2Config, v2Target, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { predictV2Config, v2Target, V2_IS_729_PLUS } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import { addGenerateAuth, addDeposit } from './account';
 import { addSetBuilderCode } from './builder-code';
@@ -129,7 +129,7 @@ export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
       tx.pure.u64(p.leverage),
       // 7-29 inserted an all-in cost cap here; 6-24 has no such arg. Default U64_MAX
       // (no cap) keeps 6-24 behavior parity — the `amount` budget already bounds spend.
-      ...(ACTIVE_V2_DEPLOYMENT === '7-29' ? [tx.pure.u64(p.maxCost ?? U64_MAX)] : []),
+      ...(V2_IS_729_PLUS ? [tx.pure.u64(p.maxCost ?? U64_MAX)] : []),
       tx.object(c().accumulatorRootId),
       tx.object(c().clockId),
     ],
@@ -167,7 +167,7 @@ export function buildRedeemLiveTx(p: RedeemParams): Transaction {
       tx.pure.u64(p.closeQuantity),
       // 7-29 inserted close-side slippage floors here; 6-24 has neither. Default 0
       // (no floor) keeps 6-24 behavior parity.
-      ...(ACTIVE_V2_DEPLOYMENT === '7-29'
+      ...(V2_IS_729_PLUS
         ? [tx.pure.u64(p.minProbability ?? 0n), tx.pure.u64(p.minProceeds ?? 0n)]
         : []),
       tx.object(c().accumulatorRootId),
@@ -192,7 +192,7 @@ export function buildRedeemLiveTx(p: RedeemParams): Transaction {
  */
 export function buildRedeemSettledTx(p: RedeemParams): Transaction {
   const tx = new Transaction();
-  if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+  if (V2_IS_729_PLUS) {
     const auth = addGenerateAuth(tx);
     tx.moveCall({
       target: v2Target('expiry_market', 'redeem_settled'),

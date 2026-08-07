@@ -10,7 +10,7 @@
  * /market-orders, /supply-requests endpoints currently 404 — they're portfolio/LP
  * concerns wired up in Phases 2–3. Phase 1 only needs markets + status + pyth.
  */
-import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { predictV2Config, V2_IS_729_PLUS } from '@/config/predict';
 import { PredictApiError } from '@/lib/api/client';
 import {
   onchainMarkets,
@@ -84,17 +84,17 @@ const synthStatus = (): V2Status => ({
 });
 
 export const getV2Status = (o?: GetOptions): Promise<V2Status> =>
-  ACTIVE_V2_DEPLOYMENT === '7-29' ? Promise.resolve(synthStatus()) : beta<V2Status>('/status', o);
+  V2_IS_729_PLUS ? Promise.resolve(synthStatus()) : beta<V2Status>('/status', o);
 
 /** All `MarketCreated` rows (newest-first). Filter to active via v2-discovery. On
  *  7-29 these come from the chain's own event index (see lib/api/v2/onchain.ts). */
 export const getV2Markets = (limit = 100, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainMarkets(limit, o)
     : beta<V2Market[]>(`/markets?limit=${limit}`, o);
 
 export const getV2MarketState = (marketId: string, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainMarketState(marketId)
     : beta<V2MarketState>(`/markets/${marketId}/state`, o);
 
@@ -103,7 +103,7 @@ export const getV2MarketState = (marketId: string, o?: GetOptions) =>
  *  portfolio's PRIMARY source (useV2Positions); on 7-29 it is reconstructed from
  *  the order log by folding net-open per position (see lib/api/v2/onchain.ts). */
 export const getAccountPositions = (accountId: string, owner?: string, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? // Prefer the owner (tx-sender) read: whale-immune and complete. The account-id
       // scan only survives while the account isn't buried in the global stream, so
       // it's a fallback for the rare caller that has no owner to hand.
@@ -118,7 +118,7 @@ export const getAccountPositions = (accountId: string, owner?: string, o?: GetOp
  *  2026-07-18), so request the full 500 explicitly — the 50-row default was
  *  silently truncating active wallets' history. */
 export const getAccountOrders = (accountId: string, owner?: string, limit = 500, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? // Owner (tx-sender) read first — whale-immune. onchainAccountOrders (the
       // global-stream scan filtered by account_id) is only a fallback: under a
       // high-frequency bot it returns nothing once the account's events roll past
@@ -131,7 +131,7 @@ export const getAccountOrders = (accountId: string, owner?: string, limit = 500,
 /** Vault NAV + latest flush — pool_value/total_supply give the live share price.
  *  On 7-29 both come from the newest on-chain FlushExecuted event. */
 export const getVaultState = (vaultId: string, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainVaultState(o)
     : beta<V2VaultServerState>(`/vaults/${vaultId}/state`, o);
 
@@ -140,7 +140,7 @@ export const getVaultState = (vaultId: string, o?: GetOptions) =>
  *  v2 stand-in for legacy's `/vault/performance` (which v2 doesn't expose). On 7-29
  *  these are the `FlushExecuted` events (see lib/api/v2/onchain.ts). */
 export const getVaultFlushes = (vaultId: string, limit = 200, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainVaultFlushes(limit, o)
     : beta<V2VaultFlush[]>(`/vaults/${vaultId}/flushes?limit=${limit}`, o);
 
@@ -148,28 +148,28 @@ export const getVaultFlushes = (vaultId: string, limit = 200, o?: GetOptions) =>
  *  drives the vault performance panel's cumulative LP-profit series. On 7-29 these
  *  are the `ExpiryProfitMaterialized` events. */
 export const getVaultProfit = (vaultId: string, limit = 200, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainVaultProfit(limit, o)
     : beta<V2VaultProfit[]>(`/vaults/${vaultId}/profit?limit=${limit}`, o);
 
 /** Hourly supply/withdraw activity buckets for the vault. No consumer wires this
  *  yet, and 7-29 has no bucketing indexer, so it degrades to empty there. */
 export const getVaultFlows = (vaultId: string, limit = 200, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve([] as V2VaultFlow[])
     : beta<V2VaultFlow[]>(`/vaults/${vaultId}/flows?limit=${limit}`, o);
 
 /** Executed LP deposits (escrowed DUSDC → PLP shares at NAV), newest-first. On
  *  7-29 these are the `SupplyFilled` events. */
 export const getVaultSupplyFills = (vaultId: string, limit = 30, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainVaultSupplyFills(limit, o)
     : beta<V2VaultSupplyFill[]>(`/vaults/${vaultId}/supply-fills?limit=${limit}`, o);
 
 /** Executed LP withdrawals (PLP shares → DUSDC at NAV), newest-first. On 7-29
  *  these are the `WithdrawFilled` events. */
 export const getVaultWithdrawFills = (vaultId: string, limit = 30, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainVaultWithdrawFills(limit, o)
     : beta<V2VaultWithdrawFill[]>(`/vaults/${vaultId}/withdraw-fills?limit=${limit}`, o);
 
@@ -177,7 +177,7 @@ export const getVaultWithdrawFills = (vaultId: string, limit = 30, o?: GetOption
  *  exposes no claim-event feed these proxies can filter, so the admin panel shows
  *  an empty claim history there (fees still accrue on-chain). */
 export const getBuilderCodeFees = (codeId: string, limit = 200, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve([] as V2BuilderFee[])
     : beta<V2BuilderFee[]>(`/builder-codes/${codeId}/fees?limit=${limit}`, o);
 
@@ -185,14 +185,14 @@ export const getBuilderCodeFees = (codeId: string, limit = 200, o?: GetOptions) 
  *  callers keep the client-side order derivation as the fallback. On 7-29 there is
  *  no server aggregate, so it always returns null and the order derivation stands. */
 export const getPositionCashflow = (marketId: string, positionRootId: string, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve(null as V2PositionCashflow | null)
     : beta<V2PositionCashflow | null>(`/markets/${marketId}/positions/${positionRootId}/cashflow`, o);
 
 /** Open positions + max payout at risk for one market. On 7-29 folded from the
  *  market's order log (net-open per position). */
 export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainMarketOpenInterest(marketId, o)
     : beta<V2OpenInterest>(`/markets/${marketId}/open-interest`, o);
 
@@ -201,7 +201,7 @@ export const getMarketOpenInterest = (marketId: string, o?: GetOptions) =>
  *  this out across the active markets to reconstruct the whole book's flow. On 7-29
  *  these come from the chain's order-event index. */
 export const getMarketOrders = (marketId: string, limit = 60, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainMarketOrders(marketId, limit, o)
     : beta<V2OrderEvent[]>(`/markets/${marketId}/orders?limit=${limit}`, o);
 
@@ -211,34 +211,34 @@ export const getMarketOrders = (marketId: string, limit = 60, o?: GetOptions) =>
  *  scan; 6-24 has no global endpoint (the board fans /markets/:id/orders out there
  *  instead), so this returns [] and useV2Leaderboard keeps its 6-24 fan-out path. */
 export const getV2AllOrders = (perType = 800, o?: GetOptions): Promise<V2OrderEvent[]> =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainAllOrders(perType, o)
     : Promise.resolve([] as V2OrderEvent[]);
 
 /** Hourly mint/redeem activity buckets for one market. No consumer wires this, and
  *  7-29 has no bucketing indexer, so it degrades to empty there. */
 export const getMarketActivity = (marketId: string, limit = 50, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve([] as V2ActivityBucket[])
     : beta<V2ActivityBucket[]>(`/markets/${marketId}/activity?limit=${limit}`, o);
 
 /** Hourly liquidation buckets for one market. No consumer wires this, and 7-29 has
  *  no bucketing indexer, so it degrades to empty there. */
 export const getMarketLiquidationStats = (marketId: string, limit = 50, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve([] as V2LiquidationBucket[])
     : beta<V2LiquidationBucket[]>(`/markets/${marketId}/liquidation-stats?limit=${limit}`, o);
 
 /* --------------------------- propbook indexer ---------------------------- */
 
 export const getPropbookStatus = (o?: GetOptions): Promise<V2Status> =>
-  ACTIVE_V2_DEPLOYMENT === '7-29' ? Promise.resolve(synthStatus()) : propbook<V2Status>('/status', o);
+  V2_IS_729_PLUS ? Promise.resolve(synthStatus()) : propbook<V2Status>('/status', o);
 
 /** Underlying → feed-object bindings. No consumer wires this, and on 7-29 the
  *  bindings are the fixed config feeds (asset.pythFeedId + bsFeedIds), so it
  *  degrades to empty rather than reconstructing the propbook binding table. */
 export const getOracleBindings = (o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? Promise.resolve([] as OracleBinding[])
     : propbook<OracleBinding[]>('/oracle-bindings', o);
 
@@ -246,13 +246,13 @@ export const getOracleBindings = (o?: GetOptions) =>
  *  7-29 this is read LIVE off the PythFeed object (fresh to the second), not the
  *  ~20s-lagging event index. */
 export const getPythLatest = (pythOracleId: string, o?: GetOptions): Promise<PythObservation | null> =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainPythLatest(o)
     : propbook<PythObservation | null>(`/oracles/${pythOracleId}/pyth/latest`, o);
 
 /** Recent Pyth spot observation history (for the price chart). */
 export const getPythHistory = (pythOracleId: string, limit = 300, o?: GetOptions) =>
-  ACTIVE_V2_DEPLOYMENT === '7-29'
+  V2_IS_729_PLUS
     ? onchainPythObservations(limit, o)
     : propbook<PythObservation[]>(`/oracles/${pythOracleId}/pyth?limit=${limit}`, o);
 

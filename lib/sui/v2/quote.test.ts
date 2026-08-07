@@ -66,29 +66,35 @@ describe('7-29 no-leverage window (verified: leverage is 1× within 60 min of ex
   });
 });
 
-describe('maxSelectableLeverage (integer preset ceiling)', () => {
-  it('is 2× across the tradeable band with a 3× market cap — never the impossible 3×', () => {
-    for (const p of [0.2, 0.5, 0.8, 0.99]) {
+// These wrappers delegate to `effectiveLeverageCap`, which follows the ACTIVE
+// deployment's curve. The live default is now 8-06 (a 7-29-shape republish, see
+// predict-refresh-8-06), so they use the CONFIDENCE curve: most leverage at the
+// certainty extremes, 1× near a coin flip — the opposite of the dead 6-24 curve.
+describe('maxSelectableLeverage (integer preset ceiling, live 7-29 curve)', () => {
+  it('is 2× for confident bets with a 3× market cap — never the impossible 3×', () => {
+    // cap729 = 1 + 2·|2p−1|: 0.05→2.8, 0.2→2.2, 0.8→2.2, 0.95→2.8 (all floor to 2×).
+    for (const p of [0.05, 0.2, 0.8, 0.95]) {
       expect(maxSelectableLeverage(p, 3)).toBe(2);
     }
   });
-  it('drops to 1× for long-shot odds (cap < 2×, below ~14.3%)', () => {
-    expect(maxSelectableLeverage(0.1, 3)).toBe(1);
-    expect(maxSelectableLeverage(0.05, 3)).toBe(1);
+  it('drops to 1× near a coin flip (cap < 2× between ~25% and ~75%)', () => {
+    expect(maxSelectableLeverage(0.5, 3)).toBe(1); // cap 1.0
+    expect(maxSelectableLeverage(0.6, 3)).toBe(1); // cap 1.4
+    expect(maxSelectableLeverage(0.45, 3)).toBe(1); // cap 1.2
   });
 });
 
-describe('leverageSliderMax (continuous slider ceiling)', () => {
+describe('leverageSliderMax (continuous slider ceiling, live 7-29 curve)', () => {
   it('exposes fractional headroom on the 0.1× grid, unlike the integer preset', () => {
-    // cap(0.5)=2.714 → 2.7×; cap(0.99)=2.9966 → 2.9×; cap(0.2)=2.20 → 2.1× (1e-6 nudge).
-    expect(leverageSliderMax(0.5, 3)).toBeCloseTo(2.7, 6);
+    // cap729: 0.2→2.20 → 2.1×; 0.99→2.96 → 2.9×; 0.5→1.0 → floors to 1× (1e-6 nudge).
+    expect(leverageSliderMax(0.2, 3)).toBeCloseTo(2.1, 6);
     expect(leverageSliderMax(0.99, 3)).toBeCloseTo(2.9, 6);
-    expect(leverageSliderMax(0.8, 3)).toBeCloseTo(2.9, 6); // cap 2.92
+    expect(leverageSliderMax(0.5, 3)).toBeCloseTo(1, 6);
   });
   it('never exceeds the true admitted cap and never below 1×', () => {
     for (const p of [0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99]) {
       const m = leverageSliderMax(p, 3);
-      expect(m).toBeLessThanOrEqual(admittedLeverageCap(p, 3));
+      expect(m).toBeLessThanOrEqual(admittedLeverageCap729(p, 3, null) + 1e-9);
       expect(m).toBeGreaterThanOrEqual(1);
       // lands on the 0.1× grid
       expect(Math.round(m / LEVERAGE_STEP) * LEVERAGE_STEP).toBeCloseTo(m, 9);

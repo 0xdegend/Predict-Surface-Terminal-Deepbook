@@ -26,7 +26,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
-import { predictV2Config, ACTIVE_NETWORK, ACTIVE_V2_DEPLOYMENT, v2Target } from '@/config/predict';
+import { predictV2Config, ACTIVE_NETWORK, V2_IS_729_PLUS, v2Target } from '@/config/predict';
 import { toFloat, signedToFloat, toFloat18, signedToFloat18 } from '@/config/scale';
 import { upFair, dnFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 
@@ -152,7 +152,7 @@ export async function simulateLivePricer(
     throw new Error('load_live_pricer returned no Pricer (read-only call expected)');
   }
   const bytes = new Uint8Array(last.returnValues[0].bcs);
-  if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+  if (V2_IS_729_PLUS) {
     const p = Pricer729Bcs.parse(bytes);
     return {
       expiryMarketId: p.expiry_market_id,

@@ -8,7 +8,7 @@
  * guard caps it and the wallet shows the exact figure at signing.
  */
 import { upFair, type SviFloat } from '@/lib/svi/svi';
-import { ACTIVE_V2_DEPLOYMENT, predictV2Config } from '@/config/predict';
+import { V2_IS_729_PLUS, predictV2Config } from '@/config/predict';
 
 /**
  * The protocol's minimum mint-time stake — `constants::min_net_premium` on
@@ -169,7 +169,7 @@ export function effectiveLeverageCap(
   maxAdmissionLeverage: number,
   msToExpiry: number | null = null,
 ): number {
-  return ACTIVE_V2_DEPLOYMENT === '7-29'
+  return V2_IS_729_PLUS
     ? admittedLeverageCap729(entryProb, maxAdmissionLeverage, msToExpiry)
     : admittedLeverageCap(entryProb, maxAdmissionLeverage);
 }

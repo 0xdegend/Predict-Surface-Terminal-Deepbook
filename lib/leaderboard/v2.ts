@@ -29,6 +29,9 @@ export interface V2LeaderboardRow {
   viaSkew?: boolean;
   /** Newest mint/redeem timestamp (ms). */
   lastActiveMs?: number;
+  /** Points carried over from an earlier deployment's Skew board (6-24 → 8-06), folded
+   *  into `points`. Present only for traders with a carry-over. See legacy-carryover. */
+  legacyPoints?: number;
 }
 
 export function sortV2Rows(rows: V2LeaderboardRow[], key: V2SortKey): V2LeaderboardRow[] {

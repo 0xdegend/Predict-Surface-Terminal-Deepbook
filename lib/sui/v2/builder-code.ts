@@ -25,7 +25,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2Target, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { predictV2Config, v2Target, V2_IS_729_PLUS } from '@/config/predict';
 import { addGenerateAuth, simulate, SIM_SENDER, type SimulateCapableClient } from './account';
 
 const c = () => predictV2Config;
@@ -36,7 +36,7 @@ const ACC = (module: string, fn: string) => `${c().packages.account}::${module}:
  *  `create_builder_code`, 7-29 = `create_and_share_builder_code`. Verified live
  *  against each package's `registry` module ABI. */
 const REGISTER_BUILDER_CODE_FN =
-  ACTIVE_V2_DEPLOYMENT === '7-29' ? 'create_and_share_builder_code' : 'create_builder_code';
+  V2_IS_729_PLUS ? 'create_and_share_builder_code' : 'create_builder_code';
 
 /* ------------------------------- builders -------------------------------- */
 

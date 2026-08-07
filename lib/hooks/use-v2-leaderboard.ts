@@ -25,13 +25,13 @@ import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api
 import { mapPool, withRetry } from '@/lib/api/v2/fan-out';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { readWrapper, readAccountId } from '@/lib/sui/v2/account';
-import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { predictV2Config, V2_IS_729_PLUS } from '@/config/predict';
 import { aggregateV2Leaderboard } from '@/lib/leaderboard/v2-aggregate';
 import type { V2LeaderboardRow } from '@/lib/leaderboard/v2';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 /** 7-29 reads finished boards from the indexer route; the fan-out below is 6-24 only. */
-const IS_729 = ACTIVE_V2_DEPLOYMENT === '7-29';
+const IS_729 = V2_IS_729_PLUS;
 
 /** The indexer's own ceiling on `/markets` — request it all; anything beyond is
  *  simply not retained server-side (no older markets exist to scan). */

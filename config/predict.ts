@@ -154,14 +154,31 @@ export const V2_READY = true;
  * Which testnet Predict deployment the "Latest" experience reads/writes against.
  *
  * This is an INVISIBLE backbone switch — same routes, same components, same copy,
- * same UI. It only repoints contract IDs + the data source. Default '6-24' (the
- * current live deployment); set NEXT_PUBLIC_PREDICT_DEPLOYMENT=7-29 to target the
- * new one. Mainnet is unaffected. A cutover / rollback is this one env var. See the
- * predict-migration-7-29 notes for the full plan.
+ * same UI. It only repoints contract IDs + the data source. A cutover / rollback is
+ * this one env var (NEXT_PUBLIC_PREDICT_DEPLOYMENT).
+ *
+ * '8-06' is the current LIVE deployment: on 2026-08-06 Mysten REPUBLISHED the whole
+ * Predict testnet stack (all-new package/object/feed IDs) under the reused
+ * predict-testnet-7-29 branch and turned off the old writers — so both '6-24' and
+ * '7-29' are permanently DEAD (frozen feeds, no mints). They remain here only for
+ * reference / rollback-diagnosis. See the predict-refresh-8-06 notes for the full plan.
  */
-export type PredictDeployment = '6-24' | '7-29';
+export type PredictDeployment = '6-24' | '7-29' | '8-06';
+const _DEPLOYMENT_ENV = process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT;
 export const ACTIVE_V2_DEPLOYMENT: PredictDeployment =
-  process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT === '7-29' ? '7-29' : '6-24';
+  _DEPLOYMENT_ENV === '8-06' || _DEPLOYMENT_ENV === '7-29' || _DEPLOYMENT_ENV === '6-24'
+    ? _DEPLOYMENT_ENV
+    : '8-06';
+
+/**
+ * True for the newer protocol shape shipped from the 7-29 deployment onward (7-29 and
+ * 8-06): on-chain gRPC reads (no HTTP indexer), the 2-feed block-scholes pricer, the
+ * account-model mint arguments, and the `create_and_share_builder_code` entry. 6-24 is
+ * the older indexer protocol. Every place that used to test
+ * `ACTIVE_V2_DEPLOYMENT === '7-29'` uses this instead, so a same-shape republish (like
+ * 8-06) is covered automatically without touching each call site again.
+ */
+export const V2_IS_729_PLUS: boolean = ACTIVE_V2_DEPLOYMENT !== '6-24';
 
 export interface PredictV2Config {
   network: SuiNetwork;
@@ -393,6 +410,81 @@ const V2_TESTNET_729: PredictV2Config = {
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
+/**
+ * 8-06 deployment — the current LIVE testnet Predict. On 2026-08-06 Mysten REPUBLISHED
+ * the entire stack with all-new package/object/feed IDs (new account wrapper, propbook,
+ * predict, a new `sessions` package, and 6 cadences) and repointed the price-pusher to
+ * it, turning off 6-24 and 7-29. IDs read verbatim from
+ * packages/predict/deployment/deployment.testnet.json on branch predict-testnet-7-29
+ * (upstream REUSED that branch name), sourceCommit 3072a370, schema v4, verified live
+ * on-chain (pyth feed 0xccafaa6c… updating to the second). Re-check that JSON on any
+ * future republish.
+ *
+ * Like 7-29: NO HTTP indexer (serverUrl/oracleServerUrl empty → on-chain gRPC reads),
+ * and the pricer takes TWO block-scholes feeds (value store, then svi store).
+ */
+const V2_TESTNET_806: PredictV2Config = {
+  network: 'testnet',
+  deployment: 'v2',
+  grpcUrl: 'https://fullnode.testnet.sui.io:443',
+  serverUrl: '', // no 8-06 HTTP indexer — on-chain gRPC reads (lib/api/v2/onchain.ts)
+  oracleServerUrl: '',
+  packages: {
+    predict: '0xfe742239a3b033f7d52ed5275f238c17d27498ca0ee5ea5672ea732eb3f4dbbb',
+    account: '0xbdbb60b00f2d4f30daeff62f2c642b18433a8fcdfbebccc808df578df2a0c203',
+    propbook: '0xed1295ff3c9a9415766afff20a74cdf2e362647be09aaf13b809302c0109e912',
+    // 8-06 folds block-scholes into propbook; this is the price-updater's oracle
+    // package (writers.priceUpdater.blockScholesOraclePackage). No code reads it.
+    blockScholesOracle: '0x9d2cf38611d971a0e918b93fc0113d279f5c923f43e62c407a9ad0f9d82f6698',
+    fixedMath: '0xdf0bd2a0d201562f2bdecb1b77d7998c7af316f6fd7d1eab9b9035064f21bfd4',
+  },
+  shared: {
+    protocolConfig: '0x43703ceee4d5f5a9e8cbf728071c34dc65961dd6e878fafd9ac36d86a9a4ce5b',
+    poolVault: '0xeef535e7fcb850a943807ce48cc543c6d990b39e68a7bc47d0b56651ff20ab0a',
+    registry: '0x35970bfd0ff3703cb38b3fff3a3fbb0bc0e5638e7c747af3a8e42e2c95d353f0',
+    oracleRegistry: '0xc1dffc5f7a5404cb002ba3bd7c50d6a2dbe8bb6afd40080cd663965deff9d577',
+    accountRegistry: '0x21a7ed28397363b5550853c1f08795731257de81028cd1bf87f20c0752c8ca2f',
+  },
+  // Re-register our BuilderCode on THIS deployment — a code is bound to its registry, so
+  // the old 6-24/7-29 codes do not carry over. Until it is registered, mints fall back
+  // to no-fee. Register from the founder wallet at /v2/admin, then set the id here or via
+  // NEXT_PUBLIC_BUILDER_CODE_ID. See the builder-code-every-deployment rule.
+  builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID || '',
+  noLeverageWindowMs: 3_600_000, // futureMarketTemplate.noLeverageWindowMs (60 min)
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x6',
+  quote: {
+    coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
+    currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
+    decimals: 6,
+    symbol: 'DUSDC',
+  },
+  plpCoinType: '0xfe742239a3b033f7d52ed5275f238c17d27498ca0ee5ea5672ea732eb3f4dbbb::plp::PLP',
+  deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0xccafaa6c5a41f0493585cf268f2b4dc14c91ed798362444144cac2c745db8dde',
+    // Two block-scholes feeds (value store, then svi store) — same shape as 7-29.
+    bsFeedIds: [
+      '0x6d9de17954f4c1a2f01fdd97c0bb8a2e682c1fea0f8f048dcd127d543a6ac051',
+      '0x83c2d6307fd3591228052fc0d24c4f00a698b0eb4fef5e6083a213ca0d54bd35',
+    ],
+  },
+  // Only the three enabled sub-hour cadences; 1d/1w/1mo ship enabled=false / tick 0
+  // upstream (not tradeable yet). Values verbatim from initialConfiguration.cadences.
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '3' },
+    { id: 2, name: '1h', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '3' },
+  ],
+  // Fresh deployment — no demo wallets to feature yet. Opt in via NEXT_PUBLIC_FEATURED_WALLETS.
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+  faucetUrl: 'https://tally.so/r/Xx102L',
+};
+
 // Mainnet v2 placeholders — fill on the eventual mainnet redeploy.
 const V2_MAINNET: PredictV2Config = {
   ...V2_TESTNET,
@@ -409,11 +501,12 @@ const V2_MAINNET: PredictV2Config = {
   featuredWallets: [],
 };
 
-/** Testnet has two selectable deployments (6-24 default, 7-29 via the env switch);
- *  mainnet has one. */
+/** Testnet has three deployments via NEXT_PUBLIC_PREDICT_DEPLOYMENT; 8-06 is the live
+ *  default (6-24 + 7-29 are dead, kept for reference/rollback). Mainnet has one. */
 const V2_TESTNET_BY_DEPLOYMENT: Record<PredictDeployment, PredictV2Config> = {
   '6-24': V2_TESTNET,
   '7-29': V2_TESTNET_729,
+  '8-06': V2_TESTNET_806,
 };
 
 function selectV2Config(network: SuiNetwork): PredictV2Config {

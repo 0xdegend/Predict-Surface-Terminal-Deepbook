@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { V2_IS_729_PLUS } from '@/config/predict';
 import { getLeaderboardBoards } from '@/lib/leaderboard/v2-indexer';
 import { getSkewLeaderboardSnapshot } from '@/lib/leaderboard/v2-onchain-store';
+import { mergeLegacyCarryover } from '@/lib/leaderboard/legacy-carryover';
 
 /**
  * GET /api/v2/leaderboard — both Season-2 boards: `{ all, skew, builtAtMs }`.
@@ -19,9 +20,15 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  if (ACTIVE_V2_DEPLOYMENT === '7-29') {
+  if (V2_IS_729_PLUS) {
     const boards = await getLeaderboardBoards();
-    return NextResponse.json(boards, { headers: { 'cache-control': 'no-store' } });
+    // Overlay the carried-over 6-24 Skew points as a baseline; live 8-06 trading keeps
+    // accumulating on top. Only the Skew board carries over (the `all` venue board stays
+    // pure live data). See lib/leaderboard/legacy-carryover.
+    return NextResponse.json(
+      { ...boards, skew: mergeLegacyCarryover(boards.skew) },
+      { headers: { 'cache-control': 'no-store' } },
+    );
   }
   const snap = await getSkewLeaderboardSnapshot();
   return NextResponse.json(

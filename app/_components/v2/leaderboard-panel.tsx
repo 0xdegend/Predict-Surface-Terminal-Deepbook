@@ -30,7 +30,7 @@ import {
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { num, compact } from '@/lib/format';
-import { predictV2Config, ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { predictV2Config, V2_IS_729_PLUS } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
@@ -63,7 +63,7 @@ export function V2LeaderboardPanel() {
   // secondary tab, enabled and navigable on 7-29 (the chain's own event index gives a
   // complete board) but still locked ("Soon") on 6-24 (only a partial ~8h fan-out
   // window there).
-  const allTradersReady = ACTIVE_V2_DEPLOYMENT === '7-29';
+  const allTradersReady = V2_IS_729_PLUS;
   const [scope, setScope] = useState<Scope>('skew');
   const [page, setPage] = useState(0);
 
