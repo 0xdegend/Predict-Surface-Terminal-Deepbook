@@ -230,6 +230,7 @@ const PYTH_HISTORY_MAX_PAGES = 18;
  *  it has `limit` per-second points, exhausts the page budget, or hits the feed end. */
 export async function onchainPythObservations(limit = 300, opts?: GetOptions): Promise<PythObservation[]> {
   const filter = { MoveModule: { package: predictV2Config.packages.propbook, module: 'pyth_feed' } };
+  const feedId = predictV2Config.asset.pythFeedId.toLowerCase();
   const PAGE = 50;
   const bySec = new Map<number, PythObservation>();
   let cursor: unknown = null;
@@ -239,6 +240,15 @@ export async function onchainPythObservations(limit = 300, opts?: GetOptions): P
       const o = toObservation(e);
       const ms = o?.source_timestamp_ms ?? o?.checkpoint_timestamp_ms ?? null;
       if (!o || ms == null) continue;
+      // The event filter is MODULE-scoped, so it also carries any OTHER feed the
+      // propbook writes through `pyth_feed` (8-06 folds the block-scholes value/svi
+      // stores in here). Keep only THIS asset's feed — mixing two price series renders
+      // as a square wave that jumps between them. Verified live: the BTC feed's
+      // observations carry `propbook_oracle_id === asset.pythFeedId`. Guarded to a real
+      // 0x… id so an id-format change can never blank the chart (absent/numeric ids are
+      // kept, only a different real feed id is dropped).
+      const oid = o.propbook_oracle_id;
+      if (oid && oid.startsWith('0x') && oid.toLowerCase() !== feedId) continue;
       // Paging runs newest→older, so the FIRST observation seen in a second is that
       // second's latest tick — the value the chart keeps. Never overwrite it.
       const sec = Math.floor(ms / 1000);

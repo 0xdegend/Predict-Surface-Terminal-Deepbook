@@ -359,8 +359,10 @@ export function V2PriceChart({
       lineType: LineType.Curved,
       priceLineVisible: false,
       priceFormat: { type: 'price', precision: 0, minMove: 1 },
-      // Extend the auto-scale to include the selected strike/band so it's always
-      // framed (with padding) — even if the pick sits away from current spot.
+      // Auto-scale tight to the data so short-window movement is actually visible
+      // (a flattened, near-parallel line reads as "nothing is happening"). The only
+      // extension is to include the selected strike/band so the pick stays framed even
+      // when it sits away from spot; otherwise the series' own range drives the zoom.
       autoscaleInfoProvider: (baseImpl: () => AutoscaleInfo | null): AutoscaleInfo | null => {
         const base = baseImpl();
         const band = bandRangeRef.current;
