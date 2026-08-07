@@ -366,7 +366,11 @@ function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; l
   // collapses to nothing as before.
   if (!read) return loading ? <MarketReadSkeleton /> : null;
   return (
-    <div className="glass rounded-lg p-4">
+    // Same min height as the skeleton (below), so the real read swaps IN PLACE when it
+    // lands instead of the card growing and shoving the expected-move card + surface
+    // down — the "loads short then snaps taller" jank. The read is reliably a headline
+    // plus three sentence lines (~this tall), so the floor rarely leaves dead space.
+    <div className="glass min-h-60 rounded-lg p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
         {onShare && <ShareXButton onClick={onShare} label="Share the market read" />}
@@ -383,23 +387,24 @@ function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; l
   );
 }
 
-/** Placeholder for the Surface read that reserves ~the full read's height (a
- *  headline plus three multi-line observations), so the card lands at a stable
- *  size and the real copy fades in without a reflow. */
+/** Placeholder for the Surface read that reserves the full read's height (a headline
+ *  plus three two-row observations) with the SAME `min-h` floor as the loaded card, so
+ *  the real copy swaps in without the card growing and reflowing everything under it. */
 function MarketReadSkeleton() {
   return (
-    <div className="glass rounded-lg p-4" aria-hidden>
+    <div className="glass min-h-60 rounded-lg p-4" aria-hidden>
       <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
       {/* headline */}
       <div className="mt-2.5 h-3.5 w-3/5 animate-pulse rounded bg-white/10" />
-      {/* three observations, each ~two wrapped rows (mirrors the trend / liquidation
-          / sentiment lines the loaded read fills in) */}
-      <div className="mt-3.5 space-y-2">
-        <div className="h-3 w-full animate-pulse rounded bg-white/5" />
-        <div className="h-3 w-2/3 animate-pulse rounded bg-white/5" />
-        <div className="h-3 w-11/12 animate-pulse rounded bg-white/5" />
-        <div className="h-3 w-3/4 animate-pulse rounded bg-white/5" />
-        <div className="h-3 w-1/2 animate-pulse rounded bg-white/5" />
+      {/* three observations, each ~two wrapped rows — mirrors the trend / liquidation /
+          sentiment sentences the loaded read fills in, so the shapes line up. */}
+      <div className="mt-3.5 space-y-3">
+        {([['w-full', 'w-2/3'], ['w-11/12', 'w-1/2'], ['w-full', 'w-3/4']] as const).map(([a, b], i) => (
+          <div key={i} className="space-y-1.5">
+            <div className={`h-3 ${a} animate-pulse rounded bg-white/5`} />
+            <div className={`h-3 ${b} animate-pulse rounded bg-white/5`} />
+          </div>
+        ))}
       </div>
     </div>
   );

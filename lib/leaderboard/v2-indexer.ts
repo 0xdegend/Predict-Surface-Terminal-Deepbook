@@ -20,6 +20,7 @@ import {
   type OrderCursors,
 } from '@/lib/api/v2/onchain';
 import { emptyLbState, foldOrderEvents, finalizeRows, type LbState } from './v2-aggregate';
+import { LEGACY_OWNERS } from './legacy-carryover';
 import { kv } from '@/lib/server/kv';
 import type { V2LeaderboardRow } from './v2';
 import type { V2OrderEvent } from '@/lib/api/v2/types';
@@ -35,6 +36,10 @@ const BACKFILL_PAGES = 40;
 const OPEN_PRUNE_MS = 3 * 86_400_000;
 /** Hard cap on retained open-mint terms, so `open` stays bounded under a bot. */
 const OPEN_MAX = 20_000;
+/** Bump when the SEED logic changes (e.g. which owners get fanned out) so a stale KV
+ *  tally built by the old seed is discarded and rebuilt, rather than lingering for its
+ *  week TTL. Part of the persisted guard alongside `pkg`. */
+const SEED_VERSION = 2;
 
 const kvKey = () => `lb:idx:${predictV2Config.packages.predict}`;
 
@@ -43,6 +48,8 @@ interface Persisted {
   cursors: OrderCursors;
   builtAtMs: number;
   pkg: string;
+  /** Seed-logic version this tally was built under (see SEED_VERSION). */
+  seedVersion: number;
 }
 
 interface Cache {
@@ -52,16 +59,19 @@ interface Cache {
 const g = globalThis as unknown as { __lbIndexer?: Cache };
 const cache: Cache = (g.__lbIndexer ??= { snap: null, inflight: null });
 
-const forThisPkg = (p: Persisted | null | undefined): p is Persisted =>
-  !!p && p.pkg === predictV2Config.packages.predict;
+/** A persisted tally is usable only if it was built for THIS package AND under the
+ *  current seed logic — otherwise it's discarded and rebuilt from scratch. */
+const isCurrent = (p: Persisted | null | undefined): p is Persisted =>
+  !!p && p.pkg === predictV2Config.packages.predict && p.seedVersion === SEED_VERSION;
 const isFresh = (p: Persisted | null | undefined): p is Persisted =>
-  forThisPkg(p) && Date.now() - p.builtAtMs < FRESH_MS;
+  isCurrent(p) && Date.now() - p.builtAtMs < FRESH_MS;
 
 const freshEmpty = (): Persisted => ({
   state: emptyLbState(),
   cursors: {},
   builtAtMs: 0,
   pkg: predictV2Config.packages.predict,
+  seedVersion: SEED_VERSION,
 });
 
 /** Keep `open` bounded: evict aged-out closed mints, then hard-cap oldest-first. */
@@ -79,11 +89,11 @@ function pruneOpen(state: LbState): void {
 
 /** The last-good tally: in-process snapshot, else the durable KV one, else empty. */
 async function loadPersisted(): Promise<Persisted> {
-  if (forThisPkg(cache.snap)) return cache.snap;
+  if (isCurrent(cache.snap)) return cache.snap;
   if (kv) {
     try {
       const cached = await kv.get<Persisted>(kvKey());
-      if (forThisPkg(cached)) {
+      if (isCurrent(cached)) {
         cache.snap = cached;
         return cached;
       }
@@ -122,7 +132,21 @@ function dedupe(events: V2OrderEvent[]): V2OrderEvent[] {
 async function seedFirstRun(state: LbState): Promise<OrderCursors> {
   const code = predictV2Config.builderCodeId;
   const backfill = await scanOrderEventsSince({}, BACKFILL_PAGES);
-  const owners = code ? await onchainSkewOwners(code).catch(() => [] as string[]) : [];
+  // Owners to fan out COMPLETELY (by tx-sender, bot-immune) so they're never buried in
+  // the bot-dominated backfill window. Three sources, unioned:
+  //   1. builder-code owners — every wallet that attached OUR code (only when the code
+  //      is registered on this deployment);
+  //   2. the carried-over 6-24 wallets — our known real traders, so a fresh redeploy
+  //      with the code not yet wired still shows them on the VENUE board once they trade;
+  //   3. featured wallets (config), same treatment.
+  // Without (2)/(3) a real trader with a handful of bets vanishes from the venue board
+  // whenever the code isn't wired yet. Deduped against the backfill so nothing doubles.
+  const codeOwners = code ? await onchainSkewOwners(code).catch(() => [] as string[]) : [];
+  const owners = [
+    ...new Set(
+      [...codeOwners, ...LEGACY_OWNERS, ...predictV2Config.featuredWallets].map((o) => o.toLowerCase()),
+    ),
+  ];
   const seed = (
     await Promise.all(owners.map((o) => onchainOwnerOrders(o, 300).catch(() => [] as V2OrderEvent[])))
   ).flat();
@@ -148,6 +172,7 @@ async function runAccumulate(): Promise<Persisted> {
     cursors,
     builtAtMs: Date.now(),
     pkg: predictV2Config.packages.predict,
+    seedVersion: SEED_VERSION,
   };
   cache.snap = snap;
   if (kv) {

@@ -42,6 +42,13 @@ export const LEGACY_SOURCE = SEED.deployment;
 export const LEGACY_TRADER_COUNT = SEED.rows.length;
 export const LEGACY_TOTAL_POINTS = SEED.rows.reduce((s, r) => s + r.points, 0);
 
+/** The carried-over wallets (owner addresses, lowercased). These are KNOWN app
+ *  traders, so the leaderboard indexer fans out their full new-deployment history to
+ *  keep them on the VENUE board too — not just the Skew board via the seed overlay —
+ *  even before our builder code is registered (which is what normally identifies app
+ *  users to rescue from a bot-dominated scan window). See lib/leaderboard/v2-indexer. */
+export const LEGACY_OWNERS: string[] = SEED.rows.map((r) => r.owner.toLowerCase());
+
 /**
  * Overlay the legacy 6-24 points onto a live board. Returns a NEW sorted array; never
  * mutates its input.
