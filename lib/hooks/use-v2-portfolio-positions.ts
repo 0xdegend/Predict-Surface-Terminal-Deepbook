@@ -119,7 +119,10 @@ export function useV2PortfolioPositions(accountId?: string, owner?: string): Use
   const pythHistQ = useQuery({
     queryKey: qkV2.pythHistory,
     queryFn: () => getPythHistory(predictV2Config.asset.pythFeedId, 500),
-    refetchInterval: 30_000,
+    // 60s to match the price chart (shared cache key): the newest per-second point is
+    // enough to keep the sparklines fresh, and the shorter interval would otherwise
+    // win and put the ~18-page history walk back on a 30s loop.
+    refetchInterval: 60_000,
     enabled: openMarketIds.length > 0,
   });
   const spots = useMemo<SpotPoint[]>(

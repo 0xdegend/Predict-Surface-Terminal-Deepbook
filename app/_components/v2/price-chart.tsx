@@ -189,8 +189,13 @@ export function V2PriceChart({
   // The lone first-pick level, shown while the band is still open (range mode only).
   const anchor = mode === 'range' ? rangeAnchorPrice : null;
 
-  // 500 = the propbook API's cap (~3.6 min of ticks) → a dense, legacy-count line.
-  const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 30_000 });
+  // 500 per-second points requested; the on-chain reader's page budget caps it at a
+  // legacy-length ~3 min window (the 8-06 feed runs ~5 obs/sec, so it's the budget,
+  // not this number, that governs — see onchainPythObservations). This is BACKFILL:
+  // the live edge is driven by latestQ (~1.5s) and appended by the rAF engine, so the
+  // history only needs to heal/re-anchor occasionally — 60s keeps the ~18-page walk
+  // off the hot path without ever staling the visible line.
+  const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 60_000 });
   const latestQ = useQuery({ queryKey: qkV2.pythLatest, queryFn: () => getPythLatest(PID), refetchInterval: 1500 });
 
   // Paint the current momentum onto the line, area fill, and pulse dot — but only

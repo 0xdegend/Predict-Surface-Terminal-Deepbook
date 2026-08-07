@@ -214,13 +214,44 @@ function toObservation(e: SuiEvent): PythObservation | null {
   };
 }
 
-/** Newest-first raw Pyth spot observations from the propbook `pyth_feed` module.
- *  Pages the cursor for limits over 50 so the price chart gets its full dense
- *  window (not just the ~50s a single capped page returns). */
+/** Max pages to walk for the chart history. The 8-06 propbook feed publishes ~5
+ *  observations/second (5× the old ~1/sec propbook HTTP feed), and each public proxy
+ *  page is capped at 50 events (verified — a requested pageSize > 50 still returns
+ *  50). So ~18 pages ≈ 900 raw events ≈ 180 distinct seconds (~3 min) — a
+ *  legacy-length window. This budget bounds the walk so a dense feed can't balloon
+ *  the page count; a sparse feed stops earlier once it has `limit` points. */
+const PYTH_HISTORY_MAX_PAGES = 18;
+
+/** Newest-first Pyth spot observations, DECIMATED to at most one per second as it
+ *  pages. The price chart and the position sparklines both plot one point per second,
+ *  so thinning here — instead of fetching 5× the events and discarding 4 of every 5
+ *  downstream — keeps the payload lean and makes `limit` mean "seconds of history,"
+ *  stable across the 6-24 (~1/sec) and 8-06 (~5/sec) feeds. Walks newest→older until
+ *  it has `limit` per-second points, exhausts the page budget, or hits the feed end. */
 export async function onchainPythObservations(limit = 300, opts?: GetOptions): Promise<PythObservation[]> {
   const filter = { MoveModule: { package: predictV2Config.packages.propbook, module: 'pyth_feed' } };
-  const evs = limit <= 50 ? await queryEvents(filter, limit, opts) : await queryEventsPaged(filter, limit, opts);
-  return evs.map(toObservation).filter((o): o is PythObservation => o !== null);
+  const PAGE = 50;
+  const bySec = new Map<number, PythObservation>();
+  let cursor: unknown = null;
+  for (let i = 0; bySec.size < limit && i < PYTH_HISTORY_MAX_PAGES; i++) {
+    const page = await queryEventsPage(filter, cursor, PAGE, opts);
+    for (const e of page.data) {
+      const o = toObservation(e);
+      const ms = o?.source_timestamp_ms ?? o?.checkpoint_timestamp_ms ?? null;
+      if (!o || ms == null) continue;
+      // Paging runs newest→older, so the FIRST observation seen in a second is that
+      // second's latest tick — the value the chart keeps. Never overwrite it.
+      const sec = Math.floor(ms / 1000);
+      if (!bySec.has(sec)) bySec.set(sec, o);
+    }
+    if (!page.hasNextPage || !page.nextCursor || page.data.length === 0) break;
+    cursor = page.nextCursor;
+  }
+  // Newest-first (descending seconds) — the order both callers already expect.
+  return [...bySec.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, limit)
+    .map(([, o]) => o);
 }
 
 /** Unwrap Sui's `{ type, fields }` move-struct JSON node down to its `fields`. */
