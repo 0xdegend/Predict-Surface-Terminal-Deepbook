@@ -44,6 +44,10 @@ export interface PastPrediction {
   leverage?: number;
   /** Raw binary row — lets the share card fetch its spark. Absent for ranges. */
   source?: PositionSummary;
+  /** True for a trade carried over from an earlier deployment (6-24 → 8-06). Renders
+   *  seamlessly by default; lets the UI add a subtle "6-24" tag if it wants. See
+   *  lib/portfolio/legacy-history. */
+  legacy?: boolean;
 }
 
 export interface EquityPoint {

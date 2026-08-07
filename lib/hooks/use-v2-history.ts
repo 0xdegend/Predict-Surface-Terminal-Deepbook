@@ -11,6 +11,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { deriveV2HistoryFromOrders } from '@/lib/portfolio/v2';
+import { mergeLegacyHistory } from '@/lib/portfolio/legacy-history';
 import { useV2MarketStates } from './use-v2-market-states';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { PastPrediction } from '@/lib/portfolio/history';
@@ -46,9 +47,11 @@ export function useV2History(
     return m;
   }, [marketMap, marketStates]);
 
+  // Live 8-06 history, with the wallet's carried-over 6-24 trades merged underneath so
+  // a returning trader's history is continuous (a no-op on 6-24 and for new wallets).
   const history = useMemo(
-    () => deriveV2HistoryFromOrders(q.data ?? [], mergedMap),
-    [q.data, mergedMap],
+    () => mergeLegacyHistory(owner, deriveV2HistoryFromOrders(q.data ?? [], mergedMap)),
+    [q.data, mergedMap, owner],
   );
   return { history, isLoading: q.isLoading };
 }
