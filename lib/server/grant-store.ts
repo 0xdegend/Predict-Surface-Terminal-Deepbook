@@ -143,3 +143,81 @@ export async function bumpDaily(): Promise<void> {
   memRollDay();
   memCount += 1;
 }
+
+/* ----------------------- session-gas drip (namespaced) -------------------- */
+// The /api/session-gas route drips a little SUI to a delegated-session key so it can
+// self-fund gas (see [[sessions-delegated-trading]]). It shares this store's Redis /
+// in-process backing, but under its own `sgas:` prefix so it never collides with the
+// starter grant's ledger or shares its daily cap. Unlike the starter grant there's NO
+// permanent "done" marker — a session key legitimately needs re-funding once its gas
+// runs low — just a short cooldown, an in-flight lock, and a global daily cap.
+
+/** Session-gas in-flight lock lifetime (a drip is a single fast transfer). */
+const GAS_LOCK_TTL = 60;
+/** Per-key cooldown: at most one drip per key per this window (abuse/drain guard). */
+const GAS_COOLDOWN_TTL = 60 * 20; // 20 min
+
+const gasLockKey = (addr: string) => `sgas:lock:${addr}`;
+const gasRecentKey = (addr: string) => `sgas:recent:${addr}`;
+const gasDayKey = () => `sgas:daily:${utcDay()}`;
+
+const memGasLock = new Map<string, number>(); // addr -> lock expiry epoch ms
+const memGasRecent = new Map<string, number>(); // addr -> cooldown expiry epoch ms
+let memGasDay = '';
+let memGasCount = 0;
+function memGasRollDay() {
+  const d = utcDay();
+  if (d !== memGasDay) {
+    memGasDay = d;
+    memGasCount = 0;
+  }
+}
+
+/** Take the session-gas in-flight lock (false if another drip is mid-flight). */
+export async function acquireGasDripLock(address: string): Promise<boolean> {
+  if (redis) {
+    const r = await redis.set(gasLockKey(address), '1', { nx: true, ex: GAS_LOCK_TTL });
+    return r === 'OK';
+  }
+  const now = Date.now();
+  const exp = memGasLock.get(address);
+  if (exp && exp > now) return false;
+  memGasLock.set(address, now + GAS_LOCK_TTL * 1000);
+  return true;
+}
+
+/** Release the session-gas in-flight lock (always call in a finally). */
+export async function releaseGasDripLock(address: string): Promise<void> {
+  if (redis) {
+    await redis.del(gasLockKey(address));
+    return;
+  }
+  memGasLock.delete(address);
+}
+
+/** True if this key was dripped within the cooldown window (refuse another). */
+export async function recentlyDripped(address: string): Promise<boolean> {
+  if (redis) return (await redis.exists(gasRecentKey(address))) === 1;
+  const exp = memGasRecent.get(address);
+  return !!exp && exp > Date.now();
+}
+
+/** Record a successful drip (starts the per-key cooldown + bumps the daily count). */
+export async function markDripped(address: string): Promise<void> {
+  if (redis) {
+    await redis.set(gasRecentKey(address), '1', { ex: GAS_COOLDOWN_TTL });
+    const n = await redis.incr(gasDayKey());
+    if (n === 1) await redis.expire(gasDayKey(), DAY_TTL);
+    return;
+  }
+  memGasRecent.set(address, Date.now() + GAS_COOLDOWN_TTL * 1000);
+  memGasRollDay();
+  memGasCount += 1;
+}
+
+/** Session-gas drips paid today (UTC) — the global circuit breaker. */
+export async function gasDripDailyCount(): Promise<number> {
+  if (redis) return (await redis.get<number>(gasDayKey())) ?? 0;
+  memGasRollDay();
+  return memGasCount;
+}

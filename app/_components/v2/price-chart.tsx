@@ -14,7 +14,7 @@
  * slider or the odds curve moves the line/band in real time. The strike/band is
  * resolved against the selected market's admission grid (ATM from the live pricer).
  */
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createChart,
   AreaSeries,
@@ -167,6 +167,12 @@ export function V2PriceChart({
   // Fit + snap-to-live only on the first history load, so later refetches don't
   // yank the user's zoom/scroll back.
   const fittedRef = useRef(false);
+  // Whether the backfill has actually been painted. The live-latest read (~190ms)
+  // resolves well before the history walk (~a few seconds), so without this the chart
+  // briefly draws a lone live point / vertical line that reads as a bug. We keep a
+  // loading state up until the history lands (or resolves empty). State, not a ref, so
+  // the overlay re-renders when it flips.
+  const [painted, setPainted] = useState(false);
 
   // Ticket selection → absolute prices on the chart.
   const mode = useV2TradeStore((s) => s.mode);
@@ -425,7 +431,15 @@ export function V2PriceChart({
     const series = seriesRef.current;
     if (!series || !historyQ.data) return;
     const points = toSeries(historyQ.data);
-    if (!points.length) return;
+    // Lift the loader on the NEXT frame (after the series has drawn) rather than
+    // synchronously here, so it hides only once the line is actually on screen (no
+    // lonely-point flash) and the state write stays out of the effect body.
+    let paintRaf = 0;
+    // Resolved but empty (rare — a live feed): stop the loader rather than hang on it.
+    if (!points.length) {
+      paintRaf = requestAnimationFrame(() => setPainted(true));
+      return () => cancelAnimationFrame(paintRaf);
+    }
     series.setData(points);
     // Resync the live engine to the fresh history tail. Keep any newer live point
     // ahead of it (a 30s refetch trails the ~1.5s live edge), so the glide/dot
@@ -460,6 +474,8 @@ export function V2PriceChart({
       chartRef.current?.timeScale().scrollToRealTime();
       fittedRef.current = true;
     }
+    paintRaf = requestAnimationFrame(() => setPainted(true));
+    return () => cancelAnimationFrame(paintRaf);
   }, [historyQ.data, renderLive, recomputeMomentum]);
 
   // Ingest the live tick: set the engine's TARGET (the freshest per-second value);
@@ -606,6 +622,28 @@ export function V2PriceChart({
         <span className="font-mono text-[13px] tabular-nums text-text-1">{spot == null ? '—' : price(spot)}</span>
       </div>
       <div ref={containerRef} className="h-full w-full" />
+      {/* First load: the live point resolves (~190ms) before the history backfill
+          (~a few seconds), so the chart would briefly draw a lone point / vertical
+          line that reads as broken. Cover it with a clear loading state (the live
+          spot readout above stays visible) until the line is actually painted. */}
+      {!painted && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute inset-0 z-5 flex flex-col items-center justify-center gap-3 bg-bg-0"
+        >
+          <svg viewBox="0 0 120 32" className="h-9 w-40 animate-pulse text-up/30" fill="none" aria-hidden="true">
+            <polyline
+              points="0,26 15,22 30,27 45,15 60,19 75,9 90,13 105,6 120,11"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <span className="font-mono text-[11px] uppercase tracking-wider text-text-3">Loading live chart</span>
+        </div>
+      )}
       {/* When the upstream spot feed freezes, blur the (frozen) chart + say so. */}
       <StaleFeedOverlay />
     </div>

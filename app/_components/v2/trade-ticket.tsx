@@ -32,6 +32,7 @@ import { LuShare2 } from 'react-icons/lu';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
+import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
@@ -53,6 +54,7 @@ import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
 import { SharedTradeBanner } from './share/shared-trade-banner';
 import { TradeShareModal } from './share/trade-share-modal';
+import { InstantTradingToggle } from './session/instant-trading-toggle';
 import { buildRecipe } from '@/lib/share/trade-link';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { GlassError } from '@/app/_components/ui/glass-error';
@@ -112,6 +114,10 @@ export function V2TradeTicket({
   const pickSeq = useV2TradeStore((s) => s.pickSeq);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
   const pulseFocus = useV2TradeStore((s) => s.pulseFocus);
+  const instantTrade = useSessionPrefs((s) => s.instantTrade);
+  const armInstant = useSessionPrefs((s) => s.armInstant);
+  const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
+  const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
 
   // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
   // gas SUI). One tap drips a starter grant from the app treasury — the SAME
@@ -354,6 +360,14 @@ export function V2TradeTicket({
 
   function openReview() {
     if (!quotable || tooCloseToExpiry || insufficientFunds || !!acct.busy) return;
+    // Instant one-tap: a live session already removes the wallet pop-up. If the
+    // trader opted in AND the trade needs no wallet top-up (shortfall covered by
+    // the account), place it straight away and skip our review too. Never one-tap
+    // a trade that would still open a deposit pop-up.
+    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+      void handleMint();
+      return;
+    }
     setConfirmOpen(true);
   }
 
@@ -369,6 +383,8 @@ export function V2TradeTicket({
   }
 
   async function handleMint() {
+    // Turn instant trading on in THIS approval only when armed and none is live yet.
+    const wasArming = armInstant && !acct.sessionActive;
     const digest = await acct.mintBudget(
       {
         marketId: market!.expiry_market_id,
@@ -379,10 +395,13 @@ export function V2TradeTicket({
         leverage: leverageScaled(lev),
         deposit: shortfall > 0n ? shortfall : undefined,
       },
-      { silentSuccess: true },
+      { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
     setConfirmOpen(false);
     if (digest) {
+      // Session is now live; disarm so a lapsed session later prompts to turn it back
+      // on consciously rather than silently re-authorizing.
+      if (wasArming) setArmInstant(false);
       // Ripple the fill on the surface (it reads the store's `fill`).
       pulseFill({
         marketId: market!.expiry_market_id,
@@ -622,6 +641,8 @@ export function V2TradeTicket({
         </div>
       )}
 
+      {/* Turn instant trading on inside this trade's approval (Slush, no live session). */}
+      <InstantTradingToggle />
       <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} />
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
@@ -905,9 +926,17 @@ export function V2TradeTicket({
         maxWin={`$${fromQuote(winBase).toFixed(2)} ${sym}`}
         confirmLabel={`Mint ${rangeMode ? 'Range' : isUp ? 'UP' : 'DOWN'}`}
         subtitle={
-          acct.gasless
-            ? 'Signed in with Google — mints instantly, no wallet pop-up'
-            : 'Review your position, then approve it in your wallet'
+          acct.sessionActive
+            ? acct.gasless
+              ? 'Instant trading is on. This mints straight through, no sign step.'
+              : 'Instant trading is on. This mints with no wallet pop-up.'
+            : armInstant
+              ? acct.gasless
+                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
+                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
+              : acct.gasless
+                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                : 'Review your position, then approve it in your wallet'
         }
       />
 

@@ -24,6 +24,7 @@ import { GlassError } from '../../ui/glass-error';
 import { LuArrowLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
+import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { price, pct, signed, countdown, dateUTC, leverage as fmtLev } from '@/lib/format';
@@ -46,6 +47,7 @@ import {
 } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './payout-slider';
 import { V2LeverageSlider } from './leverage-slider';
+import { InstantTradingToggle } from '../session/instant-trading-toggle';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -162,6 +164,10 @@ function BinaryBody({
   const leverage = useV2TradeStore((s) => s.leverage);
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
+  const instantTrade = useSessionPrefs((s) => s.instantTrade);
+  const armInstant = useSessionPrefs((s) => s.armInstant);
+  const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
+  const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
 
   const [view, setView] = useState<'glance' | 'ticket'>(initialView);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -199,6 +205,12 @@ function BinaryBody({
 
   function openReview() {
     if (!quotable || acct.busy) return;
+    // Instant one-tap when a session is live and the trade is fully account-funded
+    // (a wallet top-up would still pop up, so never one-tap that).
+    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+      void handleMint();
+      return;
+    }
     setConfirmOpen(true);
   }
 
@@ -209,6 +221,8 @@ function BinaryBody({
       BigInt(market!.tick_size),
     );
     // silentSuccess: the celebratory MintSuccessModal replaces the toast (rail parity).
+    // Turn instant trading on in THIS approval only when armed and none is live yet.
+    const wasArming = armInstant && !acct.sessionActive;
     const digest = await acct.mintBudget(
       {
         marketId: market!.expiry_market_id,
@@ -219,10 +233,12 @@ function BinaryBody({
         leverage: leverageScaled(s.lev),
         deposit: shortfall > 0n ? shortfall : undefined,
       },
-      { silentSuccess: true },
+      { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
     setConfirmOpen(false);
     if (digest) {
+      // Disarm now the session is live; a later lapse prompts to turn it back on.
+      if (wasArming) setArmInstant(false);
       pulseFill({ marketId: market!.expiry_market_id, strike, isUp });
       // Keep the ticket mounted behind the success modal; it closes on Done.
       setMintSuccess({
@@ -333,6 +349,7 @@ function BinaryBody({
             </p>
           )}
 
+          <InstantTradingToggle />
           <MintButton
             tone={isUp ? 'up' : 'down'}
             busy={acct.busy === 'mint'}
@@ -366,9 +383,17 @@ function BinaryBody({
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
         subtitle={
-          acct.gasless
-            ? 'Signed in with Google — mints instantly, no wallet pop-up'
-            : 'Review your position, then approve it in your wallet'
+          acct.sessionActive
+            ? acct.gasless
+              ? 'Instant trading is on. This mints straight through, no sign step.'
+              : 'Instant trading is on. This mints with no wallet pop-up.'
+            : armInstant
+              ? acct.gasless
+                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
+                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
+              : acct.gasless
+                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                : 'Review your position, then approve it in your wallet'
         }
       />
 
@@ -417,6 +442,10 @@ function RangeBody({
   const leverage = useV2TradeStore((s) => s.leverage);
   const setLeverage = useV2TradeStore((s) => s.setLeverage);
   const pulseFill = useV2TradeStore((s) => s.pulseFill);
+  const instantTrade = useSessionPrefs((s) => s.instantTrade);
+  const armInstant = useSessionPrefs((s) => s.armInstant);
+  const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
+  const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [mintSuccess, setMintSuccess] = useState<MintSuccessState | null>(null);
@@ -447,6 +476,12 @@ function RangeBody({
 
   function openReview() {
     if (!quotable || acct.busy) return;
+    // Instant one-tap when a session is live and the trade is fully account-funded
+    // (a wallet top-up would still pop up, so never one-tap that).
+    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+      void handleMint();
+      return;
+    }
     setConfirmOpen(true);
   }
 
@@ -457,6 +492,8 @@ function RangeBody({
       BigInt(market!.tick_size),
     );
     // silentSuccess: the celebratory MintSuccessModal replaces the toast (rail parity).
+    // Turn instant trading on in THIS approval only when armed and none is live yet.
+    const wasArming = armInstant && !acct.sessionActive;
     const digest = await acct.mintBudget(
       {
         marketId: market!.expiry_market_id,
@@ -467,10 +504,12 @@ function RangeBody({
         leverage: leverageScaled(s.lev),
         deposit: shortfall > 0n ? shortfall : undefined,
       },
-      { silentSuccess: true },
+      { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
     setConfirmOpen(false);
     if (digest) {
+      // Disarm now the session is live; a later lapse prompts to turn it back on.
+      if (wasArming) setArmInstant(false);
       pulseFill({ marketId: market!.expiry_market_id, strike: (lower + higher) / 2, isUp: true });
       // Keep the ticket mounted behind the success modal; it closes on Done.
       setMintSuccess({
@@ -542,6 +581,7 @@ function RangeBody({
             </p>
           )}
 
+          <InstantTradingToggle />
           <MintButton
             tone="up"
             busy={acct.busy === 'mint'}
@@ -575,9 +615,17 @@ function RangeBody({
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel="Mint Range"
         subtitle={
-          acct.gasless
-            ? 'Signed in with Google — mints instantly, no wallet pop-up'
-            : 'Review your position, then approve it in your wallet'
+          acct.sessionActive
+            ? acct.gasless
+              ? 'Instant trading is on. This mints straight through, no sign step.'
+              : 'Instant trading is on. This mints with no wallet pop-up.'
+            : armInstant
+              ? acct.gasless
+                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
+                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
+              : acct.gasless
+                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                : 'Review your position, then approve it in your wallet'
         }
       />
 

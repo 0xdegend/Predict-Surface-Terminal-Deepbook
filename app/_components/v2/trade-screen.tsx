@@ -32,6 +32,8 @@ import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
 import { V2RailTabs } from './rail-tabs';
+import { SessionPanel } from './session/session-panel';
+import { SessionPill } from './session/session-pill';
 import { SurfaceMountV2 } from './surface/surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -119,6 +121,9 @@ export function V2TradeScreen({
           underneath. On mobile the ticket lives in the slide-up V2TradeSheet, so
           the rail is just odds + positions (the ticket block hides at <lg). */}
       <aside className="flex min-w-0 flex-col gap-6 bg-bg-0 p-4 sm:p-5">
+        {/* Instant-trading (delegated session) control. Self-hides unless it's on
+            for this build and the wallet benefits (Slush, funded account). */}
+        <SessionPanel />
         {paused ? (
           // Paused: the ticket has nothing to quote, so blur it and surface the
           // live BTC fear & greed + a hand-off to Kelly (who still reads BTC).
@@ -130,6 +135,9 @@ export function V2TradeScreen({
               <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
                 <span className="h-3 w-px bg-accent/70" />
                 Trade ticket · click surface → mint
+                <span className="ml-auto normal-case">
+                  <SessionPill />
+                </span>
               </h2>
               <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
             </div>

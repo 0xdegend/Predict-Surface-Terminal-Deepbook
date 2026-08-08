@@ -194,6 +194,10 @@ export interface PredictV2Config {
     propbook: string;
     blockScholesOracle: string;
     fixedMath: string;
+    /** `deepbook_sessions` — delegate an ephemeral key to trade (kills the per-trade
+     *  Slush popup). Empty on deployments where it is not published. See
+     *  lib/sui/v2/session.ts. */
+    sessions: string;
   };
   /** Shared objects passed into entry functions. */
   shared: {
@@ -277,6 +281,7 @@ const V2_TESTNET: PredictV2Config = {
     propbook: '0x8eb2adde1c91f8b7c9ba5e9b0a32bfb804510c342939c5f77458fd8143f9755b',
     blockScholesOracle: '0x8192932b70d5946217d0f09aad44f84ad5c27ee4c1ca31b09f46200fbd31d3de',
     fixedMath: '0x6930d8eff504f15e45e7ceec3d504bfc1a6f1e1d4c02babe03c156f77b84523d',
+    sessions: '', // not published on 6-24
   },
   shared: {
     protocolConfig: '0x2325224629b4bd96d1f1d7ee937e07f8a06f861018a130bbb26db09cb0394cb6',
@@ -358,6 +363,7 @@ const V2_TESTNET_729: PredictV2Config = {
     // package (writers.priceUpdater.blockScholesOraclePackage). No code reads it.
     blockScholesOracle: '0x87cc43db9b6c1e8b174841221e8e4bde5ab8fc8aaffacc58699c77e9e6340ff6',
     fixedMath: '0xd81b1e5a28d616b8ff9eeda2241866ece02767fc4f368bec23b8eb57334f3d2d',
+    sessions: '', // 7-29 dead; sessions published on the 8-06 refresh
   },
   shared: {
     protocolConfig: '0x19a07f5be96ca7b47e8b2ec39d7caf40e1fbb7d4156a699bfecda807d1d3d427',
@@ -437,6 +443,9 @@ const V2_TESTNET_806: PredictV2Config = {
     // package (writers.priceUpdater.blockScholesOraclePackage). No code reads it.
     blockScholesOracle: '0x9d2cf38611d971a0e918b93fc0113d279f5c923f43e62c407a9ad0f9d82f6698',
     fixedMath: '0xdf0bd2a0d201562f2bdecb1b77d7998c7af316f6fd7d1eab9b9035064f21bfd4',
+    // deepbook_sessions on 8-06 (Published.toml: published-at v2). Verified to target
+    // this deployment's account/predict/config/registry objects. See [[sessions-delegated-trading]].
+    sessions: '0x403ac487b19635c022f5c50378b9097ed7d80175f9b3ff7ea5a8a4a5fe0ecfbe',
   },
   shared: {
     protocolConfig: '0x43703ceee4d5f5a9e8cbf728071c34dc65961dd6e878fafd9ac36d86a9a4ce5b',
@@ -559,3 +568,19 @@ export const v2Target = (
 
 export const v2EventType = (module: string, name: string): string =>
   `${predictV2Config.packages.predict}::${module}::${name}`;
+
+/** Fully-qualified target in the `deepbook_sessions` package (delegated trading). */
+export const v2SessionTarget = (
+  module: string,
+  fn: string,
+): `${string}::${string}::${string}` =>
+  `${predictV2Config.packages.sessions}::${module}::${fn}` as const;
+
+/**
+ * Delegated-trading sessions ([[sessions-delegated-trading]]): authorize an ephemeral
+ * key ONCE, then trade popup-less. Available only when the package is published on the
+ * active deployment AND the flag is set — ships DARK so the existing Slush/Enoki paths
+ * are untouched until we explicitly turn it on.
+ */
+export const V2_SESSIONS_ENABLED: boolean =
+  !!predictV2Config.packages.sessions && process.env.NEXT_PUBLIC_SESSIONS === '1';
