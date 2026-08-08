@@ -32,7 +32,9 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { PriceBandPrimitive, WinZonePrimitive, LivePulsePrimitive, BAND_LINE } from '@/app/_components/chart/price-overlays';
 import { StaleFeedOverlay } from './stale-feed-overlay';
-import { getPythHistory, getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { pythSeedQueryOptions, pythHistoryQueryOptions } from '@/lib/hooks/use-v2-pyth-history';
+import { getPythTape } from '@/lib/store/pyth-tape';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { toFloat, fromFloat } from '@/config/scale';
@@ -66,6 +68,14 @@ function obsMs(o: PythObservation): number | null {
  * jitter so a healthy feed never fragments.
  */
 const GAP_BREAK_S = 5;
+
+// Floor for the vertical auto-scale span. A dead-flat tape would otherwise zoom into a
+// ~$1-2 window where the integer price labels collapse into duplicates (64921 / 64921 /
+// 64921). Keep at least this much range so labels stay distinct AND a quiet market reads
+// as a calm line inside a stable scale instead of magnified jitter; a real move wider
+// than the floor still zooms to fit. Fraction of price so it scales across price levels.
+const AUTOSCALE_MIN_SPAN_FRAC = 0.0002; // 0.02% of price (~$13 at $65k)
+const AUTOSCALE_MIN_SPAN_ABS = 4; // absolute floor (defensive, for low-priced assets)
 
 // Live-edge motion engine tuning. Between the ~1.5s Pyth polls the last point
 // GLIDES toward the freshest tick instead of snapping, so the line breathes and
@@ -195,14 +205,27 @@ export function V2PriceChart({
   // The lone first-pick level, shown while the band is still open (range mode only).
   const anchor = mode === 'range' ? rangeAnchorPrice : null;
 
-  // 500 per-second points requested; the on-chain reader's page budget caps it at a
-  // legacy-length ~3 min window (the 8-06 feed runs ~5 obs/sec, so it's the budget,
-  // not this number, that governs — see onchainPythObservations). This is BACKFILL:
-  // the live edge is driven by latestQ (~1.5s) and appended by the rAF engine, so the
-  // history only needs to heal/re-anchor occasionally — 60s keeps the ~18-page walk
-  // off the hot path without ever staling the visible line.
-  const historyQ = useQuery({ queryKey: qkV2.pythHistory, queryFn: () => getPythHistory(PID, 500), refetchInterval: 60_000 });
+  // History is a TWO-STAGE backfill (options + prefetch in use-v2-pyth-history) so the
+  // chart paints in seconds, not after the full event-page walk: `seedQ` is a shallow
+  // slice that paints immediately, `historyQ` the deeper ~90s window that swaps in when
+  // ready. The trade screen PREFETCHES both from page load, so switching to Chart
+  // usually lands straight on the full window. The live edge is driven by latestQ
+  // (~1.5s) + the rAF engine either way. `historyData` prefers the deep set once it
+  // lands, falling back to the seed until then.
+  const seedQ = useQuery(pythSeedQueryOptions);
+  const historyQ = useQuery(pythHistoryQueryOptions);
+  const historyData = historyQ.data ?? seedQ.data;
   const latestQ = useQuery({ queryKey: qkV2.pythLatest, queryFn: () => getPythLatest(PID), refetchInterval: 1500 });
+
+  // Failsafe: never hang the loader on a dead event index. If BOTH history fetches
+  // settle with no data (every event RPC errored), drop the loader and show the chart
+  // anyway — the live edge still populates it from latestQ.
+  useEffect(() => {
+    if (painted || historyData) return;
+    if (!historyQ.isFetched || !seedQ.isFetched) return;
+    const raf = requestAnimationFrame(() => setPainted(true));
+    return () => cancelAnimationFrame(raf);
+  }, [painted, historyData, historyQ.isFetched, seedQ.isFetched]);
 
   // Paint the current momentum onto the line, area fill, and pulse dot — but only
   // when it actually flipped, so a steady trend doesn't re-apply options every tick.
@@ -373,28 +396,32 @@ export function V2PriceChart({
         const base = baseImpl();
         const band = bandRangeRef.current;
         const s = strikeRangeRef.current;
-        let lo: number | null = null;
-        let hi: number | null = null;
+        // Start from the series' own data range, then extend it to include the selection.
+        let lo: number | null = base?.priceRange?.minValue ?? null;
+        let hi: number | null = base?.priceRange?.maxValue ?? null;
         if (band) {
           const pad = Math.max((band.high - band.low) * 0.25, 1);
-          lo = band.low - pad;
-          hi = band.high + pad;
+          lo = lo == null ? band.low - pad : Math.min(lo, band.low - pad);
+          hi = hi == null ? band.high + pad : Math.max(hi, band.high + pad);
         }
         if (s != null) {
-          const span = base?.priceRange ? base.priceRange.maxValue - base.priceRange.minValue : s * 0.01;
+          const span = lo != null && hi != null ? hi - lo : s * 0.01;
           const pad = Math.max(span * 0.08, 1);
           lo = lo == null ? s - pad : Math.min(lo, s - pad);
           hi = hi == null ? s + pad : Math.max(hi, s + pad);
         }
         if (lo == null || hi == null) return base;
-        if (!base?.priceRange) return { priceRange: { minValue: lo, maxValue: hi } };
-        return {
-          ...base,
-          priceRange: {
-            minValue: Math.min(base.priceRange.minValue, lo),
-            maxValue: Math.max(base.priceRange.maxValue, hi),
-          },
-        };
+        // FLOOR the span so a dead-flat tape can't over-zoom into duplicate integer
+        // labels (see AUTOSCALE_MIN_SPAN_*). Only ever widens; a real move past the floor
+        // still zooms to fit. Centered on the current range so the line stays put.
+        const center = (lo + hi) / 2;
+        const minSpan = Math.max(center * AUTOSCALE_MIN_SPAN_FRAC, AUTOSCALE_MIN_SPAN_ABS);
+        if (hi - lo < minSpan) {
+          lo = center - minSpan / 2;
+          hi = center + minSpan / 2;
+        }
+        const priceRange = { minValue: lo, maxValue: hi };
+        return base ? { ...base, priceRange } : { priceRange };
       },
     });
     // Range-band highlight + binary win-zone shade, attached once and driven by
@@ -426,11 +453,22 @@ export function V2PriceChart({
     };
   }, []);
 
-  // Seed / backfill history.
+  // Seed / backfill history. MERGE the rolling pyth-tape buffer (kept CURRENT across
+  // unmounts by the live reads) with the walk result (`historyData` = full ?? seed):
+  // toSeries dedups per second, so on a warm chart open the tape supplies present
+  // history (no event walk needed), and on a fresh reload the walk supplies the past
+  // ~90s while the tape is still cold. Merging also heals the gap between a stale cached
+  // walk tail and the current live tape. Re-runs when the walk lands/refetches.
   useEffect(() => {
     const series = seriesRef.current;
-    if (!series || !historyQ.data) return;
-    const points = toSeries(historyQ.data);
+    const tape = getPythTape();
+    const source = [...(historyData ?? []), ...tape];
+    if (!series || !source.length) return;
+    // Stop auto-fitting (which re-frames seed→full) once the full window is available —
+    // the deep walk landed, OR the tape alone already covers a real (~1-min) window (a
+    // warm remount). Until then keep fitting so it grows from the ~15s seed.
+    const isFull = !!historyQ.data || tape.length >= 60;
+    const points = toSeries(source);
     // Lift the loader on the NEXT frame (after the series has drawn) rather than
     // synchronously here, so it hides only once the line is actually on screen (no
     // lonely-point flash) and the state write stays out of the effect body.
@@ -442,7 +480,7 @@ export function V2PriceChart({
     }
     series.setData(points);
     // Resync the live engine to the fresh history tail. Keep any newer live point
-    // ahead of it (a 30s refetch trails the ~1.5s live edge), so the glide/dot
+    // ahead of it (a redraw can trail the ~1.5s live edge), so the glide/dot
     // don't jump backward; otherwise seed both from the tail.
     const last = points[points.length - 1];
     const tail = 'value' in last ? { time: last.time as number, value: last.value } : null;
@@ -456,7 +494,7 @@ export function V2PriceChart({
       renderLive(); // re-place the (possibly newer) live point on top of history
     }
     // Seed the momentum buffer from the fresh history so the tint is right on load
-    // (and stays correct after each 30s refetch); live ticks append onto it.
+    // (and stays correct after each redraw); live ticks append onto it.
     samplesRef.current = points
       .filter((p): p is AreaData<UTCTimestamp> => 'value' in p)
       .map((p) => ({ t: p.time as number, v: p.value }));
@@ -464,19 +502,22 @@ export function V2PriceChart({
     // Adapt the axis labels to the actual window: minute labels read cleanest
     // (legacy parity), but collapse to duplicates once ticks fall closer than a
     // minute apart — so only show seconds when the window is short (< ~8 min,
-    // the common case at the feed's 500-tick cap).
+    // the common case for the ~90s window).
     const span = (points[points.length - 1].time as number) - (points[0].time as number);
     chartRef.current?.applyOptions({ timeScale: { secondsVisible: span < 8 * 60 } });
+    // Keep auto-fitting until the DEEP history has painted, so the view re-frames from
+    // the seed's ~15s to the full window; then lock it so refetches don't yank the
+    // user's zoom/scroll.
     if (!fittedRef.current) {
       chartRef.current?.timeScale().fitContent();
       // Snap to the live edge so the newest tick shows with the rightOffset gap
       // (fitContent alone pins the last point flush against the axis) — legacy parity.
       chartRef.current?.timeScale().scrollToRealTime();
-      fittedRef.current = true;
+      if (isFull) fittedRef.current = true;
     }
     paintRaf = requestAnimationFrame(() => setPainted(true));
     return () => cancelAnimationFrame(paintRaf);
-  }, [historyQ.data, renderLive, recomputeMomentum]);
+  }, [historyData, historyQ.data, renderLive, recomputeMomentum]);
 
   // Ingest the live tick: set the engine's TARGET (the freshest per-second value);
   // the rAF loop glides the drawn edge toward it. When motion is off (reduced-
@@ -605,9 +646,14 @@ export function V2PriceChart({
     strikeRangeRef.current = strike != null ? strike : bandLow == null ? anchor : null;
     bandRangeRef.current = bandLow != null && bandHigh != null ? { low: bandLow, high: bandHigh } : null;
 
-    // Reframe so the selection is in view; runs only on selection changes, so
-    // it doesn't fight the user's zoom mid-view.
-    series.priceScale().setAutoScale(true);
+    // Reframe so the selection is in view — but ONLY while the price scale is still in
+    // auto mode. Dragging the axis turns autoScale OFF; without this guard the effect
+    // (which ALSO re-runs as the ATM strike drifts with the market, every few seconds)
+    // would snap a user's manual zoom straight back to auto. Double-clicking the axis
+    // re-enables auto, the standard lightweight-charts gesture.
+    if (series.priceScale().options().autoScale) {
+      series.priceScale().setAutoScale(true);
+    }
   }, [strike, isUp, bandLow, bandHigh, anchor]);
 
   // Live spot readout top-right (raw latest, matching the nav tape) — mirrors

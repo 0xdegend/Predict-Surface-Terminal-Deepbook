@@ -1,11 +1,16 @@
 'use client';
 
 /**
- * V2SpotTape — a live BTC spot readout for the new deployment, polled ~1.5s from
- * the propbook oracle indexer. A quiet readout: just the asset, the price, and a
- * tick arrow (green up / red down). The digits ODOMETER-ROLL to each new tick
- * (RollingNumber) — a pure visual slide, so the price shown is always the real,
- * current value with zero animation delay. Read-only.
+ * V2SpotTape — a live BTC spot readout for the new deployment, in the nav on every
+ * page. Polled every 250ms so the nav price is the MOST live thing on screen (the feed
+ * writes ~4-5x/sec, so this tracks it about as tightly as the data allows — a touch
+ * livelier than the chart's ~350ms stream cadence). A straight fast poll beats wiring
+ * the checkpoint stream here: 250ms is already faster than the stream's debounce, so the
+ * stream would add nothing, and this keeps it off the non-trade pages. The interval
+ * pauses while the tab is unfocused (React Query default), so it isn't hammering in the
+ * background. A quiet readout: just the asset, the price, and a tick arrow (green up /
+ * red down). The digits ODOMETER-ROLL to each new tick (RollingNumber) — a pure visual
+ * slide, so the price shown is always the real, current value with zero delay. Read-only.
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +22,7 @@ export function V2SpotTape() {
   const { data } = useQuery({
     queryKey: qkV2.pythLatest,
     queryFn: () => getPythLatest(predictV2Config.asset.pythFeedId),
-    refetchInterval: 1500,
+    refetchInterval: 250, // sub-second: track the ~4-5/s feed as tightly as it moves
   });
   const spot = pythSpot(data ?? null);
 

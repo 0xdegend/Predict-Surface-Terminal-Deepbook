@@ -21,6 +21,7 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
+import { usePrefetchPythHistory, usePythTapeFeed } from '@/lib/hooks/use-v2-pyth-history';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
@@ -55,6 +56,13 @@ export function V2TradeScreen({
   // 1-minute market opens every minute), so poll and let fresh markets flow
   // into the picker/table/ticket without a reload.
   const markets = useV2Markets(initialMarkets);
+  // Warm the price-chart history from page load (the hero defaults to Surface, so the
+  // chart — and its slow event-page walk — otherwise wouldn't start until the trader
+  // switches to Chart, leaving them on the short seed for a while).
+  usePrefetchPythHistory();
+  // Accumulate the live price into the rolling pyth-tape buffer even while on Surface,
+  // so switching to Chart draws CURRENT history straight from memory (no event walk).
+  usePythTapeFeed();
   const marketId = useV2TradeStore((s) => s.marketId);
   // Auto-advance to the next market as expiries roll is handled by the
   // per-second <MarketAutoAdvancer> below (legacy useFrontOracleId parity).
