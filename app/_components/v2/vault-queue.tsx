@@ -54,7 +54,7 @@ export function V2VaultQueue() {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-line-soft px-3.5 py-2.5 text-[11.5px] text-text-3">
         <LuClock size={13} className="shrink-0" />
-        <span>Nothing queued — deposits and withdrawals appear here until the next vault update.</span>
+        <span>Nothing queued. Deposits and withdrawals appear here until the next vault update.</span>
       </div>
     );
   }
@@ -73,7 +73,7 @@ export function V2VaultQueue() {
 
       {error ? (
         <p className="text-[11.5px] leading-relaxed text-down">
-          Couldn&apos;t read the queue from the vault. It&apos;s safe to retry — nothing is lost;
+          Couldn&apos;t read the queue from the vault. It&apos;s safe to retry. Nothing is lost;
           your funds stay escrowed on-chain either way.
         </p>
       ) : isLoading ? (

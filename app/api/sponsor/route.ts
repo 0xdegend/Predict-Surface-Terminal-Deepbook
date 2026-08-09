@@ -15,10 +15,9 @@
  */
 import { NextResponse } from 'next/server';
 import { EnokiClient, type EnokiNetwork } from '@mysten/enoki';
-import { Transaction } from '@mysten/sui/transactions';
-import { fromBase64, normalizeSuiAddress } from '@mysten/sui/utils';
-import { predictConfig, predictV2Config } from '@/config/predict';
+import { predictConfig } from '@/config/predict';
 import { installEnokiTrace } from '@/lib/sui/enoki-trace';
+import { sponsoredTargets } from '@/lib/sui/sponsor-allowlist';
 
 // Debug tracing of the raw api.enoki.mystenlabs.com request/response (URL +
 // Request-Id + bodies) — active only when ENOKI_DEBUG is set. See enoki-trace.ts.
@@ -27,52 +26,6 @@ installEnokiTrace();
 const enoki = process.env.ENOKI_PRIVATE_API_KEY
   ? new EnokiClient({ apiKey: process.env.ENOKI_PRIVATE_API_KEY })
   : null;
-
-/** Package IDs the sponsor is willing to pay gas for — our own deployments only,
- *  so it can never be turned into a faucet for arbitrary transactions. Normalized
- *  to canonical 0x-form so comparison against the tx's targets is exact. */
-function ownedPackages(): Set<string> {
-  const ids = [
-    predictConfig.packageId,
-    predictConfig.hedgePackageId,
-    predictConfig.skewFeePackageId,
-    predictV2Config.packages.predict,
-    predictV2Config.packages.account,
-  ];
-  return new Set(ids.filter(Boolean).map((id) => normalizeSuiAddress(id)));
-}
-
-/**
- * Derive the sponsor allowlist from the ACTUAL transaction: every move-call
- * target the kind bytes contain, each verified to live in one of our packages.
- *
- * This replaces the old hand-maintained target list, which silently 400'd Enoki's
- * create phase the moment a flow called a function nobody remembered to add
- * (mint_exact_amount, redeem_live/settled, …). Now ANY function in our packages is
- * covered automatically — so gasless flows never break target-by-target — while a
- * call into a package we don't own is refused up front. Targets are passed through
- * exactly as parsed, so their normalization matches what Enoki reads from the same
- * bytes (no stale-string or leading-zero mismatch). Throws → 400 in the caller.
- */
-function sponsoredTargets(kindB64: string): string[] {
-  const { commands } = Transaction.fromKind(fromBase64(kindB64)).getData() as unknown as {
-    commands: { MoveCall?: { package: string; module: string; function: string } }[];
-  };
-  const owned = ownedPackages();
-  const targets = new Set<string>();
-  for (const cmd of commands) {
-    const mc = cmd.MoveCall;
-    if (!mc) continue; // native command (split/merge/transfer) — no target to gate
-    const pkg = normalizeSuiAddress(mc.package);
-    if (!owned.has(pkg)) {
-      throw new Error(
-        `Refusing to sponsor a call outside the Predict packages: ${pkg}::${mc.module}::${mc.function}`,
-      );
-    }
-    targets.add(`${pkg}::${mc.module}::${mc.function}`);
-  }
-  return [...targets];
-}
 
 export async function POST(req: Request) {
   if (!enoki) {

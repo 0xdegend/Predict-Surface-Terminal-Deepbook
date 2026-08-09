@@ -22,27 +22,35 @@ import { bcs } from '@mysten/sui/bcs';
 import { predictV2Config } from '@/config/predict';
 
 /**
- * `lp_book::Request` — layout verified byte-exactly against the live queue
- * (83-byte page = 2 option links + 1 entry). Field ORDER matters and is not the
- * order the JSON shim prints: index, account, recipient, amount.
+ * `lp_book::RequestEntry` — field ORDER matters and is NOT the (alphabetical) order
+ * the JSON shim prints. Verified byte-exactly against the live 8-06 queue via the
+ * package's normalized Move struct: a 96-byte entry (index + account + recipient +
+ * amount + min_output + missed_flushes).
+ *
+ * `account_id` is a Move `ID` (0x2::object::ID), which BCS-encodes as a bare 32-byte
+ * address — so `bcs.Address` reads it exactly. `min_output` / `missed_flushes` were
+ * ADDED by the 8-06 protocol (the earlier struct was 80 bytes); we don't use them,
+ * but they MUST be modelled or every entry after the first misaligns and the amounts
+ * decode to garbage — which is exactly the reconciliation failure this fixes.
  */
-const LpRequest = bcs.struct('Request', {
+const RequestEntry = bcs.struct('RequestEntry', {
   index: bcs.u64(),
   account_id: bcs.Address,
   recipient: bcs.Address,
   amount: bcs.u64(),
+  min_output: bcs.u64(),
+  missed_flushes: bcs.u64(),
 });
 
 /**
  * `lp_book::RequestPage`. The two leading `Option<u64>`s are the page's prev/next
  * links; we never follow them (listDynamicFields hands us every page, and entries
- * carry their own monotonically increasing `index`, which IS the FIFO order), so
- * they're read positionally and left unnamed.
+ * carry their own monotonically increasing `index`, which IS the FIFO order).
  */
 const RequestPage = bcs.struct('RequestPage', {
-  link_a: bcs.option(bcs.u64()),
-  link_b: bcs.option(bcs.u64()),
-  entries: bcs.vector(LpRequest),
+  prev: bcs.option(bcs.u64()),
+  next: bcs.option(bcs.u64()),
+  entries: bcs.vector(RequestEntry),
 });
 
 /** One un-filled LP request sitting in the queue. */
