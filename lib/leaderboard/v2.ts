@@ -27,6 +27,10 @@ export interface V2LeaderboardRow {
   skewTrades?: number;
   /** True when any of this trader's bets carried the app's builder code. */
   viaSkew?: boolean;
+  /** True when this wallet onboarded through the Skew starter-grant faucet. Set on
+   *  both faucet-only rows (0 trades) and traders who also claimed. The UI badges the
+   *  0-trade ones as "Starter" — see mergeFaucetParticipants + leaderboard-panel. */
+  viaFaucet?: boolean;
   /** Newest mint/redeem timestamp (ms). */
   lastActiveMs?: number;
   /** Points carried over from an earlier deployment's Skew board (6-24 → 8-06), folded

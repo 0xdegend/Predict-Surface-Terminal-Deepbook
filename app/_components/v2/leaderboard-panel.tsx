@@ -27,6 +27,7 @@ import {
   LuRefreshCw,
   LuArrowRight,
   LuLayers,
+  LuSprout,
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { num, compact } from '@/lib/format';
@@ -87,6 +88,9 @@ export function V2LeaderboardPanel() {
 
   const sorted = sortV2Rows(rows, sort);
   const totals = v2LeaderboardTotals(rows);
+  // "Starter" wallets (onboarded through the faucet, no trades yet) only exist on the
+  // Skew board — show the legend only when at least one is present.
+  const hasStarters = scope === 'skew' && rows.some((r) => r.viaFaucet && r.trades === 0);
   // First load with nothing cached yet — skeleton the totals strip too (not just
   // the table), so the header doesn't flash real-looking 0 / 0.00 / 0 zeros.
   const loadingEmpty = activeLoading && sorted.length === 0;
@@ -266,24 +270,55 @@ export function V2LeaderboardPanel() {
         </Link>
         . Quote asset · {predictV2Config.quote.symbol}.
       </p>
+      {hasStarters && (
+        <p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-text-3">
+          <LuSprout size={11} className="flex-none" />
+          <span>
+            <span className="font-medium text-text-2">Starter</span> = onboarded through the Skew
+            faucet, no trades yet. They keep their spot and start earning points the moment they place
+            a bet.
+          </span>
+        </p>
+      )}
     </div>
   );
 }
 
 /** A trader's name cell — explorer-linked, with a "you" tag for the connected
- *  wallet. The profile/copy affordance is the separate ViewPositionsButton. */
+ *  wallet and a "Starter" badge for a wallet that onboarded through the faucet but
+ *  hasn't traded yet (so it never reads as if it traded). The profile/copy affordance
+ *  is the separate ViewPositionsButton. */
 function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
+  const starter = !!row.viaFaucet && row.trades === 0;
   return (
-    <a
-      href={EXPLORER(row.owner)}
-      target="_blank"
-      rel="noreferrer"
-      className="truncate text-text-1 hover:text-accent hover:underline"
-      title={row.owner}
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <a
+        href={EXPLORER(row.owner)}
+        target="_blank"
+        rel="noreferrer"
+        className="truncate text-text-1 hover:text-accent hover:underline"
+        title={row.owner}
+      >
+        <TraderName owner={row.owner} />
+        {isMe && <span className="ml-1.5 text-[10px] text-accent">you</span>}
+      </a>
+      {starter && <StarterBadge />}
+    </span>
+  );
+}
+
+/** Marks a wallet that joined through the Skew starter-grant faucet and hasn't placed
+ *  a trade yet — an onboard, not a trader. Kept visually quiet (outline chip, no fill)
+ *  so it never competes with real standings. */
+function StarterBadge() {
+  return (
+    <span
+      title="Onboarded through the Skew faucet — no trades yet"
+      className="inline-flex flex-none items-center gap-1 rounded-full border border-white/12 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-text-3"
     >
-      <TraderName owner={row.owner} />
-      {isMe && <span className="ml-1.5 text-[10px] text-accent">you</span>}
-    </a>
+      <LuSprout size={9} className="text-text-3" />
+      Starter
+    </span>
   );
 }
 

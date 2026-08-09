@@ -126,6 +126,43 @@ export async function markGranted(address: string, digest = '1'): Promise<void> 
   memDone.set(address, digest);
 }
 
+/**
+ * Every wallet that has claimed the starter grant, lowercased. Enumerated from the
+ * permanent `grant:done:*` markers via a cursor SCAN (bounded per iteration so it
+ * never blocks the store), deduped. The markers are keyed by address only, so this
+ * list already spans every deployment (6-24 / 7-29 / 8-06). Cached briefly in-process
+ * because the leaderboard route asks for it on every request; falls back to the
+ * in-process ledger when no Redis is configured (local dev). Never throws — a store
+ * hiccup yields the last good list (or empty), so the board still renders.
+ */
+const CLAIMERS_TTL_MS = 5 * 60_000;
+let claimersCache: { at: number; list: string[] } | null = null;
+
+export async function listFaucetClaimers(): Promise<string[]> {
+  if (claimersCache && Date.now() - claimersCache.at < CLAIMERS_TTL_MS) return claimersCache.list;
+  const prefix = 'grant:done:';
+  try {
+    let list: string[];
+    if (redis) {
+      const seen = new Set<string>();
+      let cursor = '0';
+      let guard = 0;
+      do {
+        const [next, keys] = await redis.scan(cursor, { match: `${prefix}*`, count: 500 });
+        for (const k of keys) seen.add(k.slice(prefix.length).toLowerCase());
+        cursor = next;
+      } while (cursor !== '0' && ++guard < 1000);
+      list = [...seen];
+    } else {
+      list = [...memDone.keys()].map((a) => a.toLowerCase());
+    }
+    claimersCache = { at: Date.now(), list };
+    return list;
+  } catch {
+    return claimersCache?.list ?? [];
+  }
+}
+
 /** Current number of grants paid today (UTC). */
 export async function dailyCount(): Promise<number> {
   if (redis) return (await redis.get<number>(dayKey())) ?? 0;
