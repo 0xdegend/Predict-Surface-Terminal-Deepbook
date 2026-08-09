@@ -86,7 +86,14 @@ export function V2LeaderboardPanel() {
     setPage(0);
   }
 
-  const sorted = sortV2Rows(rows, sort);
+  // Points are a Skew-app concept (staking + performance earned through our builder
+  // code). The "All traders" venue board is a read-only lens on how the whole venue
+  // trades — volumes, trade counts, and each trader's live positions — so it carries NO
+  // points and always ranks by volume. Only the Skew board shows and sorts by points.
+  const showPoints = scope === 'skew';
+  const effectiveSort: V2SortKey = showPoints ? sort : 'volume';
+
+  const sorted = sortV2Rows(rows, effectiveSort);
   const totals = v2LeaderboardTotals(rows);
   // "Starter" wallets (onboarded through the faucet, no trades yet) only exist on the
   // Skew board — show the legend only when at least one is present.
@@ -126,7 +133,8 @@ export function V2LeaderboardPanel() {
             Leaderboard
           </h1>
           <p className="mt-1 text-[12px] text-text-3">
-            The new deployment starts everyone fresh · ranked by Points · {predictV2Config.network}
+            The new deployment starts everyone fresh · ranked by {showPoints ? 'Points' : 'Volume'} ·{' '}
+            {predictV2Config.network}
           </p>
         </div>
         <Link
@@ -183,10 +191,17 @@ export function V2LeaderboardPanel() {
         <Stat icon={LuActivity} color={HUE.teal} label="Trades" loading={loadingEmpty} value={num(totals.trades, 0)} />
       </div>
 
-      {/* Sort tabs */}
+      {/* Sort tabs — the points ranking is a Skew-board concept; the venue board ranks
+          by volume only, so it shows a caption in place of the toggle. */}
       <div className="mb-3 flex items-center gap-1">
-        <SortTab label="Points" active={sort === 'points'} onClick={() => selectSort('points')} />
-        <SortTab label="Volume" active={sort === 'volume'} onClick={() => selectSort('volume')} />
+        {showPoints ? (
+          <>
+            <SortTab label="Points" active={sort === 'points'} onClick={() => selectSort('points')} />
+            <SortTab label="Volume" active={sort === 'volume'} onClick={() => selectSort('volume')} />
+          </>
+        ) : (
+          <span className="px-1 text-[11px] font-medium text-text-2">Ranked by volume</span>
+        )}
         <span className="ml-auto text-[10px] text-text-3">
           Win rate &amp; PnL on your{' '}
           <Link href="/v2/portfolio" className="underline hover:text-text-2">
@@ -196,12 +211,12 @@ export function V2LeaderboardPanel() {
       </div>
 
       {/* Podium — top three for the active ranking */}
-      {showPodium && <Podium rows={podiumRows} sort={sort} me={me} />}
+      {showPodium && <Podium rows={podiumRows} sort={effectiveSort} showPoints={showPoints} me={me} />}
 
       {/* Your standing — pinned under the podium so the connected wallet finds
           itself instantly; otherwise a nudge to claim a spot. */}
       {!activeLoading && myRow ? (
-        <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} />
+        <MyRankCard rank={myIndex + 1} total={sorted.length} row={myRow} showPoints={showPoints} />
       ) : !activeLoading && me && sorted.length > 0 ? (
         <NotRankedHint scope={scope} />
       ) : null}
@@ -213,8 +228,17 @@ export function V2LeaderboardPanel() {
         >
           <span className="text-right">#</span>
           <span>Trader</span>
-          <span className="text-right">Points</span>
-          <span className="text-right">Volume</span>
+          {showPoints ? (
+            <>
+              <span className="text-right">Points</span>
+              <span className="text-right">Volume</span>
+            </>
+          ) : (
+            <>
+              <span className="text-right">Volume</span>
+              <span className="text-right">Trades</span>
+            </>
+          )}
         </div>
 
         <div className="rows-divided">
@@ -243,8 +267,17 @@ export function V2LeaderboardPanel() {
                       <TraderLabel row={r} isMe={isMe} />
                       <ViewPositionsButton owner={r.owner} variant="icon" />
                     </span>
-                    <span className="text-right font-semibold text-accent">{num(r.points, 0)}</span>
-                    <span className="text-right text-text-1">{num(r.volume, 2)}</span>
+                    {showPoints ? (
+                      <>
+                        <span className="text-right font-semibold text-accent">{num(r.points, 0)}</span>
+                        <span className="text-right text-text-1">{num(r.volume, 2)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-right text-text-1">{num(r.volume, 2)}</span>
+                        <span className="text-right text-text-2">{num(r.trades, 0)}</span>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -261,15 +294,23 @@ export function V2LeaderboardPanel() {
         </div>
       </div>
 
-      <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-        Points = liquidity (DUSDC staked) + performance (net profit, floored at zero — a loss never
-        subtracts) + holding time. Season 2 counts only trades on the new release; win rate &amp;
-        authoritative PnL live on your{' '}
-        <Link href="/v2/portfolio" className="underline hover:text-text-2">
-          Portfolio
-        </Link>
-        . Quote asset · {predictV2Config.quote.symbol}.
-      </p>
+      {showPoints ? (
+        <p className="mt-4 text-[10px] leading-relaxed text-text-3">
+          Points = liquidity (DUSDC staked) + performance (net profit, floored at zero — a loss never
+          subtracts) + holding time. Season 2 counts only trades on the new release; win rate &amp;
+          authoritative PnL live on your{' '}
+          <Link href="/v2/portfolio" className="underline hover:text-text-2">
+            Portfolio
+          </Link>
+          . Quote asset · {predictV2Config.quote.symbol}.
+        </p>
+      ) : (
+        <p className="mt-4 text-[10px] leading-relaxed text-text-3">
+          A read-only look at how the whole {predictV2Config.network} venue trades — ranked by volume,
+          with trade counts and each trader&rsquo;s live positions a click away via View positions. No
+          points here; points are earned on the Skew board. Quote asset · {predictV2Config.quote.symbol}.
+        </p>
+      )}
       {hasStarters && (
         <p className="mt-2 flex items-center gap-1.5 text-[10px] leading-relaxed text-text-3">
           <LuSprout size={11} className="flex-none" />
@@ -375,7 +416,17 @@ function ViewPositionsButton({ owner, variant = 'label' }: { owner: string; vari
  * trader never has to page to find themselves. Accent-tinted to read as "you".
  * Mirrors the legacy MyRankCard, adapted to the v2 row (points is a plain number).
  */
-function MyRankCard({ rank, total, row }: { rank: number; total: number; row: V2LeaderboardRow }) {
+function MyRankCard({
+  rank,
+  total,
+  row,
+  showPoints,
+}: {
+  rank: number;
+  total: number;
+  row: V2LeaderboardRow;
+  showPoints: boolean;
+}) {
   return (
     <div className="mb-4 flex flex-col gap-3.5 rounded-2xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-3">
       {/* Identity — rank · avatar · address, kept as one unit so it never splits. */}
@@ -404,9 +455,11 @@ function MyRankCard({ rank, total, row }: { rank: number; total: number; row: V2
           inline (pushed right) from sm up (sm:contents drops this wrapper). */}
       <div className="flex flex-col gap-3 sm:ml-auto sm:flex-row sm:items-center sm:gap-5">
         <div className="flex items-center justify-between gap-x-5 gap-y-2 font-mono tabular-nums sm:justify-end">
-          <RankStat label="Points">
-            <span className="text-accent">{num(row.points, 0)}</span>
-          </RankStat>
+          {showPoints && (
+            <RankStat label="Points">
+              <span className="text-accent">{num(row.points, 0)}</span>
+            </RankStat>
+          )}
           <RankStat label="Volume">
             <span className="text-text-1">{num(row.volume, 2)}</span>
             <span className="ml-1 text-[10px] text-text-3">{predictV2Config.quote.symbol}</span>
@@ -513,7 +566,17 @@ function TableSkeleton() {
  * runner-up left (silver), third right (bronze). Same podium-card glass
  * treatment as the legacy board.
  * ------------------------------------------------------------------ */
-function Podium({ rows, sort, me }: { rows: V2LeaderboardRow[]; sort: V2SortKey; me: string | null }) {
+function Podium({
+  rows,
+  sort,
+  showPoints,
+  me,
+}: {
+  rows: V2LeaderboardRow[];
+  sort: V2SortKey;
+  showPoints: boolean;
+  me: string | null;
+}) {
   const SM_ORDER = ['sm:order-2', 'sm:order-1', 'sm:order-3']; // by rank 0,1,2
   return (
     <div className="mb-5 grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
@@ -523,6 +586,7 @@ function Podium({ rows, sort, me }: { rows: V2LeaderboardRow[]; sort: V2SortKey;
           rank={rank}
           row={row}
           sort={sort}
+          showPoints={showPoints}
           isMe={me != null && row.owner.toLowerCase() === me.toLowerCase()}
           orderClass={SM_ORDER[rank]}
         />
@@ -545,12 +609,14 @@ function PodiumCard({
   rank,
   row,
   sort,
+  showPoints,
   isMe,
   orderClass,
 }: {
   rank: number;
   row: V2LeaderboardRow;
   sort: V2SortKey;
+  showPoints: boolean;
   isMe: boolean;
   orderClass?: string;
 }) {
@@ -559,8 +625,9 @@ function PodiumCard({
   const m = primaryMetric(row, sort);
   const valueColor = m.accent ? 'var(--accent)' : 'var(--text-1)';
 
+  // On the venue board points don't exist, so they never appear as a secondary figure.
   const secondaries: { label: string; node: React.ReactNode }[] = [];
-  if (sort !== 'points')
+  if (showPoints && sort !== 'points')
     secondaries.push({ label: 'Points', node: <span className="text-accent">{num(row.points, 0)}</span> });
   if (sort !== 'volume') secondaries.push({ label: 'Vol', node: num(row.volume, 2) });
   secondaries.push({ label: 'Trades', node: row.trades });
