@@ -23,6 +23,16 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
+ * The board is GLOBAL and identical for every viewer (the connected wallet's own
+ * self-merge + highlight happen client-side in useV2Leaderboard), so the response is
+ * safe to share from the CDN edge. `s-maxage` caches it for 30s and `stale-while-
+ * revalidate` serves the slightly-stale copy INSTANTLY for up to 5 more minutes while
+ * one background request refreshes it — so a viewer never blocks on the origin, and
+ * the indexer function runs at most a couple times a minute instead of per request.
+ */
+const CACHE = 'public, s-maxage=30, stale-while-revalidate=300';
+
+/**
  * Fold the starter-grant faucet claimers into a Skew board: a wallet that onboarded
  * through Skew shows on the board even before it trades (0-trade rows are badged
  * "Starter" in the UI). The faucet ledger is keyed by address, so this is cumulative
@@ -42,12 +52,12 @@ export async function GET() {
     // Carry the 6-24 points forward, THEN fold in the faucet onboards.
     return NextResponse.json(
       { ...boards, skew: await addFaucetParticipants(mergeLegacyCarryover(boards.skew)) },
-      { headers: { 'cache-control': 'no-store' } },
+      { headers: { 'cache-control': CACHE } },
     );
   }
   const snap = await getSkewLeaderboardSnapshot();
   return NextResponse.json(
     { all: [], skew: await addFaucetParticipants(snap.rows), builtAtMs: snap.builtAtMs },
-    { headers: { 'cache-control': 'no-store' } },
+    { headers: { 'cache-control': CACHE } },
   );
 }

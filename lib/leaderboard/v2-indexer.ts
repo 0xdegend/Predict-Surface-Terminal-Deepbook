@@ -185,16 +185,35 @@ async function runAccumulate(): Promise<Persisted> {
   return snap;
 }
 
-/** Current tally, re-scanning at most once per FRESH_MS (concurrent callers share it). */
+/**
+ * The current tally, STALE-WHILE-REVALIDATE. A leaderboard request must never block
+ * on a live event scan: if we already hold a usable tally (the in-process snapshot,
+ * or the KV one on a cold instance), we serve it IMMEDIATELY and let the refresh run
+ * in the background — it lands for a later request. Only a cold, never-seeded instance
+ * (no KV snapshot yet) waits for the first build. The scan is shared across concurrent
+ * callers and re-runs at most once per FRESH_MS.
+ *
+ * Safe to serve `prev` while the background scan runs: `getLeaderboardBoards` reads it
+ * via the synchronous `finalizeRows` the instant we return, before the scan's first
+ * `await` yields back to mutate the state (JS is single-threaded).
+ */
 async function current(): Promise<Persisted> {
   if (isFresh(cache.snap)) return cache.snap;
+  // Last-good tally (in-process, else KV) — a fast read that also warms cache.snap.
+  const prev = await loadPersisted();
   cache.inflight ??= runAccumulate().finally(() => {
     cache.inflight = null;
   });
+  // Have something usable? Serve it now; the in-flight refresh updates it for next time.
+  if (isCurrent(prev) && prev.builtAtMs > 0) {
+    void cache.inflight.catch(() => {});
+    return prev;
+  }
+  // Cold / never-seeded — nothing to serve yet, so wait for the first build.
   try {
     return await cache.inflight;
   } catch {
-    return cache.snap ?? freshEmpty();
+    return prev;
   }
 }
 
