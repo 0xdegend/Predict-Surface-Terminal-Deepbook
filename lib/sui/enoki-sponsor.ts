@@ -92,36 +92,36 @@ interface SimFailure {
 }
 
 /**
- * Dry-run the exact kind bytes we're about to sponsor, and throw the raw Move
- * abort if the tx would abort on-chain.
+ * Dry-run the sponsored kind bytes and return the raw Move abort message if the tx
+ * would abort on-chain (null otherwise / on a transport hiccup).
  *
- * Why this exists: Enoki's `create` step dry-runs the tx to attach sponsor gas.
- * When the tx would abort (e.g. a leverage the market won't admit at these odds,
- * or a market that just expired), Enoki rejects with a generic 4xx that HIDES the
- * Move abort — so the trader only ever sees "the gasless service briefly rejected
- * the request, try again", which never clears for a real, deterministic abort.
- * Running the same dry-run ourselves first lets the caller's humanizer decode the
- * actual reason (`humanizeV2Error` reads exactly this message format) and show
- * plain, actionable copy instead of an infinite retry loop. The wallet path
- * already surfaces aborts via `executeTransaction`; this closes the same gap for
- * gasless. We rebuild from the sponsored KIND bytes (not the live tx object) so we
- * validate precisely what Enoki will run. A simulate transport hiccup returns
- * quietly — we don't block a real send on our own extra check; Enoki still guards.
+ * Why it exists: Enoki's `create` step dry-runs the tx to attach sponsor gas, but
+ * when the tx would abort (an inadmissible leverage, a just-expired market, …) it
+ * rejects with a GENERIC 4xx that HIDES the Move abort — so the trader would only
+ * see "the gasless service briefly rejected the request, try again", which never
+ * clears for a real, deterministic abort. This decodes the actual reason so the
+ * caller's humanizer (`humanizeV2Error` reads exactly this message format) can show
+ * plain, actionable copy.
+ *
+ * It used to run BEFORE every sponsor as a guard, which meant a second full simulate
+ * (on top of Enoki's own) on the happy path of EVERY gasless trade — pure latency.
+ * It now runs ONLY when Enoki rejects pre-chain, to tell a transient gas-reservation
+ * expiry (retry) from a real abort (surface it, don't retry). We rebuild from the
+ * sponsored KIND bytes (not the live tx object) so we validate exactly what Enoki ran.
  */
-async function assertSponsoredKindExecutes(core: SimulateCore, kindB64: string, sender: string): Promise<void> {
-  let res: SimFailure;
+async function sponsoredKindAbort(core: SimulateCore, kindB64: string, sender: string): Promise<string | null> {
   try {
     const probe = Transaction.fromKind(fromBase64(kindB64));
     probe.setSender(sender);
-    res = (await core.simulateTransaction({ transaction: probe, checksEnabled: false })) as SimFailure;
+    const res = (await core.simulateTransaction({ transaction: probe, checksEnabled: false })) as SimFailure;
+    if (res.$kind === 'FailedTransaction') {
+      const err = res.FailedTransaction?.status?.error;
+      return (typeof err === 'string' ? err : err?.message) ?? null;
+    }
   } catch {
-    return; // couldn't reach simulate — leave the real sponsor path to guard it
+    /* couldn't reach simulate — leave classification to the retry / Enoki */
   }
-  if (res.$kind === 'FailedTransaction') {
-    const err = res.FailedTransaction?.status?.error;
-    const msg = typeof err === 'string' ? err : err?.message;
-    if (msg) throw new Error(msg);
-  }
+  return null;
 }
 
 /** Bounded on-chain lookup of a digest (a few seconds), false if not found. */
@@ -160,10 +160,9 @@ export async function executeSponsored(
   // re-sponsors fresh gas from these same bytes.
   const kindB64 = toBase64(await tx.build({ client, onlyTransactionKind: true }));
 
-  // Surface a real on-chain abort (e.g. inadmissible leverage) as itself, before
-  // Enoki's sponsor dry-run buries it under a generic "gasless rejected, retry".
-  await assertSponsoredKindExecutes(client.core, kindB64, sender);
-
+  // NO pre-emptive dry-run here: Enoki's create step already dry-runs to attach gas,
+  // so a second simulate up front just added a full round trip to EVERY gasless
+  // trade. We dry-run ONLY on an Enoki pre-chain rejection, to classify it (below).
   const MAX_ATTEMPTS = 2;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -174,7 +173,15 @@ export async function executeSponsored(
       // Raw failure in the browser console — the toast is humanized, but
       // debugging needs the phase + Enoki's exact words.
       console.error(`[enoki-sponsor] attempt ${attempt}/${MAX_ATTEMPTS} failed (sender ${sender}):`, e);
-      if (attempt < MAX_ATTEMPTS && enokiRejectedPreChain(e)) continue;
+      if (enokiRejectedPreChain(e)) {
+        // Enoki buries a deterministic Move abort behind the SAME generic 4xx it
+        // uses for a transient gas-reservation expiry. Dry-run the same bytes to
+        // tell them apart: a real abort → surface it now (retrying never clears a
+        // deterministic abort); a clean sim → transient, so retry once.
+        const abort = await sponsoredKindAbort(client.core, kindB64, sender);
+        if (abort) throw new Error(abort);
+        if (attempt < MAX_ATTEMPTS) continue;
+      }
       throw e;
     }
   }

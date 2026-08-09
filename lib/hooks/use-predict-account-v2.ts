@@ -288,12 +288,23 @@ export function usePredictAccountV2() {
       if (confirmed.$kind === 'FailedTransaction') {
         throw new Error(confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain');
       }
-      await new Promise((r) => setTimeout(r, 1200));
-      for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
-      await queryClient.invalidateQueries({ queryKey: qkV2Account.wrapper(owner) });
+      // The tx is FINAL here, so report success now. The read node needs a beat to
+      // catch up before a refetch returns fresh balances/positions, so that settle
+      // delay + the invalidations run in the BACKGROUND — they no longer add ~1.2s to
+      // every trade's perceived latency (worst on the already-slow gasless path). Data
+      // still refreshes at the same moment; only the "Done" signal moves earlier.
       if (!opts?.silentSuccess) {
         toast.success('Done', { desc: `${digest.slice(0, 14)}…`, href: `https://suiscan.xyz/${predictV2Config.network}/tx/${digest}` });
       }
+      void (async () => {
+        try {
+          await new Promise((r) => setTimeout(r, 1200));
+          for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
+          await queryClient.invalidateQueries({ queryKey: qkV2Account.wrapper(owner) });
+        } catch {
+          /* a background refetch failure just means the next poll refreshes instead */
+        }
+      })();
       return digest;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -348,12 +359,23 @@ export function usePredictAccountV2() {
       if (confirmed.$kind === 'FailedTransaction') {
         throw new Error(confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain');
       }
-      await new Promise((r) => setTimeout(r, 1200));
-      for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
-      await queryClient.invalidateQueries({ queryKey: qkV2Account.wrapper(owner) });
+      // The tx is FINAL here, so report success now. The read node needs a beat to
+      // catch up before a refetch returns fresh balances/positions, so that settle
+      // delay + the invalidations run in the BACKGROUND — they no longer add ~1.2s to
+      // every trade's perceived latency (worst on the already-slow gasless path). Data
+      // still refreshes at the same moment; only the "Done" signal moves earlier.
       if (!opts?.silentSuccess) {
         toast.success('Done', { desc: `${digest.slice(0, 14)}…`, href: `https://suiscan.xyz/${predictV2Config.network}/tx/${digest}` });
       }
+      void (async () => {
+        try {
+          await new Promise((r) => setTimeout(r, 1200));
+          for (const key of invalidate) await queryClient.invalidateQueries({ queryKey: key });
+          await queryClient.invalidateQueries({ queryKey: qkV2Account.wrapper(owner) });
+        } catch {
+          /* a background refetch failure just means the next poll refreshes instead */
+        }
+      })();
       return digest;
     } catch (e) {
       // Drop the executor so the next attempt re-warms from a clean cache (a build-stage
