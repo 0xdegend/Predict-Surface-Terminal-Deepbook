@@ -207,7 +207,7 @@ function BinaryBody({
     if (!quotable || acct.busy) return;
     // Instant one-tap when a session is live and the trade is fully account-funded
     // (a wallet top-up would still pop up, so never one-tap that).
-    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+    if (acct.sessionCanTrade && instantTrade && shortfall === 0n) {
       void handleMint();
       return;
     }
@@ -384,7 +384,7 @@ function BinaryBody({
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel={`Mint ${isUp ? 'UP' : 'DOWN'}`}
         subtitle={
-          acct.sessionActive
+          acct.sessionCanTrade
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'
@@ -479,7 +479,7 @@ function RangeBody({
     if (!quotable || acct.busy) return;
     // Instant one-tap when a session is live and the trade is fully account-funded
     // (a wallet top-up would still pop up, so never one-tap that).
-    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+    if (acct.sessionCanTrade && instantTrade && shortfall === 0n) {
       void handleMint();
       return;
     }
@@ -617,7 +617,7 @@ function RangeBody({
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
         confirmLabel="Mint Range"
         subtitle={
-          acct.sessionActive
+          acct.sessionCanTrade
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'

@@ -29,6 +29,7 @@ import {
   onchainVaultProfit,
   onchainVaultSupplyFills,
   onchainVaultWithdrawFills,
+  onchainBuilderCodeFees,
 } from './onchain';
 import type {
   V2Market,
@@ -173,12 +174,12 @@ export const getVaultWithdrawFills = (vaultId: string, limit = 30, o?: GetOption
     ? onchainVaultWithdrawFills(limit, o)
     : beta<V2VaultWithdrawFill[]>(`/vaults/${vaultId}/withdraw-fills?limit=${limit}`, o);
 
-/** Builder-fee CLAIM history for a code — sum of `amount` = lifetime swept. 7-29
- *  exposes no claim-event feed these proxies can filter, so the admin panel shows
- *  an empty claim history there (fees still accrue on-chain). */
+/** Builder-fee CLAIM history for a code — sum of `amount` = lifetime swept. On 7-29/8-06
+ *  reconstructed from the on-chain `builder_code_events::BuilderFeesClaimed` stream (only
+ *  the owner can claim, so it's a tiny, whale-proof feed); 6-24 used the beta indexer. */
 export const getBuilderCodeFees = (codeId: string, limit = 200, o?: GetOptions) =>
   V2_IS_729_PLUS
-    ? Promise.resolve([] as V2BuilderFee[])
+    ? onchainBuilderCodeFees(codeId, limit, o)
     : beta<V2BuilderFee[]>(`/builder-codes/${codeId}/fees?limit=${limit}`, o);
 
 /** Authoritative per-position cost/payout roll-up. `null` while still open, so

@@ -28,6 +28,7 @@ import { dAppKit } from '@/lib/sui/dapp-kit';
 import { shortId } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { CashOutModal } from './cash-out-modal';
+import { SessionGasModal } from './session-gas-modal';
 import { BalancePill } from './balance-pill';
 import { WalletInstantTrading } from './v2/session/wallet-instant-trading';
 
@@ -44,6 +45,7 @@ export function WalletBar() {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [cashOutOpen, setCashOutOpen] = useState(false);
+  const [gasModalOpen, setGasModalOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   // Close the menu on outside click / Escape.
@@ -141,6 +143,12 @@ export function WalletBar() {
               copied={copied}
               onCopy={() => copyAddress(conn.account.address)}
               onDisconnect={disconnect}
+              // Top up session gas — close the menu first, then open the modal (mirrors
+              // the cash-out flow so the dropdown doesn't sit open behind the dialog).
+              onTopUpGas={() => {
+                setOpen(false);
+                setGasModalOpen(true);
+              }}
               // Google/zkLogin users can't export a key — give them a cash-out.
               onCashOut={
                 isEnokiWallet(conn.wallet)
@@ -158,6 +166,7 @@ export function WalletBar() {
       )}
 
       <CashOutModal open={cashOutOpen} onClose={() => setCashOutOpen(false)} />
+      <SessionGasModal open={gasModalOpen} onClose={() => setGasModalOpen(false)} />
     </div>
   );
 }
@@ -172,6 +181,7 @@ function ConnectedMenu({
   onCopy,
   onDisconnect,
   onCashOut,
+  onTopUpGas,
 }: {
   wallet: UiWallet;
   address: string;
@@ -181,6 +191,8 @@ function ConnectedMenu({
   onDisconnect: () => void;
   /** Present only for zkLogin (Google) accounts — opens the cash-out modal. */
   onCashOut?: () => void;
+  /** Opens the session-gas top-up modal (WalletInstantTrading shows it only while live). */
+  onTopUpGas?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1.5 p-1">
@@ -214,7 +226,7 @@ function ConnectedMenu({
 
       {/* Instant trading (delegated session) lives here now instead of on top of the
           trade ticket. Self-hides unless the wallet + account can use it. */}
-      <WalletInstantTrading />
+      <WalletInstantTrading onTopUpGas={onTopUpGas} />
 
       <a
         href={ACCOUNT_EXPLORER(network, address)}

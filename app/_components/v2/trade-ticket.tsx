@@ -364,7 +364,7 @@ export function V2TradeTicket({
     // trader opted in AND the trade needs no wallet top-up (shortfall covered by
     // the account), place it straight away and skip our review too. Never one-tap
     // a trade that would still open a deposit pop-up.
-    if (acct.sessionActive && instantTrade && shortfall === 0n) {
+    if (acct.sessionCanTrade && instantTrade && shortfall === 0n) {
       void handleMint();
       return;
     }
@@ -926,7 +926,7 @@ export function V2TradeTicket({
         maxWin={`$${fromQuote(winBase).toFixed(2)} ${sym}`}
         confirmLabel={`Mint ${rangeMode ? 'Range' : isUp ? 'UP' : 'DOWN'}`}
         subtitle={
-          acct.sessionActive
+          acct.sessionCanTrade
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'

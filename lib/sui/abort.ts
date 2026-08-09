@@ -48,6 +48,23 @@ export function isSessionExpired(raw: unknown): boolean {
   );
 }
 
+/**
+ * True when a failure means the payer's gas coin (SUI) couldn't cover the network
+ * fee. Two shapes reach us: a wallet's own "insufficient gas" text, and the node's
+ * input-object rejection ("Balance of gas object … is lower than the needed amount:
+ * 30000000") — the one a low-gas SESSION key hits, because a session tx reserves a
+ * fixed budget and pays from its own SUI. Both mean the same thing to the trader:
+ * add a little SUI. Matched in one place so wallet + session paths label it the same.
+ */
+export function isInsufficientGas(raw: unknown): boolean {
+  const msg = raw instanceof Error ? raw.message : String(raw ?? '');
+  return (
+    (/insufficient/i.test(msg) && /\bgas\b|\bsui\b/i.test(msg)) ||
+    /balance of gas object[\s\S]*lower than the needed amount/i.test(msg) ||
+    /GasBalanceTooLow|InsufficientGas|No valid gas coins|Unable to select.*gas coin/i.test(msg)
+  );
+}
+
 export function humanizeError(raw: unknown): string {
   const msg = raw instanceof Error ? raw.message : String(raw ?? '');
 
@@ -61,8 +78,11 @@ export function humanizeError(raw: unknown): string {
   if (/reject|denied|cancell?ed/i.test(msg)) return 'Transaction cancelled in the wallet.';
   if (/closed the wallet window|window closed|popup/i.test(msg))
     return 'Wallet window closed before the response came back — if you approved, it may still have gone through.';
-  if (/insufficient/i.test(msg) && /gas|sui/i.test(msg))
-    return 'Not enough SUI for gas. Add a little testnet SUI to this wallet.';
+  // Both the wallet's own "insufficient gas" and the node's raw "Balance of gas
+  // object … lower than the needed amount" land here. Session callers rephrase this
+  // toward the top-up (see runSessionTx); the plain wallet copy is the fallback.
+  if (isInsufficientGas(raw))
+    return 'Not enough SUI to cover the network fee in this wallet. Add a little testnet SUI, then try again.';
   if (/getaddrinfo|fetch failed|ENOTFOUND|network/i.test(msg))
     return 'Network hiccup reaching the chain. Check your connection and retry.';
   if (/Enoki API failed|sponsor failed|sponsorship/i.test(msg)) {

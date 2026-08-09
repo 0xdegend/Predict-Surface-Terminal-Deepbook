@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { humanizeError } from './abort';
+import { humanizeError, isInsufficientGas } from './abort';
 
 const PKG = '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138';
 
@@ -26,8 +26,25 @@ describe('humanizeError', () => {
   it('handles wallet outcomes', () => {
     expect(humanizeError(new Error('User rejected the request.'))).toMatch(/cancelled/i);
     expect(humanizeError(new Error('User closed the wallet window'))).toMatch(/closed/i);
-    expect(humanizeError(new Error('Insufficient gas for this SUI transaction'))).toMatch(/SUI for gas/i);
+    expect(humanizeError(new Error('Insufficient gas for this SUI transaction'))).toMatch(/testnet SUI/i);
     expect(humanizeError(new Error('getaddrinfo ENOTFOUND api.x'))).toMatch(/network/i);
+  });
+
+  it('turns the raw node gas-object rejection into plain wallet copy', () => {
+    // The exact string a low-gas payer hits (session key OR wallet): the node's
+    // input-object check rejects the gas coin before the tx ever runs.
+    const raw = 'Error checking transaction input objects: Balance of gas object 19305360 is lower than the needed amount: 30000000';
+    expect(isInsufficientGas(new Error(raw))).toBe(true);
+    const out = humanizeError(new Error(raw));
+    expect(out).toMatch(/network fee/i);
+    expect(out).toMatch(/testnet SUI/i);
+    // No node internals leak through.
+    expect(out).not.toMatch(/gas object|input objects|\d{7,}/);
+  });
+
+  it('does not flag unrelated errors as a gas shortfall', () => {
+    expect(isInsufficientGas(new Error('User rejected the request.'))).toBe(false);
+    expect(isInsufficientGas(new Error('insufficient balance in your account'))).toBe(false);
   });
 
   it('maps wallet password / locked-vault errors as a recoverable wallet issue', () => {

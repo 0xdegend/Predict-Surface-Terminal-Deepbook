@@ -22,7 +22,7 @@ import { enokiEnabled } from '@/config/enoki';
 import { dAppKit } from '@/lib/sui/dapp-kit';
 import { executeSponsored, sponsorshipAvailable } from '@/lib/sui/enoki-sponsor';
 import { humanizeV2Error } from '@/lib/sui/v2/abort';
-import { isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
+import { isInsufficientGas, isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/lib/sui/abort';
 import { toast } from '@/lib/store/toast-store';
 import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx, buildCashOutTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
@@ -42,6 +42,7 @@ import {
   buildAuthorizeSessionTx,
   buildRevokeSessionTx,
   buildSweepSessionGasTx,
+  buildFundSessionGasTx,
   addAuthorizeSession,
   SUI_TYPE,
   SESSION_SWEEP_DUST_MIST,
@@ -52,7 +53,7 @@ import {
   type SessionDuration,
   type LoadedSession,
 } from '@/lib/sui/v2/session';
-import { dripSessionGas } from '@/lib/sui/v2/session-gas';
+import { dripSessionGas, type SessionGasResult } from '@/lib/sui/v2/session-gas';
 import { sessionGasDrip } from '@/config/session-gas';
 import { qkV2 } from '@/lib/api/v2/client';
 import { useBuilderCode, qkBuilderCode } from '@/lib/hooks/use-builder-code';
@@ -70,6 +71,7 @@ export const qkV2Account = {
   balance: (wrapperId: string) => ['v2', 'balance', wrapperId] as const,
   plpBalance: (wrapperId: string) => ['v2', 'plp-balance', wrapperId] as const,
   walletDusdc: (owner: string) => ['v2', 'wallet-dusdc', owner] as const,
+  walletSui: (owner: string) => ['v2', 'wallet-sui', owner] as const,
   sessionLocal: (owner: string) => ['v2', 'session-local', owner] as const,
   sessionExpiry: (wrapperId: string, sessionAddr: string) =>
     ['v2', 'session-expiry', wrapperId, sessionAddr] as const,
@@ -190,6 +192,17 @@ export function usePredictAccountV2() {
   });
   const sessionGasBase = sessionGasQ.data ?? 0n;
 
+  // The owner wallet's own SUI (MIST) — funds a session-gas top-up from the wallet and
+  // drives its Max. Only meaningful for a wallet that HOLDS SUI (Slush); a gasless
+  // (Google) owner has none, so skip the read there.
+  const walletSuiQ = useQuery({
+    queryKey: qkV2Account.walletSui(owner ?? ''),
+    queryFn: () => readSessionSui(owner!),
+    enabled: !!owner && !gasless,
+    refetchInterval: 30_000,
+  });
+  const walletSuiBase = walletSuiQ.data ?? 0n;
+
   // A session carries a trade for a live, locally-held key, and it is a LATENCY win for
   // everyone: for SLUSH it removes the per-trade wallet popup; for GASLESS (Google) it
   // removes the Enoki sponsor round-trips + dry-run — the session key signs locally and
@@ -198,6 +211,16 @@ export function usePredictAccountV2() {
   const sessionFunded = sessionGasBase >= SESSION_GAS_BUDGET;
   const sessionActive =
     V2_SESSIONS_ENABLED && sessionLive && !!localSession && (!gasless || sessionFunded);
+
+  // Route a trade THROUGH the session only when its key can actually pay the gas. A Slush
+  // session stays "active" (its dropdown controls, pill, and the gas top-up all keep
+  // showing) even as its gas runs low — but a session-signed submit needs the gas coin to
+  // cover SESSION_GAS_BUDGET or the node rejects it at input-object checking ("Balance of
+  // gas object … lower than the needed amount"). Below that we fall back to the OWNER path
+  // (wallet / sponsor pays), so a claim or a trade NEVER fails just because the session is
+  // low on gas — topping up re-enables the fast path. Gasless already requires funding to
+  // be active, so this only adds the Slush low-gas gate.
+  const sessionCanTrade = sessionActive && sessionFunded;
 
   /** Read the SUI (MIST) balance of a session key's address. Non-throwing (0 on error). */
   async function readSessionSui(addr: string): Promise<bigint> {
@@ -336,8 +359,17 @@ export function usePredictAccountV2() {
       // Drop the executor so the next attempt re-warms from a clean cache (a build-stage
       // failure doesn't self-reset inside the executor).
       resetSessionExecutor();
-      setError(humanizeV2Error(e));
-      toast.error('Trade failed', { desc: humanizeV2Error(e) });
+      // A session tx pays gas from its OWN key. If that key is out of SUI the node
+      // rejects it before running with the raw "Balance of gas object … lower than the
+      // needed amount" — point the trader at the fix (top up or end the session so the
+      // wallet pays) instead of leaking node internals. Routing normally hands a low-gas
+      // session back to the wallet, so this only bites in the brief window where the gas
+      // read was still stale; the message stays correct either way.
+      const friendly = isInsufficientGas(e)
+        ? 'Your instant-trading session ran out of SUI for network fees. Top it up from the wallet menu, or end instant trading to pay from your wallet, then try again.'
+        : humanizeV2Error(e);
+      setError(friendly);
+      toast.error('Trade failed', { desc: friendly });
       return null;
     } finally {
       setBusy(null);
@@ -601,8 +633,9 @@ export function usePredictAccountV2() {
       if (!wrapperId) return Promise.resolve(null);
       // A live session carries the trade popup-less — UNLESS this trade needs a
       // wallet top-up (`deposit`), which only the owner path can do (the session
-      // can't move funds from the wallet). Fall back to the owner path there.
-      if (sessionActive && !(p.deposit && p.deposit > 0n)) {
+      // can't move funds from the wallet), or the session is too low on gas to pay
+      // for it. Fall back to the owner path there.
+      if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
         return runSessionTx('mint', buildSessionMintTx({ ...p, wrapperId }), mintInvalidations, opts);
       }
       // Owner path — optionally bundling "turn on instant trading" into this approval.
@@ -612,21 +645,21 @@ export function usePredictAccountV2() {
      *  execution, so odds drift can't break the $1 minimum-premium check. */
     mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: TradeOpts) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionActive && !(p.deposit && p.deposit > 0n)) {
+      if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
         return runSessionTx('mint', buildSessionMintBudgetTx({ ...p, wrapperId }), mintInvalidations, opts);
       }
       return runOwnerMint(buildMintBudgetTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
     },
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionActive) return runSessionTx('redeem', buildSessionRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
       return runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
     },
     // A winning claim passes silentSuccess so the caller can own the celebration
     // (SuccessModal + confetti) instead of the quiet bottom-right toast.
     redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionActive) return runSessionTx('redeem', buildSessionRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
       return runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
     },
     /* ---- async vault (PLP) ---- */
@@ -652,12 +685,39 @@ export function usePredictAccountV2() {
     /** SUI (base units) the local session key holds for gas — drives the "still has
      *  gas, no SUI needed" note on re-enable, and the top-up-the-difference math. */
     sessionGasBase,
+    /** The owner wallet's own SUI (base units) — funds a session-gas top-up (Slush). */
+    walletSuiBase,
     /** True when the session is authorized and unexpired (safe to trade through). */
     sessionLive,
-    /** True when trades are ACTUALLY routing through the session right now (Slush +
-     *  live key). Gasless users are excluded — they already trade popup-less. */
+    /** True when the session is "on" for the UI (Slush + live key; the pill, dropdown
+     *  controls, and gas top-up key off this even when gas is low). Gasless users are
+     *  excluded — they already trade popup-less. */
     sessionActive,
+    /** True when a trade will ACTUALLY route through the session right now — i.e. active
+     *  AND the key holds enough gas to pay for it. Below that, trades fall back to the
+     *  owner path (a wallet pop-up), so callers gate "no pop-up" copy + one-tap on this. */
+    sessionCanTrade,
     startSession,
     endSession,
+    /** OWNER-signed SUI top-up of the live session key's gas from the wallet (Slush;
+     *  a gasless owner holds no SUI, so it returns null there — use topUpSessionGasFree). */
+    fundSessionGasFromWallet: (amountBase: bigint) => {
+      const addr = localSession?.address;
+      if (!addr || gasless || amountBase <= 0n) return Promise.resolve(null);
+      return runTx('session-gas', buildFundSessionGasTx(addr, amountBase), [
+        qkV2Account.sessionGas(addr),
+        ...(owner ? [qkV2Account.walletSui(owner)] : []),
+      ]);
+    },
+    /** FREE treasury top-up of the session key's gas (both wallet types; the ONLY path
+     *  for a gasless owner). Returns the drip result so the caller can surface a cooldown
+     *  or an empty-treasury message; never throws. */
+    topUpSessionGasFree: async (): Promise<SessionGasResult> => {
+      const addr = localSession?.address;
+      if (!addr) return { ok: false, suiAmount: '0', code: 'no_session' };
+      const r = await dripSessionGas(addr);
+      if (r.ok) await queryClient.invalidateQueries({ queryKey: qkV2Account.sessionGas(addr) });
+      return r;
+    },
   };
 }

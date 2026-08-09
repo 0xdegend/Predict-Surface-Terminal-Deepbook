@@ -346,3 +346,17 @@ export function buildSweepSessionGasTx(owner: string): Transaction {
   tx.transferObjects([tx.gas], tx.pure.address(owner));
   return tx;
 }
+
+/**
+ * OWNER-signed top-up of a LIVE session key's gas: move `amountBase` MIST of native SUI
+ * from the owner's wallet to the session key's address, so a session that ran its gas
+ * down can keep paying its own network fee. Mirrors the gas transfer in
+ * `addAuthorizeSession`. For wallets that HOLD SUI (Slush) — a gasless (Google) owner
+ * has none, so that path uses the treasury drip (/api/session-gas) instead.
+ */
+export function buildFundSessionGasTx(sessionAddress: string, amountBase: bigint): Transaction {
+  const tx = new Transaction();
+  const sui = tx.add(coinWithBalance({ balance: amountBase })); // native SUI from the owner's coins
+  tx.transferObjects([sui], tx.pure.address(sessionAddress));
+  return tx;
+}

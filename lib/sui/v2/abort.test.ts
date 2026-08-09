@@ -31,4 +31,15 @@ describe('humanizeV2Error', () => {
     const raw = "MoveAbort in 3rd command, abort code: 99, in '0xabc::expiry_market::mint_exact_quantity'";
     expect(humanizeV2Error(raw)).toBe('On-chain check failed (expiry_market #99).');
   });
+
+  it('defers the raw low-gas node rejection to plain wallet copy (owner-path fallback)', () => {
+    // A low-gas session routes back to the wallet; if the wallet is ALSO out of SUI the
+    // node rejects the built tx with this. It is not a MoveAbort, so it flows through the
+    // shared wallet decoder — no node internals should reach the trader.
+    const raw = 'Error checking transaction input objects: Balance of gas object 19305360 is lower than the needed amount: 30000000';
+    const out = humanizeV2Error(new Error(raw));
+    expect(out).toMatch(/network fee/i);
+    expect(out).toMatch(/testnet SUI/i);
+    expect(out).not.toMatch(/gas object|input objects/);
+  });
 });

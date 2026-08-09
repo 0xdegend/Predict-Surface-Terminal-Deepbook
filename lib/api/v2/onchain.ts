@@ -31,6 +31,7 @@ import type {
   V2VaultServerState,
   V2VaultCurrent,
   V2Position,
+  V2BuilderFee,
 } from './types';
 
 interface GetOptions {
@@ -619,6 +620,35 @@ export async function onchainSkewOwners(codeId: string, opts?: GetOptions): Prom
     if (p && String(p.builder_code_id) === codeId && p.owner) owners.add(String(p.owner));
   }
   return [...owners];
+}
+
+/**
+ * Builder-fee CLAIM history for a code, from the `builder_code_events::BuilderFeesClaimed`
+ * stream (kept when `builder_code_id === codeId`). Each event carries the swept `amount`
+ * (DUSDC base units) and its tx timestamp — the on-chain source for the admin panel's
+ * claimed-to-date, lifetime, chart, and recent-claims. Only the code OWNER can claim, so
+ * this stream is TINY and reaches back fully in a few pages. Newest-first. Verified live
+ * 2026-08-09 against a real claim tx: `{amount, builder_code_id, owner}`, ts from the event.
+ */
+export async function onchainBuilderCodeFees(codeId: string, limit = 200, opts?: GetOptions): Promise<V2BuilderFee[]> {
+  if (!codeId) return [];
+  const evs = await queryEventsPaged(
+    { MoveEventType: `${predictV2Config.packages.predict}::builder_code_events::BuilderFeesClaimed` },
+    Math.max(limit, 100),
+    opts,
+  );
+  const want = codeId.toLowerCase();
+  const rows: V2BuilderFee[] = [];
+  for (const e of evs) {
+    const p = e.parsedJson;
+    if (!p || String(p.builder_code_id).toLowerCase() !== want) continue;
+    rows.push({
+      builder_code_id: String(p.builder_code_id),
+      amount: String(p.amount ?? '0'),
+      checkpoint_timestamp_ms: n(e.timestampMs),
+    });
+  }
+  return rows.sort((a, b) => b.checkpoint_timestamp_ms - a.checkpoint_timestamp_ms).slice(0, limit);
 }
 
 interface TxBlock {
