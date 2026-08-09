@@ -3,10 +3,9 @@
 /**
  * SessionPill — a compact "instant trading is on" badge for the ticket chrome.
  * Shows only when a session is actually carrying trades (Slush + live key), with
- * the time left before it lapses. Purely informational; the control lives in
- * SessionPanel. See [[sessions-delegated-trading]].
+ * the time left before it lapses. Purely informational; the on/off control lives in
+ * the nav wallet dropdown (WalletInstantTrading). See [[sessions-delegated-trading]].
  */
-import { LuZap } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useNow } from '@/lib/hooks/use-now';
 import { countdown } from '@/lib/format';
@@ -19,10 +18,9 @@ export function SessionPill() {
   if (!acct.sessionActive || !acct.sessionExpiryMs) return null;
   return (
     <span
-      className="chip h-5 gap-1 px-1.5 text-[9.5px] font-medium uppercase tracking-wider text-up"
+      className="chip h-5 shrink-0 whitespace-nowrap px-1.5 text-[9.5px] font-medium uppercase tracking-wider text-up"
       title="Trades place with no wallet pop-up while this is on"
     >
-      <LuZap size={10} className="shrink-0" />
       Instant · {countdown(acct.sessionExpiryMs, now)} left
     </span>
   );

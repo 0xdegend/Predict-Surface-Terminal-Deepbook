@@ -22,7 +22,7 @@ import {
   groupByCadence,
   CADENCE_ORDER,
   CADENCE_LABEL,
-  maxLeverageX,
+  usableMaxLeverageX,
   isClosingSoon,
   isTooCloseToExpiry,
 } from '@/lib/markets/v2-discovery';
@@ -130,7 +130,9 @@ function Card({
       {/* header: cadence tag + live countdown */}
       <div className="flex items-center justify-between">
         <span className="rounded bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-text-3">
-          up to {maxLeverageX(market)}x
+          {/* "up to Nx" only reads right when leverage is actually available; inside the
+              no-leverage window it's a flat 1x, so drop the "up to". */}
+          {usableMaxLeverageX(market, now) > 1 ? `up to ${usableMaxLeverageX(market, now)}x` : '1x'}
         </span>
         <span
           className={[

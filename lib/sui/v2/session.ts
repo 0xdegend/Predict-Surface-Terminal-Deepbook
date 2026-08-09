@@ -112,6 +112,7 @@ export async function saveSession(owner: string, signer: WebCryptoSigner): Promi
     createdAt: Date.now(),
   };
   await storeSet(sessionStorageKey(owner), stored);
+  rememberSessionAddress(owner, stored.address);
   return stored;
 }
 
@@ -128,6 +129,63 @@ export async function loadSession(owner: string): Promise<LoadedSession | null> 
   if (!stored) return null;
   const signer = await WebCryptoSigner.import(stored.keypair);
   return { signer, address: stored.address, createdAt: stored.createdAt };
+}
+
+/** Just `owner`'s ACTIVE persisted session KEY ADDRESS (null if none), WITHOUT importing
+ *  the CryptoKey. Cheap enough to call on every positions poll; returns null server-side
+ *  / for any owner whose key isn't on this device. */
+export async function loadSessionAddress(owner: string): Promise<string | null> {
+  try {
+    return (await storeGet(sessionStorageKey(owner)))?.address ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/* -------- session address history (for READS, survives clearSession) --------- */
+/* A position opened by a session is found by scanning that KEY's sent transactions, so
+ * the reader needs the key's address even AFTER the session ends and the key is
+ * forgotten — the positions are still the owner's to claim and must stay visible. We
+ * keep a small per-owner+deployment list of every session address this device has used.
+ * It is non-sensitive (addresses only, no key material), so it lives in localStorage,
+ * which also survives an IndexedDB wipe (unlike the key itself). */
+
+function sessionAddrsKey(owner: string): string {
+  return `skew.sessionAddrs.${owner.toLowerCase()}.${predictV2Config.packages.predict}`;
+}
+
+function readAddrList(owner: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const arr: unknown = JSON.parse(window.localStorage.getItem(sessionAddrsKey(owner)) ?? '[]');
+    return Array.isArray(arr) ? arr.filter((a): a is string => typeof a === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Record a session key address so its positions stay findable after the key is
+ *  forgotten (endSession). Idempotent; capped so a heavy re-arm history stays bounded. */
+export function rememberSessionAddress(owner: string, address: string): void {
+  if (typeof window === 'undefined' || !address) return;
+  try {
+    const lc = address.toLowerCase();
+    const list = readAddrList(owner).filter((a) => a.toLowerCase() !== lc);
+    list.push(address); // most-recent last
+    window.localStorage.setItem(sessionAddrsKey(owner), JSON.stringify(list.slice(-6)));
+  } catch {
+    // best-effort — worst case a session position just isn't auto-listed
+  }
+}
+
+/** Every session key address this device has used for `owner` (active + retired), for
+ *  the positions/history reader. Unions the persisted list with the currently-active key
+ *  (covers a session armed before this bookkeeping existed). Empty server-side. */
+export async function loadSessionAddresses(owner: string): Promise<string[]> {
+  const list = readAddrList(owner);
+  const active = await loadSessionAddress(owner);
+  if (active && !list.some((a) => a.toLowerCase() === active.toLowerCase())) list.push(active);
+  return list;
 }
 
 /** Forget `owner`'s local session key (pair with an on-chain `revoke_session`). */

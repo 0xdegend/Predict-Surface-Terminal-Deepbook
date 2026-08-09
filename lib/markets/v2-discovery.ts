@@ -10,6 +10,7 @@
  */
 import type { V2Market } from '@/lib/api/v2/types';
 import { toFloat } from '@/config/scale';
+import { predictV2Config } from '@/config/predict';
 
 export type V2Cadence = '1m' | '5m' | '1h';
 
@@ -89,9 +90,25 @@ export function strikeGrid(forward: number, admissionTickScaled: string, half = 
   return out;
 }
 
-/** Max leverage offered by a market, as a human multiple (e.g. 3 for 3x). */
+/** The market's NOMINAL max leverage, as a human multiple (e.g. 3 for 3x). This is only
+ *  the p→1 asymptote/ceiling — it is NOT what a trader can use on a short market (see
+ *  usableMaxLeverageX). Prefer usableMaxLeverageX for anything user-facing. */
 export function maxLeverageX(m: V2Market): number {
   return toFloat(m.max_admission_leverage);
+}
+
+/**
+ * The max leverage a trader can ACTUALLY use on a market right now: the nominal cap, but
+ * forced to 1× while the market sits inside the protocol's no-leverage window (leverage
+ * unlocks only more than `noLeverageWindowMs` before expiry, ~60min on 8-06). Every
+ * short-cadence market is inside that window, so the nominal 3× over-promises there — a
+ * 1-minute market is really 1×. `now` is injected so this stays pure (no inline clock in
+ * render). Mirrors the chain's own gate in `admittedLeverageCap729` (lib/sui/v2/quote).
+ */
+export function usableMaxLeverageX(m: V2Market, now: number): number {
+  const window = predictV2Config.noLeverageWindowMs;
+  if (window > 0 && m.expiry - now <= window) return 1;
+  return maxLeverageX(m);
 }
 
 /**

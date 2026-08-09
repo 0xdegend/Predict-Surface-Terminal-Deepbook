@@ -6,9 +6,11 @@ import {
   groupByCadence,
   strikeGrid,
   maxLeverageX,
+  usableMaxLeverageX,
   isClosingSoon,
   isTooCloseToExpiry,
 } from './v2-discovery';
+import { predictV2Config } from '@/config/predict';
 import type { V2Market } from '@/lib/api/v2/types';
 
 const MIN = 60_000;
@@ -119,6 +121,30 @@ describe('strikeGrid', () => {
 describe('maxLeverageX', () => {
   it('reads max leverage as a human multiple', () => {
     expect(maxLeverageX(mkt({ expiry_market_id: 'x', checkpoint_timestamp_ms: 0, expiry: MIN }))).toBe(3);
+  });
+});
+
+describe('usableMaxLeverageX (no-leverage window gate)', () => {
+  const now = 10_000_000;
+  const W = predictV2Config.noLeverageWindowMs;
+
+  it('is 1x inside the no-leverage window (short markets); nominal cap outside', () => {
+    // A 2-minute market: inside the ~60min window when one is configured (8-06) → 1x.
+    const short = mkt({ expiry_market_id: 'short', checkpoint_timestamp_ms: now - MIN, expiry: now + 2 * MIN });
+    const far = mkt({ expiry_market_id: 'far', checkpoint_timestamp_ms: now - MIN, expiry: now + W + 10 * MIN });
+    if (W > 0) {
+      expect(usableMaxLeverageX(short, now)).toBe(1); // gated off near expiry
+      expect(usableMaxLeverageX(far, now)).toBe(3); // beyond the window → the nominal 3x
+    } else {
+      // Window disabled (e.g. 6-24 config active) → always the nominal cap.
+      expect(usableMaxLeverageX(short, now)).toBe(3);
+    }
+  });
+
+  it('exactly at the window edge still counts as inside (1x)', () => {
+    if (W <= 0) return;
+    const atEdge = mkt({ expiry_market_id: 'edge', checkpoint_timestamp_ms: now - MIN, expiry: now + W });
+    expect(usableMaxLeverageX(atEdge, now)).toBe(1);
   });
 });
 

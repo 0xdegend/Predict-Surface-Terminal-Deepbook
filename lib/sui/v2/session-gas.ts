@@ -22,8 +22,29 @@ export interface SessionGasResult {
   code?: string;
 }
 
+/**
+ * In-flight drips keyed by session address. A drip holds a server-side lock for its
+ * whole life — including the several-second on-chain confirm — so a SECOND request for
+ * the same key while the first is still confirming is rejected with a 409 ("already in
+ * progress"). That second request should never be sent: a re-render, a retry, or a
+ * follow-up trade landing before the first drip confirms would all fire it. Collapsing
+ * overlapping calls onto ONE promise means both callers get the first drip's real
+ * result (funded / already-funded) instead of a spurious 409. Cleared when it settles,
+ * so a later legitimate re-fund (after the cooldown) still goes through.
+ */
+const inFlight = new Map<string, Promise<SessionGasResult>>();
+
 /** Ask the treasury to top a session key up to its gas target. Never throws. */
-export async function dripSessionGas(address: string): Promise<SessionGasResult> {
+export function dripSessionGas(address: string): Promise<SessionGasResult> {
+  const pending = inFlight.get(address);
+  if (pending) return pending;
+  const p = requestDrip(address).finally(() => inFlight.delete(address));
+  inFlight.set(address, p);
+  return p;
+}
+
+/** The actual POST to /api/session-gas. Wrapped by dripSessionGas' in-flight dedup. */
+async function requestDrip(address: string): Promise<SessionGasResult> {
   try {
     const res = await fetch('/api/session-gas', {
       method: 'POST',

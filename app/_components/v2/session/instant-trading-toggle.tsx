@@ -4,7 +4,8 @@
  * InstantTradingToggle — the in-ticket way to turn on delegated trading, replacing
  * the old form panel. When armed, the NEXT trade also bundles `authorize_session`, so
  * one action sets up faster trading (the confirm modal discloses it). It self-hides
- * once a session is live (the pill/strip takes over) and re-appears after expiry with
+ * once a session is live (the pill takes over, and the one-tap / End controls move to
+ * the nav wallet dropdown — WalletInstantTrading) and re-appears after expiry with
  * "turn it back on" copy.
  *
  * Shows for BOTH wallet types, but the win differs: a Slush wallet loses its per-trade
@@ -34,7 +35,7 @@ export function InstantTradingToggle() {
 
   // Offered only where it helps and only before a session is live. A Google (gasless)
   // session can't self-fund gas without the treasury drip, so hide it for Google when
-  // the drip is off. Once live, the status strip/pill takes over.
+  // the drip is off. Once live, the pill + the dropdown controls take over.
   const gaslessBlocked = acct.gasless && !sessionGasDrip.enabled;
   if (!acct.sessionsEnabled || !acct.owner || !acct.wrapperExists || acct.sessionActive || gaslessBlocked) {
     return null;

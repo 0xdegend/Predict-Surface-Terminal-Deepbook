@@ -29,6 +29,7 @@ import { shortId } from '@/lib/format';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { CashOutModal } from './cash-out-modal';
 import { BalancePill } from './balance-pill';
+import { WalletInstantTrading } from './v2/session/wallet-instant-trading';
 
 const ACCOUNT_EXPLORER = (network: string, addr: string) =>
   `https://suiscan.xyz/${network}/account/${addr}`;
@@ -210,6 +211,10 @@ function ConnectedMenu({
           <LuCopy size={13} className="text-text-3 group-hover:text-text-2" />
         )}
       </button>
+
+      {/* Instant trading (delegated session) lives here now instead of on top of the
+          trade ticket. Self-hides unless the wallet + account can use it. */}
+      <WalletInstantTrading />
 
       <a
         href={ACCOUNT_EXPLORER(network, address)}

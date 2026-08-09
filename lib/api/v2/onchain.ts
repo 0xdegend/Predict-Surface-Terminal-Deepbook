@@ -15,6 +15,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { predictV2Config } from '@/config/predict';
+import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
 import type {
   V2Market,
@@ -644,27 +645,113 @@ function orderStructOf(type: string | undefined): keyof typeof ORDER_EVENTS | nu
  * come from each event's own `minted_at_ms` / `redeemed_at_ms`.
  */
 export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetOptions): Promise<V2OrderEvent[]> {
-  const rows: V2OrderEvent[] = [];
+  // ALSO scan the account's delegated-session keys (active AND retired, ANY device). A
+  // session trade is sent by that ephemeral key, NOT the wallet owner, so an owner-only
+  // scan misses every session trade and those positions never surface in the portfolio /
+  // history — and they must stay visible even after the session is ENDED (the key is
+  // forgotten, but the positions are still the owner's to claim). We discover the keys
+  // three ways and union them:
+  const ownerScan = await scanSenderOrders(owner, maxTx, opts);
+  const ownerLc = owner.toLowerCase();
+  const found = new Map<string, string>(); // lowercased -> original casing
+  const add = (a?: string) => {
+    if (!a) return;
+    const lc = a.toLowerCase();
+    if (lc !== ownerLc && !found.has(lc)) found.set(lc, a);
+  };
+  // (1) LOCAL: keys this device has used (incl. one just authorized but not yet indexed).
+  for (const a of await loadSessionAddresses(owner)) add(a);
+  // (2) PIGGYBACK: authorize_session is owner-signed, so the owner's OWN txs (already
+  //     scanned above) carry the SessionAuthorized events — keys from ANY device, free.
+  for (const au of ownerScan.auths) add(au.session);
+  // (3) BACKSTOP: a dedicated SessionAuthorized event scan reaches back past the owner's
+  //     trade-diluted tx window (an old cross-device authorize). We learn the exact event
+  //     TYPE + account_id from a piggyback authorization, so it is package-id safe and
+  //     needs no threading; skipped when the window held no authorization to seed it.
+  const seed = ownerScan.auths.find((a) => a.accountId && a.type);
+  if (seed) for (const a of await discoverAccountSessionKeys(seed.accountId, seed.type, opts)) add(a);
+
+  const sessionAddrs = [...found.values()];
+  const desc = (a: V2OrderEvent, b: V2OrderEvent) => (b.checkpoint_timestamp_ms ?? 0) - (a.checkpoint_timestamp_ms ?? 0);
+  if (sessionAddrs.length === 0) return ownerScan.orders.sort(desc);
+  const sessionScans = await Promise.all(sessionAddrs.map((s) => scanSenderOrders(s, maxTx, opts)));
+  // Order events carry the account_id and are disjoint across senders (each lives in one
+  // tx), so a plain union is correct; the fold nets open/close by position, any signer.
+  return [ownerScan.orders, ...sessionScans.map((s) => s.orders)].flat().sort(desc);
+}
+
+/** A session key authorized inside an owner-signed tx (the SessionAuthorized event). */
+interface SessionAuth {
+  session: string;
+  accountId: string;
+  /** The exact on-chain event type — learned here so the backstop scan is package-safe. */
+  type: string;
+}
+interface SenderScan {
+  orders: V2OrderEvent[];
+  /** SessionAuthorized events found in these txs — non-empty only for the OWNER sender. */
+  auths: SessionAuth[];
+}
+
+/** Match `<pkg>::sessions::SessionAuthorized` without pinning the package id (the sessions
+ *  package was upgraded, so its published-at differs from the type-origin). */
+const SESSION_AUTHORIZED_RE = /::sessions::SessionAuthorized$/;
+
+/** Scan ONE sender's txs via the FromAddress filter (the whale-immune read), collecting
+ *  its order events AND any SessionAuthorized events (which only appear for the owner, as
+ *  authorize_session is owner-signed). Extracted so onchainOwnerOrders can fold in the
+ *  account's delegated-session keys alongside the wallet owner. */
+async function scanSenderOrders(sender: string, maxTx: number, opts?: GetOptions): Promise<SenderScan> {
+  const orders: V2OrderEvent[] = [];
+  const auths: SessionAuth[] = [];
   let cursor: unknown = null;
   const PAGE = 50;
-  for (let i = 0; rows.length < maxTx * 2 && i < Math.ceil(maxTx / PAGE) + 1; i++) {
+  for (let i = 0; orders.length < maxTx * 2 && i < Math.ceil(maxTx / PAGE) + 1; i++) {
     const r = await rpcCall<{ data?: TxBlock[]; nextCursor?: unknown; hasNextPage?: boolean }>(
       'suix_queryTransactionBlocks',
-      [{ filter: { FromAddress: owner }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
+      [{ filter: { FromAddress: sender }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
       opts,
     ).catch(() => ({ data: [] as TxBlock[], nextCursor: null, hasNextPage: false }));
     for (const tx of r?.data ?? []) {
       for (const ev of tx.events ?? []) {
         const struct = orderStructOf(ev.type);
-        if (!struct) continue;
-        const p = ev.parsedJson ?? {};
-        rows.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
+        if (struct) {
+          const p = ev.parsedJson ?? {};
+          orders.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
+        } else if (ev.type && SESSION_AUTHORIZED_RE.test(ev.type)) {
+          const p = ev.parsedJson ?? {};
+          if (p.session) auths.push({ session: String(p.session), accountId: String(p.account_id ?? ''), type: ev.type });
+        }
       }
     }
     if (!r?.hasNextPage || !r?.nextCursor) break;
     cursor = r.nextCursor;
   }
-  return rows;
+  return { orders, auths };
+}
+
+/** Every session key ever authorized for an account, from its SessionAuthorized events.
+ *  These are RARE (≤20 live per account, a handful ever), so this reaches far back in a
+ *  few pages — the device-independent discovery that also survives a revoke (the wrapper's
+ *  live session table is pruned on revoke; the event log is append-only). Cached per
+ *  account (authorizations almost never change) so it doesn't re-scan every 12s poll. */
+const sessionKeyCache = new Map<string, { keys: string[]; at: number }>();
+const SESSION_KEY_TTL_MS = 5 * 60_000;
+
+async function discoverAccountSessionKeys(accountId: string, eventType: string, opts?: GetOptions): Promise<string[]> {
+  const cached = sessionKeyCache.get(accountId);
+  if (cached && Date.now() - cached.at < SESSION_KEY_TTL_MS) return cached.keys;
+  const want = accountId.toLowerCase();
+  const keys = new Set<string>();
+  const events = await queryEventsPaged({ MoveEventType: eventType }, 120, opts).catch(() => [] as SuiEvent[]);
+  for (const ev of events) {
+    const p = ev.parsedJson ?? {};
+    if (p.session && String(p.account_id ?? '').toLowerCase() === want) keys.add(String(p.session));
+  }
+  const out = [...keys];
+  if (sessionKeyCache.size > 100) sessionKeyCache.clear(); // bound growth across many viewed profiles
+  sessionKeyCache.set(accountId, { keys: out, at: Date.now() });
+  return out;
 }
 
 /**

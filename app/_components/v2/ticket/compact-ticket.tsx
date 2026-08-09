@@ -349,6 +349,7 @@ function BinaryBody({
             </p>
           )}
 
+          {/* Turn instant trading on inside this trade's approval (no live session). */}
           <InstantTradingToggle />
           <MintButton
             tone={isUp ? 'up' : 'down'}
@@ -581,6 +582,7 @@ function RangeBody({
             </p>
           )}
 
+          {/* Turn instant trading on inside this trade's approval (no live session). */}
           <InstantTradingToggle />
           <MintButton
             tone="up"

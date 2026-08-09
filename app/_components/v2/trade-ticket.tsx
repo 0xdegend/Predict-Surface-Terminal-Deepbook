@@ -52,9 +52,9 @@ import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, 
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
+import { InstantTradingToggle } from './session/instant-trading-toggle';
 import { SharedTradeBanner } from './share/shared-trade-banner';
 import { TradeShareModal } from './share/trade-share-modal';
-import { InstantTradingToggle } from './session/instant-trading-toggle';
 import { buildRecipe } from '@/lib/share/trade-link';
 import { StepBar } from '@/app/_components/ticket/step-bar';
 import { GlassError } from '@/app/_components/ui/glass-error';
@@ -641,7 +641,7 @@ export function V2TradeTicket({
         </div>
       )}
 
-      {/* Turn instant trading on inside this trade's approval (Slush, no live session). */}
+      {/* Turn instant trading on inside this trade's approval (no live session). */}
       <InstantTradingToggle />
       <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} />
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}

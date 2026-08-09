@@ -25,7 +25,7 @@ import { price, dateUTC, countdown, pct, shortId } from '@/lib/format';
 import {
   cadenceOf,
   CADENCE_LABEL,
-  maxLeverageX,
+  usableMaxLeverageX,
   isClosingSoon,
   isTooCloseToExpiry,
 } from '@/lib/markets/v2-discovery';
@@ -210,7 +210,7 @@ export function V2MarketTable({
                       </Td>
                       <Td className="text-right text-text-2">{p ? price(p.forward, 0) : '—'}</Td>
                       <Td className="text-right text-text-1">{atmIv != null ? pct(atmIv, 1) : '—'}</Td>
-                      <Td className="hidden text-right text-text-3 sm:table-cell">{maxLeverageX(m)}x</Td>
+                      <Td className="hidden text-right text-text-3 sm:table-cell">{usableMaxLeverageX(m, now)}x</Td>
                       <Td className="hidden text-right text-text-3 sm:table-cell">{price(toFloat(m.admission_tick_size), 0)}</Td>
                       <Td className="hidden text-right text-text-3 group-hover:text-text-2 sm:table-cell">
                         {shortId(m.expiry_market_id)}

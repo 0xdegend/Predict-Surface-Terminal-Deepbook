@@ -45,4 +45,34 @@ describe('dripSessionGas — never throws, maps the route response', () => {
     const r = await dripSessionGas('0xkey');
     expect(r).toEqual({ ok: false, suiAmount: '0', code: 'network' });
   });
+
+  it('dedupes concurrent drips for the SAME key onto one request (no duplicate 409)', async () => {
+    // Gate the fetch on a promise we resolve manually, so both calls overlap in-flight.
+    let release: (v: unknown) => void = () => {};
+    const gate = new Promise((r) => (release = r));
+    const fetchMock = vi.fn(async () => {
+      await gate;
+      return { ok: true, status: 200, json: async () => ({ digest: 'd1', suiAmount: '100000000' }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const a = dripSessionGas('0xsame');
+    const b = dripSessionGas('0xsame');
+    expect(a).toBe(b); // same in-flight promise, not a second call
+    release(undefined);
+    const [ra, rb] = await Promise.all([a, b]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1); // only one POST hit the route
+    expect(ra).toEqual(rb);
+    expect(ra.ok).toBe(true);
+    expect(ra.digest).toBe('d1');
+  });
+
+  it('lets a later drip for the same key go through once the first settled', async () => {
+    mockFetch(200, { digest: 'first', suiAmount: '100000000' });
+    await dripSessionGas('0xkey2');
+    mockFetch(200, { digest: 'second', suiAmount: '100000000' });
+    const r = await dripSessionGas('0xkey2'); // map cleared on settle → fresh request
+    expect(r.digest).toBe('second');
+  });
 });
