@@ -59,8 +59,15 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
 
   const sym = opts?.symbol ?? predictConfig.quote.symbol;
 
-  async function claim() {
-    if (!owner || busy) return;
+  /**
+   * Returns the outcome so an orchestrating caller (the onboarding modal, which
+   * chains fund → create-account) can branch without reading the async state
+   * back through a stale closure. `ok` is true on a real grant; `already_funded`
+   * comes back as `ok:false` with that code so the caller can proceed to create
+   * the account and steer top-ups to the faucet. onClick callers ignore it.
+   */
+  async function claim(): Promise<{ ok: boolean; code: string | null }> {
+    if (!owner || busy) return { ok: false, code: 'busy' };
     setBusy(true);
     setFailed(false);
     setFailedCode(null);
@@ -76,6 +83,7 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
         ? `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} + ${sui} SUI for gas added`
         : `${fmtQuote(fromQuote(BigInt(amount)))} ${sym} added. You're ready to trade.`;
       toast.success('Account funded', { desc });
+      return { ok: true, code: null };
     } catch (e) {
       const code = e instanceof StarterGrantError ? e.code : 'error';
       setFailed(true);
@@ -93,6 +101,7 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
           desc: e instanceof Error ? e.message : 'Try the faucet instead',
         });
       }
+      return { ok: false, code };
     } finally {
       setBusy(false);
     }

@@ -29,6 +29,7 @@ import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { V2MarketPicker } from './market-picker';
+import { OnboardFundModal } from './onboard-fund-modal';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
@@ -112,6 +113,9 @@ export function V2TradeScreen({
         grant on connect, but on mobile the ticket is a closed sheet, so a fresh
         empty wallet would never see it. Surface the same one-tap grant up here. */}
     <MobileFundBanner />
+    {/* First-run onboarding: a fresh wallet (no trading account yet) gets a single
+        modal to fund + create their account in one tap. Self-contained + portaled. */}
+    <OnboardFundModal />
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}
