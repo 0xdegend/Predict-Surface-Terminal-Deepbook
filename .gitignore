@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 CLAUDE.md
+
+# launch film project (lives outside the repo; ignored in case it moves in)
+skew-launch-film/
