@@ -41,7 +41,7 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
 const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean; footer?: boolean }[] = [
   // Descs kept short so each tile is a single line on mobile (uniform height).
   { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Ask Kelly', desc: 'Talk to the surface', icon: LuSparkles },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: LuSparkles },
   { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety', icon: LuShieldAlert },
   { href: '/v2/analytics', label: 'Analytics', desc: 'Markets & activity', icon: LuChartNoAxesCombined },
   { href: '/v2/quests', label: 'Quests', desc: 'Earn DUSDC', icon: LuTarget, soon: true },

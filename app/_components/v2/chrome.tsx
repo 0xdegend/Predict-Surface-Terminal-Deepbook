@@ -65,7 +65,7 @@ const VAULT_ITEMS: MenuItem[] = [
  *  too (/v2/docs) so it keeps the Latest chrome and its in-page links stay on /v2. */
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Ask Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
