@@ -198,6 +198,12 @@ export interface PredictV2Config {
      *  Slush popup). Empty on deployments where it is not published. See
      *  lib/sui/v2/session.ts. */
     sessions: string;
+    /** The package that ORIGINALLY published `sessions` — the type-origin used to
+     *  build the `SessionAuthorized` event type for a by-account-id scan (Move event
+     *  types carry the origin, not the upgraded published-at). Lets the read layer
+     *  discover an account's session keys even when no authorize is in the recent tx
+     *  window. Optional; falls back to a type learned at runtime from a piggyback. */
+    sessionsEventOrigin?: string;
   };
   /** Shared objects passed into entry functions. */
   shared: {
@@ -446,6 +452,7 @@ const V2_TESTNET_806: PredictV2Config = {
     // deepbook_sessions on 8-06 (Published.toml: published-at v2). Verified to target
     // this deployment's account/predict/config/registry objects. See [[sessions-delegated-trading]].
     sessions: '0x403ac487b19635c022f5c50378b9097ed7d80175f9b3ff7ea5a8a4a5fe0ecfbe',
+    sessionsEventOrigin: '0x78887ffbb5e449776152c612fe05af03f729c02dbb7218c270e645c241ad527b',
   },
   shared: {
     protocolConfig: '0x43703ceee4d5f5a9e8cbf728071c34dc65961dd6e878fafd9ac36d86a9a4ce5b',

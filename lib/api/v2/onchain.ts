@@ -743,20 +743,116 @@ export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetO
   // (2) PIGGYBACK: authorize_session is owner-signed, so the owner's OWN txs (already
   //     scanned above) carry the SessionAuthorized events — keys from ANY device, free.
   for (const au of ownerScan.auths) add(au.session);
-  // (3) BACKSTOP: a dedicated SessionAuthorized event scan reaches back past the owner's
-  //     trade-diluted tx window (an old cross-device authorize). We learn the exact event
-  //     TYPE + account_id from a piggyback authorization, so it is package-id safe and
-  //     needs no threading; skipped when the window held no authorization to seed it.
-  const seed = ownerScan.auths.find((a) => a.accountId && a.type);
-  if (seed) for (const a of await discoverAccountSessionKeys(seed.accountId, seed.type, opts)) add(a);
+  // (3) BACKSTOP: a dedicated SessionAuthorized event scan reaches back past BOTH the
+  //     owner's trade-diluted tx window AND the 6-entry local list, so an OLD or ENDED
+  //     session (whose authorize scrolled out of the window and was evicted from the
+  //     local list) is still found — otherwise that session's trades/claims fold into
+  //     neither positions nor history, leaving already-claimed positions stuck as
+  //     "claimable". The account id comes from a piggyback authorization when present,
+  //     else from the owner's OWN order events, so this runs even when the recent window
+  //     holds no authorize. The event TYPE (type-origin, upgrade-safe) is the piggyback's,
+  //     else one learned from any prior piggyback this session, else the config origin.
+  const piggy = ownerScan.auths.find((a) => a.accountId && a.type);
+  const acctId = piggy?.accountId ?? ownerScan.orders.find((o) => o.account_id)?.account_id;
+  const authType = piggy?.type ?? learnedSessionAuthType ?? sessionAuthorizedType();
+  if (acctId && authType) {
+    for (const a of await discoverAccountSessionKeys(String(acctId), authType, opts)) add(a);
+  }
 
   const sessionAddrs = [...found.values()];
   const desc = (a: V2OrderEvent, b: V2OrderEvent) => (b.checkpoint_timestamp_ms ?? 0) - (a.checkpoint_timestamp_ms ?? 0);
-  if (sessionAddrs.length === 0) return ownerScan.orders.sort(desc);
-  const sessionScans = await Promise.all(sessionAddrs.map((s) => scanSenderOrders(s, maxTx, opts)));
+  const sessionScans = sessionAddrs.length
+    ? await Promise.all(sessionAddrs.map((s) => scanSenderOrders(s, maxTx, opts)))
+    : [];
   // Order events carry the account_id and are disjoint across senders (each lives in one
   // tx), so a plain union is correct; the fold nets open/close by position, any signer.
-  return [ownerScan.orders, ...sessionScans.map((s) => s.orders)].flat().sort(desc);
+  const union = [ownerScan.orders, ...sessionScans.map((s) => s.orders)].flat();
+  // (4) KEEPER REDEEMS. The sender scan above cannot see the protocol keeper's PERMISSIONLESS
+  //     auto-redeem of settled winners (`redeem_settled_permissionless` is signed by the
+  //     keeper, not the owner or a session key, and it deposits the payout into the owner's
+  //     account). Without them an already-paid position lingers as "open" and its Redeem
+  //     aborts because it's already closed. For each market that still looks open here, scan
+  //     THAT market's own tx log (server-side InputObject filter, immune to the global
+  //     stream's keeper-batch burial) for this account's redeems and fold them in. Redeems
+  //     dedupe by content so a self-signed redeem already present isn't counted twice.
+  const acct = acctId ?? union.find((o) => o.account_id)?.account_id;
+  if (acct) {
+    const markets = openMarketsIn(union).slice(0, 12);
+    if (markets.length) {
+      const have = new Set(union.filter((o) => o.kind !== 'order_minted').map(redeemKey));
+      const extra = await Promise.all(markets.map((m) => scanMarketAccountRedeems(m, String(acct), opts)));
+      for (const r of extra.flat()) if (!have.has(redeemKey(r))) union.push(r);
+    }
+  }
+  return union.sort(desc);
+}
+
+/** Content key for a redeem event, stable across capture methods (sender scan vs per-market
+ *  scan) so the two sources dedupe: a position closes once per (root, amount, time). */
+function redeemKey(o: V2OrderEvent): string {
+  const root = o.position_root_id ?? o.order_id ?? '';
+  const ts = o.redeemed_at_ms ?? o.checkpoint_timestamp_ms ?? '';
+  return `${root}:${o.quantity_closed ?? ''}:${String(ts)}`;
+}
+
+/** Distinct markets that still show a net-open position in `orders` (Σ minted > Σ closed per
+ *  root) — the only markets worth a per-market keeper-redeem scan. */
+function openMarketsIn(orders: V2OrderEvent[]): string[] {
+  const minted = new Map<string, bigint>();
+  const closed = new Map<string, bigint>();
+  const market = new Map<string, string>();
+  for (const o of orders) {
+    const root = String(o.position_root_id ?? o.order_id ?? '');
+    if (!root) continue;
+    if (o.kind === 'order_minted') {
+      minted.set(root, (minted.get(root) ?? 0n) + big(o.quantity));
+      if (o.expiry_market_id) market.set(root, String(o.expiry_market_id));
+    } else {
+      closed.set(root, (closed.get(root) ?? 0n) + big(o.quantity_closed));
+    }
+  }
+  const out = new Set<string>();
+  for (const [root, m] of minted) {
+    if (m - (closed.get(root) ?? 0n) > 0n && market.has(root)) out.add(market.get(root)!);
+  }
+  return [...out];
+}
+
+/** One market's redeem events for a given account, read via the market object's OWN tx log
+ *  (`suix_queryTransactionBlocks` InputObject). The server-side per-market filter is immune
+ *  to the global event stream's keeper-batch burial, so it recovers the keeper's
+ *  permissionless auto-redeem of a settled winner (signed by the keeper, invisible to the
+ *  owner/session sender scan). Newest-first, bounded — redeems are a market's last activity,
+ *  right after settlement. */
+async function scanMarketAccountRedeems(
+  marketId: string,
+  accountId: string,
+  opts?: GetOptions,
+): Promise<V2OrderEvent[]> {
+  const want = accountId.toLowerCase();
+  const out: V2OrderEvent[] = [];
+  let cursor: unknown = null;
+  const PAGE = 50;
+  for (let i = 0; i < 3; i++) {
+    const r = await rpcCall<{ data?: TxBlock[]; nextCursor?: unknown; hasNextPage?: boolean }>(
+      'suix_queryTransactionBlocks',
+      [{ filter: { InputObject: marketId }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
+      opts,
+    ).catch(() => ({ data: [] as TxBlock[], nextCursor: null, hasNextPage: false }));
+    for (const tx of r?.data ?? []) {
+      for (const ev of tx.events ?? []) {
+        const struct = orderStructOf(ev.type);
+        if (!struct || struct === 'OrderMinted') continue; // redeems only
+        const p = ev.parsedJson ?? {};
+        if (String(p.account_id ?? '').toLowerCase() !== want) continue;
+        if (String(p.expiry_market_id ?? '') !== marketId) continue;
+        out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
+      }
+    }
+    if (!r?.hasNextPage || !r?.nextCursor) break;
+    cursor = r.nextCursor;
+  }
+  return out;
 }
 
 /** A session key authorized inside an owner-signed tx (the SessionAuthorized event). */
@@ -775,6 +871,19 @@ interface SenderScan {
 /** Match `<pkg>::sessions::SessionAuthorized` without pinning the package id (the sessions
  *  package was upgraded, so its published-at differs from the type-origin). */
 const SESSION_AUTHORIZED_RE = /::sessions::SessionAuthorized$/;
+
+/** The full SessionAuthorized event type, learned from the first piggyback authorization
+ *  seen this session (upgrade-safe — it carries the real type-origin). Warms the
+ *  by-account backstop even for an owner whose own tx window holds no authorize. */
+let learnedSessionAuthType: string | null = null;
+
+/** The SessionAuthorized event type built from the configured type-origin — the
+ *  deterministic fallback when nothing has been learned yet. Null when sessions isn't
+ *  deployed on this network. */
+function sessionAuthorizedType(): string | null {
+  const origin = predictV2Config.packages.sessionsEventOrigin;
+  return origin ? `${origin}::sessions::SessionAuthorized` : null;
+}
 
 /** Scan ONE sender's txs via the FromAddress filter (the whale-immune read), collecting
  *  its order events AND any SessionAuthorized events (which only appear for the owner, as
@@ -799,6 +908,7 @@ async function scanSenderOrders(sender: string, maxTx: number, opts?: GetOptions
           orders.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
         } else if (ev.type && SESSION_AUTHORIZED_RE.test(ev.type)) {
           const p = ev.parsedJson ?? {};
+          learnedSessionAuthType ??= ev.type; // warm the by-account backstop's type
           if (p.session) auths.push({ session: String(p.session), accountId: String(p.account_id ?? ''), type: ev.type });
         }
       }
@@ -822,7 +932,7 @@ async function discoverAccountSessionKeys(accountId: string, eventType: string, 
   if (cached && Date.now() - cached.at < SESSION_KEY_TTL_MS) return cached.keys;
   const want = accountId.toLowerCase();
   const keys = new Set<string>();
-  const events = await queryEventsPaged({ MoveEventType: eventType }, 120, opts).catch(() => [] as SuiEvent[]);
+  const events = await queryEventsPaged({ MoveEventType: eventType }, 300, opts).catch(() => [] as SuiEvent[]);
   for (const ev of events) {
     const p = ev.parsedJson ?? {};
     if (p.session && String(p.account_id ?? '').toLowerCase() === want) keys.add(String(p.session));
