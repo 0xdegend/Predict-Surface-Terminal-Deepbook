@@ -788,16 +788,17 @@ export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetO
 }
 
 /** Content key for a redeem event, stable across capture methods (sender scan vs per-market
- *  scan) so the two sources dedupe: a position closes once per (root, amount, time). */
-function redeemKey(o: V2OrderEvent): string {
+ *  scan) so the two sources dedupe: a position closes once per (root, amount, time).
+ *  Exported for unit tests. */
+export function redeemKey(o: V2OrderEvent): string {
   const root = o.position_root_id ?? o.order_id ?? '';
   const ts = o.redeemed_at_ms ?? o.checkpoint_timestamp_ms ?? '';
   return `${root}:${o.quantity_closed ?? ''}:${String(ts)}`;
 }
 
 /** Distinct markets that still show a net-open position in `orders` (Σ minted > Σ closed per
- *  root) — the only markets worth a per-market keeper-redeem scan. */
-function openMarketsIn(orders: V2OrderEvent[]): string[] {
+ *  root) — the only markets worth a per-market keeper-redeem scan. Exported for unit tests. */
+export function openMarketsIn(orders: V2OrderEvent[]): string[] {
   const minted = new Map<string, bigint>();
   const closed = new Map<string, bigint>();
   const market = new Map<string, string>();
