@@ -15,6 +15,7 @@
 import { Transaction } from '@mysten/sui/transactions';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { predictV2Config } from '@/config/predict';
+import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
 import type {
@@ -649,6 +650,54 @@ export async function onchainBuilderCodeFees(codeId: string, limit = 200, opts?:
     });
   }
   return rows.sort((a, b) => b.checkpoint_timestamp_ms - a.checkpoint_timestamp_ms).slice(0, limit);
+}
+
+/** One accrued builder-fee event: a trade's `builder_fee` (float DUSDC) at its time. */
+export interface BuilderFeeAccrualEvent {
+  ts: number;
+  fee: number;
+}
+
+/**
+ * Per-trade builder-fee ACCRUAL timeline for a code — every attributed trade's
+ * `builder_fee`, timestamped. The CLAIM log (onchainBuilderCodeFees) only has the few
+ * sweep events, so a cumulative chart of it draws a straight ramp that lies about the
+ * cadence; this is the real earning curve: flat while the book is quiet, steep when
+ * it's busy. Reconstructed from the code's attributed accounts (onchainSkewOwners) and
+ * their order events (onchainOwnerOrders) — each order event already carries the exact
+ * `builder_fee` charged (6-dec base), the `builder_code_id` that fee was paid to, and its
+ * own mint/redeem timestamp, so no fee-rate assumption is needed. We only count fees whose
+ * event `builder_code_id` is OURS (an account can re-attach to a different code over time,
+ * so owner attribution alone isn't exact). Fees land on opens AND early closes; we take
+ * every matching event with a positive fee. Ascending by time. The set of attributed
+ * accounts is the app's own user list (tiny + whale-proof), so this stays cheap; still,
+ * callers should cache it.
+ */
+export async function onchainBuilderFeeAccrual(
+  codeId: string,
+  opts?: GetOptions,
+): Promise<BuilderFeeAccrualEvent[]> {
+  if (!codeId) return [];
+  const owners = await onchainSkewOwners(codeId, opts).catch(() => [] as string[]);
+  if (owners.length === 0) return [];
+
+  const perOwner = await Promise.all(
+    owners.map((o) => onchainOwnerOrders(o, 300, opts).catch(() => [] as V2OrderEvent[])),
+  );
+
+  const want = codeId.toLowerCase();
+  const out: BuilderFeeAccrualEvent[] = [];
+  for (const orders of perOwner) {
+    for (const e of orders) {
+      const evCode = String((e as { builder_code_id?: unknown }).builder_code_id ?? '').toLowerCase();
+      if (evCode !== want) continue;
+      const fee = fromQuote(e.builder_fee ?? 0);
+      const ts = e.checkpoint_timestamp_ms ?? 0;
+      if (fee > 0 && ts > 0) out.push({ ts, fee });
+    }
+  }
+  out.sort((a, b) => a.ts - b.ts);
+  return out;
 }
 
 interface TxBlock {

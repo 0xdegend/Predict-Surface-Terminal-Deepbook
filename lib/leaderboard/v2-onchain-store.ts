@@ -71,29 +71,34 @@ export interface SkewBoardSnapshot {
  * callers sharing one scan. Never throws: on a scan failure it returns the last good
  * snapshot (in-process or KV, even if stale) or an empty board.
  */
-export async function getSkewLeaderboardSnapshot(): Promise<SkewBoardSnapshot> {
-  // 1. Warm in-process cache — the fast path within a live instance.
-  if (isFresh(cache.snap)) {
-    return { rows: cache.snap.rows, builtAtMs: cache.snap.builtAtMs, stale: false };
-  }
+export async function getSkewLeaderboardSnapshot(opts?: { force?: boolean }): Promise<SkewBoardSnapshot> {
+  // An explicit refresh (force) skips both caches and blocks on a fresh scan, so a
+  // just-made trade shows up. The normal path serves the cheapest usable snapshot.
+  if (!opts?.force) {
+    // 1. Warm in-process cache — the fast path within a live instance.
+    if (isFresh(cache.snap)) {
+      return { rows: cache.snap.rows, builtAtMs: cache.snap.builtAtMs, stale: false };
+    }
 
-  // 2. Durable KV — bridges cold starts. Adopt any snapshot for this package as the
-  //    fallback, and serve it directly when it's still fresh (skips the scan).
-  if (kv) {
-    try {
-      const cached = await kv.get<Snapshot>(kvKey());
-      if (forThisPkg(cached)) {
-        cache.snap = cached;
-        if (isFresh(cached)) {
-          return { rows: cached.rows, builtAtMs: cached.builtAtMs, stale: false };
+    // 2. Durable KV — bridges cold starts. Adopt any snapshot for this package as the
+    //    fallback, and serve it directly when it's still fresh (skips the scan).
+    if (kv) {
+      try {
+        const cached = await kv.get<Snapshot>(kvKey());
+        if (forThisPkg(cached)) {
+          cache.snap = cached;
+          if (isFresh(cached)) {
+            return { rows: cached.rows, builtAtMs: cached.builtAtMs, stale: false };
+          }
         }
+      } catch {
+        /* KV read failed — fall through to a live scan. */
       }
-    } catch {
-      /* KV read failed — fall through to a live scan. */
     }
   }
 
-  // 3. Nothing fresh anywhere — scan (concurrent callers share one), write through.
+  // 3. Nothing fresh anywhere (or a forced refresh) — scan (concurrent callers share
+  //    one), write through.
   cache.inflight ??= scanAndStore().finally(() => {
     cache.inflight = null;
   });

@@ -134,7 +134,7 @@ function Inner({
 
       {active && (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md border border-line-soft bg-bg-2/95 px-2 py-1 font-mono text-[10px] tabular-nums text-text-1 shadow-lg"
+          className="glass-tooltip pointer-events-none absolute z-10 -translate-x-1/2 px-2 py-1 font-mono text-[10px] tabular-nums text-text-1"
           style={{ left: Math.min(Math.max(m.left + px(active), 44), width - 44), top: 0 }}
         >
           <span className="text-text-1">{yFormat(active.y)}</span>

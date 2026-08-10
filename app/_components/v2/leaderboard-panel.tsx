@@ -71,7 +71,7 @@ export function V2LeaderboardPanel() {
   // Real Season-2 standings, reconstructed from the per-market order feeds. 'all'
   // is the whole indexed venue; 'skew' is only bets placed through the app (they
   // carry its on-chain builder code).
-  const { rows: allRows, skewRows, loading, skewLoading, refreshing, refetch } = useV2Leaderboard();
+  const { rows: allRows, skewRows, loading, skewLoading, refreshing, forceRefresh } = useV2Leaderboard();
   const rows = scope === 'skew' ? skewRows : allRows;
   // Each scope has its own source (fan-out window vs on-chain Skew scan), so the
   // active tab's own loading state drives the skeleton, not just the default tab's.
@@ -164,9 +164,11 @@ export function V2LeaderboardPanel() {
           disabled={!allTradersReady}
         />
         <button
-          onClick={refetch}
+          onClick={forceRefresh}
+          disabled={refreshing}
           aria-label="Refresh"
-          className="group glass-inset ml-auto inline-flex items-center justify-center p-1.5 text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+          title="Refresh the board with the latest trades"
+          className="group glass-inset ml-auto inline-flex items-center justify-center p-1.5 text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <LuRefreshCw size={12} className={`transition-colors duration-200 group-hover:text-accent ${refreshing ? 'animate-spin' : ''}`} />
         </button>

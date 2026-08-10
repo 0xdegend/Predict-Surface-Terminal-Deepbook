@@ -48,3 +48,17 @@ export function mergeHistoryRows(live: PastPrediction[], legacy: PastPrediction[
 export function mergeLegacyHistory(owner: string | undefined, live: PastPrediction[]): PastPrediction[] {
   return mergeHistoryRows(live, legacyHistoryFor(owner));
 }
+
+/**
+ * The carried-over history keyed by wallet — the resolved (won/lost) track record of
+ * every returning Skew trader. Powers the admin's win-rate + join-over-time stats.
+ * Empty on the seed's own deployment (so it never double-counts live rows there).
+ */
+export function legacyHistoryByOwner(): Record<string, PastPrediction[]> {
+  return CARRYOVER_ACTIVE ? SEED.byOwner : {};
+}
+
+/** All carried-over history rows, flattened (one entry per resolved position). */
+export function allLegacyHistory(): PastPrediction[] {
+  return Object.values(legacyHistoryByOwner()).flat();
+}

@@ -197,13 +197,23 @@ async function runAccumulate(): Promise<Persisted> {
  * via the synchronous `finalizeRows` the instant we return, before the scan's first
  * `await` yields back to mutate the state (JS is single-threaded).
  */
-async function current(): Promise<Persisted> {
-  if (isFresh(cache.snap)) return cache.snap;
+async function current(force = false): Promise<Persisted> {
+  if (!force && isFresh(cache.snap)) return cache.snap;
   // Last-good tally (in-process, else KV) — a fast read that also warms cache.snap.
   const prev = await loadPersisted();
   cache.inflight ??= runAccumulate().finally(() => {
     cache.inflight = null;
   });
+  // An explicit refresh (force) BLOCKS on the scan so the response reflects a just-made
+  // trade — the caller accepts the few-seconds wait. A concurrent scan is shared, so
+  // spamming the button never launches parallel scans.
+  if (force) {
+    try {
+      return await cache.inflight;
+    } catch {
+      return prev;
+    }
+  }
   // Have something usable? Serve it now; the in-flight refresh updates it for next time.
   if (isCurrent(prev) && prev.builtAtMs > 0) {
     void cache.inflight.catch(() => {});
@@ -231,8 +241,8 @@ export interface LeaderboardBoards {
  * ranks the whole venue; `skew` ranks only app-attributed activity. Holding time is
  * computed to now at read, so open positions keep accruing without re-scanning.
  */
-export async function getLeaderboardBoards(): Promise<LeaderboardBoards> {
-  const snap = await current();
+export async function getLeaderboardBoards(opts?: { force?: boolean }): Promise<LeaderboardBoards> {
+  const snap = await current(opts?.force ?? false);
   const now = Date.now();
   const code = predictV2Config.builderCodeId;
   return {

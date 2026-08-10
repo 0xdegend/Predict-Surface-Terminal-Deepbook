@@ -31,6 +31,7 @@ import {
 } from '@/lib/hooks/use-builder-code';
 import { buildClaimBuilderFeesTx, buildRegisterBuilderCodeTx } from '@/lib/sui/v2/builder-code';
 import { fromQuote } from '@/config/scale';
+import { buildAccrualSeries } from '@/lib/leaderboard/earnings-series';
 
 const ADDR_RE = /^0x[0-9a-fA-F]{64}$/;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -492,6 +493,37 @@ function EarningsChart({
   const now = useNow(0);
   const [range, setRange] = useState<RangeKey>('ALL');
 
+  // The REAL earning cadence: every attributed trade's builder_fee at its own time,
+  // reconstructed server-side and cached. Without this the chart could only plot the
+  // sparse claim log, whose cumulative line is a straight ramp that implies we earn the
+  // same every day. This shows the flat-while-quiet, steep-while-busy shape instead.
+  const codeId = predictV2Config.builderCodeId;
+  const accrualQ = useQuery({
+    queryKey: ['v2', 'builder-code', 'accrual', codeId] as const,
+    queryFn: async ({ signal }) => {
+      const r = await fetch('/api/v2/builder-fee-accrual', { signal });
+      if (!r.ok) throw new Error(`accrual ${r.status}`);
+      const j = (await r.json()) as { events?: { ts: number; fee: number }[] };
+      return j.events ?? [];
+    },
+    enabled: !!codeId,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+  const accrual = accrualQ.data ?? [];
+
+  const claimedToDate = fees.reduce((s, f) => s + fromQuote(f.amount), 0);
+  const lifetime = claimedToDate + unclaimedNow;
+
+  // Per-trade accrual is the truth; fall back to the claim log only when we couldn't
+  // reconstruct it, so a read hiccup still shows the money instead of a blank.
+  const full =
+    accrual.length > 0
+      ? buildAccrualSeries(accrual, lifetime, now)
+      : fees.length > 0
+        ? buildEarningsSeries(fees, unclaimedNow, now)
+        : [];
+
   const header = (
     <div className="flex items-center justify-between gap-3">
       <span className="eyebrow">Lifetime earned</span>
@@ -513,16 +545,15 @@ function EarningsChart({
   );
 
   let body: React.ReactNode;
-  if (fees.length === 0) {
+  if (full.length < 2) {
     body = (
       <div className="flex h-40 items-center justify-center">
         <p className="max-w-xs text-center text-[11px] leading-relaxed text-text-3">
-          Not enough history yet. The curve fills in as fees are claimed.
+          Not enough history yet. The curve fills in as attributed trades earn fees.
         </p>
       </div>
     );
   } else {
-    const full = buildEarningsSeries(fees, unclaimedNow, now);
     const windowMs = RANGES.find((r) => r.key === range)?.ms ?? null;
     const pts = windowEarnings(full, windowMs, now);
     body = (

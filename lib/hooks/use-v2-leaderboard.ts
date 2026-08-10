@@ -25,7 +25,7 @@
  * Server-data only for anyone else (the wallet is just for the "you" merge + highlight),
  * so it renders for any visitor.
  */
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useV2ReadClient } from '@/lib/sui/grpc';
 import { getV2Markets, getMarketOrders, getAccountOrders, qkV2 } from '@/lib/api/v2/client';
@@ -67,6 +67,9 @@ export interface UseV2Leaderboard {
   refreshing: boolean;
   error: string | null;
   refetch: () => void;
+  /** Explicit user refresh: bypass the edge cache, force an indexer rescan, and re-fold
+   *  the connected wallet — so a just-made trade shows up. Takes a few seconds. */
+  forceRefresh: () => void;
 }
 
 interface Boards {
@@ -113,12 +116,22 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     [accountId, featuredAccountIds],
   );
 
+  // Set for exactly ONE refetch by forceRefresh, so that fetch bypasses the edge cache
+  // (a distinct URL + no-store) and makes the origin rescan. The periodic refetch leaves
+  // it false and keeps hitting the cached board, so the CDN still absorbs normal traffic.
+  const forceOnceRef = useRef(false);
+
   // BOTH boards from the server. On 7-29 this is the accumulating indexer (complete,
   // never windowed); on 6-24 it carries only the Skew board (venue board built below).
   const boardsQ = useQuery<Boards>({
     queryKey: ['v2', 'leaderboard', 'boards'] as const,
     queryFn: async ({ signal }) => {
-      const res = await fetch('/api/v2/leaderboard', { signal });
+      const fresh = forceOnceRef.current;
+      forceOnceRef.current = false; // consume — only this refetch is forced
+      const res = await fetch(fresh ? '/api/v2/leaderboard?fresh=1' : '/api/v2/leaderboard', {
+        signal,
+        cache: fresh ? 'no-store' : 'default',
+      });
       if (!res.ok) throw new Error(`leaderboard ${res.status}`);
       const j = (await res.json()) as Partial<Boards>;
       return { all: j.all ?? [], skew: j.skew ?? [] };
@@ -226,12 +239,22 @@ export function useV2Leaderboard(): UseV2Leaderboard {
 
   const allLoading = IS_729 ? boardsQ.isLoading : q.isLoading;
 
+  // Explicit user refresh. Bump the one-shot force flag so the board fetch bypasses the
+  // edge cache and the origin rescans, and refetch the connected wallet's own history so
+  // their just-made trade folds into `all` even if the indexer hasn't captured it yet.
+  const forceRefresh = useCallback(() => {
+    forceOnceRef.current = true;
+    void boardsQ.refetch();
+    void selfQ.refetch();
+    if (!IS_729) void q.refetch();
+  }, [boardsQ, selfQ, q]);
+
   return {
     rows,
     skewRows,
     loading: allLoading,
     skewLoading: boardsQ.isLoading,
-    refreshing: boardsQ.isFetching || (!IS_729 && q.isFetching),
+    refreshing: boardsQ.isFetching || selfQ.isFetching || (!IS_729 && q.isFetching),
     error:
       boardsQ.error instanceof Error
         ? boardsQ.error.message
@@ -242,5 +265,6 @@ export function useV2Leaderboard(): UseV2Leaderboard {
       boardsQ.refetch();
       if (!IS_729) q.refetch();
     },
+    forceRefresh,
   };
 }

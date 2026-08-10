@@ -20,6 +20,8 @@ import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { useV2ReadClient } from '@/lib/sui/grpc';
 import { useQuery } from '@tanstack/react-query';
 import { predictV2Config, builderCodeEnabled } from '@/config/predict';
+import { getBuilderCodeFees, qkV2 } from '@/lib/api/v2/client';
+import { fromQuote } from '@/config/scale';
 import {
   readAttachedBuilderCode,
   readBuilderCodeState,
@@ -139,5 +141,47 @@ export function useBuilderCodeAdmin(): BuilderCodeAdmin {
     isOwner: !!owner && !!q.data && q.data.owner.toLowerCase() === owner.toLowerCase(),
     isLoading: q.isLoading,
     refetch: () => void q.refetch(),
+  };
+}
+
+export interface BuilderFeeSummary {
+  /** Unclaimed DUSDC waiting on-chain right now (float). */
+  unclaimed: number;
+  /** Sum of every fee ever swept, from the indexer's claim log (float). */
+  claimedToDate: number;
+  /** unclaimed + claimedToDate — the headline "lifetime earned". */
+  lifetime: number;
+  claimCount: number;
+  isLoading: boolean;
+}
+
+/**
+ * The builder fee in three numbers, so the admin console's summary ribbon and the
+ * claim panel read from ONE place and can't drift. `claimable` is the live on-chain
+ * unclaimed balance; the claim log gives lifetime-claimed; together they're lifetime
+ * earned. Both underlying queries are keyed, so calling this alongside the panel adds
+ * no extra network.
+ */
+export function useBuilderFeeSummary(): BuilderFeeSummary {
+  const { claimable, isLoading: adminLoading } = useBuilderCodeAdmin();
+  const codeId = predictV2Config.builderCodeId;
+
+  const feesQ = useQuery({
+    queryKey: qkV2.builderCodeFees(codeId),
+    queryFn: () => getBuilderCodeFees(codeId),
+    enabled: !!codeId,
+    refetchInterval: 60_000,
+  });
+
+  const fees = feesQ.data ?? [];
+  const claimedToDate = fees.reduce((s, f) => s + fromQuote(f.amount), 0);
+  const unclaimed = fromQuote(claimable);
+
+  return {
+    unclaimed,
+    claimedToDate,
+    lifetime: unclaimed + claimedToDate,
+    claimCount: fees.length,
+    isLoading: adminLoading || feesQ.isLoading,
   };
 }

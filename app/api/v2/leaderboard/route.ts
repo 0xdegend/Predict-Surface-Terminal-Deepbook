@@ -46,18 +46,25 @@ async function addFaucetParticipants(skew: V2LeaderboardRow[]): Promise<V2Leader
   return mergeFaucetParticipants(skew, claimers);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // `?fresh=1` = an explicit user refresh. It forces the indexer to rescan (so a
+  // just-made trade is folded) and returns `no-store` so the CDN can't hand back its
+  // cached copy — the whole point of the refresh button. The default path stays edge-
+  // cached, since a normal visit wants the board instantly, slightly-stale is fine.
+  const force = new URL(req.url).searchParams.has('fresh');
+  const cacheControl = force ? 'no-store' : CACHE;
+
   if (V2_IS_729_PLUS) {
-    const boards = await getLeaderboardBoards();
+    const boards = await getLeaderboardBoards({ force });
     // Carry the 6-24 points forward, THEN fold in the faucet onboards.
     return NextResponse.json(
       { ...boards, skew: await addFaucetParticipants(mergeLegacyCarryover(boards.skew)) },
-      { headers: { 'cache-control': CACHE } },
+      { headers: { 'cache-control': cacheControl } },
     );
   }
-  const snap = await getSkewLeaderboardSnapshot();
+  const snap = await getSkewLeaderboardSnapshot({ force });
   return NextResponse.json(
     { all: [], skew: await addFaucetParticipants(snap.rows), builtAtMs: snap.builtAtMs },
-    { headers: { 'cache-control': CACHE } },
+    { headers: { 'cache-control': cacheControl } },
   );
 }
