@@ -284,10 +284,22 @@ export function usePredictAccountV2() {
         }
         digest = result.Transaction.digest;
       }
-      const confirmed = await client.core.waitForTransaction({ digest });
-      if (confirmed.$kind === 'FailedTransaction') {
-        throw new Error(confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain');
+      // Finality confirmation. A THROW here (transport / timeout / read-node lag) does
+      // NOT mean the trade failed: the tx was already accepted and executeTransaction
+      // above returned its execution effects. Only an explicit FailedTransaction RESULT
+      // is a real on-chain abort. Swallowing a transient poll throw stops a LANDED trade
+      // (e.g. the heavier arm-plus-authorize tx) from showing a false "Transaction
+      // failed" after the session and first trade are already live.
+      let abortMsg: string | null = null;
+      try {
+        const confirmed = await client.core.waitForTransaction({ digest });
+        if (confirmed.$kind === 'FailedTransaction') {
+          abortMsg = confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain';
+        }
+      } catch {
+        /* transient finality-poll error; the tx already landed, so success stands */
       }
+      if (abortMsg) throw new Error(abortMsg);
       // The tx is FINAL here, so report success now. The read node needs a beat to
       // catch up before a refetch returns fresh balances/positions, so that settle
       // delay + the invalidations run in the BACKGROUND — they no longer add ~1.2s to
@@ -355,10 +367,22 @@ export function usePredictAccountV2() {
         throw new Error(result.FailedTransaction.status?.error?.message ?? 'Transaction failed on-chain');
       }
       const digest = result.Transaction.digest;
-      const confirmed = await client.core.waitForTransaction({ digest });
-      if (confirmed.$kind === 'FailedTransaction') {
-        throw new Error(confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain');
+      // Finality confirmation. A THROW here (transport / timeout / read-node lag) does
+      // NOT mean the trade failed: the tx was already accepted and executeTransaction
+      // above returned its execution effects. Only an explicit FailedTransaction RESULT
+      // is a real on-chain abort. Swallowing a transient poll throw stops a LANDED trade
+      // (e.g. the heavier arm-plus-authorize tx) from showing a false "Transaction
+      // failed" after the session and first trade are already live.
+      let abortMsg: string | null = null;
+      try {
+        const confirmed = await client.core.waitForTransaction({ digest });
+        if (confirmed.$kind === 'FailedTransaction') {
+          abortMsg = confirmed.FailedTransaction.status?.error?.message ?? 'Transaction aborted on-chain';
+        }
+      } catch {
+        /* transient finality-poll error; the tx already landed, so success stands */
       }
+      if (abortMsg) throw new Error(abortMsg);
       // The tx is FINAL here, so report success now. The read node needs a beat to
       // catch up before a refetch returns fresh balances/positions, so that settle
       // delay + the invalidations run in the BACKGROUND — they no longer add ~1.2s to
