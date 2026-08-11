@@ -500,7 +500,8 @@ describe('parseIntent', () => {
   });
 
   it('product FAQ about Skew → explain (points / safety / rewards)', () => {
-    for (const m of ['how are the leaderboard points accumulated', 'how do points work', 'what are points', 'how does the leaderboard work', 'how do I climb the ranks', 'explain the point system']) {
+    // Mechanism asks (no first-person cue) stay the generic points explainer.
+    for (const m of ['how are the leaderboard points accumulated', 'how do points work', 'what are points', 'how does the leaderboard work', 'explain the point system']) {
       expect(parseIntent(m), m).toMatchObject({ kind: 'explain', topic: 'points' });
     }
     for (const m of ['is my money safe', 'is it safe', 'is skew a scam', 'do you hold my funds', 'is this non-custodial', 'can you access my wallet']) {
@@ -508,6 +509,32 @@ describe('parseIntent', () => {
     }
     for (const m of ['what are quests', 'how do competitions work', 'how does the rewards program work', 'what is the degen arena']) {
       expect(parseIntent(m), m).toMatchObject({ kind: 'explain', topic: 'rewards' });
+    }
+  });
+
+  it('PERSONAL leaderboard questions → leaderboard_standing (not the mechanism explainer)', () => {
+    // Status — "where do I sit?"
+    for (const m of [
+      'how am I performing on the leaderboard',
+      'how am I doing on the leaderboard',
+      "what's my rank",
+      'where do I stand on the leaderboard',
+      'how many points do I have',
+      'am I winning on the leaderboard',
+      "what's my leaderboard position",
+    ]) {
+      expect(parseIntent(m), m).toMatchObject({ kind: 'leaderboard_standing', focus: 'status' });
+    }
+    // Improve — "how do I get better?"
+    for (const m of [
+      'what do I need to do better to perform better on the leaderboard',
+      'how do I climb the ranks',
+      'how can I improve my rank',
+      'what do I need to do to rank higher',
+      'how do I earn more points',
+      'help me climb the leaderboard',
+    ]) {
+      expect(parseIntent(m), m).toMatchObject({ kind: 'leaderboard_standing', focus: 'improve' });
     }
   });
 

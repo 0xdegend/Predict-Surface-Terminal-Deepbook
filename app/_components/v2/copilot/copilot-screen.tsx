@@ -32,6 +32,8 @@ import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-accoun
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { useV2History } from '@/lib/hooks/use-v2-history';
+import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
+import { standingFor } from '@/lib/leaderboard/v2';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2PositionsPanel } from '../positions-panel';
@@ -229,6 +231,10 @@ export function V2CopilotScreen({
   // already subscribes to this hook (for its position pins), and it only refetches
   // ~every 12s, so reading it here adds no meaningful re-render load.
   const acct = usePredictAccountV2();
+  // The Season-2 board, for "how am I doing on the leaderboard / what should I
+  // improve". Same board the Ranks tab shows (a cached fetch on 8-06); read only to
+  // fold the connected wallet's own standing into the answer at send time.
+  const { rows: leaderboardRows } = useV2Leaderboard();
   const readWallet = () => ({
     connected: !!acct.owner,
     hasAccount: acct.wrapperExists,
@@ -1076,6 +1082,7 @@ export function V2CopilotScreen({
       closes: candles?.closes ?? null,
       portfolio: portfolioRef.current,
       record: recordRef.current,
+      leaderboard: standingFor(leaderboardRows, acct.owner),
       selection,
     });
   }

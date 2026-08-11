@@ -34,6 +34,7 @@ import { directionFair, payoutMultiple } from '@/lib/svi/invert';
 import { buildLadder } from '@/lib/markets/v2-ladder';
 import type { PortfolioSummary } from '@/lib/portfolio/v2';
 import type { WinStats, PastPrediction } from '@/lib/portfolio/history';
+import type { LeaderboardStanding } from '@/lib/leaderboard/v2';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -99,6 +100,11 @@ export interface CopilotContext {
    *  conversational tweaks ("make it $10"). The responder finds this market in
    *  `candidates` for its pricer. `stake`/`leverage` are the current ticket values. */
   selection?: { marketId: string; strikePrice: number; isUp: boolean; stake?: number; leverage?: number } | null;
+  /** The trader's live standing on the Season-2 points board — rank, field size, and
+   *  the point split behind it — for "how am I doing on the leaderboard / what should
+   *  I improve". Read from the SAME board the Ranks tab shows (lib/leaderboard/v2
+   *  `standingFor`). Null until it loads, or when no wallet is connected. */
+  leaderboard?: LeaderboardStanding | null;
 }
 
 /** The "current BTC price" to SHOW the trader — the tape's spot when we have it,
@@ -1346,6 +1352,95 @@ function trackRecordReply(focus: 'last' | 'win_rate' | 'loss_rate', ctx: Copilot
   };
 }
 
+/* -------------------------- my leaderboard standing ---------------------- */
+
+/** "How am I doing on the leaderboard? / what do I need to do to climb?" — the
+ *  trader's OWN standing read from their board row (same board the Ranks tab shows),
+ *  plus personalized, actionable advice. `focus` leads with where they sit ('status')
+ *  or the fastest way up ('improve'). Distinct from the explain→points mechanism
+ *  answer, which is generic. Text-only, no live markets needed. */
+function leaderboardStandingReply(focus: 'status' | 'improve', ctx: CopilotContext): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return {
+      text: [
+        'Connect your wallet (top-right) and I’ll pull up exactly where you rank and how to climb.',
+        'The leaderboard runs on Points: you earn them by staking, winning, and holding your bets. Ask “how do points work?” for the full breakdown.',
+      ],
+    };
+  }
+  const s = ctx.leaderboard;
+  if (!s) {
+    return { text: ['One sec, I’m still loading the board. Ask me again in a moment and I’ll show where you rank.'] };
+  }
+
+  const fmtPts = (n: number) => num(Math.round(n), 0);
+
+  // Connected but no bets yet → not on the board. Point them to their first trade.
+  if (s.rank == null) {
+    return {
+      text: [
+        'You’re not on the leaderboard yet. It picks you up the moment you place your first bet.',
+        'Points come from three things: 1 per DUSDC you stake, 2 per DUSDC of profit you win, and a small daily bonus for holding. So the way on is simple: place a trade. Say “set up a trade” or “safe up bet” and I’ll line one up.',
+      ],
+    };
+  }
+
+  // Which lever is currently earning them the most, for a "here's what's working" line.
+  const levers = [
+    { key: 'performance' as const, pts: s.performancePts },
+    { key: 'liquidity' as const, pts: s.liquidityPts },
+    { key: 'holding' as const, pts: s.holdingPts },
+  ];
+  const top = levers.reduce((a, b) => (b.pts > a.pts ? b : a));
+  const driverLine =
+    top.pts <= 0
+      ? 'Those are early points, so there’s plenty of room to climb.'
+      : top.key === 'performance'
+        ? 'Your winning bets are doing the most for you there.'
+        : top.key === 'liquidity'
+          ? 'Most of that is from how much DUSDC you’ve put to work.'
+          : 'A lot of that is from holding your positions instead of flipping them early.';
+
+  const rankLine = `You’re #${s.rank} of ${s.total} on the leaderboard, with ${fmtPts(s.points)} points.`;
+  const gapLine =
+    s.rank === 1
+      ? 'You’re out in front at #1, nice work.'
+      : s.gapToNext != null && s.gapToNext > 0
+        ? `You’re about ${fmtPts(s.gapToNext)} points off #${s.rank - 1}.`
+        : `You’re neck and neck with #${s.rank - 1}.`;
+
+  // The improvement advice, ranked by upside: profit is the richest lever (2 points
+  // per DUSDC, double staking), holding rewards conviction, volume is the steady base.
+  const winTip =
+    s.netPnl != null && s.netPnl < 0
+      ? 'The biggest lever is winning: every DUSDC of profit is worth 2 points, double what staking earns. Your bets are down overall so profit isn’t adding points yet, but losses never take points away, so a few wins move you up fast.'
+      : s.netPnl != null && s.netPnl > 0
+        ? 'The biggest lever is winning, and you’re already doing it: every DUSDC of profit is worth 2 points, double what staking earns. Keep that up and it compounds.'
+        : 'The biggest lever is winning: every DUSDC of profit is worth 2 points, double what staking earns. Ask me for a safe bet or “analyze BTC” before you place one to tilt the odds your way.';
+  // A tailored second lever: nudge holding when they flip fast, else scale size.
+  const flipsFast = s.holdingPts < s.liquidityPts * 0.1;
+  const secondTip = flipsFast
+    ? 'Second, hold your bets to the close instead of flipping them early. There’s a small bonus for every day a position stays open, and it adds up.'
+    : 'Second is size: every DUSDC you stake is another point, win or lose, so bigger or more frequent bets steadily lift you.';
+
+  if (focus === 'improve') {
+    const closer =
+      s.rank === 1
+        ? 'You’re already #1, so this is about staying there. Say “safe up bet” or “analyze BTC” and I’ll help you line one up.'
+        : `Right now you’re #${s.rank} of ${s.total}${s.gapToNext != null && s.gapToNext > 0 ? `, about ${fmtPts(s.gapToNext)} points off #${s.rank - 1}` : ''}. Say “safe up bet” or “analyze BTC” and I’ll help you line one up.`;
+    return { text: [winTip, secondTip, closer] };
+  }
+
+  // status — lead with where they sit, name what's working, then offer the path up.
+  return {
+    text: [
+      `${rankLine} ${driverLine}`,
+      s.rank === 1 ? gapLine : `${gapLine} Want the fastest way to climb? Just ask “how do I climb the leaderboard?”`,
+    ],
+  };
+}
+
 /* ------------------------------ explainers ------------------------------- */
 // Plain-language answers to "how does X work?" — static (no live data), so a new
 // trader can learn the mechanics inline. Kept jargon-free and short.
@@ -1746,6 +1841,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return portfolioReply(ctx);
     case 'track_record':
       return trackRecordReply(intent.focus, ctx, intent.ask);
+    case 'leaderboard_standing':
+      return leaderboardStandingReply(intent.focus, ctx);
     case 'odds':
       return oddsReply(intent.level, intent.dir, ctx, intent.horizon);
     case 'volatility':

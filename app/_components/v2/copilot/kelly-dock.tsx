@@ -48,6 +48,8 @@ import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useMarketEvents } from '@/lib/hooks/use-market-events';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
+import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
+import { standingFor } from '@/lib/leaderboard/v2';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
@@ -324,6 +326,11 @@ function KellyPanel({
   const { data: insights } = useBtcInsights({ enabled: COPILOT_LIVE });
   const { data: events } = useMarketEvents({ enabled: COPILOT_LIVE });
   const acct = usePredictAccountV2();
+  // The Season-2 board, for "how am I doing on the leaderboard / what should I
+  // improve". Mounts only while the drawer is open (like the rest of this panel);
+  // on 8-06 it's a single cached fetch. Used only to fold the connected wallet's
+  // own standing into the answer at send time.
+  const { rows: leaderboardRows } = useV2Leaderboard();
   // Recent spot path for the ambient read's sparkline + the vol verdict. Shares
   // the ticket's cached key (60s), fetched once — no polling on the surface.
   const { data: candles } = useQuery<BtcCandles>({
@@ -426,6 +433,7 @@ function KellyPanel({
       closes: null,
       portfolio: null,
       record: null,
+      leaderboard: standingFor(leaderboardRows, acct.owner),
       selection: null,
     });
   }

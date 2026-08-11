@@ -51,6 +51,12 @@ export type CopilotIntent =
   | { kind: 'balance' }
   | { kind: 'portfolio' }
   | { kind: 'track_record'; focus: 'last' | 'win_rate' | 'loss_rate'; ask?: 'win' | 'lose' }
+  // "How am I doing on the leaderboard? / where do I rank? / what do I need to do to
+  // climb?" — the trader's OWN standing + personalized advice, read from their board
+  // row. Distinct from the mechanism explainer (explain→points, "how do points
+  // work"). `focus` leads with the current position ('status') or the fastest way up
+  // ('improve').
+  | { kind: 'leaderboard_standing'; focus: 'status' | 'improve' }
   | { kind: 'odds'; level: OddsLevel; dir?: BetDirection; horizon?: Horizon }
   | { kind: 'reality_check'; level?: OddsLevel; dir?: BetDirection }
   | { kind: 'volatility' }
@@ -734,6 +740,33 @@ function productFaq(text: string): ExplainTopic | null {
   return null;
 }
 
+/**
+ * A PERSONAL leaderboard question — "how am I doing on the board", "where do I
+ * rank", "what do I need to do to climb / rank higher / do better". Distinct from
+ * the mechanism explainer (productFaq → 'points', "how do points work"): that one
+ * has no first-person cue. Requires a board/rank/points/standing anchor AND a
+ * first-person cue, so "how does the leaderboard work" stays a mechanism ask and
+ * falls through. Returns 'improve' for a how-to-get-better ask, else 'status'.
+ */
+function wantsLeaderboardStanding(text: string): 'status' | 'improve' | null {
+  // Plural `points` (like productFaq) so "what's the point of leverage" never trips
+  // it; plus the board / rank / standing / score words.
+  const anchor =
+    /\bpoints\b|\bleaderboard\b|leader ?board|\branks?\b|\brankings?\b|\bstandings?\b|\bscore\b|where i stand|climb.{0,16}(?:rank|board|leaderboard)/.test(
+      text,
+    );
+  if (!anchor) return null;
+  // "how am I", "my rank", "where do I stand" — a first-person cue is what separates a
+  // personal standing ask from the generic mechanism explainer.
+  if (!/\b(?:i|i'?m|im|my|mine|me|we|our|us)\b/.test(text)) return null;
+  // A how-to-improve ask: an improvement verb, or a "what do I need / should I do" lead.
+  const improve =
+    /\b(?:improve|climb|climbing|move up|moving up|rank up|ranking up|level up|do better|doing better|perform better|get (?:higher|ahead|better)|go higher|going higher|push (?:up|higher)|boost|earn more|more points|reach the top|get to the top)\b/.test(
+      text,
+    ) || /\bwhat (?:do|should|can|would) (?:i|we) (?:need|have|do|gotta|got to)\b/.test(text);
+  return improve ? 'improve' : 'status';
+}
+
 /** "Find / show / locate the $64,730 strike on the surface" — a request to LOCATE
  *  a specific strike (so we can light it up), not build or analyze one. Needs a
  *  find-style cue AND a concrete strike price. */
@@ -804,6 +837,14 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsCreateAccount(raw)) return { kind: 'create_account' };
   if (wantsGetTokens(raw)) return { kind: 'get_tokens' };
   if (wantsOnboarding(raw)) return { kind: 'onboarding' };
+
+  // Personal leaderboard questions ("how am I doing on the board?", "what do I need
+  // to do to climb?") → the standing answer, which reads the trader's own board row.
+  // BEFORE productFaq so its points/leaderboard wording doesn't get claimed by the
+  // mechanism explainer; the bare "how do points work" asks have no first-person cue
+  // and fall through to productFaq below.
+  const standing = wantsLeaderboardStanding(raw);
+  if (standing) return { kind: 'leaderboard_standing', focus: standing };
 
   // Product FAQ about Skew (leaderboard points, custody/safety, rewards). EARLY — the
   // "points"/"my money"/"funds" wording would otherwise be claimed by the balance /

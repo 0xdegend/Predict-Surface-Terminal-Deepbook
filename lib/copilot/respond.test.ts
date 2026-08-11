@@ -312,6 +312,69 @@ describe('respondToIntent — balance', () => {
   });
 });
 
+describe('respondToIntent — leaderboard standing', () => {
+  const connected = { connected: true, hasAccount: true, accountBase: 100_000_000n, walletBase: 0n };
+  // #2 of 3, 180 pts (100 liquidity / 40 performance / 40 holding), 120 behind #1.
+  const standing = {
+    rank: 2,
+    total: 3,
+    points: 180,
+    volume: 100,
+    netPnl: 20,
+    trades: 5,
+    gapToNext: 120,
+    liquidityPts: 100,
+    performancePts: 40,
+    holdingPts: 40,
+  };
+
+  it('not connected → asks them to connect (both focuses)', () => {
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'status' }, ctx({ wallet: { connected: false, hasAccount: false, accountBase: 0n, walletBase: undefined } }));
+    expect(r.text.join(' ')).toMatch(/connect/i);
+  });
+
+  it('connected but standing not loaded yet → asks to try again', () => {
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'status' }, ctx({ wallet: connected, leaderboard: null }));
+    expect(r.text.join(' ')).toMatch(/loading|moment/i);
+  });
+
+  it('connected but never traded → tells them how to get on the board', () => {
+    const unranked = { rank: null, total: 3, points: 0, volume: 0, netPnl: undefined, trades: 0, gapToNext: null, liquidityPts: 0, performancePts: 0, holdingPts: 0 };
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'status' }, ctx({ wallet: connected, leaderboard: unranked }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/not on the leaderboard yet/i);
+    expect(blob).toMatch(/first bet|set up a trade|place a trade/i);
+  });
+
+  it('status → states the actual rank, field size, and points', () => {
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'status' }, ctx({ wallet: connected, leaderboard: standing }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/#2 of 3/);
+    expect(blob).toMatch(/180 points/);
+    expect(blob).toMatch(/120 points off #1/);
+  });
+
+  it('improve → gives the profit-first advice and names the current position', () => {
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'improve' }, ctx({ wallet: connected, leaderboard: standing }));
+    const blob = r.text.join(' ');
+    expect(blob).toMatch(/2 points/i); // the 2x profit lever
+    expect(blob).toMatch(/#2 of 3/);
+    expect(blob).toMatch(/safe up bet|analyze btc/i); // an actionable CTA
+  });
+
+  it('improve with a net loss → frames profit honestly (losses never cost points)', () => {
+    const losing = { ...standing, netPnl: -30, performancePts: 0, points: 140, holdingPts: 40 };
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'improve' }, ctx({ wallet: connected, leaderboard: losing }));
+    expect(r.text.join(' ')).toMatch(/never take|down overall|losses never/i);
+  });
+
+  it('#1 → celebrates the top spot instead of a gap', () => {
+    const first = { ...standing, rank: 1, points: 300, gapToNext: null };
+    const r = respondToIntent({ kind: 'leaderboard_standing', focus: 'status' }, ctx({ wallet: connected, leaderboard: first }));
+    expect(r.text.join(' ')).toMatch(/#1|out in front/i);
+  });
+});
+
 describe('respondToIntent — surface-native analysis', () => {
   // Realistic-ish smiles: total variance grows with tenor, so the 1σ move and the
   // chance of a fixed move both rise with time (a real term structure).

@@ -9,6 +9,8 @@
  * so the two agree.
  */
 
+import { POINTS_RATES } from '@/lib/points/score';
+
 export type V2SortKey = 'points' | 'volume';
 
 /** One trader's standing — flat shape produced by the aggregator. */
@@ -47,6 +49,80 @@ export function sortV2Rows(rows: V2LeaderboardRow[], key: V2SortKey): V2Leaderbo
     if (key === 'volume') return b.volume - a.volume || b.points - a.points;
     return b.points - a.points || b.volume - a.volume;
   });
+}
+
+/**
+ * One trader's live position on the points board plus the point split that drives
+ * it — the data behind the co-pilot's "how am I doing / what should I improve"
+ * answers. The split is back-computed from the shared formula (see lib/points/score)
+ * so it always sums to `points` and never disagrees with the Ranks tab.
+ */
+export interface LeaderboardStanding {
+  /** 1-based rank on the points-sorted board. Null when this wallet isn't on it yet. */
+  rank: number | null;
+  /** Number of traders on the board. */
+  total: number;
+  points: number;
+  volume: number;
+  /** Net realized PnL (signed DUSDC), when the board knows it. */
+  netPnl?: number;
+  trades: number;
+  /** Points needed to pass the trader one rank up (null at #1 or when unranked). */
+  gapToNext: number | null;
+  /** Point split — liquidity + performance + holding = points. */
+  liquidityPts: number;
+  performancePts: number;
+  holdingPts: number;
+}
+
+/**
+ * Find a wallet's standing on the points-sorted board. Owner match is
+ * case-insensitive (addresses arrive in mixed case from different feeds). Returns
+ * null only when `owner` is falsy; a wallet that has never traded returns a row
+ * with `rank: null` (so the caller can say "you're not on the board yet"). The
+ * board is sorted by points here to match the Ranks tab's default view.
+ */
+export function standingFor(
+  rows: V2LeaderboardRow[],
+  owner: string | null | undefined,
+): LeaderboardStanding | null {
+  if (!owner) return null;
+  const sorted = sortV2Rows(rows, 'points');
+  const key = owner.toLowerCase();
+  const idx = sorted.findIndex((r) => r.owner.toLowerCase() === key);
+  if (idx === -1) {
+    return {
+      rank: null,
+      total: sorted.length,
+      points: 0,
+      volume: 0,
+      netPnl: undefined,
+      trades: 0,
+      gapToNext: null,
+      liquidityPts: 0,
+      performancePts: 0,
+      holdingPts: 0,
+    };
+  }
+  const row = sorted[idx];
+  const liquidityPts = row.volume * POINTS_RATES.perDusdcVolume;
+  const performancePts = Math.max(0, row.netPnl ?? 0) * POINTS_RATES.perDusdcProfit;
+  // Everything left over is holding time — floored at 0 so a rounding wobble in the
+  // back-computed split can never show a negative component.
+  const holdingPts = Math.max(0, row.points - liquidityPts - performancePts);
+  const gapToNext = idx > 0 ? Math.max(0, sorted[idx - 1].points - row.points) : null;
+  return {
+    rank: idx + 1,
+    total: sorted.length,
+    points: row.points,
+    volume: row.volume,
+    netPnl: row.netPnl,
+    trades: row.trades,
+    gapToNext,
+    liquidityPts,
+    performancePts,
+    holdingPts,
+  };
 }
 
 export function v2LeaderboardTotals(rows: V2LeaderboardRow[]): {
