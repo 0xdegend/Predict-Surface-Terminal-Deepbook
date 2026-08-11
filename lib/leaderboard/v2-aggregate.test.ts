@@ -75,6 +75,29 @@ describe('aggregateV2Leaderboard', () => {
     );
     expect(rows[0].netPnl).toBeCloseTo(-5, 6);
     expect(rows[0].points).toBeCloseTo(5 * POINTS_RATES.perDusdcVolume, 6); // volume only, no negative
+    expect(rows[0].losses).toBe(1); // zero-payout settled close = a loss
+    expect(rows[0].wins).toBe(0);
+  });
+
+  it('counts wins and losses per resolved close (payout beat cost = win)', () => {
+    const rows = aggregateV2Leaderboard(
+      byMarket(
+        // win: settled $8 > $5 cost
+        mint({ position_root_id: 'W' }), settledRedeem({ position_root_id: 'W', payout_amount: '8000000' }),
+        // loss: settled $0 (out-of-the-money, redeemed at zero by the keeper)
+        mint({ position_root_id: 'X' }), settledRedeem({ position_root_id: 'X', payout_amount: '0' }),
+        // win: live close nets $6.9 > $5 cost
+        mint({ position_root_id: 'L' }),
+        { kind: 'live_order_redeemed', owner: '0xA', position_root_id: 'L', quantity_closed: '10000000', redeem_amount: '7000000', trading_fee: '100000', checkpoint_timestamp_ms: NOW } as V2OrderEvent,
+        // loss: liquidation pays nothing
+        mint({ position_root_id: 'K' }),
+        { kind: 'liquidated_order_redeemed', owner: '0xA', position_root_id: 'K', quantity_closed: '10000000', checkpoint_timestamp_ms: NOW } as V2OrderEvent,
+      ),
+      BUILDER,
+      NOW,
+    );
+    expect(rows[0].wins).toBe(2);
+    expect(rows[0].losses).toBe(2);
   });
 
   it('credits holding time for a position still open at now', () => {

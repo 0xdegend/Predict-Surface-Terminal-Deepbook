@@ -207,9 +207,9 @@ export function UserStatsPanel() {
       </div>
 
       <p className="text-[10px] leading-relaxed text-text-3">
-        Win rate and the join curve are computed from resolved trade history (Season&nbsp;1 carryover
-        today); they extend automatically as the builder code is wired and users settle bets on the
-        live deployment. All figures are public on-chain data.
+        All figures are live from on-chain activity and update as users trade. Win rate, realized PnL
+        and the join curve fold the current deployment together with the Season&nbsp;1 carryover, so
+        the record stays continuous across the redeploy.
       </p>
     </div>
   );

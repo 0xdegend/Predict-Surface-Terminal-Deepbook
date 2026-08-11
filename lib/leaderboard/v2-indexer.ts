@@ -39,7 +39,7 @@ const OPEN_MAX = 20_000;
 /** Bump when the SEED logic changes (e.g. which owners get fanned out) so a stale KV
  *  tally built by the old seed is discarded and rebuilt, rather than lingering for its
  *  week TTL. Part of the persisted guard alongside `pkg`. */
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 
 const kvKey = () => `lb:idx:${predictV2Config.packages.predict}`;
 

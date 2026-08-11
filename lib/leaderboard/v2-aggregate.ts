@@ -33,11 +33,20 @@ export interface OwnerAcc {
   realizedCost: number;
   realizedPayout: number;
   daysHeldClosed: number; // liquidity-days from positions that have CLOSED
+  // Resolved-close outcomes, so the board can report a real win rate. A close is a WIN
+  // when its payout beat its cost basis (settled in-the-money, or a profitable early
+  // close), else a LOSS — the same `pnl > 0` rule the portfolio history uses. Settled
+  // losers ARE observed: the keeper redeems every settled position, so an out-of-the-money
+  // one emits a zero-payout SettledOrderRedeemed we fold here (verified on-chain).
+  wins: number;
+  losses: number;
   skewVolume: number;
   skewTrades: number;
   skewRealizedCost: number;
   skewRealizedPayout: number;
   skewDaysHeldClosed: number;
+  skewWins: number;
+  skewLosses: number;
   lastActiveMs: number;
 }
 
@@ -67,7 +76,9 @@ function ensure(acc: Record<string, OwnerAcc>, owner: string): OwnerAcc {
   if (!a) {
     a = {
       volume: 0, trades: 0, realizedCost: 0, realizedPayout: 0, daysHeldClosed: 0,
+      wins: 0, losses: 0,
       skewVolume: 0, skewTrades: 0, skewRealizedCost: 0, skewRealizedPayout: 0, skewDaysHeldClosed: 0,
+      skewWins: 0, skewLosses: 0,
       lastActiveMs: 0,
     };
     acc[owner] = a;
@@ -130,10 +141,18 @@ export function foldOrderEvents(state: LbState, events: V2OrderEvent[], builderC
     a.realizedCost += closedCost;
     a.realizedPayout += payout;
     a.daysHeldClosed += closedCost * days;
+    // A win = this close paid out more than its cost basis (settled in-the-money or a
+    // profitable early close); everything else (incl. a zero-payout settled loser or a
+    // liquidation) is a loss. Counted per resolved close.
+    const won = payout > closedCost;
+    if (won) a.wins += 1;
+    else a.losses += 1;
     if (om?.isSkew) {
       a.skewRealizedCost += closedCost;
       a.skewRealizedPayout += payout;
       a.skewDaysHeldClosed += closedCost * days;
+      if (won) a.skewWins += 1;
+      else a.skewLosses += 1;
     }
   }
 }
@@ -180,6 +199,8 @@ export function finalizeRows(
       volume,
       trades,
       netPnl,
+      wins: (skew ? a.skewWins : a.wins) ?? 0,
+      losses: (skew ? a.skewLosses : a.losses) ?? 0,
       skewVolume: a.skewVolume,
       skewTrades: a.skewTrades,
       viaSkew: a.skewTrades > 0,

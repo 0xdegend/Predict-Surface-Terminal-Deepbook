@@ -21,6 +21,10 @@ export interface V2LeaderboardRow {
   trades: number;
   /** Net realized PnL over closed positions (DUSDC, signed). */
   netPnl?: number;
+  /** Resolved-close outcomes over the in-scope closed positions (win = paid out more than
+   *  its cost basis). Drives the admin's live win rate. Absent on legacy/carryover rows. */
+  wins?: number;
+  losses?: number;
   /** DUSDC staked specifically through the Skew app (builder-code attributed). */
   skewVolume?: number;
   /** Trades placed through the Skew app. */

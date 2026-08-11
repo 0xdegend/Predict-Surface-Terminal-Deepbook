@@ -2,15 +2,17 @@
  * lib/leaderboard/user-stats.ts — Skew user + performance statistics for the admin.
  *
  * Two honest sources, combined:
- *   - the Skew leaderboard rows (carryover + faucet + any live-attributed activity):
- *     who the users are, their volume / trades / net PnL / points, and who's active;
- *   - the resolved trade history (won/lost per position, with close timestamps):
- *     the only place a real WIN RATE and a JOIN-OVER-TIME curve can come from, since
- *     the board rows only carry aggregates.
+ *   - the Skew leaderboard rows (live 8-06 + Season-1 carryover + faucet): who the users
+ *     are, their volume / trades / net PnL / points, who's active, AND the per-owner
+ *     resolved-close win/loss tallies (v2-aggregate now folds them), so the win rate and
+ *     realized PnL are LIVE off the board, not frozen;
+ *   - the carryover trade history (won/lost per position): a continuity base for the win
+ *     rate and the join curve, so Season-1 results don't vanish on the redeploy.
  *
- * Pure + deterministic (pass `nowMs`), so it unit-tests against fixed inputs. Counts
- * grow on their own as the builder code gets wired and users trade on the live
- * deployment — this reads whatever is in the rows/history, no per-deployment branch.
+ * Everything is LIVE: it grows as users trade on the current deployment. The board already
+ * carries the Season-1 carryover (points + netPnl via mergeLegacyCarryover), so realized
+ * PnL reads straight off the board; win/loss counts add the carryover history on top
+ * (different deployment → no overlap). Pure + deterministic (pass `nowMs`) → unit-tested.
  */
 import type { V2LeaderboardRow } from './v2';
 import type { PastPrediction } from '@/lib/portfolio/history';
@@ -54,18 +56,21 @@ export interface SkewUserStats {
   /** Mean net PnL across trading users (DUSDC). */
   avgNetPnl: number;
 
-  /** Resolved-position outcomes (from trade history). */
+  /** Resolved-close outcomes: live board tallies + Season-1 carryover history. */
   wins: number;
   losses: number;
   resolvedPositions: number;
   winRate: number; // 0..1
   lossRate: number; // 0..1
-  /** Realized PnL summed across every resolved position (DUSDC, signed). */
+  /** Net realized PnL across users, live off the board (Season-1 carryover already folded
+   *  in, losing bets included). DUSDC, signed. */
   realizedPnl: number;
 
   /** Top traders by net PnL (trading users only). */
   topTraders: TopTrader[];
-  /** Cumulative distinct traders over time, by their first resolved bet. */
+  /** Cumulative distinct traders over time, by first resolved bet — or newest board
+   *  activity for a live trader with no carried-over history, so the curve tracks the
+   *  board as new users join. */
   joinSeries: UserJoinPoint[];
 }
 
@@ -96,27 +101,56 @@ export function computeSkewUserStats(
   const faucetRows = rows.filter((r) => r.viaFaucet);
   const faucetConverted = faucetRows.filter((r) => r.trades > 0).length;
 
-  // Win / loss + realized PnL from the resolved history.
-  let wins = 0;
-  let losses = 0;
-  let realizedPnl = 0;
+  // Win / loss + realized PnL — LIVE, no longer frozen to the carryover snapshot.
+  //   realizedPnl: the board's net across users. Board netPnl already folds the Season-1
+  //     carryover (mergeLegacyCarryover) in with live 8-06 PnL, and it includes losing
+  //     bets — a settled loser is redeemed at zero payout, so its −premium is in netPnl —
+  //     so this is complete, not just the winners.
+  //   wins/losses: the board's per-owner resolved-close tallies (live 8-06) PLUS the
+  //     carryover history (Season 1) for continuity. The two never overlap (different
+  //     deployments); the seed carries netPnl while the history JSON carries the won/lost
+  //     split, so pairing board-netPnl with board+history counts double-counts neither.
+  let liveWins = 0;
+  let liveLosses = 0;
+  for (const r of rows) {
+    liveWins += r.wins ?? 0;
+    liveLosses += r.losses ?? 0;
+  }
+  let histWins = 0;
+  let histLosses = 0;
   for (const list of Object.values(history)) {
     for (const p of list) {
-      if (p.result === 'won') wins += 1;
-      else losses += 1;
-      realizedPnl += p.pnl;
+      if (p.result === 'won') histWins += 1;
+      else histLosses += 1;
     }
   }
+  const wins = liveWins + histWins;
+  const losses = liveLosses + histLosses;
+  const realizedPnl = sumNetPnl;
   const resolvedPositions = wins + losses;
 
-  // Cumulative distinct traders by first resolved bet (their earliest close).
-  const firstSeen: number[] = [];
-  for (const list of Object.values(history)) {
-    if (list.length === 0) continue;
-    firstSeen.push(Math.min(...list.map((p) => p.settledAt)));
+  // Cumulative distinct traders over time (the "users joining" curve). Fold in the LIVE
+  // board, not just the resolved history: place each trader at the best timestamp we
+  // have — the earliest resolved-bet close when their history is known (accurate, and what
+  // shapes the historical curve), otherwise their newest board activity as the only proxy
+  // we have for a live joiner with no carried-over history. Reading history ALONE (the old
+  // behavior) froze the curve at the carryover snapshot while new users kept joining the
+  // board: they have no carryover history, so they never appeared on the curve.
+  const firstBetMs = new Map<string, number>();
+  for (const [owner, list] of Object.entries(history)) {
+    if (list.length) firstBetMs.set(owner.toLowerCase(), Math.min(...list.map((p) => p.settledAt)));
   }
-  firstSeen.sort((a, b) => a - b);
-  const joinSeries: UserJoinPoint[] = firstSeen.map((t, i) => ({
+  const joinTimes: number[] = [];
+  const counted = new Set<string>();
+  for (const r of traders) {
+    const key = r.owner.toLowerCase();
+    counted.add(key);
+    joinTimes.push(firstBetMs.get(key) ?? r.lastActiveMs ?? nowMs);
+  }
+  // Carryover traders not on the live board still count as earlier joiners.
+  for (const [key, ms] of firstBetMs) if (!counted.has(key)) joinTimes.push(ms);
+  joinTimes.sort((a, b) => a - b);
+  const joinSeries: UserJoinPoint[] = joinTimes.map((t, i) => ({
     x: t,
     y: i + 1,
     label: fmtDay(t),
