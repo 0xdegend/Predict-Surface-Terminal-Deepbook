@@ -10,13 +10,17 @@
  * today?" from anywhere without leaving the page.
  *
  * It reuses the SAME brain (parseIntent → respondToIntent, plus the Claude long
- * tail) and the SAME chat UI (CopilotChat) as the full page. It is deliberately
- * chat-first: it answers questions and suggests bets. A suggested (or "trade it"-
- * confirmed) bet pops the trade ticket IN PLACE over the drawer — no navigation,
- * wherever the trader opened Kelly — reusing the co-pilot's compact ticket, which
- * they still confirm to sign (Kelly never signs on its own). The heavier money
- * paths (the guided wizard, onboarding, closing a bet) still hand off to the full
- * trade view, which has the surface + step flow.
+ * tail) and the SAME chat UI (CopilotChat) as the full page, and mirrors the full
+ * page's trade experience so the two feel identical:
+ *   - a TYPED "trade it with 1 dusdc" PLACES the bet directly (placeBetDirect — the
+ *     same budget mint the ticket runs), reports it in the chat, and shows it in the
+ *     open-bets panel below (DrawerOpenBets) — no modal;
+ *   - the "Place this bet" BUTTON pops the compact ticket in place to review first
+ *     (the modal is reserved for that explicit click);
+ *   - the trader still signs every mint (Kelly never signs on its own; gasless Google
+ *     places with no popup, an armed session skips it, an external wallet still prompts).
+ * The heavier paths (the guided wizard, onboarding) still hand off to the full trade
+ * view, which has the surface + step flow.
  *
  * Data (markets/pricers/insights/events/account) mounts ONLY while the drawer is
  * open (the panel is unmounted when closed), so the launcher costs nothing on a
@@ -43,8 +47,13 @@ import { useNow } from '@/lib/hooks/use-now';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useMarketEvents } from '@/lib/hooks/use-market-events';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
+import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { num } from '@/lib/format';
+import { V2PositionsPanel } from '../positions-panel';
 
 const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
 const COPILOT_AI = process.env.NEXT_PUBLIC_COPILOT_AI === '1';
@@ -371,20 +380,19 @@ function KellyPanel({
     const t = text.trim();
     if (!t || busy) return;
 
-    // "Trade it" / "trade it with 1 dusdc" / "place it at 2x" → act on the bet Kelly
-    // just suggested (with an optional stake/leverage override), instead of starting
-    // a fresh trade. Primes the ticket with those exact terms and takes the trader to
-    // the trade view to review + sign (the dock never signs).
+    // "Trade it" / "trade it with 1 dusdc" / "place it at 2x" → PLACE the bet Kelly just
+    // suggested directly (with an optional stake/leverage override), then show it in the
+    // open-bets panel below — no modal (that's reserved for the "Place this bet" button).
     const confirm = placeConfirmation(t);
     if (confirm) {
       const base = latestBet(messages);
       if (base) {
-        if (base.expiry <= Date.now()) {
+        if (base.expiry <= now) {
           pushReply(t, { text: ['That market just expired, so I can’t place that one. Ask me for a fresh bet and I’ll set it right up.'] });
           return;
         }
         pushUser(t);
-        handlePlaceBet({ ...base, amount: confirm.stake ?? base.amount, leverage: confirm.leverage ?? base.leverage });
+        void placeBetDirect({ ...base, amount: confirm.stake ?? base.amount, leverage: confirm.leverage ?? base.leverage });
         return;
       }
       // Nothing suggested yet. A BARE confirm → a nudge; a SIZED confirm ("trade it
@@ -395,7 +403,10 @@ function KellyPanel({
       }
     }
 
-    const now = Date.now();
+    // `now` = the panel's live wall-clock (useNow); read here, not a fresh Date.now(),
+    // so this handler stays a pure read (the purity lint bans Date.now() in render-
+    // reachable code). Up to ~1s stale is fine for a market read; placeBetDirect re-checks
+    // expiry with a fresh clock at mint time.
     const intent = parseIntent(t);
 
     // The guided wizard belongs on the full page (surface + step flow live there).
@@ -420,11 +431,14 @@ function KellyPanel({
     pushReply(t, reply);
   }
 
-  // A suggested (or "trade it"-confirmed) bet primes the ticket store and pops the ticket
-  // IN PLACE over the drawer — no navigation, the drawer stays put. The compact ticket is
-  // self-contained (it reads the primed store) and still requires the trader to confirm;
-  // Kelly itself never signs. (selectMarket resets the strike, so set it AFTER.)
-  function handlePlaceBet(bet: BetSuggestion) {
+  function pushBot(text: string[]) {
+    setMessages((m) => [...m, { id: nextId(), role: 'assistant', text }]);
+  }
+
+  // Load a bet into the shared ticket store (surface selection + amount/leverage), the
+  // one place both the direct-place and the modal read from. (selectMarket resets the
+  // strike, so set it AFTER.)
+  function primeStore(bet: BetSuggestion) {
     const st = useV2TradeStore.getState();
     st.selectMarket(bet.marketId);
     st.setMode('binary');
@@ -432,7 +446,72 @@ function KellyPanel({
     st.setStrikePrice(bet.strikePrice);
     if (bet.amount != null) st.setStake(bet.amount);
     if (bet.leverage != null) st.setLeverage(bet.leverage);
+  }
+
+  // The "Place this bet" BUTTON → pop the ticket IN PLACE over the drawer to review first
+  // (the modal is reserved for this explicit click). No navigation; the trader confirms
+  // there. A TYPED "trade it with 1 dusdc" instead places directly (placeBetDirect below).
+  function handlePlaceBet(bet: BetSuggestion) {
+    primeStore(bet);
     setTicketOpen(true);
+  }
+
+  // Typed "trade it (with 1 dusdc)" → place the bet DIRECTLY (no modal), the SAME budget
+  // mint the ticket runs, then report it in the chat and show it in the open-bets panel
+  // below — the drawer mirror of the full page's placeBetDirect. Anything that needs the
+  // ticket UI (no account, low funds, an expiring market) falls back to opening the modal
+  // so the trader is never stuck. Google (gasless) places with no popup; an external
+  // wallet still shows its own signing prompt (never bypassed); an armed session skips it.
+  async function placeBetDirect(bet: BetSuggestion) {
+    const now = Date.now();
+    const market = markets.find((m) => m.expiry_market_id === bet.marketId);
+    const pricer = market ? pricers[bet.marketId] : undefined;
+    const st0 = useV2TradeStore.getState();
+    const stake = bet.amount ?? st0.stake;
+    const leverage = bet.leverage ?? st0.leverage;
+    const plan =
+      market && pricer
+        ? planBinaryBudgetMint({ market, forward: pricer.forward, svi: pricer.svi, strikePrice: bet.strikePrice, isUp: bet.isUp, stake, leverage })
+        : null;
+    const expired = !market || bet.expiry <= now || isTooCloseToExpiry(market, now);
+    const walletKnown = acct.walletDusdcBase !== undefined;
+    const fundable = !!plan && walletKnown && plan.maxCost <= acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+    const canAutoPlace = !!plan && !expired && plan.probOk && plan.stakeOk && acct.wrapperExists && fundable && !acct.busy;
+
+    if (!canAutoPlace) {
+      // Hand off to the ticket to finish (connect / create account / add funds / pick a
+      // fresh market), and say why.
+      handlePlaceBet(bet);
+      const why = !acct.owner
+        ? 'connect your wallet and place it there'
+        : expired
+          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          : !acct.wrapperExists
+            ? 'let’s set up your trading account in the ticket first'
+            : !walletKnown
+              ? 'I’m still loading your balance — place it from the ticket'
+              : !fundable
+                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                : 'finish placing it from the ticket';
+      pushBot([`I’ve opened your ticket — ${why}.`]);
+      return;
+    }
+
+    primeStore(bet);
+    setBusy(true);
+    try {
+      const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      if (digest) {
+        pushBot([`Done — your ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+      } else {
+        pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or tap Place this bet to do it from the ticket.']);
+      }
+    } catch {
+      pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or tap Place this bet to do it from the ticket.']);
+    } finally {
+      setBusy(false);
+    }
   }
 
   // The primed ticket target, matched against the drawer's OWN live markets + pricers
@@ -480,6 +559,7 @@ function KellyPanel({
             suggestions={DOCK_CHIPS}
             hideHeader
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={upChance} closes={candles?.closes ?? null} />}
+            threadEnd={<DrawerOpenBets />}
           />
         </div>
       </div>
@@ -494,6 +574,24 @@ function KellyPanel({
         open={ticketOpen}
         onClose={() => setTicketOpen(false)}
       />
+    </div>
+  );
+}
+
+/**
+ * DrawerOpenBets — the trader's live open bets at the BOTTOM OF THE DRAWER THREAD, so a
+ * bet placed via "trade it" shows up right there to watch + close, without leaving the
+ * drawer. Same panel + redeem dialog the Trade rail / Portfolio / full Kelly page use, so
+ * the flows never drift. `useV2PortfolioPositions` is TanStack-deduped, and it renders
+ * nothing until there's an open bet, so it costs nothing on an empty thread.
+ */
+function DrawerOpenBets() {
+  const acct = usePredictAccountV2();
+  const { positions } = useV2PortfolioPositions(acct.accountId, acct.owner);
+  if (!positions.some((p) => p.qty > 0)) return null;
+  return (
+    <div className="mt-1 border-t border-line pt-3.5">
+      <V2PositionsPanel />
     </div>
   );
 }
