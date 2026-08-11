@@ -86,7 +86,7 @@ export function V2Chrome() {
         ...MORE_ITEMS,
         {
           href: '/v2/admin',
-          label: 'Builder fees',
+          label: 'Admin',
           desc: 'Claim protocol builder fees',
           icon: LuKeyRound,
         },
