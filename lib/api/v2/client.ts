@@ -243,18 +243,35 @@ export const getOracleBindings = (o?: GetOptions) =>
     ? Promise.resolve([] as OracleBinding[])
     : propbook<OracleBinding[]>('/oracle-bindings', o);
 
+/** The on-chain Pyth reads (sui_getObject / suix_queryEvents) go over public JSON-RPC
+ *  proxies behind Cloudflare, which bot-challenges the chart's rapid BROWSER polling —
+ *  so in the browser we fetch our OWN /api/v2/pyth route, which runs the same read
+ *  server-side (WAF-clearing UA, no interactive challenge) and hands back the JSON. On
+ *  the server (SSR / the route itself) we call the on-chain reader directly to avoid a
+ *  self-fetch. See app/api/v2/pyth/route.ts. */
+const isBrowser = () => typeof window !== 'undefined';
+async function pythViaApi<T>(qs: string, o?: GetOptions): Promise<T> {
+  const res = await fetch(`/api/v2/pyth?${qs}`, { signal: o?.signal });
+  if (!res.ok) throw new PredictApiError(`pyth ${res.status}`, res.status, '/api/v2/pyth');
+  return (await res.json()) as T;
+}
+
 /** Latest raw Pyth spot observation for the underlying's pyth feed object id. On
  *  7-29 this is read LIVE off the PythFeed object (fresh to the second), not the
  *  ~20s-lagging event index. */
 export const getPythLatest = (pythOracleId: string, o?: GetOptions): Promise<PythObservation | null> =>
   V2_IS_729_PLUS
-    ? onchainPythLatest(o)
+    ? isBrowser()
+      ? pythViaApi<PythObservation | null>('kind=latest', o)
+      : onchainPythLatest(o)
     : propbook<PythObservation | null>(`/oracles/${pythOracleId}/pyth/latest`, o);
 
 /** Recent Pyth spot observation history (for the price chart). */
-export const getPythHistory = (pythOracleId: string, limit = 300, o?: GetOptions) =>
+export const getPythHistory = (pythOracleId: string, limit = 300, o?: GetOptions): Promise<PythObservation[]> =>
   V2_IS_729_PLUS
-    ? onchainPythObservations(limit, o)
+    ? isBrowser()
+      ? pythViaApi<PythObservation[]>(`kind=history&limit=${limit}`, o)
+      : onchainPythObservations(limit, o)
     : propbook<PythObservation[]>(`/oracles/${pythOracleId}/pyth?limit=${limit}`, o);
 
 /** Decode a raw Pyth observation into a spot float (price · 10^±exp). */
