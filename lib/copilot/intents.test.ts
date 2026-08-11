@@ -499,6 +499,30 @@ describe('parseIntent', () => {
     expect(parseIntent('which expiry is better')).toMatchObject({ kind: 'term_structure' });
   });
 
+  it('product FAQ about Skew → explain (points / safety / rewards)', () => {
+    for (const m of ['how are the leaderboard points accumulated', 'how do points work', 'what are points', 'how does the leaderboard work', 'how do I climb the ranks', 'explain the point system']) {
+      expect(parseIntent(m), m).toMatchObject({ kind: 'explain', topic: 'points' });
+    }
+    for (const m of ['is my money safe', 'is it safe', 'is skew a scam', 'do you hold my funds', 'is this non-custodial', 'can you access my wallet']) {
+      expect(parseIntent(m), m).toMatchObject({ kind: 'explain', topic: 'safety' });
+    }
+    for (const m of ['what are quests', 'how do competitions work', 'how does the rewards program work', 'what is the degen arena']) {
+      expect(parseIntent(m), m).toMatchObject({ kind: 'explain', topic: 'rewards' });
+    }
+  });
+
+  it('the FAQ never steals a balance / conviction / glossary question', () => {
+    expect(parseIntent('how much dusdc do I have').kind).toBe('balance'); // "funds"-ish, still balance
+    expect(parseIntent('safe up bet')).toMatchObject({ kind: 'directional_bet', conviction: 'safe' }); // "safe" is conviction
+    expect(parseIntent("what's the point of leverage")).toMatchObject({ kind: 'explain', topic: 'leverage' }); // "point of" ≠ points
+  });
+
+  it('"open another one" / "set up another trade" → start_trade (a fresh setup)', () => {
+    for (const m of ['open another one', 'set up another trade', 'another bet', 'start another', 'one more trade', 'give me a new one']) {
+      expect(parseIntent(m).kind, m).toBe('start_trade');
+    }
+  });
+
   it('"what\'s the best value / underpriced?" → best_value', () => {
     for (const m of ["what's the best value right now?", 'where is the value', 'which strike is underpriced', 'best bet right now', 'good value bet']) {
       expect(parseIntent(m).kind, m).toBe('best_value');

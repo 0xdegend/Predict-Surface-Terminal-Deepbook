@@ -1421,6 +1421,18 @@ const EXPLAINERS: Record<ExplainTopic, string[]> = {
     'The vault is the shared pool that pays the winners. When you win, your payout comes from it; when bets lose, the pool grows.',
     'Anyone can supply the vault to earn a share of the spread, and that reward goes to the suppliers, not to the app. It’s optional, and separate from just placing bets.',
   ],
+  points: [
+    'The leaderboard runs on Points, and they build up as you trade. Three things earn them: how much you put into bets, how much profit you make, and how long you hold your positions.',
+    'In numbers: 1 point per DUSDC you bet, 2 points per DUSDC of profit (a losing bet just earns nothing here, it never takes points away), and a small bonus of 0.1 point per DUSDC for each day you keep a position open. So you climb by betting more, winning, and holding real positions instead of instantly flipping them. Check the Ranks tab to see where you stand.',
+  ],
+  safety: [
+    'Your funds stay yours. The app is non-custodial, so it never holds your money or your keys. Your DUSDC sits in your own wallet, and every trade is a transaction you approve and sign yourself, so nobody can move your money for you.',
+    'And right now you’re on Sui testnet, so you’re trading with free test-DUSDC, not real money. You can experiment with zero risk. Ask me “how do I get test tokens?” to start.',
+  ],
+  rewards: [
+    'Quests and Competitions are on the way. Quests will hand out DUSDC for hitting trading milestones, and Competitions (the Degen Arena) will pit factions against each other for prize pools.',
+    'They’re not live yet, you’ll see them as a preview in the app. For now, trading is what climbs the leaderboard, ask me “how do points work?” for that, and I’ll flag it here once the rewards go live.',
+  ],
 };
 
 function explainReply(topic: ExplainTopic): CopilotReply {

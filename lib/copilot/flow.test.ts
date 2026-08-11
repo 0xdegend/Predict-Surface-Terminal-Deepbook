@@ -52,6 +52,36 @@ describe('trade wizard — happy path', () => {
   });
 });
 
+describe('trade wizard — restart (open another one)', () => {
+  it('restarts a fresh wizard at review instead of re-showing the recap', () => {
+    // A fully-built review (as if the market expired before placing).
+    const review = { step: 'review' as const, marketId: 'm1', strikePrice: 65_000, isUp: true, amount: 10, leverage: 1 };
+    const r = advanceFlow(review, 'open another one', ctx);
+    expect(r.flow?.step).toBe('strike'); // fresh setup, not the review recap
+    expect(r.reply.bet).toBeUndefined();
+    expect(r.reply.text.join(' ')).toMatch(/price|strike/i);
+  });
+
+  it('"set up another trade" also restarts', () => {
+    const s2 = { step: 'direction' as const, marketId: 'm1', strikePrice: 65_000 };
+    expect(advanceFlow(s2, 'set up another trade', ctx).flow?.step).toBe('strike');
+  });
+
+  it('carries inline params into the restarted wizard', () => {
+    const review = { step: 'review' as const, marketId: 'm1', strikePrice: 65_000, isUp: true, amount: 10, leverage: 1 };
+    const r = advanceFlow(review, 'open a new one, strike 64000, below, 5 dusdc', ctx);
+    expect(r.flow?.strikePrice).toBeCloseTo(64_000, -1);
+    expect(r.flow?.isUp).toBe(false);
+    expect(r.flow?.amount).toBe(5);
+  });
+
+  it('does not mistake a normal answer for a restart', () => {
+    // A bare strike / direction / amount must still advance, never restart.
+    expect(advanceFlow({ step: 'strike', marketId: 'm1' }, '65,000', ctx).flow?.step).toBe('direction');
+    expect(advanceFlow({ step: 'direction', marketId: 'm1', strikePrice: 65_000 }, 'above', ctx).flow?.step).toBe('amount');
+  });
+});
+
 describe('trade wizard — current price', () => {
   it('quotes the live spot (matching the tape), not the forward', () => {
     // forward 65,000, tape spot 64,900 → the wizard must show 64,900.

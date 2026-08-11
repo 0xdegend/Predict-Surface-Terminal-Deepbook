@@ -1142,7 +1142,13 @@ export function V2CopilotScreen({
         pushExchange(text, { ...answer, bet: undefined, text: [...answer.text, resumeHint(flow)] });
         return;
       }
-      const res = advanceFlow(flow, text, { candidates, now, spot });
+      // "Set up another trade" / "open a new one" mid-wizard (especially after a review
+      // card expired without placing) = start FRESH, not answer the current step. (advanceFlow
+      // also self-heals on restart phrases, but a clean start_trade skips its step parsing.)
+      const res =
+        interrupt.kind === 'start_trade'
+          ? startFlow({ candidates, now, spot }, text)
+          : advanceFlow(flow, text, { candidates, now, spot });
       reply = res.reply;
       nextFlow = res.flow;
     } else {

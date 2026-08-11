@@ -32,7 +32,10 @@ export type BetTarget = { kind: 'prob'; value: number } | { kind: 'payout'; mult
  *  (mapped onto Skew's plain UP/DOWN framing) for people who don't know the surface. */
 export type ExplainTopic =
   | 'leverage' | 'range' | 'binary' | 'settlement' | 'loss' | 'fees' | 'funds' | 'payout' | 'predict'
-  | 'option' | 'call_put' | 'strike' | 'expiry' | 'implied_vol' | 'premium' | 'moneyness' | 'surface' | 'vault';
+  | 'option' | 'call_put' | 'strike' | 'expiry' | 'implied_vol' | 'premium' | 'moneyness' | 'surface' | 'vault'
+  // Product FAQ about Skew itself (not options vocabulary): how the leaderboard Points
+  // work, whether funds are safe (custody), and the rewards program.
+  | 'points' | 'safety' | 'rewards';
 
 export type CopilotIntent =
   | { kind: 'analyze' }
@@ -101,7 +104,10 @@ const START_TRADE_PHRASES = [
   'set up a trade', 'set up trade', 'setup a trade', 'set up my trade', 'set up a bet', 'set up a position',
   'open a trade', 'open a bet', 'open a position', 'open my trade',
   'start a trade', 'start a bet', 'start a position',
-  'new trade', 'new bet',
+  'new trade', 'new bet', 'new one',
+  // "Open another one" after a trade (or an expired wizard) = start a fresh setup.
+  'another trade', 'another bet', 'another one', 'set up another', 'open another',
+  'start another', 'one more trade', 'one more bet',
   'enter a trade', 'enter a bet', 'put on a trade',
   'build a trade', 'build a bet', 'create a trade', 'create a bet',
   'make a trade', 'make a bet', 'place a trade', 'place a bet',
@@ -687,6 +693,33 @@ function conceptGlossary(text: string): ExplainTopic | null {
   return null;
 }
 
+/**
+ * Product FAQ about Skew itself — how the leaderboard Points work, whether funds are
+ * safe (custody), and the rewards program. Unlike `conceptGlossary` this is NOT gated on
+ * a "what/how" lead: people ask these bare ("leaderboard points", "is my money safe"),
+ * and it must be matched EARLY so the funds/points wording doesn't get grabbed by the
+ * balance / portfolio reads first. Returns the explainer topic, else null.
+ */
+function productFaq(text: string): ExplainTopic | null {
+  // Leaderboard / points / ranks — how they accumulate. Plural `points` (or leaderboard
+  // /ranks/climb) only, so the ask-cue "point of …" ("what's the point of leverage")
+  // never trips it.
+  if (/\bpoints\b|\bleaderboard\b|leader ?board|\bpoint system\b|\brankings?\b|\branks\b|climb.{0,16}(?:rank|board|leaderboard)/.test(text)) {
+    return 'points';
+  }
+  // Custody / is it safe / non-custodial. Deliberately NOT bare "safe" (that's the
+  // conviction word in "safe up bet") — needs a money/wallet/custody/scam anchor.
+  if (/\bnon-?custodial\b|\bcustod(?:y|ial)\b|\brug(?: ?pull)?\b|\bscams?\b|\blegit\b|(?:is|are)\s+(?:it|this|skew|my (?:money|funds|wallet|crypto))\s+safe\b|\bsafe to (?:use|trade|connect|sign)\b|do (?:you|they|skew)\s+(?:hold|keep|store|control|touch|have|own)\s+my\s+(?:money|funds|wallet|keys|crypto|coins)|(?:hold|keep|control|store|touch)\s+my\s+(?:funds|money|keys|wallet|crypto)|can\s+(?:you|skew|anyone)\s+(?:take|steal|access|touch|move|drain)\s+my|access to my (?:wallet|funds|money|keys)/.test(text)) {
+    return 'safety';
+  }
+  // Quests / competitions / rewards (airdrop/faucet asks are handled earlier by
+  // get_tokens, so they never reach here).
+  if (/\bquests?\b|\bcompetitions?\b|\btournaments?\b|\brewards? (?:program|work|system)\b|\bwhat.{0,12}rewards?\b|\bprizes?\b|degen arena|\bfactions?\b/.test(text)) {
+    return 'rewards';
+  }
+  return null;
+}
+
 /** "Find / show / locate the $64,730 strike on the surface" — a request to LOCATE
  *  a specific strike (so we can light it up), not build or analyze one. Needs a
  *  find-style cue AND a concrete strike price. */
@@ -757,6 +790,12 @@ export function parseIntent(message: string): CopilotIntent {
   if (wantsCreateAccount(raw)) return { kind: 'create_account' };
   if (wantsGetTokens(raw)) return { kind: 'get_tokens' };
   if (wantsOnboarding(raw)) return { kind: 'onboarding' };
+
+  // Product FAQ about Skew (leaderboard points, custody/safety, rewards). EARLY — the
+  // "points"/"my money"/"funds" wording would otherwise be claimed by the balance /
+  // portfolio reads below, and these are answered from a static explainer either way.
+  const faq = productFaq(raw);
+  if (faq) return { kind: 'explain', topic: faq };
 
   const text = raw.replace(NON_DIRECTIONAL, ' ');
 

@@ -67,6 +67,16 @@ export interface FlowResult {
 const CANCEL =
   /\b(cancel|clear|reset|stop|halt|never ?mind|nvm|quit|exit|abort|forget|scratch|start (?:over|again)|do ?over|call it off|back out|undo|no thanks?|not now|leave it|changed my mind|change my mind|second thoughts?|get rid|ditch|wipe|remove it|delete it)\b/;
 
+// START FRESH instead of answering the current step — "open another one", "set up
+// another trade", "a new bet", "one more". Distinct from CANCEL (which just drops the
+// setup): this drops the current one AND begins a NEW wizard (carrying any inline
+// params). This is exactly what an expired review card prompts the user to do ("set up
+// a trade again"), so answering it must restart, not re-show the stale recap. Requires
+// an "another/new/one-more" shape so a normal answer (a bare price / "up" / a number) is
+// never mistaken for it; CANCEL is checked first so "start over" still ends the flow.
+const RESTART =
+  /\b(?:another|a new|new|different)\b[^.!?]{0,20}\b(?:trade|bet|one|market|position|set ?up|setup)\b|\b(?:set ?up|open|start|make|place|build|create|give me|do)\b[^.!?]{0,16}\b(?:another|a new|new one)\b|\banother one\b|\bone more\b|\bstart fresh\b|\bredo\b/;
+
 /** Prefer a market with room to finish the wizard, and re-pin before the current
  *  one closes — these markets are short, and a chat setup takes a while. */
 const FLOW_RUNWAY_MS = 90_000; // start on a market with ≥ 90s left when we can
@@ -400,8 +410,15 @@ export function resumeHint(flow: TradeFlow): string {
  *  the final review). Resolves a live market first, hopping (with a heads-up) if
  *  the pinned one is about to close. */
 export function advanceFlow(flow: TradeFlow, message: string, ctx: FlowContext): FlowResult {
-  if (CANCEL.test(message.toLowerCase())) {
+  const lower = message.toLowerCase();
+  if (CANCEL.test(lower)) {
     return { flow: null, reply: { text: ['Okay, cancelled. No trade set up. Ask me anything else whenever you like.'] } };
+  }
+  // "Open another one / set up a new trade" — restart fresh rather than treat it as an
+  // answer to the current step (the review step would otherwise just re-show the stale,
+  // possibly expired, recap). Carries any inline params from the message.
+  if (RESTART.test(lower)) {
+    return startFlow(ctx, message);
   }
   const { cand, switched } = resolveMarket(ctx, flow);
   if (!cand) {

@@ -598,13 +598,16 @@ describe('respondToIntent — find a strike on the surface', () => {
 
 describe('respondToIntent — explain (glossary)', () => {
   it('answers each topic with plain text, no bet or highlight', () => {
-    for (const topic of ['leverage', 'range', 'binary', 'settlement', 'loss', 'fees', 'funds', 'payout', 'predict'] as const) {
+    for (const topic of ['leverage', 'range', 'binary', 'settlement', 'loss', 'fees', 'funds', 'payout', 'predict', 'points', 'safety', 'rewards'] as const) {
       const r = respondToIntent({ kind: 'explain', topic }, ctx());
       expect(r.text.length, topic).toBeGreaterThan(0);
       expect(r.bet, topic).toBeUndefined();
     }
     expect(respondToIntent({ kind: 'explain', topic: 'leverage' }, ctx()).text.join(' ')).toMatch(/leverage/i);
     expect(respondToIntent({ kind: 'explain', topic: 'fees' }, ctx()).text.join(' ')).toMatch(/fee|2%/i);
+    // The leaderboard-points answer names the real components (bet / profit / hold).
+    expect(respondToIntent({ kind: 'explain', topic: 'points' }, ctx()).text.join(' ')).toMatch(/point/i);
+    expect(respondToIntent({ kind: 'explain', topic: 'safety' }, ctx()).text.join(' ')).toMatch(/non-custodial|own wallet|sign/i);
   });
 });
 
@@ -754,6 +757,9 @@ describe('plain language (no trader jargon)', () => {
       respondToIntent({ kind: 'explain', topic: 'leverage' }, ctx()),
       respondToIntent({ kind: 'explain', topic: 'fees' }, ctx()),
       respondToIntent({ kind: 'explain', topic: 'predict' }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'points' }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'safety' }, ctx()),
+      respondToIntent({ kind: 'explain', topic: 'rewards' }, ctx()),
       respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: Array.from({ length: 400 }, (_, i) => 65_000 * (1 + 0.0003 * i)) })),
       respondToIntent({ kind: 'best_value' }, ctx({ spot: 65_000, closes: Array.from({ length: 60 }, () => 65_000) })), // fair-market fallback branch
       respondToIntent({ kind: 'adjust_ticket', stake: 20, leverage: 2 }, ctx({ selection: { marketId: 'm-soon', strikePrice: 65_000, isUp: true, stake: 5, leverage: 1 } })),
