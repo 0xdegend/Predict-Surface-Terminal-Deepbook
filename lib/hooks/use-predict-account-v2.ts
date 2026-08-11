@@ -9,7 +9,7 @@
  * sponsorship + finalized-status check) so signing UX stays identical. Used by
  * the v2 trade ticket; portfolio/order listing arrives with the indexer (Phase 3).
  */
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useCurrentAccount, useCurrentWallet } from '@mysten/dapp-kit-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Transaction, SerialTransactionExecutor } from '@mysten/sui/transactions';
@@ -115,6 +115,13 @@ export function usePredictAccountV2() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Synchronous re-entrancy lock for user-initiated trade actions. `busy` is React
+  // state, so it is not visible to a second click fired in the same tick, and the
+  // first trade of an instant session does a lot of async setup (generate the session
+  // key, drip treasury gas) BEFORE runTx/runSessionTx flip `busy` — a window where the
+  // button was neither disabled nor spinning. This ref closes both: it is set the
+  // instant a trade starts and blocks any concurrent trade until it finishes.
+  const inFlight = useRef(false);
 
   const gasless =
     enokiEnabled && !!currentWallet && isEnokiWallet(currentWallet) && sponsorshipAvailable;
@@ -248,6 +255,29 @@ export function usePredictAccountV2() {
     enabled: !!owner,
     refetchInterval: 10_000,
   });
+
+  /**
+   * Wrap a user-initiated trade so a double click can't double-fire and the button
+   * shows feedback immediately. Sets `busy` + the in-flight lock SYNCHRONOUSLY (before
+   * any await), so it covers the pre-submit setup a first instant trade does — generate
+   * the session key, drip treasury gas, bundle authorize_session — which runs BEFORE
+   * runTx/runSessionTx would otherwise flip `busy`. A second call while one is in flight
+   * is a silent no-op (returns null; the first call still resolves and shows success).
+   * The inner runTx/runSessionTx keep their own busy handling for their direct callers
+   * (create/deposit/withdraw/vault); the redundant set here is harmless.
+   */
+  async function runGuarded<T>(label: string, run: () => Promise<T | null>): Promise<T | null> {
+    if (inFlight.current) return null;
+    inFlight.current = true;
+    setBusy(label);
+    setError(null);
+    try {
+      return await run();
+    } finally {
+      inFlight.current = false;
+      setBusy(null);
+    }
+  }
 
   async function runTx(
     label: string,
@@ -677,36 +707,46 @@ export function usePredictAccountV2() {
     builderCode,
     mint: (p: Omit<MintParams, 'wrapperId'>, opts?: TradeOpts) => {
       if (!wrapperId) return Promise.resolve(null);
-      // A live session carries the trade popup-less — UNLESS this trade needs a
-      // wallet top-up (`deposit`), which only the owner path can do (the session
-      // can't move funds from the wallet), or the session is too low on gas to pay
-      // for it. Fall back to the owner path there.
-      if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
-        return runSessionTx('mint', buildSessionMintTx({ ...p, wrapperId }), mintInvalidations, opts);
-      }
-      // Owner path — optionally bundling "turn on instant trading" into this approval.
-      return runOwnerMint(buildMintTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
+      // runGuarded locks + shows busy the instant this is called, covering the async
+      // arming setup on a first instant trade (see runGuarded). A double click no-ops.
+      return runGuarded('mint', () => {
+        // A live session carries the trade popup-less — UNLESS this trade needs a
+        // wallet top-up (`deposit`), which only the owner path can do (the session
+        // can't move funds from the wallet), or the session is too low on gas to pay
+        // for it. Fall back to the owner path there.
+        if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
+          return runSessionTx('mint', buildSessionMintTx({ ...p, wrapperId }), mintInvalidations, opts);
+        }
+        // Owner path — optionally bundling "turn on instant trading" into this approval.
+        return runOwnerMint(buildMintTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
+      });
     },
     /** Budget mint (mint_exact_amount) — the chain sizes the quantity at
      *  execution, so odds drift can't break the $1 minimum-premium check. */
     mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: TradeOpts) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
-        return runSessionTx('mint', buildSessionMintBudgetTx({ ...p, wrapperId }), mintInvalidations, opts);
-      }
-      return runOwnerMint(buildMintBudgetTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
+      return runGuarded('mint', () => {
+        if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
+          return runSessionTx('mint', buildSessionMintBudgetTx({ ...p, wrapperId }), mintInvalidations, opts);
+        }
+        return runOwnerMint(buildMintBudgetTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
+      });
     },
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
-      return runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      return runGuarded('redeem', () => {
+        if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
+        return runTx('redeem', buildRedeemLiveTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      });
     },
     // A winning claim passes silentSuccess so the caller can own the celebration
     // (SuccessModal + confetti) instead of the quiet bottom-right toast.
     redeemSettled: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) => {
       if (!wrapperId) return Promise.resolve(null);
-      if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
-      return runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      return runGuarded('redeem', () => {
+        if (sessionCanTrade) return runSessionTx('redeem', buildSessionRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
+        return runTx('redeem', buildRedeemSettledTx({ ...p, wrapperId }), redeemInvalidations, opts);
+      });
     },
     /* ---- async vault (PLP) ---- */
     requestSupply: (amount: bigint, deposit?: bigint) =>

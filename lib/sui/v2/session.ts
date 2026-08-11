@@ -240,14 +240,20 @@ export const DEFAULT_SESSION_DURATION: SessionDuration = '24h';
 export const DEFAULT_SESSION_GAS_FUNDING_BASE = 100_000_000n;
 
 /**
- * Fixed gas budget (MIST) for a session trade. Setting it explicitly is the point of
- * the Phase 3 fast path: it lets the submit skip the SDK's dry-run gas estimation. ~0.03
- * SUI comfortably covers a mint (load_pricer + mint). The budget is a reservation cap,
- * so the key's balance must be at least this much — when it falls below, re-enable the
- * session to top the gas back up (auto top-up is a later phase). Must stay well under
- * DEFAULT_SESSION_GAS_FUNDING_BASE so a freshly funded key gets several trades.
+ * Fixed gas budget (MIST) for a session trade. Setting it explicitly is the point of the
+ * Phase 3 fast path: it lets the submit skip the SDK's dry-run gas estimation.
+ *
+ * This is a CEILING, not a charge: Sui only deducts the real fee (a mint runs a few
+ * thousandths of a SUI) and refunds the rest. But the node still requires the gas coin to
+ * HOLD at least this much to accept the tx, so this same number doubles as the FLOOR of
+ * usable session gas — the last ~this-much SUI on the key can never be spent through a
+ * session. 0.015 SUI keeps a safe margin over a real mint (load_pricer + mint) while
+ * halving that stranded floor vs the old 0.03, so a session needs far less SUI on hand.
+ * Lower it only against a MEASURED worst-case mint cost: set below the real cost and every
+ * session mint fails on gas. Must stay well under DEFAULT_SESSION_GAS_FUNDING_BASE so a
+ * freshly funded key gets many trades before it needs a top-up.
  */
-export const SESSION_GAS_BUDGET = 30_000_000n;
+export const SESSION_GAS_BUDGET = 15_000_000n;
 
 export interface AuthorizeSessionParams {
   wrapperId: string;

@@ -191,8 +191,10 @@ export async function bumpDaily(): Promise<void> {
 
 /** Session-gas in-flight lock lifetime (a drip is a single fast transfer). */
 const GAS_LOCK_TTL = 60;
-/** Per-key cooldown: at most one drip per key per this window (abuse/drain guard). */
-const GAS_COOLDOWN_TTL = 60 * 20; // 20 min
+/** Per-key cooldown: a SHORT anti-hammer only. The real gate is the balance ceiling in
+ *  /api/session-gas (a genuinely low key tops up freely; a just-topped key sits above the
+ *  ceiling, so this window only ever bites a tight drain-and-redrip loop). */
+const GAS_COOLDOWN_TTL = 60; // 60s
 
 const gasLockKey = (addr: string) => `sgas:lock:${addr}`;
 const gasRecentKey = (addr: string) => `sgas:recent:${addr}`;

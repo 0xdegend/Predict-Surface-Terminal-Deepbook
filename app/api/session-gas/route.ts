@@ -9,15 +9,17 @@
  * straight to the session key when the user turns instant trading on.
  *
  * The session key is a distinct, ephemeral address (not the user's wallet), so this
- * is deliberately SEPARATE from the starter grant: its own `sgas:` ledger namespace,
- * its own daily cap, and — unlike the one-shot starter grant — a short per-key
- * COOLDOWN rather than a permanent "done" marker (a session key legitimately needs
- * re-funding once its gas runs low). These are REAL funds, so every drip is gated
- * server-side BEFORE we sign:
- *   1. per-key cooldown — one drip per key per window,
- *   2. global daily cap — spend circuit breaker,
- *   3. in-flight lock — kills the concurrent double-drip race,
- *   4. balance ceiling — skip a key that already holds enough gas (returns ok, no tx),
+ * is deliberately SEPARATE from the starter grant: its own `sgas:` ledger namespace and
+ * its own daily cap. A session key legitimately needs re-funding whenever its gas runs
+ * low, so the gate is BALANCE, not time: as long as the key holds less than the ceiling,
+ * it can top up. These are REAL funds, so every drip is gated server-side BEFORE we sign:
+ *   1. global daily cap — spend circuit breaker,
+ *   2. in-flight lock — kills the concurrent double-drip race,
+ *   3. balance ceiling — the PRIMARY gate: skip a key that already holds enough gas
+ *      (returns ok, no tx), so a genuinely LOW key can always top up. A just-topped key
+ *      sits above the ceiling until it's spent down, which is the real rate limit,
+ *   4. short anti-hammer cooldown — only bites a tight drain-and-redrip loop, never a
+ *      real low key (which is above the ceiling right after a top-up),
  *   5. treasury reserve — refuse when the treasury's SUI would dip below its own gas.
  *
  * Reuses the starter-grant treasury key (STARTER_GRANT_PRIVATE_KEY) and the shared
@@ -103,15 +105,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid address', code: 'bad_request' }, { status: 400 });
   }
 
-  // 1) per-key cooldown — one drip per key per window.
-  if (await recentlyDripped(address)) {
-    return NextResponse.json(
-      { error: 'This session key was funded recently', code: 'cooldown' },
-      { status: 429 },
-    );
-  }
-
-  // 2) global daily cap.
+  // 1) global daily cap — the spend circuit breaker (cheap, global).
   if ((await gasDripDailyCount()) >= DAILY_CAP) {
     return NextResponse.json(
       { error: 'Daily session-gas limit reached', code: 'rate_limited' },
@@ -119,7 +113,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // 3) in-flight lock — refuse a concurrent drip for the same key.
+  // 2) in-flight lock — refuse a concurrent drip for the same key. The balance read +
+  //    payout below run under it, so two clicks can't both fund the same key.
   if (!(await acquireGasDripLock(address))) {
     return NextResponse.json(
       { error: 'A drip for this session key is already in progress', code: 'in_progress' },
@@ -128,10 +123,25 @@ export async function POST(req: Request) {
   }
 
   try {
-    // 4) balance ceiling — a key that already holds enough gas needs nothing. Report
-    //    success (no tx) so the caller treats the session as funded and proceeds.
-    if ((await suiBalance(address)) >= DRIP_CEILING) {
+    const balance = await suiBalance(address);
+
+    // 3) balance ceiling — the PRIMARY gate. A key that already holds enough gas needs
+    //    nothing (report success, no tx). This is what lets a genuinely LOW key top up
+    //    whenever it needs to: we gate on how much gas the key holds, not on when it last
+    //    topped up. It's also the real rate limit — a just-topped key jumps above the
+    //    ceiling and can't be re-dripped until it's spent back down.
+    if (balance >= DRIP_CEILING) {
       return NextResponse.json({ digest: null, suiAmount: '0', alreadyFunded: true });
+    }
+
+    // 4) short anti-hammer — the key IS low (below the ceiling), so it's eligible; this
+    //    only stops a tight drain-and-redrip loop. A real user who just topped up is now
+    //    above the ceiling and already returned at step 3, so this never blocks them.
+    if (await recentlyDripped(address)) {
+      return NextResponse.json(
+        { error: 'Just topped up — give it a few seconds and try again', code: 'cooldown' },
+        { status: 429 },
+      );
     }
 
     // 5) treasury reserve — never spend the treasury below its own gas floor.

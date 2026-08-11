@@ -27,7 +27,7 @@ type Step = 'form' | 'success';
 function dripMessage(code?: string): string {
   switch (code) {
     case 'cooldown':
-      return 'You topped up recently. Please try again in a few minutes.';
+      return 'Just topped up. Give it a few seconds and try again.';
     case 'rate_limited':
       return 'The free top-up has hit its limit for now. Try again later.';
     case 'treasury_empty':
@@ -144,8 +144,8 @@ export function SessionGasModal({ open, onClose }: { open: boolean; onClose: () 
           {gasless ? (
             <p className="text-[12px] leading-relaxed text-text-3">
               Your session key pays the network fee on each instant trade. We cover it for you, so tap
-              Top up to add more at no cost. If you just topped up, there is a short wait before the next
-              one is allowed.
+              Top up any time your gas runs low and we&apos;ll add more at no cost. If it already has
+              plenty, there&apos;s nothing to add.
             </p>
           ) : (
             <>

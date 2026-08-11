@@ -14,8 +14,8 @@
  * client can decide whether to attempt a drip vs. fall back to owner-funded gas.
  */
 
-/** Target gas to put on a session key (MIST, @9dec). 0.1 SUI ≈ ~10 session trades at
- *  the 0.03-SUI session budget. Keep in sync with DEFAULT_SESSION_GAS_FUNDING_BASE
+/** Target gas to put on a session key (MIST, @9dec). At ~a few thousandths of a SUI per
+ *  trade, 0.1 SUI is many trades of runway. Keep in sync with DEFAULT_SESSION_GAS_FUNDING_BASE
  *  in lib/sui/v2/session.ts (the owner-funded fallback tops up to the same target). */
 export const SESSION_GAS_DRIP_BASE_DEFAULT = 100_000_000n;
 
