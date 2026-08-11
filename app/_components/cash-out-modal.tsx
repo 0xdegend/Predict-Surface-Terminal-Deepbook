@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { isValidSuiAddress } from '@mysten/sui/utils';
 import { LuArrowRight, LuArrowLeft, LuTriangleAlert, LuCheck, LuExternalLink } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
+import { GlassError } from '@/app/_components/ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useCountUp } from '@/lib/hooks/use-count-up';
 import { fromQuote, toQuote } from '@/config/scale';
@@ -48,6 +49,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
       setAmount('');
       setStep('form');
       setSent(null);
+      acct.clearError(); // don't carry a prior action's error into a fresh open
     }
   }
 
@@ -171,6 +173,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
 
       {step === 'confirm' && (
         <div className="flex flex-col gap-4">
+          {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
           <div className="glass-inset relative overflow-hidden p-4 text-center">
             <span className="eyebrow">You’re sending</span>
             <div className="mt-2 flex items-baseline justify-center gap-1.5 font-mono tabular-nums">

@@ -354,8 +354,11 @@ export function usePredictAccountV2() {
         setError(SESSION_EXPIRED_MESSAGE);
         return null;
       }
+      // Surface the failure ONCE, inline, via `error` — every ticket/panel renders
+      // `acct.error` as a GlassError right where the action happened. No toast here:
+      // it would double the same message on top of that inline banner. Flows without
+      // an inline surface (cash-out / session-gas / admin) render acct.error too.
       setError(humanizeV2Error(e));
-      toast.error('Transaction failed', { desc: humanizeV2Error(e) });
       return null;
     } finally {
       setBusy(null);
@@ -444,8 +447,9 @@ export function usePredictAccountV2() {
       const friendly = isInsufficientGas(e)
         ? 'Your instant-trading session ran out of SUI for network fees. Top it up from the wallet menu, or end instant trading to pay from your wallet, then try again.'
         : humanizeV2Error(e);
+      // Inline-only (see runTx): the ticket shows acct.error as a GlassError, so a
+      // toast here would be the same message twice.
       setError(friendly);
-      toast.error('Trade failed', { desc: friendly });
       return null;
     } finally {
       setBusy(null);

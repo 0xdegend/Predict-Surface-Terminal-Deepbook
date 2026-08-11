@@ -23,6 +23,7 @@ import { getBuilderCodeFees, qkV2 } from '@/lib/api/v2/client';
 import { useNow } from '@/lib/hooks/use-now';
 import { LineChart, type ChartPoint } from '@/app/_components/analytics/charts/line-chart';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { GlassError } from '@/app/_components/ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import {
   useBuilderCodeAdmin,
@@ -172,6 +173,7 @@ function Register({ owned }: { owned: ReturnType<typeof useOwnedBuilderCodes> })
           >
             {busy ? 'Confirming…' : `Register code (index ${nextIndex})`}
           </button>
+          {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
       </Card>
 
@@ -336,6 +338,7 @@ function Claim() {
                   .
                 </span>
               )}
+              {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
             </div>
           </Card>
         </div>

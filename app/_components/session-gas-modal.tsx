@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { LuArrowRight, LuCheck, LuExternalLink, LuTriangleAlert, LuZap } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
+import { GlassError } from '@/app/_components/ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { predictV2Config } from '@/config/predict';
 
@@ -60,6 +61,7 @@ export function SessionGasModal({ open, onClose }: { open: boolean; onClose: () 
       setStep('form');
       setResult(null);
       setNotice(null);
+      acct.clearError(); // don't carry a prior action's error into a fresh open
     }
   }
 
@@ -209,7 +211,7 @@ export function SessionGasModal({ open, onClose }: { open: boolean; onClose: () 
               {notice}
             </p>
           )}
-          {acct.error && <p className="text-[11px] text-down">{acct.error}</p>}
+          {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
       )}
 
