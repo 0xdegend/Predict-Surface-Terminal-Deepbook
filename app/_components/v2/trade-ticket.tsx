@@ -320,6 +320,13 @@ export function V2TradeTicket({
   const closingSoon = isClosingSoon(market, now);
   const tooCloseToExpiry = isTooCloseToExpiry(market, now);
 
+  // One-tap ON + a session that can pay + no wallet deposit needed → the action places
+  // the bet DIRECTLY (openReview skips our review modal), so there's nothing left to
+  // review. The button reads "Confirm" (not "Review") in that case, and the disclaimer
+  // drops the "you'll preview next" line. Single source of truth for both the label and
+  // the actual place-vs-review branch below.
+  const oneTapPlace = acct.sessionCanTrade && instantTrade && shortfall === 0n;
+
   const sym = predictV2Config.quote.symbol;
   const headline = `BTC · ${rangeMode ? 'RANGE' : isUp ? 'UP' : 'DOWN'}`;
   const tone: 'up' | 'down' = rangeMode || isUp ? 'up' : 'down';
@@ -365,7 +372,7 @@ export function V2TradeTicket({
     // trader opted in AND the trade needs no wallet top-up (shortfall covered by
     // the account), place it straight away and skip our review too. Never one-tap
     // a trade that would still open a deposit pop-up.
-    if (acct.sessionCanTrade && instantTrade && shortfall === 0n) {
+    if (oneTapPlace) {
       void handleMint();
       return;
     }
@@ -644,11 +651,12 @@ export function V2TradeTicket({
 
       {/* Turn instant trading on inside this trade's approval (no live session). */}
       <InstantTradingToggle />
-      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} />
+      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
-        You’ll preview the trade next; cost is an estimate. Your wallet shows the exact amount
-        before you approve.
+        {oneTapPlace
+          ? 'One-tap is on, so this places your bet right away — no review step. Cost is an estimate; the exact amount is capped on-chain.'
+          : 'You’ll preview the trade next; cost is an estimate. Your wallet shows the exact amount before you approve.'}
       </p>
       {shareBase && (
         <button
@@ -1010,6 +1018,7 @@ function ActionButton({
   onReview,
   shortfall,
   insufficientFunds,
+  oneTap,
 }: {
   acct: ReturnType<typeof usePredictAccountV2>;
   tone: 'up' | 'down';
@@ -1019,6 +1028,8 @@ function ActionButton({
   onReview: () => void;
   shortfall: bigint;
   insufficientFunds: boolean;
+  /** One-tap will place directly (no review modal) → the button says "Confirm", not "Review". */
+  oneTap: boolean;
 }) {
   if (!acct.wrapperExists)
     return (
@@ -1044,7 +1055,9 @@ function ActionButton({
                 ? 'Insufficient funds'
                 : shortfall > 0n
                   ? 'Review deposit & mint'
-                  : 'Review'}
+                  : oneTap
+                    ? 'Confirm'
+                    : 'Review'}
     </ReviewButton>
   );
 }

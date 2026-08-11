@@ -361,6 +361,7 @@ function BinaryBody({
             onCreate={() => acct.createAccount()}
             onReview={openReview}
             shortfall={shortfall}
+            oneTap={acct.sessionCanTrade && instantTrade && shortfall === 0n}
           />
           {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
@@ -594,6 +595,7 @@ function RangeBody({
             onCreate={() => acct.createAccount()}
             onReview={openReview}
             shortfall={shortfall}
+            oneTap={acct.sessionCanTrade && instantTrade && shortfall === 0n}
           />
           {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
         </div>
@@ -806,6 +808,7 @@ function MintButton({
   onCreate,
   onReview,
   shortfall,
+  oneTap,
 }: {
   tone: 'up' | 'down';
   busy: boolean;
@@ -816,6 +819,8 @@ function MintButton({
   onCreate: () => void;
   onReview: () => void;
   shortfall: bigint;
+  /** One-tap will place directly (no review modal) → the button says "Confirm", not "Review". */
+  oneTap: boolean;
 }) {
   if (!owner) {
     return (
@@ -850,7 +855,7 @@ function MintButton({
       {busy && (
         <span className="h-3.5 w-3.5 animate-spin rounded-full border-[1.5px] border-current border-t-transparent" />
       )}
-      {busy ? 'Confirming…' : shortfall > 0n ? 'Review deposit & mint' : 'Review'}
+      {busy ? 'Confirming…' : shortfall > 0n ? 'Review deposit & mint' : oneTap ? 'Confirm' : 'Review'}
     </button>
   );
 }
