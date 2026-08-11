@@ -68,15 +68,20 @@ export function V2BottomNav() {
     setOpen(false);
   }
 
-  // Clear the SHARED trade-ticket flag on every navigation. It lives in the
-  // global store, but only the trade/copilot screens' sheet resets it on close —
-  // so a user who leaves a ticket open via the phone back gesture or an in-page
-  // link would strand this dock off-screen (it reads the flag to translate away)
-  // on the next page until a reload re-inits the store. A ticket sheet is always
-  // screen-local, so navigating anywhere must dismiss it. Effect (not a render
-  // write) to avoid touching another store mid-render / the purity lint.
+  // Clear the SHARED trade-ticket flag when LEAVING the trade screen. It lives in the
+  // global store and the dock reads it to translate itself away, so a ticket left "open"
+  // in the store on any page that ISN'T the trade screen would strand this dock off-screen
+  // (it never rendered a sheet to cover it). The sheet only ever lives on /v2, so dismiss
+  // it whenever the destination is anywhere else.
+  //
+  // Do NOT dismiss when the destination IS /v2: Kelly (via the dock or co-pilot), a shared
+  // trade link, and copy-trade all prime the ticket, flip this flag on, then route here to
+  // show it — clearing on arrival raced that open and the sheet silently never appeared
+  // ("closes the drawer and doesn't open the trade"). Guarding on the destination keeps the
+  // off-screen cleanup without clobbering a deliberate cross-screen open. Effect (not a
+  // render write) to avoid touching another store mid-render / the purity lint.
   useEffect(() => {
-    closeTicketSheet();
+    if (pathname !== '/v2') closeTicketSheet();
   }, [pathname, closeTicketSheet]);
 
   const primaryIndex = PRIMARY.findIndex((t) => t.match(pathname));

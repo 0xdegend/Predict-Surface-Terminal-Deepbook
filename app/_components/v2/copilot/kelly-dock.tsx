@@ -11,10 +11,12 @@
  *
  * It reuses the SAME brain (parseIntent → respondToIntent, plus the Claude long
  * tail) and the SAME chat UI (CopilotChat) as the full page. It is deliberately
- * chat-first: it answers questions and suggests bets, but hands the money paths
- * (the guided wizard, onboarding, closing a bet) off to the full trade view, and
- * a suggested bet primes the shared ticket store then takes you there to place it.
- * Nothing here ever signs.
+ * chat-first: it answers questions and suggests bets. A suggested (or "trade it"-
+ * confirmed) bet pops the trade ticket IN PLACE over the drawer — no navigation,
+ * wherever the trader opened Kelly — reusing the co-pilot's compact ticket, which
+ * they still confirm to sign (Kelly never signs on its own). The heavier money
+ * paths (the guided wizard, onboarding, closing a bet) still hand off to the full
+ * trade view, which has the surface + step flow.
  *
  * Data (markets/pricers/insights/events/account) mounts ONLY while the drawer is
  * open (the panel is unmounted when closed), so the launcher costs nothing on a
@@ -28,6 +30,7 @@ import { MASCOT_SRC } from '@/lib/mascot';
 import { fromQuote } from '@/config/scale';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotRead } from './copilot-read';
+import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { parseIntent, placeConfirmation, type CopilotIntent } from '@/lib/copilot/intents';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { marketRows, volState, bias as pulseBias } from '@/lib/copilot/pulse';
@@ -205,9 +208,13 @@ function KellyPanel({
   setBusy: (b: boolean) => void;
   onClose: () => void;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
   const aiCallsRef = useRef(0);
+  // The trade ticket pops IN PLACE over the drawer (its own local flag, not the shared
+  // `ticketSheetOpen`), so a confirmed bet never navigates the user out — wherever they
+  // opened Kelly, the trade opens right there.
+  const [ticketOpen, setTicketOpen] = useState(false);
+  const storeMarketId = useV2TradeStore((s) => s.marketId);
 
   // Live data — mounts only with this panel (i.e. only while the drawer is open).
   const markets = useV2Markets([]);
@@ -413,8 +420,10 @@ function KellyPanel({
     pushReply(t, reply);
   }
 
-  // A suggested bet primes the shared ticket store, then takes the trader to the
-  // trade view to review + place it (the dock never signs).
+  // A suggested (or "trade it"-confirmed) bet primes the ticket store and pops the ticket
+  // IN PLACE over the drawer — no navigation, the drawer stays put. The compact ticket is
+  // self-contained (it reads the primed store) and still requires the trader to confirm;
+  // Kelly itself never signs. (selectMarket resets the strike, so set it AFTER.)
   function handlePlaceBet(bet: BetSuggestion) {
     const st = useV2TradeStore.getState();
     st.selectMarket(bet.marketId);
@@ -423,10 +432,13 @@ function KellyPanel({
     st.setStrikePrice(bet.strikePrice);
     if (bet.amount != null) st.setStake(bet.amount);
     if (bet.leverage != null) st.setLeverage(bet.leverage);
-    st.openTicketSheet();
-    onClose();
-    if (pathname !== '/v2') router.push('/v2');
+    setTicketOpen(true);
   }
+
+  // The primed ticket target, matched against the drawer's OWN live markets + pricers
+  // (both already mounted while the drawer is open), so the in-place ticket prices live.
+  const ticketMarket = markets.find((m) => m.expiry_market_id === storeMarketId) ?? null;
+  const ticketPricer = storeMarketId ? pricers[storeMarketId] : undefined;
 
   return (
     <div className="fixed inset-0 z-50">
@@ -471,6 +483,17 @@ function KellyPanel({
           />
         </div>
       </div>
+
+      {/* The trade ticket, in place over the drawer. Controlled by our own flag (not the
+          shared ticketSheetOpen) so it never double-opens with the trade screen / options
+          ticket, and it prices off the drawer's own live markets + pricers. */}
+      <V2CopilotTicketModal
+        market={ticketMarket}
+        pricer={ticketPricer}
+        serverNow={now}
+        open={ticketOpen}
+        onClose={() => setTicketOpen(false)}
+      />
     </div>
   );
 }

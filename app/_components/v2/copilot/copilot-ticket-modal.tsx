@@ -25,13 +25,24 @@ export function V2CopilotTicketModal({
   market,
   pricer,
   serverNow,
+  open: openProp,
+  onClose: onCloseProp,
 }: {
   market: V2Market | null;
   pricer?: LivePricer;
   serverNow: number;
+  /** Controlled open/close. When omitted (the /v2/copilot + /v2/options mounts) the modal
+   *  binds to the SHARED `ticketSheetOpen` store flag as before. The Kelly DRAWER passes
+   *  its own local state instead, so it can pop this ticket in place without touching the
+   *  shared flag — which the trade screen + options page also read, so reusing it would
+   *  double-open a second ticket on those pages. */
+  open?: boolean;
+  onClose?: () => void;
 }) {
-  const open = useV2TradeStore((s) => s.ticketSheetOpen);
-  const close = useV2TradeStore((s) => s.closeTicketSheet);
+  const storeOpen = useV2TradeStore((s) => s.ticketSheetOpen);
+  const storeClose = useV2TradeStore((s) => s.closeTicketSheet);
+  const open = openProp ?? storeOpen;
+  const close = onCloseProp ?? storeClose;
 
   return (
     <Modal
