@@ -63,6 +63,13 @@ const AI_TIMEOUT_MS = 16_000;
 /** Routes where the dock hides: the full Kelly page (redundant) + the OAuth popup. */
 const HIDDEN_ON = ['/v2/copilot', '/auth'];
 
+// Proactive help: once a visitor has been on the site this long WITHOUT opening
+// Kelly, gently offer a hand ("Do you need some help?"). Session-scoped so it shows
+// at most once per visit and never nags on a reload. Tune the delay here.
+const HELP_NUDGE_AFTER_MS = 60_000;
+const HELP_NUDGE_AUTO_HIDE_MS = 14_000;
+const HELP_NUDGE_KEY = 'kelly-help-nudged';
+
 /** Trade-mutation + onboarding intents the light dock hands off to the full trade
  *  view rather than driving here (the wizard/ticket/positions live on that page). */
 const HANDOFF: ReadonlySet<CopilotIntent['kind']> = new Set([
@@ -124,6 +131,16 @@ export function KellyDock() {
   const [busy, setBusy] = useState(false);
   // A one-time nudge bubble for first-time visitors, so the button gets noticed.
   const [hint, setHint] = useState(false);
+  // A gentle "Do you need some help?" bubble once the visitor has lingered a while
+  // without opening Kelly (see the dwell effect below). Shows for returning users
+  // too, unlike the first-visit `hint`.
+  const [helpNudge, setHelpNudge] = useState(false);
+  // True once they open Kelly, so the dwell timer never offers help to someone who
+  // is already engaged.
+  const engagedRef = useRef(false);
+  // The live route, read inside the dwell timer's route guard. Synced in an effect,
+  // never during render (the refs lint bans render-time ref writes).
+  const pathnameRef = useRef(pathname);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -132,12 +149,59 @@ export function KellyDock() {
     return () => clearTimeout(t);
   }, []);
 
+  // Keep the route fresh for the dwell timer's guard below (effect, not render).
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  // Proactive help: once the visitor has been on the site for HELP_NUDGE_AFTER_MS
+  // without opening Kelly, pop a "Do you need some help?" bubble — once per visit
+  // (session-scoped), and only on a page where the dock actually shows (not the auth
+  // popup / full Kelly page). A light poll waits until they're on a visible route,
+  // then auto-hides if ignored. KellyDock is a single global mount, so this measures
+  // TOTAL time on the site, not per-page.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (window.sessionStorage.getItem(HELP_NUDGE_KEY)) return; // already offered this visit
+    } catch {
+      /* private mode — fall through; the flag write below is also guarded */
+    }
+    const start = Date.now();
+    let hideT: ReturnType<typeof setTimeout> | undefined;
+    const poll = setInterval(() => {
+      if (engagedRef.current) {
+        clearInterval(poll);
+        return;
+      }
+      if (Date.now() - start < HELP_NUDGE_AFTER_MS) return;
+      const onHidden = !!pathnameRef.current && HIDDEN_ON.some((p) => pathnameRef.current!.startsWith(p));
+      if (onHidden) return; // wait until they're on a page where the dock shows
+      clearInterval(poll);
+      try {
+        window.sessionStorage.setItem(HELP_NUDGE_KEY, '1');
+      } catch {
+        /* private mode — it may just offer again next visit */
+      }
+      setHint(false); // never stack with the first-visit discovery bubble
+      setHelpNudge(true);
+      hideT = setTimeout(() => setHelpNudge(false), HELP_NUDGE_AUTO_HIDE_MS);
+    }, 2_500);
+    return () => {
+      clearInterval(poll);
+      if (hideT) clearTimeout(hideT);
+    };
+  }, []);
+
   if (pathname && HIDDEN_ON.some((p) => pathname.startsWith(p))) return null;
 
   function openDock() {
+    engagedRef.current = true; // engaged — the dwell timer won't offer help now
     setHint(false);
+    setHelpNudge(false);
     try {
       window.localStorage.setItem('kelly-dock-seen', '1');
+      window.sessionStorage.setItem(HELP_NUDGE_KEY, '1'); // no help nudge after they open it
     } catch {
       /* private mode — the nudge just shows again next time */
     }
@@ -154,20 +218,47 @@ export function KellyDock() {
     }, 280);
   }
 
+  // The "Do you need some help?" bubble dismissed (its ×) — hide it and don't
+  // re-offer this visit.
+  function dismissHelp() {
+    setHelpNudge(false);
+    try {
+      window.sessionStorage.setItem(HELP_NUDGE_KEY, '1');
+    } catch {
+      /* private mode */
+    }
+  }
+
   return (
     <>
       {/* Launcher raised above the mobile bottom-nav pill (lg:hidden); drops to the
           corner on desktop where the nav lives in the header. */}
       {!open && (
         <div className="fixed bottom-24 right-4 z-40 flex items-center gap-2 lg:bottom-6 lg:right-6">
-          {hint && (
+          {helpNudge ? (
+            // Kelly reaching out after the visitor has lingered a while. Accent
+            // border so it reads as Kelly speaking; the text opens the chat, the ×
+            // dismisses it.
+            <div className="kelly-hint flex items-center gap-1 rounded-full border border-(--accent-line) bg-bg-1/95 py-1.5 pr-1 pl-3.5 shadow-lg backdrop-blur-sm">
+              <button onClick={openDock} className="text-xs font-medium whitespace-nowrap text-text-1 hover:text-text-1">
+                Do you need some help?
+              </button>
+              <button
+                aria-label="Dismiss"
+                onClick={dismissHelp}
+                className="flex-none rounded-full p-1 text-text-3 transition-colors hover:bg-bg-2 hover:text-text-1"
+              >
+                <LuX className="h-3 w-3" />
+              </button>
+            </div>
+          ) : hint ? (
             <button
               onClick={openDock}
               className="kelly-hint hidden rounded-full border border-line bg-bg-1/90 px-3 py-1.5 text-xs text-text-2 shadow-lg backdrop-blur-sm hover:text-text-1 sm:block"
             >
               Ask Kelly anything
             </button>
-          )}
+          ) : null}
           <button
             aria-label="Ask Kelly"
             onClick={openDock}

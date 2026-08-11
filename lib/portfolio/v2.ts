@@ -95,6 +95,36 @@ export function winningClaimPayout(p: V2PortfolioPosition, closeQuantity: bigint
 }
 
 /**
+ * How to PRESENT a still-open SETTLED position, given the protocol keeper auto-redeems
+ * every settled position within seconds ([[keeper-redeem-read-gap]]): winners are paid
+ * into the account, losers are cleared at $0. So a settled position that's still net-open
+ * here is one the keeper hasn't processed YET — and the UI must NOT tell the trader to
+ * "claim" money that's about to arrive on its own (it reads as broken, and a manual claim
+ * races the keeper and aborts). States:
+ *   - 'auto_paying'   — settled WIN, keeper expected to pay any moment → "paying out…", no action.
+ *   - 'claim_fallback'— settled WIN but the keeper is clearly LATE (grace passed, or expiry
+ *                       unknown so we can't confirm it's coming) → offer a manual claim so a
+ *                       genuinely-stalled keeper never strands the payout.
+ *   - 'auto_clearing' — settled LOSS (paid nothing) → "Lost"; the keeper clears it, no action.
+ *   - null            — not settled (live / awaiting settlement) → the normal close flow.
+ * The keeper redeems ~15-78s after settlement, so the grace is comfortably past that.
+ */
+export type SettledClaimState = 'auto_paying' | 'claim_fallback' | 'auto_clearing' | null;
+
+/** Grace after a market settles before we assume the keeper is late and expose a manual
+ *  claim. ~3 min is well past the keeper's usual ~15-78s. */
+export const KEEPER_GRACE_MS = 180_000;
+
+export function settledClaimState(p: V2PortfolioPosition, now: number): SettledClaimState {
+  if (!p.settled) return null;
+  if (p.won === false || (p.markValue != null && p.markValue <= 0)) return 'auto_clearing';
+  // Settled winner still net-open → the keeper hasn't redeemed it. Show a manual claim only
+  // once the keeper is clearly late (or expiry is unknown, so we can't confirm it's coming).
+  const late = p.expiry == null || now - p.expiry > KEEPER_GRACE_MS;
+  return late ? 'claim_fallback' : 'auto_paying';
+}
+
+/**
  * What this position ACTUALLY pays if it wins (DUSDC) — the notional `qty` minus
  * the static leverage floor. Unleveraged ⇒ the full qty.
  *

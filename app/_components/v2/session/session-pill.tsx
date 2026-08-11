@@ -16,12 +16,20 @@ export function SessionPill() {
   // the live clock. This component renders null server-side anyway (no wallet).
   const now = useNow(0);
   if (!acct.sessionActive || !acct.sessionExpiryMs) return null;
+  // The session is "on", but if its gas has run below one trade's budget it can't
+  // actually place instantly (trades fall back to a wallet pop-up). Show that honestly
+  // so the pill never claims "no pop-up" when a pop-up is coming.
+  const gasLow = !acct.sessionCanTrade;
   return (
     <span
-      className="chip h-5 shrink-0 whitespace-nowrap px-1.5 text-[9.5px] font-medium uppercase tracking-wider text-up"
-      title="Trades place with no wallet pop-up while this is on"
+      className={`chip h-5 shrink-0 whitespace-nowrap px-1.5 text-[9.5px] font-medium uppercase tracking-wider ${gasLow ? 'text-warn' : 'text-up'}`}
+      title={
+        gasLow
+          ? 'Session gas is low, so trades ask for a wallet approval — top it up to keep placing with no pop-up'
+          : 'Trades place with no wallet pop-up while this is on'
+      }
     >
-      Instant · {countdown(acct.sessionExpiryMs, now)} left
+      {gasLow ? 'Instant · gas low' : `Instant · ${countdown(acct.sessionExpiryMs, now)} left`}
     </span>
   );
 }

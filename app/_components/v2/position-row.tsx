@@ -26,7 +26,7 @@ import { quote as fmtQuote, price, signed, dateUTC, countdown } from '@/lib/form
 import { predictV2Config } from '@/config/predict';
 import { ShareCardModal } from '@/app/_components/positions/share-card-modal';
 import type { ShareCardData } from '@/app/_components/positions/share-card-canvas';
-import { positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { positionWinPayout, settledClaimState, type SettledClaimState, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 const OBJECT_EXPLORER = (id: string) => `https://suiscan.xyz/${predictV2Config.network}/object/${id}`;
 
@@ -57,6 +57,9 @@ export function V2PositionRow({
   const positive = (p.pnl ?? 0) >= 0;
   const isClaim = decided && won === true;
   const worthless = decided && won === false;
+  // The keeper auto-redeems settled rows: a win is "paying out" (or a keeper-late fallback
+  // claim), a loss is auto-cleared. null while live/settling → the normal close/awaiting.
+  const claim = settledClaimState(p, now);
 
   const title = p.underlying ?? 'BTC';
   const condition =
@@ -149,7 +152,7 @@ export function V2PositionRow({
             <LuExternalLink size={13} />
           </a>
         )}
-        <ActionButton result={result} isRange={isRange} busy={busy || !!p.sample} onClick={() => onRedeem(p)} />
+        <ActionButton result={result} claim={claim} isRange={isRange} busy={busy || !!p.sample} onClick={() => onRedeem(p)} />
       </div>
 
       <ShareCardModal open={shareOpen} onClose={() => setShareOpen(false)} data={shareData} />
@@ -185,14 +188,18 @@ function StateChip({ result, isRange }: { result: Result; isRange: boolean }) {
   );
 }
 
-/** The state's primary action: Close (live) · Awaiting (settling) · Claim (won) · Clear (lost). */
+/** The state's primary action. The keeper auto-redeems settled positions, so a win shows a
+ *  non-actionable "Paying out" (or a fallback Claim when the keeper is clearly late) and a
+ *  loss shows "Lost" — only a live close or that fallback claim is a real button. */
 function ActionButton({
   result,
+  claim,
   isRange,
   busy,
   onClick,
 }: {
   result: Result;
+  claim: SettledClaimState;
   isRange: boolean;
   busy: boolean;
   onClick: () => void;
@@ -201,29 +208,42 @@ function ActionButton({
     return (
       <button
         disabled
-        title="The oracle hasn't settled this market yet — claim unlocks once it does."
+        title="The oracle hasn't settled this market yet — the payout follows once it does."
         className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-3 opacity-70"
       >
         Awaiting <LuClock size={12} />
       </button>
     );
   }
-  const isClaim = result === 'won';
-  const worthless = result === 'lost';
+  if (claim === 'auto_paying') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-up/40 bg-up/6 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-up/90">
+        Paying out
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-up motion-safe:animate-pulse" />
+      </span>
+    );
+  }
+  if (claim === 'auto_clearing') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-3">
+        Lost
+      </span>
+    );
+  }
+  const isFallbackClaim = claim === 'claim_fallback';
   return (
     <button
       onClick={onClick}
       disabled={busy}
+      title={isFallbackClaim ? 'The auto-payout is late — claim it yourself' : undefined}
       className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 ${
-        worthless
-          ? 'border-line text-text-3 hover:bg-white/[0.04] hover:text-text-2'
-          : isClaim
-            ? 'border-up/50 bg-up/10 text-up hover:bg-up/20'
-            : 'border-down/45 text-down hover:bg-down/10'
+        isFallbackClaim
+          ? 'border-up/50 bg-up/10 text-up hover:bg-up/20'
+          : 'border-down/45 text-down hover:bg-down/10'
       }`}
     >
-      {worthless ? 'Clear' : isClaim ? 'Claim' : isRange ? 'Close' : 'Close'}
-      {worthless ? <LuCircleX size={12} /> : isClaim ? <LuDownload size={12} /> : <LuCircleX size={12} />}
+      {isFallbackClaim ? 'Claim' : isRange ? 'Close' : 'Close'}
+      {isFallbackClaim ? <LuDownload size={12} /> : <LuCircleX size={12} />}
     </button>
   );
 }

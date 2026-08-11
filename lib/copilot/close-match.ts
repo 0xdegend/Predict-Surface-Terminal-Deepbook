@@ -47,10 +47,12 @@ export function matchPositionsToClose(closeable: V2PortfolioPosition[], sel: Clo
   return { action: 'ask', positions: m };
 }
 
-/** A short label for listing a position: "UP $65,000 · won, ready to redeem". */
+/** A short label for listing a position: "UP $65,000 · won, paying out". Settled positions
+ *  are auto-redeemed by the keeper, so a win reads "paying out" (not "ready to redeem") and
+ *  a loss just "lost" (no "clear" — the keeper clears it). See [[keeper-redeem-read-gap]]. */
 export function positionCloseLabel(p: V2PortfolioPosition): string {
   const dir = p.direction === 'Down' ? 'DOWN' : p.direction === 'Up' ? 'UP' : 'Range';
   const where = p.direction === 'Range' && p.band ? `$${num(p.band.lower, 0)}–$${num(p.band.higher, 0)}` : p.strike != null ? `$${num(p.strike, 0)}` : '';
-  const state = !p.settled ? 'open' : p.won === false ? 'lost, can clear' : 'won, ready to redeem';
+  const state = !p.settled ? 'open' : p.won === false ? 'lost' : 'won, paying out';
   return `${dir} ${where} · ${state}`.replace('  ', ' ');
 }

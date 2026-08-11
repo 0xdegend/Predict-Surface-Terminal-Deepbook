@@ -468,12 +468,12 @@ describe('respondToIntent — portfolio (how am I doing + balances)', () => {
     expect(blob).not.toMatch(/\d+ open bets/); // not the plural roll-up
   });
 
-  it('surfaces claimable winnings when there are settled wins', () => {
+  it('surfaces settled winnings as auto-paid (the keeper redeems them, not a "go redeem" chore)', () => {
     const r = respondToIntent(
       { kind: 'portfolio' },
       ctx({ wallet: funded, portfolio: { ...PF, claimable: 33, claimableCount: 1 } }),
     );
-    expect(r.text.join(' ')).toMatch(/waiting to be claimed/i);
+    expect(r.text.join(' ')).toMatch(/paid into your account automatically/i);
   });
 
   it('no open bets → says so and shows the balance', () => {

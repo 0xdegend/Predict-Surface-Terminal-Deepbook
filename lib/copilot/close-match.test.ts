@@ -55,7 +55,7 @@ describe('matchPositionsToClose', () => {
 describe('positionCloseLabel', () => {
   it('labels side, strike, and state', () => {
     expect(positionCloseLabel(upLive)).toMatch(/UP \$65,000 · open/);
-    expect(positionCloseLabel(upWon)).toMatch(/UP \$66,000 · won, ready to redeem/);
-    expect(positionCloseLabel(upLost)).toMatch(/lost, can clear/);
+    expect(positionCloseLabel(upWon)).toMatch(/UP \$66,000 · won, paying out/);
+    expect(positionCloseLabel(upLost)).toMatch(/· lost/);
   });
 });

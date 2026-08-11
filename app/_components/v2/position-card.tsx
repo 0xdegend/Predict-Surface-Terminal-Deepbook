@@ -37,7 +37,7 @@ import { quote as fmtQuote, price, pct, signed, dateUTC, countdown, shortId } fr
 import { predictV2Config } from '@/config/predict';
 import { ShareCardModal } from '@/app/_components/positions/share-card-modal';
 import type { ShareCardData } from '@/app/_components/positions/share-card-canvas';
-import { positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { positionWinPayout, settledClaimState, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { usePositionCashflow } from '@/lib/hooks/use-position-cashflow';
 
 const OBJECT_EXPLORER = (id: string) =>
@@ -73,8 +73,9 @@ export function V2PositionCard({
   // while open or unavailable, so the derived tiles stay the source of truth.
   const { data: cashflow } = usePositionCashflow(p.marketId, p.positionRootId, decided && !p.sample);
   const positive = (p.pnl ?? 0) >= 0;
-  const isClaim = decided && won === true;
-  const worthless = decided && won === false;
+  // How to present a settled-but-still-open row: the keeper auto-redeems it, so a win is
+  // "paying out" (or a keeper-late fallback claim) and a loss is auto-cleared. null = live.
+  const claim = settledClaimState(p, now);
 
   const title = p.underlying ?? (p.marketId ? shortId(p.marketId) : 'Position');
   const kindLabel = isRange ? 'Range' : 'Position';
@@ -292,25 +293,40 @@ export function V2PositionCard({
           <p className="font-sans text-[10px] leading-snug text-text-3">
             {p.sample
               ? 'Sample position — live ones appear here once you trade.'
-              : worthless
-                ? `Settled out of the ${isRange ? 'band' : 'money'} — this bet paid nothing.`
-                : result === 'settling'
-                  ? "Expired — waiting on the oracle's final settlement price."
-                  : isRange
-                    ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
-                    : 'Probabilistic · resolved by oracle data.'}
+              : claim === 'auto_clearing'
+                ? `Settled out of the ${isRange ? 'band' : 'money'} — this bet paid nothing, cleared automatically.`
+                : claim === 'auto_paying'
+                  ? 'Settled a win — the payout lands in your account automatically, no action needed.'
+                  : claim === 'claim_fallback'
+                    ? 'Settled a win — the automatic payout is taking longer than usual, so you can claim it yourself.'
+                    : result === 'settling'
+                      ? "Expired — waiting on the oracle's final settlement price."
+                      : isRange
+                        ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
+                        : 'Probabilistic · resolved by oracle data.'}
           </p>
           <div className="flex items-center gap-2">
             <ShareButton onClick={() => setShareOpen(true)} />
             {result === 'settling' ? (
               <button
                 disabled
-                title="The oracle hasn't settled this market yet — redeem unlocks once it does."
+                title="The oracle hasn't settled this market yet — the payout follows once it does."
                 className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3 opacity-70"
               >
                 Awaiting settlement
                 <LuClock size={14} />
               </button>
+            ) : claim === 'auto_paying' ? (
+              // Keeper auto-pays winners — no action, just show it's landing.
+              <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-up/40 bg-up/6 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-up/90">
+                Paying out
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-up motion-safe:animate-pulse" />
+              </span>
+            ) : claim === 'auto_clearing' ? (
+              // Keeper clears losers — nothing to do, just the verdict.
+              <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3">
+                Lost
+              </span>
             ) : (
               <button
                 onClick={() => onRedeem(p)}
@@ -318,28 +334,24 @@ export function V2PositionCard({
                 title={
                   p.sample
                     ? 'Sample position — nothing to redeem'
-                    : worthless
-                      ? 'Remove this settled position — it paid nothing'
+                    : claim === 'claim_fallback'
+                      ? "The auto-payout is late — claim it yourself"
                       : undefined
                 }
                 className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
-                  worthless
-                    ? 'border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2'
-                    : isClaim
-                      ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
-                      : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
+                  claim === 'claim_fallback'
+                    ? 'border-up/50 bg-up/10 text-up shadow-[0_0_22px_-8px_var(--accent-glow)] hover:bg-up/20'
+                    : 'border-down/45 text-down hover:border-down/70 hover:bg-down/10'
                 }`}
               >
-                {worthless
-                  ? 'Clear'
-                  : isClaim
-                    ? isRange
-                      ? 'Redeem range'
-                      : 'Claim payout'
-                    : isRange
-                      ? 'Close range'
-                      : 'Close position'}
-                {worthless ? <LuCircleX size={14} /> : isClaim ? <LuDownload size={14} /> : <LuCircleX size={14} />}
+                {claim === 'claim_fallback'
+                  ? isRange
+                    ? 'Claim range'
+                    : 'Claim payout'
+                  : isRange
+                    ? 'Close range'
+                    : 'Close position'}
+                {claim === 'claim_fallback' ? <LuDownload size={14} /> : <LuCircleX size={14} />}
               </button>
             )}
           </div>

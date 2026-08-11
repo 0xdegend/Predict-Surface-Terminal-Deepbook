@@ -1250,7 +1250,9 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
   }
   if (p!.claimableCount > 0) {
     const one = p!.claimableCount === 1;
-    text.push(`${fmt(p!.claimable)} is waiting to be claimed from ${p!.claimableCount} settled ${one ? 'win' : 'wins'}. Open Portfolio to redeem ${one ? 'it' : 'them'}.`);
+    // Settled wins are auto-paid by the protocol keeper ([[keeper-redeem-read-gap]]), so
+    // this is money landing on its own, not a "go redeem" chore.
+    text.push(`${fmt(p!.claimable)} from ${p!.claimableCount} settled ${one ? 'win' : 'wins'} is being paid into your account automatically.`);
   }
   if (p!.settledLostCount > 0 && p!.openCount === 0 && p!.claimableCount === 0) {
     text.push(`${p!.settledLostCount} settled ${p!.settledLostCount === 1 ? 'bet' : 'bets'} didn't win this time.`);

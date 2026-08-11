@@ -5,11 +5,14 @@ import {
   settleV2Position,
   positionMarkPrice,
   positionWinPayout,
+  settledClaimState,
+  KEEPER_GRACE_MS,
   buildV2Spark,
   deriveV2HistoryFromOrders,
   summarizePositions,
   v2EntryFees,
 } from './v2';
+import type { V2PortfolioPosition } from './v2';
 import type { V2Position, V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { SviFloat } from '@/lib/svi/svi';
 
@@ -36,6 +39,33 @@ const MARKET = {
   tick_size: '10000000', // $0.01 (1e9-scaled)
   admission_tick_size: '1000000000',
 } as unknown as V2Market;
+
+describe('settledClaimState (keeper auto-payout framing)', () => {
+  const now = 10_000_000;
+  const base = (o: Partial<V2PortfolioPosition>): V2PortfolioPosition =>
+    ({ settled: true, won: true, expiry: now - 1000, markValue: 20, qty: 10, key: 'k', direction: 'Up', ...o } as V2PortfolioPosition);
+
+  it('a live (unsettled) position has no claim state', () => {
+    expect(settledClaimState(base({ settled: false }), now)).toBeNull();
+  });
+
+  it('a freshly-settled win is auto-paying (no manual claim yet — the keeper handles it)', () => {
+    expect(settledClaimState(base({ expiry: now - 5000 }), now)).toBe('auto_paying');
+  });
+
+  it('a settled win the keeper is clearly late on offers a fallback claim', () => {
+    expect(settledClaimState(base({ expiry: now - KEEPER_GRACE_MS - 1000 }), now)).toBe('claim_fallback');
+  });
+
+  it('unknown expiry falls back to a manual claim (never strand a payout we can’t confirm is coming)', () => {
+    expect(settledClaimState(base({ expiry: undefined }), now)).toBe('claim_fallback');
+  });
+
+  it('a settled loss is auto-clearing (nothing to claim; the keeper clears it)', () => {
+    expect(settledClaimState(base({ won: false, markValue: 0 }), now)).toBe('auto_clearing');
+    expect(settledClaimState(base({ won: true, markValue: 0 }), now)).toBe('auto_clearing'); // paid nothing
+  });
+});
 
 describe('normalizeV2Position (real indexer row)', () => {
   it('converts the strike TICK to a price via tick_size (not toFloat of the raw tick)', () => {

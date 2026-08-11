@@ -340,12 +340,14 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
 
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} className="mb-4" />}
 
-      {/* Ready to redeem (settled) — ALWAYS visible; it's claimable money and
-          should never sit behind a tab. */}
+      {/* Settled wins the protocol is auto-paying into the account (the keeper redeems
+          every settled position within seconds — see [[keeper-redeem-read-gap]]). Kept
+          visible as positive feedback + the keeper-late fallback claim lives on each card;
+          it is NOT a "you must claim" queue. */}
       {redeemable.length > 0 && (
         <Section
-          title="Ready to redeem"
-          hint={`${fmtQuote(claimValue)} ${predictV2Config.quote.symbol} to claim`}
+          title="Paying out"
+          hint={`${fmtQuote(claimValue)} ${predictV2Config.quote.symbol} landing automatically`}
           action={<ViewToggle view={redeemView} onChange={changeRedeemView} />}
         >
           <PositionList view={redeemView} positions={redeemable} now={now} busy={!!acct.busy} onRedeem={setRedeeming} />

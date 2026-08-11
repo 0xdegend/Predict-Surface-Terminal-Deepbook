@@ -17,12 +17,13 @@ import { GlassError } from '../ui/glass-error';
 import Link from 'next/link';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useNow } from '@/lib/hooks/use-now';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { predictV2Config } from '@/config/predict';
 import { quote as fmtQuote, price, signed } from '@/lib/format';
 import { V2RedeemModal } from './redeem-modal';
 import { useClaimCelebration } from './use-claim-celebration';
-import { winningClaimPayout, positionWinPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { winningClaimPayout, positionWinPayout, settledClaimState, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 
 /** Max position cards shown in the rail before deferring to Portfolio. */
 const MAX_SHOWN = 3;
@@ -32,6 +33,9 @@ export function V2PositionsPanel() {
   // SSR has no wallet but the client restores one synchronously — branch on the
   // owner only after mount so the server and first client paint match.
   const mounted = useMounted();
+  // Live clock (seed 0 → real time right after mount) for the keeper-grace check that
+  // decides whether a settled win still shows a manual claim.
+  const now = useNow(0);
   const { positions, isLoading } = useV2PortfolioPositions(acct.accountId, acct.owner);
   const [redeeming, setRedeeming] = useState<V2PortfolioPosition | null>(null);
   const { celebrate, overlay: claimCelebration } = useClaimCelebration();
@@ -78,7 +82,7 @@ export function V2PositionsPanel() {
       ) : (
         <>
           {shown.map((p) => (
-            <PositionRow key={p.key} p={p} sym={sym} busy={!!acct.busy} onClose={() => setRedeeming(p)} />
+            <PositionRow key={p.key} p={p} sym={sym} now={now} busy={!!acct.busy} onClose={() => setRedeeming(p)} />
           ))}
           {open.length > MAX_SHOWN && (
             <Link href="/v2/portfolio" className="text-[10px] text-text-3 underline hover:text-text-2">
@@ -106,11 +110,13 @@ export function V2PositionsPanel() {
 function PositionRow({
   p,
   sym,
+  now,
   busy,
   onClose,
 }: {
   p: V2PortfolioPosition;
   sym: string;
+  now: number;
   busy: boolean;
   onClose: () => void;
 }) {
@@ -120,9 +126,10 @@ function PositionRow({
   const tone = isRange || up ? 'up' : 'down';
   const dirLabel = isRange ? 'RANGE' : up ? 'UP' : 'DOWN';
 
-  // Settled against the bet → marks to 0, nothing to redeem, so "Clear" it.
-  const worthless = p.settled && (p.won === false || (p.markValue != null && p.markValue <= 0));
-  const label = worthless ? 'Clear' : p.settled ? 'Redeem' : 'Close';
+  // The keeper auto-redeems settled positions, so a settled row is either paying out on
+  // its own (no action), a keeper that's clearly late (offer a fallback claim), or a loss
+  // being auto-cleared. A live row still closes normally.
+  const claim = settledClaimState(p, now);
 
   const hasPnl = p.pnl != null;
   const pnlPct = p.cost && p.cost > 0 ? (p.pnl ?? 0) / p.cost : 0;
@@ -145,7 +152,9 @@ function PositionRow({
           </span>
         </span>
         <span className="text-[10px] text-text-3">
-          {fmtQuote(positionWinPayout(p))} {sym} to win
+          {claim === 'auto_paying' || claim === 'claim_fallback'
+            ? `${fmtQuote(positionWinPayout(p))} ${sym} won`
+            : `${fmtQuote(positionWinPayout(p))} ${sym} to win`}
           {hasPnl && (
             <>
               {' '}·{' '}
@@ -157,13 +166,22 @@ function PositionRow({
           )}
         </span>
       </div>
-      <button
-        onClick={onClose}
-        disabled={busy || p.sample}
-        className="ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
-      >
-        {label}
-      </button>
+      {/* Auto-paying win → a quiet "paying out" note, no button (the keeper pays it).
+          Auto-clearing loss → "Lost", no button. Only a live close or a keeper-late
+          fallback claim gets an action. */}
+      {claim === 'auto_paying' ? (
+        <span className="shrink-0 px-2.5 py-1 text-[10px] text-up/80">Paying out…</span>
+      ) : claim === 'auto_clearing' ? (
+        <span className="shrink-0 px-2.5 py-1 text-[10px] text-text-3">Lost</span>
+      ) : (
+        <button
+          onClick={onClose}
+          disabled={busy || p.sample}
+          className="shrink-0 ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
+        >
+          {claim === 'claim_fallback' ? 'Claim' : 'Close'}
+        </button>
+      )}
     </div>
   );
 }

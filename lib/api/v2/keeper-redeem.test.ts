@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { redeemKey, openMarketsIn } from './onchain';
+import { redeemKey, openMarketsIn, openRootsByMarket } from './onchain';
 import type { V2OrderEvent } from './types';
 
 /**
@@ -43,6 +43,35 @@ describe('openMarketsIn', () => {
 
   it('keeps a partially-closed position open', () => {
     expect(openMarketsIn([mint('A', '0xmarketA', 100), redeem('A', 40, 2000)])).toEqual(['0xmarketA']);
+  });
+
+  it('does not cap the markets it reports (every open market is scanned, not just the first 12)', () => {
+    // A heavy account with 20 open markets: the fix scans ALL of them, so a keeper-claimed
+    // position in the 13th+ market is no longer stranded as "ready to redeem".
+    const orders = Array.from({ length: 20 }, (_, i) => mint(`root${i}`, `0xmarket${i}`, 100));
+    expect(openMarketsIn(orders)).toHaveLength(20);
+  });
+});
+
+describe('openRootsByMarket', () => {
+  it('groups each open market to its still-open roots (drives the early-stop per-market scan)', () => {
+    const byMarket = openRootsByMarket([
+      mint('A', '0xmarketA', 100),
+      mint('B', '0xmarketA', 100), // two open positions in the same market
+      mint('C', '0xmarketB', 100),
+      redeem('C', 100, 2000), // C fully closed → market B drops out entirely
+    ]);
+    expect([...byMarket.keys()]).toEqual(['0xmarketA']);
+    expect(byMarket.get('0xmarketA')).toEqual(new Set(['A', 'B']));
+  });
+
+  it('drops a root from its market set once its redeem is folded (so that scan can stop)', () => {
+    const byMarket = openRootsByMarket([
+      mint('A', '0xmarketA', 100),
+      mint('B', '0xmarketA', 100),
+      redeem('A', 100, 2000), // A closed; only B is still open
+    ]);
+    expect(byMarket.get('0xmarketA')).toEqual(new Set(['B']));
   });
 });
 

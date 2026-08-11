@@ -777,10 +777,19 @@ export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetO
   //     dedupe by content so a self-signed redeem already present isn't counted twice.
   const acct = acctId ?? union.find((o) => o.account_id)?.account_id;
   if (acct) {
-    const markets = openMarketsIn(union).slice(0, 12);
+    // Scan EVERY market with a still-open position for this account. This used to cap at
+    // 12, which STRANDED keeper-claimed positions past the 12th open market: they never
+    // got folded, so they piled up as fake "open" — which in turn pushed genuinely-open
+    // markets further out of range, a compounding gap (a heavy session-trader would see
+    // long-settled, already-paid wins stuck on "ready to redeem"). Each per-market scan
+    // stops as soon as that market's open roots are accounted for, so a settled market
+    // costs ~1 page (the keeper's batch redeems are the market's newest txs); the cap is
+    // now just a sanity bound on total fan-out.
+    const byMarket = openRootsByMarket(union);
+    const markets = [...byMarket.keys()].slice(0, KEEPER_SCAN_MARKET_CAP);
     if (markets.length) {
       const have = new Set(union.filter((o) => o.kind !== 'order_minted').map(redeemKey));
-      const extra = await Promise.all(markets.map((m) => scanMarketAccountRedeems(m, String(acct), opts)));
+      const extra = await Promise.all(markets.map((m) => scanMarketAccountRedeems(m, String(acct), byMarket.get(m)!, opts)));
       for (const r of extra.flat()) if (!have.has(redeemKey(r))) union.push(r);
     }
   }
@@ -796,9 +805,16 @@ export function redeemKey(o: V2OrderEvent): string {
   return `${root}:${o.quantity_closed ?? ''}:${String(ts)}`;
 }
 
-/** Distinct markets that still show a net-open position in `orders` (Σ minted > Σ closed per
- *  root) — the only markets worth a per-market keeper-redeem scan. Exported for unit tests. */
-export function openMarketsIn(orders: V2OrderEvent[]): string[] {
+/** Sanity bound on how many markets get a per-market keeper-redeem scan per read. Each scan
+ *  is cheap (early-break, ~1 page for a settled market), so this can be generous — it just
+ *  guards against a pathological account with a huge open-position count. */
+const KEEPER_SCAN_MARKET_CAP = 50;
+
+/** Every market with a still-open position for this account (Σ minted > Σ closed per root),
+ *  each mapped to its set of still-open roots. The markets are the targets for a per-market
+ *  keeper-redeem scan; the roots let each scan STOP as soon as it has found their redeems
+ *  (so a settled market costs ~1 page). Exported for unit tests. */
+export function openRootsByMarket(orders: V2OrderEvent[]): Map<string, Set<string>> {
   const minted = new Map<string, bigint>();
   const closed = new Map<string, bigint>();
   const market = new Map<string, string>();
@@ -812,11 +828,21 @@ export function openMarketsIn(orders: V2OrderEvent[]): string[] {
       closed.set(root, (closed.get(root) ?? 0n) + big(o.quantity_closed));
     }
   }
-  const out = new Set<string>();
+  const byMarket = new Map<string, Set<string>>();
   for (const [root, m] of minted) {
-    if (m - (closed.get(root) ?? 0n) > 0n && market.has(root)) out.add(market.get(root)!);
+    if (m - (closed.get(root) ?? 0n) > 0n && market.has(root)) {
+      const mk = market.get(root)!;
+      let set = byMarket.get(mk);
+      if (!set) byMarket.set(mk, (set = new Set<string>()));
+      set.add(root);
+    }
   }
-  return [...out];
+  return byMarket;
+}
+
+/** Distinct markets that still show a net-open position in `orders`. Exported for unit tests. */
+export function openMarketsIn(orders: V2OrderEvent[]): string[] {
+  return [...openRootsByMarket(orders).keys()];
 }
 
 /** One market's redeem events for a given account, read via the market object's OWN tx log
@@ -828,10 +854,15 @@ export function openMarketsIn(orders: V2OrderEvent[]): string[] {
 async function scanMarketAccountRedeems(
   marketId: string,
   accountId: string,
+  wantRoots: Set<string>,
   opts?: GetOptions,
 ): Promise<V2OrderEvent[]> {
   const want = accountId.toLowerCase();
   const out: V2OrderEvent[] = [];
+  // Stop as soon as every open root in this market has its redeem — a settled market's
+  // keeper redeems are its newest txs, so this is usually satisfied on page 1. (A LIVE
+  // market has no redeem, so `remaining` never empties and it just pages to the cap.)
+  const remaining = new Set(wantRoots);
   let cursor: unknown = null;
   const PAGE = 50;
   for (let i = 0; i < 3; i++) {
@@ -848,8 +879,10 @@ async function scanMarketAccountRedeems(
         if (String(p.account_id ?? '').toLowerCase() !== want) continue;
         if (String(p.expiry_market_id ?? '') !== marketId) continue;
         out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
+        remaining.delete(String(p.position_root_id ?? p.order_id ?? ''));
       }
     }
+    if (remaining.size === 0) break; // every open root here is accounted for — stop early
     if (!r?.hasNextPage || !r?.nextCursor) break;
     cursor = r.nextCursor;
   }

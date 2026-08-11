@@ -53,6 +53,7 @@ import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
 import { InstantTradingToggle } from './session/instant-trading-toggle';
+import { SessionGasWarning } from './session/session-gas-warning';
 import { SharedTradeBanner } from './share/shared-trade-banner';
 import { TradeShareModal } from './share/trade-share-modal';
 import { buildRecipe } from '@/lib/share/trade-link';
@@ -702,6 +703,9 @@ export function V2TradeTicket({
     <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
       <SharedTradeBanner />
       {grantCta}
+      {/* Instant trading is on but its session key is low on gas → say so and offer a
+          top-up, so a fallback wallet pop-up never reads as "the session broke". */}
+      <SessionGasWarning />
       {/* Back to step 1 to change the strike (read-only on the bet step). Sits at
           the very top, above the guide, so it's the first thing on the bet step. */}
       {!rangeMode && step === 2 && (
@@ -930,13 +934,15 @@ export function V2TradeTicket({
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'
-            : armInstant
-              ? acct.gasless
-                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
-                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
-              : acct.gasless
-                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
-                : 'Review your position, then approve it in your wallet'
+            : acct.sessionActive
+              ? 'Instant trading is low on gas, so this one needs a wallet approval. Top it up to go pop-up-free again.'
+              : armInstant
+                ? acct.gasless
+                  ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
+                  : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
+                : acct.gasless
+                  ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                  : 'Review your position, then approve it in your wallet'
         }
       />
 
