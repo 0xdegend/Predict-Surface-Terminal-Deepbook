@@ -645,6 +645,24 @@ describe('placeConfirmation (confirm + inline stake/leverage override)', () => {
     expect(placeConfirmation('trade it 2x')).toEqual({ leverage: 2 });
   });
 
+  it('a verb led straight into a size ("trade with 1 dusdc", no "it") is a sized confirm', () => {
+    // The reported bug: "trade with 1 dusdc" must place the pending bet, not fall
+    // through to a fresh wizard / navigate. A confirm verb + a pure size, no strike,
+    // no side.
+    expect(placeConfirmation('trade with 1 dusdc')).toEqual({ stake: 1 });
+    expect(placeConfirmation('place 5 dusdc')).toEqual({ stake: 5 });
+    expect(placeConfirmation('bet $10 at 2x')).toEqual({ stake: 10, leverage: 2 });
+    expect(placeConfirmation('trade 2x')).toEqual({ leverage: 2 });
+  });
+
+  it('a size that also names a strike or a side is a fresh spec, not a confirm', () => {
+    // A strike → start_trade owns it (a brand-new order, not a tweak to the pending bet).
+    expect(placeConfirmation('trade 66000 with 5 dusdc')).toBeNull();
+    // A direction → route to the directional suggestion, not a blind place.
+    expect(placeConfirmation('trade up with 1 dusdc')).toBeNull();
+    expect(placeConfirmation('buy down 2 dusdc')).toBeNull();
+  });
+
   it('handles "trade it with 1 dusdc and 2x leverage" (the reported phrase) either word order', () => {
     expect(placeConfirmation('trade it with 1 dusdc and 2x leverage')).toEqual({ stake: 1, leverage: 2 });
     expect(placeConfirmation('trade it with 1 dusdc and 2 leverage')).toEqual({ stake: 1, leverage: 2 });

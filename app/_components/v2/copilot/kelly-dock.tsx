@@ -388,7 +388,33 @@ function KellyPanel({
       const base = latestBet(messages);
       if (base) {
         if (base.expiry <= now) {
-          pushReply(t, { text: ['That market just expired, so I can’t place that one. Ask me for a fresh bet and I’ll set it right up.'] });
+          // That market expired while they were reading. Don't dead-end or send them
+          // off to the full page: set up a FRESH same-side, same-conviction bet
+          // carrying the size they asked for, show it right here in the drawer, and
+          // make it the new "trade it" target so they can place a live one in place.
+          pushUser(t);
+          const stake = confirm.stake ?? base.amount;
+          const leverage = confirm.leverage ?? base.leverage;
+          const fresh = readReply(
+            { kind: 'directional_bet', dir: base.isUp ? 'up' : 'down', conviction: base.conviction, horizon: 'soonest' },
+            now,
+          );
+          if (fresh.bet) {
+            const sized: BetSuggestion = { ...fresh.bet, amount: stake ?? fresh.bet.amount, leverage: leverage ?? fresh.bet.leverage };
+            const amt = sized.amount;
+            const stakeStr = amt == null ? '' : ` with your ${Number.isInteger(amt) ? amt : amt.toFixed(2)} DUSDC`;
+            setMessages((m) => [
+              ...m,
+              {
+                id: nextId(),
+                role: 'assistant',
+                text: [`That one just expired, so here’s a fresh ${base.isUp ? 'UP' : 'DOWN'} bet${stakeStr}. Say “trade it” to place it.`],
+                bet: sized,
+              },
+            ]);
+          } else {
+            pushBot(["That one just expired, and I couldn’t find a fresh market this second. Give it a moment and ask me for a bet."]);
+          }
           return;
         }
         pushUser(t);

@@ -295,7 +295,21 @@ export function placeConfirmation(message: string): { stake?: number; leverage?:
   // "trade 66000" (a new spec) from matching. Plus standalone affirmations.
   const refConfirm = /\b(?:trade|place|open|send|do|lock|buy|book)\s+(?:it|this|that|(?:the |my )?(?:bet|trade|position|order))\b/.test(t);
   const bareConfirm = /^(?:yes|yep|yeah|yup|ok|okay|sure|confirm|do it|go|go for it|let'?s go|lets go|send it|lock it in|place it|trade it|open it)\b/.test(t);
-  if (!refConfirm && !bareConfirm) return null;
+  // "trade with 1 dusdc" / "place 5 dusdc" / "bet $10 at 2x" — a confirm VERB led
+  // straight into a SIZE (a dusdc stake, a $ amount, or an Nx leverage): the same
+  // sizing tweak as "trade IT with 1 dusdc", just without the "it" anchor. This is
+  // the very common way people confirm ("trade with 1 dusdc"), so it must place the
+  // pending bet, not fall through to start a fresh wizard / navigate. Only counts
+  // when it names NO strike and NO side — a strike or a direction makes it a new
+  // spec (parseIntent → start_trade owns those); a plain size is a confirm.
+  const namesStrike = /\b\d[\d,]{3,}(?:\.\d+)?\b(?!\s*(?:x\b|dusdc\b))/.test(t);
+  const namesSide = has(t, UP_WORDS) || has(t, DOWN_WORDS);
+  const sizedConfirm =
+    !namesStrike &&
+    !namesSide &&
+    /^(?:trade|place|open|send|lock|buy|book|bet|stake|put|go)\b/.test(t) &&
+    /\$\d|\b\d[\d,]*(?:\.\d+)?\s*dusdc\b|\b\d+(?:\.\d+)?\s*x\b/.test(t);
+  if (!refConfirm && !bareConfirm && !sizedConfirm) return null;
 
   // Optional stake / leverage overrides for the pending bet. Leverage is read from
   // either order — "leverage 2" / "lev 2x", "2x leverage" / "2 leverage", or a bare
