@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSkewUserStats } from './user-stats';
+import { computeSkewUserStats, buildJoinCurve } from './user-stats';
 import type { V2LeaderboardRow } from './v2';
 import type { PastPrediction } from '@/lib/portfolio/history';
 
@@ -128,5 +128,55 @@ describe('computeSkewUserStats', () => {
     expect(s.avgNetPnl).toBe(0);
     expect(s.topTraders).toEqual([]);
     expect(s.joinSeries).toEqual([]);
+    expect(s.joinTimes).toEqual([]);
+  });
+});
+
+describe('buildJoinCurve', () => {
+  // Joins at -20d, -10d, -6d, -2d, -1d (sorted asc).
+  const joins = [NOW - 20 * DAY, NOW - 10 * DAY, NOW - 6 * DAY, NOW - 2 * DAY, NOW - 1 * DAY];
+
+  it('empty input → empty series, 0 joined', () => {
+    const c = buildJoinCurve([], null, NOW);
+    expect(c).toEqual({ series: [], joined: 0, windowLabel: 'all time' });
+  });
+
+  it('all-time: running total that tops out at the trader count', () => {
+    const c = buildJoinCurve(joins, null, NOW, 48);
+    expect(c.joined).toBe(5);
+    expect(c.windowLabel).toBe('all time');
+    expect(c.series).toHaveLength(48); // resampled to evenly-spaced buckets (smooth)
+    expect(c.series[0].y).toBe(1); // starts at the first joiner
+    expect(c.series[c.series.length - 1].y).toBe(5); // ends at the total
+    // x is evenly spaced, so gaps are uniform (this is what makes the curve smooth).
+    const dx = c.series[1].x - c.series[0].x;
+    expect(c.series[2].x - c.series[1].x).toBeCloseTo(dx, 3);
+  });
+
+  it('7-day window: counts only new joiners in the window, rebased to 0', () => {
+    const c = buildJoinCurve(joins, 7 * DAY, NOW, 48);
+    expect(c.joined).toBe(3); // -6d, -2d, -1d
+    expect(c.windowLabel).toBe('7 days');
+    expect(c.series[0].y).toBe(0); // rebased at the window start
+    expect(c.series[c.series.length - 1].y).toBe(3); // rises to the new-joiner count
+  });
+
+  it('1-day window: only the last day counts', () => {
+    const c = buildJoinCurve(joins, 1 * DAY, NOW, 48);
+    expect(c.joined).toBe(1); // just -1d
+    expect(c.series[c.series.length - 1].y).toBe(1);
+  });
+
+  it('quiet window → 0 joined (caller shows the empty state)', () => {
+    const c = buildJoinCurve([NOW - 30 * DAY], 7 * DAY, NOW, 48);
+    expect(c.joined).toBe(0);
+    expect(c.series.every((p) => p.y === 0)).toBe(true);
+  });
+
+  it('curve is monotonically non-decreasing (never dips)', () => {
+    const c = buildJoinCurve(joins, null, NOW, 48);
+    for (let i = 1; i < c.series.length; i++) {
+      expect(c.series[i].y).toBeGreaterThanOrEqual(c.series[i - 1].y);
+    }
   });
 });

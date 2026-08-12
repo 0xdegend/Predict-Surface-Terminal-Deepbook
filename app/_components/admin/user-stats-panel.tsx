@@ -9,7 +9,7 @@
  * resolved trade history (real win-rate + a join-over-time curve). Numbers grow on
  * their own as the builder code gets wired and users trade live — see computeSkewUserStats.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LuUsers,
   LuUserCheck,
@@ -22,7 +22,7 @@ import { predictV2Config } from '@/config/predict';
 import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
 import { useNow } from '@/lib/hooks/use-now';
 import { legacyHistoryByOwner } from '@/lib/portfolio/legacy-history';
-import { computeSkewUserStats } from '@/lib/leaderboard/user-stats';
+import { computeSkewUserStats, buildJoinCurve } from '@/lib/leaderboard/user-stats';
 import { num, compact } from '@/lib/format';
 import { LineChart } from '@/app/_components/analytics/charts/line-chart';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
@@ -32,6 +32,14 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const signedUsd = (n: number) => `${n < 0 ? '-' : '+'}$${num(Math.abs(n), 2)}`;
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
+type JoinRange = '1d' | '7d' | '14d' | 'all';
+const DAY_MS = 86_400_000;
+const JOIN_RANGE_MS: Record<Exclude<JoinRange, 'all'>, number> = {
+  '1d': DAY_MS,
+  '7d': 7 * DAY_MS,
+  '14d': 14 * DAY_MS,
+};
+
 export function UserStatsPanel() {
   const { skewRows, skewLoading } = useV2Leaderboard();
   const now = useNow(0);
@@ -39,6 +47,15 @@ export function UserStatsPanel() {
   const stats = useMemo(
     () => computeSkewUserStats(skewRows, legacyHistoryByOwner(), now),
     [skewRows, now],
+  );
+
+  // Join-curve time window. Default to all-time (the running total), with 1d/7d/14d to
+  // read how many joined in that window instead.
+  const [range, setRange] = useState<JoinRange>('all');
+  const windowMs = range === 'all' ? null : JOIN_RANGE_MS[range];
+  const curve = useMemo(
+    () => buildJoinCurve(stats.joinTimes, windowMs, now),
+    [stats.joinTimes, windowMs, now],
   );
 
   const loading = skewLoading && skewRows.length === 0;
@@ -63,21 +80,35 @@ export function UserStatsPanel() {
         {/* Join-over-time curve. */}
         <div className="lg:col-span-3">
           <div className="glass-card flex h-full flex-col gap-3 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="eyebrow">Users joining over time</span>
-              <span className="text-[10px] text-text-3">cumulative traders</span>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="eyebrow">Users joining over time</span>
+                {!loading && stats.joinTimes.length > 0 && (
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-mono text-[22px] leading-none tabular-nums text-text-1">
+                      {range === 'all' ? num(curve.joined, 0) : `+${num(curve.joined, 0)}`}
+                    </span>
+                    <span className="text-[10px] text-text-3">
+                      {range === 'all' ? 'traders total' : `new · last ${curve.windowLabel}`}
+                    </span>
+                  </span>
+                )}
+              </div>
+              <RangeTabs value={range} onChange={setRange} />
             </div>
-            {stats.joinSeries.length >= 2 ? (
+            {!loading && stats.joinTimes.length > 0 && curve.joined > 0 ? (
               <LineChart
-                points={stats.joinSeries}
+                points={curve.series}
                 height={180}
                 yFormat={(v) => num(v, 0)}
-                xCaptions={[stats.joinSeries[0].label, stats.joinSeries[stats.joinSeries.length - 1].label]}
+                xCaptions={[curve.series[0].label, curve.series[curve.series.length - 1].label]}
               />
             ) : (
               <div className="flex h-44 items-center justify-center">
                 <p className="max-w-xs text-center text-[11px] leading-relaxed text-text-3">
-                  Not enough history yet. The curve fills in as traders settle their first bets.
+                  {stats.joinTimes.length === 0
+                    ? 'Not enough history yet. The curve fills in as traders settle their first bets.'
+                    : `No new traders joined in the last ${curve.windowLabel}.`}
                 </p>
               </div>
             )}
@@ -216,6 +247,33 @@ export function UserStatsPanel() {
 }
 
 /* --------------------------------- pieces -------------------------------- */
+
+/** Segmented time-window picker for the join curve. */
+function RangeTabs({ value, onChange }: { value: JoinRange; onChange: (r: JoinRange) => void }) {
+  const opts: { key: JoinRange; label: string }[] = [
+    { key: '1d', label: '1D' },
+    { key: '7d', label: '7D' },
+    { key: '14d', label: '14D' },
+    { key: 'all', label: 'All' },
+  ];
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-line bg-black/20 p-0.5">
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          aria-pressed={value === o.key}
+          className={`rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+            value === o.key ? 'bg-(--accent-soft) text-accent' : 'text-text-3 hover:text-text-2'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Kpi({
   icon: Icon,

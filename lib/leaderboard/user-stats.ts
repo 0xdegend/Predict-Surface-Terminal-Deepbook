@@ -72,6 +72,60 @@ export interface SkewUserStats {
    *  activity for a live trader with no carried-over history, so the curve tracks the
    *  board as new users join. */
   joinSeries: UserJoinPoint[];
+  /** The raw sorted join timestamps behind `joinSeries` — so the UI can rebuild the
+   *  curve for any time window (1d / 7d / 14d / all) via `buildJoinCurve`. */
+  joinTimes: number[];
+}
+
+/** A smooth, windowed join curve + the count of joiners inside the window. */
+export interface JoinCurve {
+  /** Evenly-spaced points (so the chart's monotone curve reads smooth, not jagged).
+   *  For a window the y is REBASED to 0 at the window start (new joiners only); for
+   *  all-time it is the running total. */
+  series: UserJoinPoint[];
+  /** How many distinct traders joined inside the window. */
+  joined: number;
+  /** Human label for the window, e.g. "7 days" / "all time". */
+  windowLabel: string;
+}
+
+/**
+ * Build a SMOOTH join curve for a time window from the raw join timestamps.
+ *
+ * The raw timestamps cluster (many wallets first settle around the same moment), so
+ * plotting them directly gives a jagged, near-vertical step. This resamples into
+ * `buckets` EVENLY-SPACED time points and plots the cumulative count at each — even
+ * x-spacing plus the chart's monotone curve read as a clean growth curve. `windowMs =
+ * null` is all-time (starts at the first join, running total); otherwise the curve is
+ * rebased to 0 at `now - windowMs` and counts only new joiners in that window, so it
+ * answers "how many joined in the last N days". Pure + deterministic (pass `nowMs`).
+ */
+export function buildJoinCurve(
+  joinTimes: number[], // sorted ascending
+  windowMs: number | null,
+  nowMs: number,
+  buckets = 48,
+): JoinCurve {
+  const windowLabel = windowMs == null ? 'all time' : `${Math.round(windowMs / DAY_MS)} days`;
+  if (joinTimes.length === 0) return { series: [], joined: 0, windowLabel };
+
+  const end = nowMs;
+  const start = windowMs == null ? joinTimes[0] : nowMs - windowMs;
+  // Joiners strictly before the window are the rebase baseline (all-time → 0, since
+  // start is the first join). New joiners inside [start, end] are what the curve shows.
+  const baseCount = joinTimes.filter((t) => t < start).length;
+  const joined = joinTimes.filter((t) => t >= start && t <= end).length;
+
+  const span = Math.max(1, end - start);
+  const n = Math.max(2, buckets);
+  const series: UserJoinPoint[] = [];
+  let ptr = 0; // monotone pointer — both arrays are time-ordered, so this is O(n + m)
+  for (let i = 0; i < n; i++) {
+    const t = start + (span * i) / (n - 1);
+    while (ptr < joinTimes.length && joinTimes[ptr] <= t) ptr++;
+    series.push({ x: t, y: ptr - baseCount, label: fmtDay(t) });
+  }
+  return { series, joined, windowLabel };
 }
 
 const fmtDay = (ms: number) =>
@@ -181,5 +235,6 @@ export function computeSkewUserStats(
     realizedPnl,
     topTraders,
     joinSeries,
+    joinTimes,
   };
 }

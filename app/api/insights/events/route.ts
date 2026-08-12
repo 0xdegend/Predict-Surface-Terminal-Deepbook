@@ -97,6 +97,7 @@ async function build(): Promise<EventsFeed> {
   const todayStart = startOfUtcDay(asOf);
   let events: MarketEvent[] = [];
   let upcoming: MarketEvent[] = [];
+  let calendarOk = false; // did the calendar actually load? (an empty day ≠ a failed fetch)
 
   try {
     // Top of today (UTC) plus a cross-midnight floor for the lookback, through a
@@ -133,13 +134,21 @@ async function build(): Promise<EventsFeed> {
         return seenUp.has(k) ? false : (seenUp.add(k), true);
       })
       .slice(0, MAX_UPCOMING);
+    calendarOk = true; // the relay answered — an empty list here is a genuinely quiet day
   } catch {
-    events = []; // no calendar → still return an (empty) available feed.
+    // The calendar source is unreachable (e.g. Clawby upstream 502). Leave the
+    // lists empty AND mark the feed unavailable below, so we never pass an outage
+    // off as "nothing scheduled today".
+    events = [];
     upcoming = [];
   }
 
   const headline = await fetchHeadline();
-  return { available: true, asOf, events, upcoming, headline };
+  // `available` means "we could read the calendar". A real but empty day stays
+  // available (Kelly says "nothing major today"); a failed fetch is unavailable
+  // (Kelly says "can't pull the calendar right now"), matching the fast-retry
+  // contract in useMarketEvents.
+  return { available: calendarOk, asOf, events, upcoming, headline };
 }
 
 // In-process cache + single-flight, so bursty traffic never fans out to Clawby.
@@ -153,6 +162,8 @@ export async function GET() {
     return NextResponse.json({ available: false } satisfies Partial<EventsFeed>);
   }
   const now = Date.now();
+  // Only healthy payloads are ever cached (below), so this fast-path can never
+  // serve a stale "unavailable" and stall the client's 60s retry.
   if (g.__mktEvents && now - g.__mktEvents.at < TTL_MS) {
     return NextResponse.json(g.__mktEvents.payload);
   }
@@ -163,7 +174,11 @@ export async function GET() {
       });
     }
     const payload = await g.__mktEventsInflight;
-    g.__mktEvents = { at: Date.now(), payload };
+    // Cache good calendars only. A real fetch (even an empty quiet day) refreshes
+    // the 20-min window; a failed fetch is returned as-is (available:false) and is
+    // NOT cached, so the last good entry simply ages out of the fast-path above and
+    // Kelly falls back to an honest "can't pull the calendar", not a stale one.
+    if (payload.available) g.__mktEvents = { at: Date.now(), payload };
     return NextResponse.json(payload);
   } catch {
     if (g.__mktEvents) return NextResponse.json(g.__mktEvents.payload);
