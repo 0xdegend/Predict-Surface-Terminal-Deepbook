@@ -138,7 +138,7 @@ export function V2LeaderboardPanel() {
           </p>
         </div>
         <Link
-          href="/leaderboard"
+          href="/v2/leaderboard/season-1"
           className="group glass-inset inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
         >
           Season 1 archive

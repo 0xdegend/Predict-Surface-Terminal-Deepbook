@@ -19,7 +19,7 @@ import seedJson from './legacy-points-6-24.json';
 import type { V2LeaderboardRow } from './v2';
 import { sortV2Rows } from './v2';
 
-interface LegacyRow {
+export interface LegacyRow {
   owner: string;
   points: number;
   volume: number;
@@ -41,6 +41,11 @@ const LEGACY: Map<string, LegacyRow> = new Map(SEED.rows.map((r) => [r.owner.toL
 export const LEGACY_SOURCE = SEED.deployment;
 export const LEGACY_TRADER_COUNT = SEED.rows.length;
 export const LEGACY_TOTAL_POINTS = SEED.rows.reduce((s, r) => s + r.points, 0);
+
+/** The raw snapshot rows + when it was captured — so the Season 1 archive view can
+ *  render the frozen board straight from the stored seed, no backend required. */
+export const LEGACY_ROWS: LegacyRow[] = SEED.rows;
+export const LEGACY_CAPTURED_AT: string = SEED.capturedAt;
 
 /** The carried-over wallets (owner addresses, lowercased). These are KNOWN app
  *  traders, so the leaderboard indexer fans out their full new-deployment history to

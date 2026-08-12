@@ -7,7 +7,7 @@
  * a central glass swap-circle (the one sanctioned off-canvas accent glow). The
  * active side lights up with the accent glass fill; the other stays quiet. Each
  * side carries a small lowercase status line — "offline" for the wound-down
- * Legacy backend, "beta" for the live Latest release.
+ * Legacy backend, "live" for the current Latest release.
  *
  * Two variants, one source of truth for all the availability logic:
  *   • "bar"   (default) — the desktop chrome control. Inline, compact, shown xl+
@@ -88,7 +88,7 @@ function StatusLine({
   textClass: string;
 }) {
   if (!tag) return <span aria-hidden className="block h-[9px]" />;
-  const live = tag === "Beta";
+  const live = tag === "Live";
   return (
     <span
       className={`inline-flex items-center leading-none tracking-[0.14em] ${textClass} font-medium lowercase ${
@@ -135,11 +135,11 @@ export function DeploymentToggle({
   /** Per-option availability + the little status word (Beta / Soon / Offline). */
   function optState(id: Deployment): { disabled: boolean; tag: string | null } {
     if (id === "v2") {
-      // Live now → selectable, tagged "Beta". (Pre-launch it was a disabled "Soon"
+      // Live now → selectable, tagged "Live". (Pre-launch it was a disabled "Soon"
       // teaser, still reachable when already on a /v2 route.)
       return {
         disabled: !v2Selectable && !onV2Route,
-        tag: v2Selectable ? "Beta" : "Soon",
+        tag: v2Selectable ? "Live" : "Soon",
       };
     }
     // Legacy is never disabled — claiming still lives there; "Offline" is just a

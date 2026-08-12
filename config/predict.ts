@@ -536,8 +536,12 @@ export function getPredictV2Config(network: SuiNetwork = ACTIVE_NETWORK): Predic
   return selectV2Config(network);
 }
 
-/** True when the active-network v2 deployment has a server wired (testnet does). */
-export const v2Deployed: boolean = !!predictV2Config.serverUrl;
+/** True when the active-network v2 deployment is live. Keyed off the predict PACKAGE,
+ *  not the HTTP `serverUrl`: from the 7-29 deployment on the app reads on-chain via
+ *  gRPC and ships NO indexer server (`serverUrl: ''`), so a serverUrl check wrongly
+ *  reported the live gRPC deployment as "not deployed" and left the Latest toggle a
+ *  disabled "Soon" teaser. A real deployment always has a predict package id. */
+export const v2Deployed: boolean = !!predictV2Config.packages.predict;
 
 /** True when our BuilderCode is registered for this network. False → mints never
  *  attach and the admin claim UI stays hidden; everything else is unaffected. */
