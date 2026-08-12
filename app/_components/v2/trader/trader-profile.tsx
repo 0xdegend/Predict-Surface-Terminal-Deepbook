@@ -7,9 +7,11 @@
  * position list gets a full page instead of a cramped overlay.
  *
  * Standing (rank / points / volume / trades) comes from the SHARED board
- * aggregation, so it can never disagree with the leaderboard — but a trader whose
- * markets have aged out of the indexer's window may not be ranked, while their
- * positions still load (resolved by account id, which spans all their markets).
+ * aggregation, checked VENUE-first then SKEW as a fallback, so it agrees with
+ * whichever leaderboard the trader was reached from (a Skew user buried under the
+ * bot in the venue indexer's backfill window still shows their Skew standing rather
+ * than blank dashes). A trader on NEITHER board (only settled history) still loads
+ * their win rate + positions, resolved by account id, which spans all their markets.
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -44,14 +46,33 @@ export function V2TraderProfile({ address }: { address: string }) {
   // The trader's internal account id (resolved on-chain) → their positions feed.
   const { accountId, isLoading: accLoading } = useV2TraderAccount(owner);
 
-  // Season-2 standing from the shared board aggregation (ranked by points).
-  const { rows, loading: lbLoading } = useV2Leaderboard();
-  const ranked = useMemo(() => sortV2Rows(rows, 'points'), [rows]);
+  // Season-2 standing from the shared board aggregation (ranked by points). Look the
+  // trader up on the VENUE board first, then fall back to the SKEW board: a genuine
+  // Skew user can be missing from the venue board (buried under the high-frequency
+  // bot in the indexer's backfill window) while still ranked on the Skew board they
+  // were reached from. Falling back keeps their points / volume / trades / rank from
+  // reading as blank dashes on their own profile.
+  const { rows, skewRows, loading: lbLoading, skewLoading } = useV2Leaderboard();
+  const rankedAll = useMemo(() => sortV2Rows(rows, 'points'), [rows]);
+  const rankedSkew = useMemo(() => sortV2Rows(skewRows, 'points'), [skewRows]);
+  const row = useMemo(
+    () =>
+      rows.find((r) => r.owner.toLowerCase() === owner) ??
+      skewRows.find((r) => r.owner.toLowerCase() === owner) ??
+      null,
+    [rows, skewRows, owner],
+  );
+  // Rank + board size come from whichever board the row was found on, so "rank N of M"
+  // stays internally consistent (a Skew-only trader gets their Skew-board rank).
+  const onVenue = useMemo(() => rankedAll.some((r) => r.owner.toLowerCase() === owner), [rankedAll, owner]);
+  const rankedCount = onVenue ? rankedAll.length : rankedSkew.length;
   const rank = useMemo(() => {
-    const i = ranked.findIndex((r) => r.owner.toLowerCase() === owner);
+    const board = onVenue ? rankedAll : rankedSkew;
+    const i = board.findIndex((r) => r.owner.toLowerCase() === owner);
     return i >= 0 ? i + 1 : null;
-  }, [ranked, owner]);
-  const row = useMemo(() => rows.find((r) => r.owner.toLowerCase() === owner) ?? null, [rows, owner]);
+  }, [onVenue, rankedAll, rankedSkew, owner]);
+  // Standing is still resolving until BOTH boards have answered (either can carry the row).
+  const standingLoading = lbLoading || skewLoading;
 
   // Archetype for the profile share card — shares the accountOrders cache with the
   // style card + positions, so it's already loaded, not an extra fetch.
@@ -80,7 +101,7 @@ export function V2TraderProfile({ address }: { address: string }) {
       data: {
         trader: owner,
         rank,
-        ranked: ranked.length,
+        ranked: rankedCount,
         points: row?.points ?? 0,
         volume: row?.volume ?? 0,
         trades: row?.trades ?? 0,
@@ -90,7 +111,7 @@ export function V2TraderProfile({ address }: { address: string }) {
       },
     });
 
-  const stat = (v: number, d = 2) => (lbLoading ? '…' : row ? num(v, d) : '—');
+  const stat = (v: number, d = 2) => (standingLoading ? '…' : row ? num(v, d) : '—');
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-5">
@@ -137,10 +158,10 @@ export function V2TraderProfile({ address }: { address: string }) {
           <div className="flex flex-col items-end gap-1">
             <span className="eyebrow">Rank</span>
             <span className="font-mono text-[26px] leading-none text-accent">
-              {lbLoading ? '…' : rank != null ? `#${rank}` : '—'}
+              {standingLoading ? '…' : rank != null ? `#${rank}` : '—'}
             </span>
-            {!lbLoading && rank != null && (
-              <span className="font-mono text-[10px] tabular-nums text-text-3">of {ranked.length}</span>
+            {!standingLoading && rank != null && (
+              <span className="font-mono text-[10px] tabular-nums text-text-3">of {rankedCount}</span>
             )}
           </div>
         </div>
@@ -160,7 +181,7 @@ export function V2TraderProfile({ address }: { address: string }) {
           color={HUE.amber}
           label="Volume"
           value={
-            lbLoading ? '…' : !row ? '—' : (
+            standingLoading ? '…' : !row ? '—' : (
               <>
                 <span className="sm:hidden">{compact(row.volume)}</span>
                 <span className="hidden sm:inline">{num(row.volume, 2)}</span>
@@ -169,7 +190,7 @@ export function V2TraderProfile({ address }: { address: string }) {
           }
           unit={predictV2Config.quote.symbol}
         />
-        <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={lbLoading ? '…' : row ? String(row.trades) : '—'} />
+        <Stat icon={LuActivity} color={HUE.blue} label="Trades" value={standingLoading ? '…' : row ? String(row.trades) : '—'} />
       </div>
 
       {/* Win-rate trend — the running win rate over settled bets, on a fixed
