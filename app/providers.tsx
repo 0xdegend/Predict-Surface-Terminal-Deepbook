@@ -8,6 +8,7 @@ import { startGrpcHealthMonitor } from '@/lib/sui/grpc';
 import { Toaster } from './_components/toaster';
 import { KellyDock } from './_components/v2/copilot/kelly-dock';
 import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
+import { WalletTracker } from './_components/wallet-tracker';
 import { TourLauncher } from './_components/tour/tour-launcher';
 import { TourOverlay } from './_components/tour/tour-overlay';
 
@@ -38,6 +39,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <DAppKitProvider dAppKit={dAppKit}>
         {/* Registers "Sign in with Google" (Enoki zkLogin) into the wallet list. */}
         <RegisterEnokiWallets />
+        {/* Silent beacon: records the connected wallet's sign-in category (Google /
+            Slush / Other) for the admin wallet-mix card. Renders nothing. */}
+        <WalletTracker />
         {children}
         {/* Always-present "Ask Kelly" launcher + chat drawer (self-hides on the
             full co-pilot page and the auth popup). */}
