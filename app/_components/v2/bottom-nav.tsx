@@ -26,10 +26,13 @@ import {
   LuSwords,
   LuBookOpen,
   LuSparkles,
+  LuArrowUpRight,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { DeploymentToggle } from '../deployment-toggle';
+import { SOCIAL_ICON } from '../social-links';
+import { SOCIALS } from '@/config/socials';
 
 const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string) => boolean }[] = [
   { href: '/v2', label: 'Trade', icon: LuActivity, match: (p) => p === '/v2' },
@@ -38,7 +41,9 @@ const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string)
   { href: '/v2/leaderboard', label: 'Ranks', icon: LuTrophy, match: (p) => p.startsWith('/v2/leaderboard') },
 ];
 
-const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: boolean; footer?: boolean }[] = [
+type MoreItem = { href: string; label: string; desc: string; icon: IconType; soon?: boolean; footer?: boolean; external?: boolean };
+
+const MORE: MoreItem[] = [
   // Descs kept short so each tile is a single line on mobile (uniform height).
   { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: LuChartCandlestick },
   { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: LuSparkles },
@@ -48,6 +53,15 @@ const MORE: { href: string; label: string; desc: string; icon: IconType; soon?: 
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: LuSwords, soon: true },
   // Reference, not a destination tile → full-width footer row (keeps the grid even).
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
+  // Socials — off-site footer rows, one per account, from the shared list.
+  ...SOCIALS.map((s): MoreItem => ({
+    href: s.url,
+    label: `Follow on ${s.label}`,
+    desc: s.handle,
+    icon: SOCIAL_ICON[s.id],
+    footer: true,
+    external: true,
+  })),
 ];
 
 export function V2BottomNav() {
@@ -167,24 +181,44 @@ export function V2BottomNav() {
                 );
               })}
             </div>
-            {/* Full-width footer row(s) — Docs. */}
+            {/* Full-width footer row(s) — Docs, then socials. */}
             {MORE.filter((m) => m.footer).map((item) => {
-              const active = pathname.startsWith(item.href);
+              const active = !item.external && pathname.startsWith(item.href);
               const Icon = item.icon;
-              return (
+              const cls = `ctrl-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 transition-colors ${
+                active ? 'text-text-1' : 'text-text-2'
+              }`;
+              const body = (
+                <>
+                  <Icon size={17} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
+                  <span className="text-[12.5px] font-medium leading-none">{item.label}</span>
+                  <span className="text-[10.5px] leading-none text-text-3">{item.desc}</span>
+                  {item.external && <LuArrowUpRight size={15} className="ml-auto flex-none text-text-3" />}
+                </>
+              );
+              // Off-site links (socials) open in a new tab; internal destinations route.
+              return item.external ? (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  role="menuitem"
+                  onClick={() => setOpen(false)}
+                  className={cls}
+                >
+                  {body}
+                </a>
+              ) : (
                 <Link
                   key={item.href}
                   href={item.href}
                   role="menuitem"
                   onClick={() => setOpen(false)}
                   aria-current={active ? 'page' : undefined}
-                  className={`ctrl-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 transition-colors ${
-                    active ? 'text-text-1' : 'text-text-2'
-                  }`}
+                  className={cls}
                 >
-                  <Icon size={17} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
-                  <span className="text-[12.5px] font-medium leading-none">{item.label}</span>
-                  <span className="text-[10.5px] leading-none text-text-3">{item.desc}</span>
+                  {body}
                 </Link>
               );
             })}

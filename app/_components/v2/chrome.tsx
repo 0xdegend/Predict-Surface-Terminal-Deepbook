@@ -24,11 +24,14 @@ import {
   LuKeyRound,
   LuSparkles,
   LuChartCandlestick,
+  LuArrowUpRight,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
 import { DeploymentToggle } from '../deployment-toggle';
 import { TourButton } from '../tour/tour-button';
+import { SocialIconLinks, SOCIAL_ICON } from '../social-links';
+import { SOCIALS } from '@/config/socials';
 import { V2SpotTape } from './spot-tape';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { isAdminAddress } from '@/config/predict';
@@ -42,7 +45,19 @@ type MenuItem = {
   soon?: boolean;
   /** Renders full-width at the bottom of a grid menu instead of as a tile (e.g. Docs = "help"). */
   footer?: boolean;
+  /** An off-site link (e.g. a social account) — opens in a new tab, never route-active. */
+  external?: boolean;
 };
+
+/** "Follow @handle" rows for the More menu, one per social, from the shared list. */
+const SOCIAL_ITEMS: MenuItem[] = SOCIALS.map((s) => ({
+  href: s.url,
+  label: `Follow on ${s.label}`,
+  desc: s.handle,
+  icon: SOCIAL_ICON[s.id],
+  footer: true,
+  external: true,
+}));
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
@@ -81,6 +96,7 @@ export function V2Chrome() {
   // register the first code — and would surface it to any stranger who registered
   // a code of their own. The page and the chain gate it again regardless.
   const account = useCurrentAccount();
+  // Socials sit at the very bottom of the menu (below Docs / any Admin row).
   const moreItems: MenuItem[] = isAdminAddress(account?.address)
     ? [
         ...MORE_ITEMS,
@@ -90,8 +106,9 @@ export function V2Chrome() {
           desc: 'Claim protocol builder fees',
           icon: LuKeyRound,
         },
+        ...SOCIAL_ITEMS,
       ]
-    : MORE_ITEMS;
+    : [...MORE_ITEMS, ...SOCIAL_ITEMS];
 
   return (
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
@@ -124,8 +141,10 @@ export function V2Chrome() {
         <V2SpotTape />
       </div>
 
-      {/* toggle + wallet */}
+      {/* socials + toggle + wallet. Socials are desktop-only (hidden lg:flex) so
+          the tight mobile bar stays clear — phones reach them via the More sheet. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+        <SocialIconLinks className="hidden lg:flex" />
         <TourButton />
         <DeploymentToggle />
         <WalletBar />
@@ -265,24 +284,34 @@ function MenuRow({
   pathname: string;
   onSelect: () => void;
 }) {
-  const active = pathname.startsWith(item.href);
+  const active = !item.external && pathname.startsWith(item.href);
   const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      role="menuitem"
-      onClick={onSelect}
-      aria-current={active ? 'page' : undefined}
-      className={`ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
-        active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
-      }`}
-    >
+  const cls = `ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
+    active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
+  }`;
+  const body = (
+    <>
       <Icon size={16} className={`flex-none ${active ? 'text-accent' : 'text-text-3'}`} />
       <span className="flex flex-1 flex-col gap-1">
         <span className="text-[13px] font-medium leading-none">{item.label}</span>
         <span className="text-[11px] leading-none text-text-3">{item.desc}</span>
       </span>
       {item.soon && <SoonChip />}
+      {item.external && <LuArrowUpRight size={14} className="flex-none text-text-3" />}
+    </>
+  );
+
+  // Off-site links (socials) open in a new tab; internal destinations route.
+  if (item.external) {
+    return (
+      <a href={item.href} target="_blank" rel="noreferrer" role="menuitem" onClick={onSelect} className={cls}>
+        {body}
+      </a>
+    );
+  }
+  return (
+    <Link href={item.href} role="menuitem" onClick={onSelect} aria-current={active ? 'page' : undefined} className={cls}>
+      {body}
     </Link>
   );
 }
