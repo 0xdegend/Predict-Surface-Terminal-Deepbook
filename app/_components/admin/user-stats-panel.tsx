@@ -28,6 +28,7 @@ import { LineChart } from '@/app/_components/analytics/charts/line-chart';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
 import { WalletMixCard } from './wallet-mix-card';
+import { RewardProgressCard } from './reward-progress-card';
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const signedUsd = (n: number) => `${n < 0 ? '-' : '+'}$${num(Math.abs(n), 2)}`;
@@ -175,6 +176,9 @@ export function UserStatsPanel() {
 
       {/* How people sign in (Google vs Slush) + how each converts to a bet. */}
       <WalletMixCard />
+
+      {/* Founding Traders reward — claim progress + treasury health + funding runbook. */}
+      <RewardProgressCard />
 
       {/* Top performing traders. */}
       <div className="glass-card overflow-hidden">

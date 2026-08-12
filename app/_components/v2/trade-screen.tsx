@@ -30,6 +30,7 @@ import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { V2MarketPicker } from './market-picker';
 import { OnboardFundModal } from './onboard-fund-modal';
+import { RewardBanner } from './reward/reward-banner';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
@@ -113,6 +114,9 @@ export function V2TradeScreen({
         grant on connect, but on mobile the ticket is a closed sheet, so a fresh
         empty wallet would never see it. Surface the same one-tap grant up here. */}
     <MobileFundBanner />
+    {/* Founding Traders reward: a full-bleed claim strip, shown only to an eligible,
+        not-yet-claimed wallet once the reward is switched on. Self-gates to null. */}
+    <RewardBanner />
     {/* First-run onboarding: a fresh wallet (no trading account yet) gets a single
         modal to fund + create their account in one tap. Self-contained + portaled. */}
     <OnboardFundModal />

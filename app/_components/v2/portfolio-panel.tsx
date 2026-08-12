@@ -60,6 +60,7 @@ import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
 import { V2PositionRow } from './position-row';
 import { V2RedeemModal } from './redeem-modal';
+import { RewardBanner } from './reward/reward-banner';
 import { useClaimCelebration } from './use-claim-celebration';
 
 type FundMode = 'add' | 'withdraw';
@@ -228,6 +229,9 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-5">
+      {/* Founding Traders reward — a claim card for an eligible, not-yet-claimed
+          wallet. Self-gates to null when off / ineligible / already claimed. */}
+      <RewardBanner variant="card" />
       {/* Sample-data notice — shown only while the indexer has nothing to report. */}
       {demoActive && (
         <div className="glass-inset mb-4 flex items-center gap-3 px-4 py-3">

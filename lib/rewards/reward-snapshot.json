@@ -1,0 +1,355 @@
+{
+  "campaign": "founding-traders",
+  "title": "Founding Traders Reward",
+  "capturedAt": "2026-08-12T21:59:40.830Z",
+  "network": "testnet",
+  "criteria": "Placed at least one bet through Skew (skew board, trades>0). Excludes the venue bot (not a Skew trader) and all team/admin wallets.",
+  "rewardDusdc": 50,
+  "rewardBaseUnits": "50000000",
+  "count": 57,
+  "totalDusdc": 2850,
+  "rows": [
+    {
+      "owner": "0x22cc7ef79881b98152d9a7c2a50fefe42a468434ddff07e14b08562774a1940f",
+      "trades": 50,
+      "volume": 51340.92,
+      "points": 135363
+    },
+    {
+      "owner": "0xe2d24bab49b0534aa437b1bec32e0dafdd2fddab300a46880da3869c29f99bfa",
+      "trades": 12,
+      "volume": 8359.98,
+      "points": 22878
+    },
+    {
+      "owner": "0x068341e7b6986ce9b463678e6c52d8bf483693541eb08793b422d4e7cd34dab8",
+      "trades": 26,
+      "volume": 6319.91,
+      "points": 12143
+    },
+    {
+      "owner": "0xc9c40e7a6e8fc27e69a56eba66882fe352cd9ed745774baa9cdfd01ba8524240",
+      "trades": 20,
+      "volume": 4274.93,
+      "points": 10577
+    },
+    {
+      "owner": "0xab282a0e78d0f20404ad25c1a5335f19bf530fa90f76aadfb90545101f3f5948",
+      "trades": 2,
+      "volume": 250,
+      "points": 488
+    },
+    {
+      "owner": "0xc5f1ef549507f858bd518de0a8872e43a70c12609ff07896c4a5c236d6365350",
+      "trades": 4,
+      "volume": 13.1,
+      "points": 40
+    },
+    {
+      "owner": "0xaf591db4ff1dd73b1282fa8d08db2237771968db3b2a4763ca13707500dbca14",
+      "trades": 1,
+      "volume": 24.99,
+      "points": 25
+    },
+    {
+      "owner": "0x58887f71f800e771e9aeba1dd41a002e5beb378e865273ffd13e3e73aa6a8836",
+      "trades": 1,
+      "volume": 1.11,
+      "points": 21
+    },
+    {
+      "owner": "0xd962a895e3aeb8a317c55d06c5beb6a451ccd1c72723104beefaa72f9e4642a1",
+      "trades": 5,
+      "volume": 8.02,
+      "points": 18
+    },
+    {
+      "owner": "0x626c3cb244022ca9a8c897d99b54b6a6f6e65147ba7767fb51cb4d56b2cfd125",
+      "trades": 3,
+      "volume": 5.5,
+      "points": 9
+    },
+    {
+      "owner": "0x6dc2573c51b0195992f6e040975a6b61851c11bd13621f8a9ddcfe94fcc4f28b",
+      "trades": 2,
+      "volume": 2.02,
+      "points": 7
+    },
+    {
+      "owner": "0x0e1ece2c14d68e0bb876428a097345cafd326dc8d525f6154fdf2d96ea33c980",
+      "trades": 4,
+      "volume": 4.52,
+      "points": 7
+    },
+    {
+      "owner": "0xa0deb74d4a312960e398794029df43c432c5943dbed13e5f8458370b1fb300a8",
+      "trades": 1,
+      "volume": 1.11,
+      "points": 6
+    },
+    {
+      "owner": "0x781cf2b7f1e67470814d32c746b25e7d244629e291072fed998b9278362ac85b",
+      "trades": 1,
+      "volume": 1.12,
+      "points": 6
+    },
+    {
+      "owner": "0x3a78b8ed2d6b166493a11b9a04a7f97fa7b18182e73e7c149608ac9c3c5562a0",
+      "trades": 3,
+      "volume": 4.01,
+      "points": 5
+    },
+    {
+      "owner": "0x1dd55cb1cf3ecd7e8dfa24966c20379a77af444b30c1a16df7ef7e246c961dd8",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 5
+    },
+    {
+      "owner": "0xf277aa17dadf1da062b7ea1f5d865fba80c6d7f98501519ca70dd024389c920b",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 5
+    },
+    {
+      "owner": "0x12cc18f98388761b67461e7b063fce505723597f55508891458d55cf50f8c211",
+      "trades": 1,
+      "volume": 1.14,
+      "points": 4
+    },
+    {
+      "owner": "0xc327bb958e1aac73b3c96b9d96a26497b1be71c50587080df0a2be9392cf8d26",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 3
+    },
+    {
+      "owner": "0x086d7efd84662868aee6274e9e1020b0d6553201aa32d73df442616ce185e6bd",
+      "trades": 1,
+      "volume": 1.01,
+      "points": 3
+    },
+    {
+      "owner": "0x4c95108fc77d6daa5d334d5a40609242b8647ae81856a8afe58ecc7e89a8a8c7",
+      "trades": 1,
+      "volume": 1.14,
+      "points": 3
+    },
+    {
+      "owner": "0x02d46acc4367d1e6853c8a6d358aedd1879f920f9768c2fb2ead0119b71531f4",
+      "trades": 2,
+      "volume": 2.01,
+      "points": 2
+    },
+    {
+      "owner": "0xcf4e5dd3b4ff7f64792b5545a298fbd0a94e7db8c7a2ca2878321770e41c098f",
+      "trades": 2,
+      "volume": 2.29,
+      "points": 2
+    },
+    {
+      "owner": "0xf5e4583cf434cd112432bd453fbd9f8a560a9f563bed1b0fa3862af7e35c058d",
+      "trades": 2,
+      "volume": 2.11,
+      "points": 2
+    },
+    {
+      "owner": "0x295cf2e5eaba6ab0b8bcbc4068c39fdd3f74b2099fb604d86e46cb9f606647ff",
+      "trades": 1,
+      "volume": 1,
+      "points": 1
+    },
+    {
+      "owner": "0xf8e553778c16b553c1ff06f4ae61b79248da86b79a861765597d6283bcb00fb5",
+      "trades": 1,
+      "volume": 1.18,
+      "points": 1
+    },
+    {
+      "owner": "0x71f5861f7afb1f0a71f00a8d1e9713754f38e982bf8aad86a4afe290566e014e",
+      "trades": 1,
+      "volume": 1.18,
+      "points": 1
+    },
+    {
+      "owner": "0x356328d361f89dada9e24e3cdcfa63692dcff835752cce6821bd73e71f18bcdf",
+      "trades": 1,
+      "volume": 1.19,
+      "points": 1
+    },
+    {
+      "owner": "0xbbbf98f1a5f5d963836c97a21aa4ae169f4482fbd494eb794e0c89b52c6b2762",
+      "trades": 1,
+      "volume": 1.19,
+      "points": 1
+    },
+    {
+      "owner": "0xa14b833075eb1c79db0ee6fc920cba6124c55cf29d3aea65a988d03759ff90b1",
+      "trades": 1,
+      "volume": 1.18,
+      "points": 1
+    },
+    {
+      "owner": "0x3565112ef75443a6002173cceb8c583016bfd62a6b19a1ba976c9b3206a509d8",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 1
+    },
+    {
+      "owner": "0xf4ed3a18b50cf9e4bb4d6d50dc58faadecb231899a8196c271ecf07cf56a57b4",
+      "trades": 1,
+      "volume": 1.18,
+      "points": 1
+    },
+    {
+      "owner": "0x06e487b0d11d77780fc01154bb78603253bced8c866e006165cb59cd8507c4c7",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 1
+    },
+    {
+      "owner": "0x81c1c3161ce43e1a51e78dc8e76ea140f8257000cd9bdefbdae9d241dadae94c",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 1
+    },
+    {
+      "owner": "0x2f2abe0f8712b327885a7a31474bceffd3047f9c59c21b11105a0ae49b745219",
+      "trades": 1,
+      "volume": 1.16,
+      "points": 1
+    },
+    {
+      "owner": "0x4361224d9a996774d2e1b0421eec89ea1a981dcd340d8f30306315792d11142f",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 1
+    },
+    {
+      "owner": "0x0c9b79e61ac0feb1188d4f8aa334ba62d86d576822c7c6f928dded82940cb724",
+      "trades": 1,
+      "volume": 1.16,
+      "points": 1
+    },
+    {
+      "owner": "0xeec2e1f364109a55c758a42144615778ed0a9545f0da4fe0bb1ccb4b3b7b2b5b",
+      "trades": 1,
+      "volume": 1.17,
+      "points": 1
+    },
+    {
+      "owner": "0xbd710096b4cc424ca3e75167fd7f5ba02a5e3801b8a1d1721e2178f95a208e5c",
+      "trades": 1,
+      "volume": 1.15,
+      "points": 1
+    },
+    {
+      "owner": "0x8c48207ed866152d0649aa87b39bd6faa1a1af919f53d5e870da601ce20daea9",
+      "trades": 1,
+      "volume": 1.14,
+      "points": 1
+    },
+    {
+      "owner": "0x903f5e44cb9114b3c9df6e1b6a06c032be343716cad4f161aed9efe761a2ab87",
+      "trades": 1,
+      "volume": 1.15,
+      "points": 1
+    },
+    {
+      "owner": "0x7007bbdbf8951923d74fe998d24ac51c926cdc73a721bfa3be77fdc4851e0035",
+      "trades": 1,
+      "volume": 1.15,
+      "points": 1
+    },
+    {
+      "owner": "0x2e51edb85d4dd0413c811acc99a84881556157fa7af2879710a16a45457f687a",
+      "trades": 1,
+      "volume": 1.15,
+      "points": 1
+    },
+    {
+      "owner": "0x6469cfb01bc0fd8a6b857df34aa3707798caea520c7279807ab36f50d5632d38",
+      "trades": 1,
+      "volume": 1.13,
+      "points": 1
+    },
+    {
+      "owner": "0x24a04b2173c86c399a9cb19ef5708991dc3c4787800fbcfe9e21048895a495cb",
+      "trades": 1,
+      "volume": 1.12,
+      "points": 1
+    },
+    {
+      "owner": "0xeffe80d2c5dbe6bdcc1bab4fd84319e813867629c2584ededd7f1c1a9b09cb9b",
+      "trades": 1,
+      "volume": 1.12,
+      "points": 1
+    },
+    {
+      "owner": "0xb6c0f8fec3388e0b5177d38f8314ff08b0873ae0f329d45859c4db136f72ada0",
+      "trades": 1,
+      "volume": 1.13,
+      "points": 1
+    },
+    {
+      "owner": "0x06256187d3457fab7f30580b1c64038cc8d056af6ce14dff3f83caa852bba873",
+      "trades": 1,
+      "volume": 1.12,
+      "points": 1
+    },
+    {
+      "owner": "0xbf6658fc5e59ec37690c1cfda76e4fff5a9a674d8c9067f33638b70b564ba340",
+      "trades": 1,
+      "volume": 1.12,
+      "points": 1
+    },
+    {
+      "owner": "0x050fab3f4468b70b5577f1896bf357928bb486c6cc96f3f5789e940dd876cbb9",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0x1724bca1aee69778c2c568be519bdccd04cd3025acb9c860d8af96f93c40fcae",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0xafc721dadb5be853f6de9444c5429fd40867ae70bd77265d9c2a7f613c276a69",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0x799d4feba5beb64779fa0f3377ec462a0722306f58da84316417e1747d62f338",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0x9b22572b13a399e2e55c6c198839d32d4af7cf3784bf7c979c38f50aaaa86b8c",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0x92b2078fcaa07416c1fafd56b4c0af55038e9bd6d2c1ee50183ba6d84bca44e5",
+      "trades": 1,
+      "volume": 1.1,
+      "points": 1
+    },
+    {
+      "owner": "0x364c50624221e567d8bd396e4fa9603f3a5a5e28241dd7d7d0a0a24cc98a161b",
+      "trades": 1,
+      "volume": 1.01,
+      "points": 1
+    },
+    {
+      "owner": "0xc278d629e52840b1f918562b091a9dfa898cfe5581d662778b1e1f30a09738e9",
+      "trades": 1,
+      "volume": 1.01,
+      "points": 1
+    }
+  ]
+}
