@@ -34,20 +34,36 @@ export function ownedPackages(): Set<string> {
 const SUI_FRAMEWORK = normalizeSuiAddress('0x2');
 
 /**
- * Sui-framework coin plumbing that `coinWithBalance` legitimately injects when the
- * sender's funds live as an Address Balance (the accumulator / fast path) rather than
- * owned Coin objects: the SDK withdraws the balance and calls `coin::redeem_funds`
- * (or `balance::redeem_funds`) to materialize a `Coin<T>`. It operates only on the
- * SENDER's OWN withdrawn balance and can't drain the sponsor, so it's safe to pay gas
- * for. Without this, a gasless (Google/Enoki) trade whose DUSDC sits as an address
- * balance is refused here before it ever reaches Enoki. As Sui migrates coins ->
- * address balances this affects more wallets. See Sui "Address Balances"; same class
- * of gap as the sessions package. `sponsoredTargets` still RETURNS these so Enoki's
- * own allowedMoveCallTargets includes them.
+ * Sui-framework coin plumbing that `coinWithBalance` / `createBalance` legitimately
+ * inject when the sender's funds live as an Address Balance (the accumulator / fast
+ * path) rather than owned Coin objects. This is the COMPLETE set the SDK's resolver
+ * emits (verified against @mysten/sui CoinWithBalance intent), because it turned out
+ * `redeem_funds` alone was not enough — a real gasless wallet was refused on
+ * `coin::send_funds`:
+ *   - `coin::redeem_funds` / `balance::redeem_funds` — withdraw the sender's address
+ *     balance into a `Coin<T>` / `Balance<T>`.
+ *   - `coin::send_funds` — return the leftover merged coin to the sender's OWN address
+ *     balance after the exact split (the change path).
+ *   - `coin::into_balance` — convert a split `Coin<T>` to `Balance<T>` for a balance intent.
+ *   - `coin::zero` / `balance::zero` / `coin::destroy_zero` — the zero / cleanup helpers.
+ * Every one of these operates only on the SENDER's own coins/balances (passed as
+ * arguments) and can't drain the sponsor, so they're safe to pay gas for. Without them
+ * a gasless (Google/Enoki) trade whose DUSDC sits as an address balance is refused here
+ * before it ever reaches Enoki. As Sui migrates coins -> address balances this affects
+ * more wallets. Kept EXACT (not all of 0x2) so the sponsor can't be turned into a
+ * free-gas faucet for arbitrary coin shuffling — `0x2::coin::burn` etc. stay refused.
+ * `sponsoredTargets` still RETURNS these so Enoki's own allowedMoveCallTargets includes
+ * them. If a future SDK adds another injected call, add it here. See Sui "Address
+ * Balances"; same class of gap as the sessions package.
  */
 const ALLOWED_FRAMEWORK_TARGETS = new Set<string>([
   `${SUI_FRAMEWORK}::coin::redeem_funds`,
   `${SUI_FRAMEWORK}::balance::redeem_funds`,
+  `${SUI_FRAMEWORK}::coin::send_funds`,
+  `${SUI_FRAMEWORK}::coin::into_balance`,
+  `${SUI_FRAMEWORK}::coin::zero`,
+  `${SUI_FRAMEWORK}::balance::zero`,
+  `${SUI_FRAMEWORK}::coin::destroy_zero`,
 ]);
 
 /**
