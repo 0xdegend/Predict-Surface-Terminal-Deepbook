@@ -54,10 +54,12 @@ export function RewardBanner({ variant = 'strip' }: { variant?: 'strip' | 'card'
   const sym = predictV2Config.quote.symbol;
   const amount = amountDusdc || REWARD_DISPLAY_DUSDC;
 
+  // Frosted accent glass, matching the house callout treatment (.glass-accent): a
+  // rounded panel in a padded container, a full-bleed frosted bar under the header.
   const shell =
     variant === 'card'
-      ? 'mb-4 rounded-xl border border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-3'
-      : 'border-b border-[var(--accent-line)] bg-[var(--accent-soft)] px-4 py-2.5';
+      ? 'glass-accent mb-4 rounded-xl px-4 py-3'
+      : 'glass-accent-bar px-4 py-2.5';
 
   return (
     <>
