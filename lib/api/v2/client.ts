@@ -243,10 +243,10 @@ export const getOracleBindings = (o?: GetOptions) =>
     ? Promise.resolve([] as OracleBinding[])
     : propbook<OracleBinding[]>('/oracle-bindings', o);
 
-/** The on-chain Pyth reads (sui_getObject / suix_queryEvents) go over public JSON-RPC
- *  proxies behind Cloudflare, which bot-challenges the chart's rapid BROWSER polling —
- *  so in the browser we fetch our OWN /api/v2/pyth route, which runs the same read
- *  server-side (WAF-clearing UA, no interactive challenge) and hands back the JSON. On
+/** The on-chain Pyth reads (gRPC `getObject` for latest, GraphQL `events` for history)
+ *  run best server-side — same-origin, off the browser's network path (which historically
+ *  got Cloudflare-challenged on the chart's rapid polling). So in the browser we fetch our
+ *  OWN /api/v2/pyth route, which runs the same read server-side and hands back the JSON. On
  *  the server (SSR / the route itself) we call the on-chain reader directly to avoid a
  *  self-fetch. See app/api/v2/pyth/route.ts. */
 const isBrowser = () => typeof window !== 'undefined';

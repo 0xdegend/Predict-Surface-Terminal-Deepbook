@@ -2,15 +2,19 @@
  * lib/api/v2/onchain.ts — the on-chain read layer (7-29 and 8-06).
  *
  * These deployments have NO HTTP indexer, so these functions reconstruct the same
- * shapes the beta indexer returned (V2Market, PythObservation) directly from the
- * chain's own event index via `suix_queryEvents`. They are dispatched to from
- * client.ts when `V2_IS_729_PLUS` (7-29 / 8-06), behind the identical function
- * signatures and TanStack keys, so no consumer or UI changes.
+ * shapes the beta indexer returned (V2Market, PythObservation) directly from chain.
+ * They are dispatched to from client.ts when `V2_IS_729_PLUS` (7-29 / 8-06), behind
+ * the identical function signatures and TanStack keys, so no consumer or UI changes.
+ *
+ * Transports (all JSON-RPC removed — Sui is decommissioning it, testnet event queries
+ * were disabled 2026-07-08):
+ *   - EVENTS  -> GraphQL `events` (indexed, per-event timestamps). The sanctioned
+ *     replacement; same endpoint the leaderboard's v2-onchain-events uses.
+ *   - OBJECTS -> gRPC `getObject` (exact, low-latency point read).
+ *   - TX-SCOPED events (by affected object) -> GraphQL `transactions` (the one read
+ *     the event index can't express).
  *
  * Pure functions (no React) — work from Server Components, queryFns, and scripts.
- * `suix_queryEvents` is the chain's index, served by CORS-friendly public JSON-RPC
- * proxies (Mysten's own fullnode has deprecated JSON-RPC). We try a primary + a
- * fallback so a single proxy hiccup doesn't blank the app.
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
@@ -40,17 +44,6 @@ interface GetOptions {
   signal?: AbortSignal;
 }
 
-/** Ordered JSON-RPC endpoints that serve `suix_queryEvents` with open CORS. */
-const EVENT_RPCS: string[] = [
-  process.env.NEXT_PUBLIC_SUI_EVENT_RPC || 'https://rpc-testnet.suiscan.xyz',
-  'https://sui-testnet-rpc.publicnode.com',
-];
-
-// A browser sends its own UA; Node's default UA can trip the proxies' WAF, so set
-// one server-side only (browsers forbid the header anyway).
-const SERVER_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-
 interface SuiEvent {
   type?: string;
   timestampMs?: string | number;
@@ -62,41 +55,96 @@ interface SuiEvent {
 /** A stable event-id string ("txDigest:eventSeq") for cursor comparison. */
 const eventId = (e: SuiEvent): string => `${e.id?.txDigest ?? ''}:${e.id?.eventSeq ?? ''}`;
 
-/** Resilient JSON-RPC call across the endpoint list (server-only UA; browser CORS-ok). */
-async function rpcCall<T>(method: string, params: unknown[], opts?: GetOptions): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (typeof window === 'undefined') headers['User-Agent'] = SERVER_UA;
-  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
-  let lastErr: unknown;
-  for (const url of EVENT_RPCS) {
-    try {
-      const res = await fetch(url, { method: 'POST', headers, body, cache: 'no-store', signal: opts?.signal });
-      if (!res.ok) throw new PredictApiError(`${method} → ${res.status}`, res.status, url);
-      const j = (await res.json()) as { result?: T; error?: { message?: string } };
-      if (j.error) throw new PredictApiError(j.error.message ?? `${method} error`, 0, url);
-      return j.result as T;
-    } catch (e) {
-      if ((e as { name?: string })?.name === 'AbortError') throw e;
-      lastErr = e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error(`${method}: all endpoints failed`);
-}
-
 interface EventPage {
   data: SuiEvent[];
   nextCursor: unknown;
   hasNextPage: boolean;
 }
 
-/** One `suix_queryEvents` page (descending), starting from `cursor` (null = newest). */
+/** GraphQL RPC endpoint — the sanctioned replacement for the (now-removed) JSON-RPC
+ *  event index. Sui disabled JSON-RPC event queries on testnet 2026-07-08; GraphQL's
+ *  `events` connection is INDEXED (returns matches directly, whatever their age),
+ *  unlike gRPC `listEvents` which scan-bounds each request and can silently miss sparse
+ *  or old events (e.g. vault flushes). It also carries a per-event `timestamp`. Same
+ *  endpoint + shape the leaderboard's v2-onchain-events already uses. */
+const graphqlUrl = () => `https://graphql.${predictV2Config.network}.sui.io/graphql`;
+
+/** Translate the legacy JSON-RPC event filters this module builds into the GraphQL
+ *  `EventFilter`. `MoveEventType` (event struct type) -> `type`; `MoveModule`
+ *  (emitting module) -> `module` ("package::module"). The only two shapes callers pass. */
+function toEventFilter(filter: unknown): { type: string } | { module: string } | { sender: string } {
+  const f = filter as { MoveEventType?: string; Sender?: string; MoveModule?: { package?: string; module?: string } };
+  if (f?.MoveEventType) return { type: f.MoveEventType };
+  if (f?.Sender) return { sender: f.Sender }; // events from txs SENT by this address (FromAddress equivalent)
+  if (f?.MoveModule?.package && f.MoveModule.module) {
+    return { module: `${f.MoveModule.package}::${f.MoveModule.module}` };
+  }
+  throw new Error('onchain: unsupported event filter shape');
+}
+
+const EVENTS_QUERY = `query Events($filter: EventFilter!, $last: Int!, $before: String) {
+  events(last: $last, before: $before, filter: $filter) {
+    pageInfo { hasPreviousPage startCursor }
+    edges { cursor node { timestamp contents { type { repr } json } } }
+  }
+}`;
+
+interface GqlEventEdge {
+  cursor?: string;
+  node?: {
+    timestamp?: string | null;
+    contents?: { type?: { repr?: string } | null; json?: Record<string, unknown> | null } | null;
+  };
+}
+interface GqlEventsResponse {
+  data?: {
+    events?: { pageInfo?: { hasPreviousPage?: boolean; startCursor?: string | null }; edges?: GqlEventEdge[] };
+  };
+  errors?: { message?: string }[];
+}
+
+/** GraphQL event edge -> the `SuiEvent` the builders consume. The Relay `cursor` is a
+ *  stable per-event id (scanEventsSince's incremental cursoring compares it); `timestamp`
+ *  is ISO, normalized to ms so `n(e.timestampMs)` reads it exactly as the old JSON-RPC
+ *  `timestampMs`. */
+function toSuiEvent(edge: GqlEventEdge): SuiEvent {
+  const node = edge.node ?? {};
+  const ms = node.timestamp ? Date.parse(node.timestamp) : NaN;
+  return {
+    type: node.contents?.type?.repr,
+    timestampMs: Number.isFinite(ms) ? ms : undefined,
+    parsedJson: node.contents?.json ?? undefined,
+    id: { txDigest: edge.cursor ?? '', eventSeq: '' },
+  };
+}
+
+/** One event page (newest-first), starting from `cursor` (null = newest), via the
+ *  GraphQL `events` connection. Keeps the JSON-RPC-era signature so every caller is
+ *  unchanged. GraphQL pages BACKWARD with `last`/`before`; `nextCursor` is the page's
+ *  `startCursor` (its OLDEST edge) — passed straight back to page older. Edges arrive
+ *  oldest->newest, so reverse to the newest-first order callers expect. */
 async function queryEventsPage(filter: unknown, cursor: unknown, limit: number, opts?: GetOptions): Promise<EventPage> {
-  const r = await rpcCall<{ data?: SuiEvent[]; nextCursor?: unknown; hasNextPage?: boolean }>(
-    'suix_queryEvents',
-    [filter, cursor ?? null, limit, true],
-    opts,
-  );
-  return { data: r?.data ?? [], nextCursor: r?.nextCursor ?? null, hasNextPage: Boolean(r?.hasNextPage) };
+  const before = (cursor as string | null | undefined) ?? null;
+  // GraphQL hard-caps a page at 50 and THROWS above it (the old JSON-RPC proxies
+  // silently truncated), so clamp — callers wanting more history already page.
+  const last = Math.min(Math.max(1, limit), 50);
+  const res = await fetch(graphqlUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    signal: opts?.signal,
+    body: JSON.stringify({ query: EVENTS_QUERY, variables: { filter: toEventFilter(filter), last, before } }),
+  });
+  if (!res.ok) throw new PredictApiError(`events query -> ${res.status}`, res.status, graphqlUrl());
+  const json = (await res.json()) as GqlEventsResponse;
+  if (json.errors?.length) throw new PredictApiError(json.errors[0]?.message ?? 'events query failed', 0, graphqlUrl());
+  const conn = json.data?.events;
+  const data = (conn?.edges ?? []).map(toSuiEvent).reverse(); // oldest->newest => newest-first
+  return {
+    data,
+    nextCursor: conn?.pageInfo?.startCursor ?? null,
+    hasNextPage: Boolean(conn?.pageInfo?.hasPreviousPage),
+  };
 }
 
 /** Newest `limit` events in ONE page. The public proxies cap a page at 50, so
@@ -276,17 +324,24 @@ const fieldsOf = (node: unknown): Record<string, unknown> => {
 
 /**
  * The LIVE latest Pyth spot, read straight off the `PythFeed` object's
- * `lane.latest` via `sui_getObject` — fresh to the second, unlike the event index
- * which trails the chain ~20s. Same `PythObservation` shape as the history feed so
- * the top-price tape and chart live-edge match. Drives `getPythLatest` on 7-29.
+ * `lane.latest` via gRPC `getObject` (json view) — fresh to the second, unlike the
+ * event index which trails the chain ~20s. Same `PythObservation` shape as the
+ * history feed so the top-price tape and chart live-edge match. Drives
+ * `getPythLatest` on 7-29. The gRPC json is flat (no `{ type, fields }` wrapper),
+ * which `fieldsOf` handles transparently — it returns the node itself when there's
+ * no `.fields`, so the same navigation reads either shape.
  */
 export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservation | null> {
-  const res = await rpcCall<{ data?: { content?: unknown } }>(
-    'sui_getObject',
-    [predictV2Config.asset.pythFeedId, { showContent: true }],
-    opts,
-  );
-  const content = fieldsOf(res?.data?.content);
+  const res = await grpc().core.getObjects({
+    objectIds: [predictV2Config.asset.pythFeedId],
+    include: { json: true },
+    signal: opts?.signal,
+  });
+  // getObjects returns a per-object union (Object | Error). A missing/deleted feed
+  // becomes null here (same as an empty content before); a transport failure still
+  // throws out of getObjects, exactly like the old all-endpoints-failed path.
+  const obj = res.objects[0];
+  const content = fieldsOf(obj instanceof Error ? undefined : obj?.json);
   const latest = fieldsOf(fieldsOf(content.lane).latest);
   const value = fieldsOf(latest.value);
   if (value.price_magnitude == null) return null;
@@ -421,7 +476,7 @@ const ORDER_EVENTS: Record<string, string> = {
 
 /**
  * Scan the newest N of each order-event type and keep the rows matching `match`,
- * merged newest-first. `suix_queryEvents` can't filter by a struct field, so we
+ * merged newest-first. The event index can't filter by a struct field, so we
  * over-scan each type and filter client-side. On a low-volume testnet with short
  * market cadences (1m/5m/1h) that captures a market's or account's full lifecycle;
  * very old rows past the scan window fall off (the bounded-window property the beta
@@ -700,10 +755,6 @@ export async function onchainBuilderFeeAccrual(
   return out;
 }
 
-interface TxBlock {
-  digest?: string;
-  events?: { type?: string; parsedJson?: Record<string, unknown> }[];
-}
 
 /** The `order_events` struct name in a fully-qualified event type IF it's from OUR
  *  predict package and one we fold on, else null. */
@@ -715,10 +766,10 @@ function orderStructOf(type: string | undefined): keyof typeof ORDER_EVENTS | nu
 }
 
 /**
- * One owner's order log, read by TRANSACTION SENDER (`suix_queryTransactionBlocks`
- * FromAddress) rather than by scanning the global event stream. This is the key to
- * surviving a high-frequency bot: the RPC filters by the owner server-side, so we get
- * exactly their txs (and the order events inside them) no matter how many other
+ * One owner's order log, read by TRANSACTION SENDER (the GraphQL `events` `sender`
+ * filter) rather than by scanning the global event stream. This is the key to
+ * surviving a high-frequency bot: the index filters by the owner server-side, so we get
+ * exactly their events no matter how many other
  * accounts trade — unlike the account-id scan, which filters the whale-dominated
  * stream client-side and loses an account once it's buried. Newest-first; timestamps
  * come from each event's own `minted_at_ms` / `redeemed_at_ms`.
@@ -772,7 +823,7 @@ export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetO
   //     keeper, not the owner or a session key, and it deposits the payout into the owner's
   //     account). Without them an already-paid position lingers as "open" and its Redeem
   //     aborts because it's already closed. For each market that still looks open here, scan
-  //     THAT market's own tx log (server-side InputObject filter, immune to the global
+  //     THAT market's own tx log (server-side affectedObject filter, immune to the global
   //     stream's keeper-batch burial) for this account's redeems and fold them in. Redeems
   //     dedupe by content so a self-signed redeem already present isn't counted twice.
   const acct = acctId ?? union.find((o) => o.account_id)?.account_id;
@@ -845,8 +896,65 @@ export function openMarketsIn(orders: V2OrderEvent[]): string[] {
   return [...openRootsByMarket(orders).keys()];
 }
 
+const TX_EVENTS_QUERY = `query TxEvents($filter: TransactionFilter!, $last: Int!, $before: String) {
+  transactions(last: $last, before: $before, filter: $filter) {
+    pageInfo { hasPreviousPage startCursor }
+    edges { node { effects { events { nodes { contents { type { repr } json } } } } } }
+  }
+}`;
+
+interface GqlTxEdge {
+  node?: {
+    effects?: {
+      events?: {
+        nodes?: { contents?: { type?: { repr?: string } | null; json?: Record<string, unknown> | null } | null }[];
+      } | null;
+    } | null;
+  };
+}
+interface GqlTxResponse {
+  data?: {
+    transactions?: { pageInfo?: { hasPreviousPage?: boolean; startCursor?: string | null }; edges?: GqlTxEdge[] };
+  };
+  errors?: { message?: string }[];
+}
+
+/** One page (newest-first) of a TRANSACTION-scoped event scan: the txs matching `filter`
+ *  (e.g. `affectedObject` = a market object), flattened to the Move events they emitted.
+ *  This is the one read the event index can't do — GraphQL `EventFilter` has no object
+ *  predicate — so it stays on the transactions connection. Same `EventPage` shape as
+ *  queryEventsPage; `nextCursor` is the page's oldest-edge cursor, passed back to page older. */
+async function queryTxEventsPage(
+  filter: { affectedObject?: string; sentAddress?: string },
+  cursor: unknown,
+  limit: number,
+  opts?: GetOptions,
+): Promise<EventPage> {
+  const before = (cursor as string | null | undefined) ?? null;
+  const last = Math.min(Math.max(1, limit), 50);
+  const res = await fetch(graphqlUrl(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    signal: opts?.signal,
+    body: JSON.stringify({ query: TX_EVENTS_QUERY, variables: { filter, last, before } }),
+  });
+  if (!res.ok) throw new PredictApiError(`tx query -> ${res.status}`, res.status, graphqlUrl());
+  const json = (await res.json()) as GqlTxResponse;
+  if (json.errors?.length) throw new PredictApiError(json.errors[0]?.message ?? 'tx query failed', 0, graphqlUrl());
+  const conn = json.data?.transactions;
+  const data: SuiEvent[] = [];
+  // Edges arrive oldest->newest; reverse so callers see the newest txs first.
+  for (const edge of (conn?.edges ?? []).slice().reverse()) {
+    for (const evNode of edge.node?.effects?.events?.nodes ?? []) {
+      data.push({ type: evNode.contents?.type?.repr, parsedJson: evNode.contents?.json ?? undefined });
+    }
+  }
+  return { data, nextCursor: conn?.pageInfo?.startCursor ?? null, hasNextPage: Boolean(conn?.pageInfo?.hasPreviousPage) };
+}
+
 /** One market's redeem events for a given account, read via the market object's OWN tx log
- *  (`suix_queryTransactionBlocks` InputObject). The server-side per-market filter is immune
+ *  (GraphQL `transactions` `affectedObject`). The server-side per-market filter is immune
  *  to the global event stream's keeper-batch burial, so it recovers the keeper's
  *  permissionless auto-redeem of a settled winner (signed by the keeper, invisible to the
  *  owner/session sender scan). Newest-first, bounded — redeems are a market's last activity,
@@ -866,25 +974,21 @@ async function scanMarketAccountRedeems(
   let cursor: unknown = null;
   const PAGE = 50;
   for (let i = 0; i < 3; i++) {
-    const r = await rpcCall<{ data?: TxBlock[]; nextCursor?: unknown; hasNextPage?: boolean }>(
-      'suix_queryTransactionBlocks',
-      [{ filter: { InputObject: marketId }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
-      opts,
-    ).catch(() => ({ data: [] as TxBlock[], nextCursor: null, hasNextPage: false }));
-    for (const tx of r?.data ?? []) {
-      for (const ev of tx.events ?? []) {
-        const struct = orderStructOf(ev.type);
-        if (!struct || struct === 'OrderMinted') continue; // redeems only
-        const p = ev.parsedJson ?? {};
-        if (String(p.account_id ?? '').toLowerCase() !== want) continue;
-        if (String(p.expiry_market_id ?? '') !== marketId) continue;
-        out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
-        remaining.delete(String(p.position_root_id ?? p.order_id ?? ''));
-      }
+    const page = await queryTxEventsPage({ affectedObject: marketId }, cursor, PAGE, opts).catch(
+      () => ({ data: [] as SuiEvent[], nextCursor: null, hasNextPage: false }),
+    );
+    for (const ev of page.data) {
+      const struct = orderStructOf(ev.type);
+      if (!struct || struct === 'OrderMinted') continue; // redeems only
+      const p = ev.parsedJson ?? {};
+      if (String(p.account_id ?? '').toLowerCase() !== want) continue;
+      if (String(p.expiry_market_id ?? '') !== marketId) continue;
+      out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
+      remaining.delete(String(p.position_root_id ?? p.order_id ?? ''));
     }
     if (remaining.size === 0) break; // every open root here is accounted for — stop early
-    if (!r?.hasNextPage || !r?.nextCursor) break;
-    cursor = r.nextCursor;
+    if (!page.hasNextPage || !page.nextCursor || page.data.length === 0) break;
+    cursor = page.nextCursor;
   }
   return out;
 }
@@ -919,36 +1023,35 @@ function sessionAuthorizedType(): string | null {
   return origin ? `${origin}::sessions::SessionAuthorized` : null;
 }
 
-/** Scan ONE sender's txs via the FromAddress filter (the whale-immune read), collecting
- *  its order events AND any SessionAuthorized events (which only appear for the owner, as
- *  authorize_session is owner-signed). Extracted so onchainOwnerOrders can fold in the
+/** Scan ONE sender's events via the GraphQL `sender` filter (the whale-immune read),
+ *  collecting its order events AND any SessionAuthorized events (which only appear for the
+ *  owner, as authorize_session is owner-signed). Extracted so onchainOwnerOrders can fold in the
  *  account's delegated-session keys alongside the wallet owner. */
 async function scanSenderOrders(sender: string, maxTx: number, opts?: GetOptions): Promise<SenderScan> {
   const orders: V2OrderEvent[] = [];
   const auths: SessionAuth[] = [];
   let cursor: unknown = null;
   const PAGE = 50;
+  // Events emitted by the sender's OWN txs (GraphQL `sender` filter = the FromAddress
+  // equivalent): the sender's order events PLUS the SessionAuthorized events its
+  // owner-signed authorize txs emit. Whale-immune — filtered by sender server-side.
   for (let i = 0; orders.length < maxTx * 2 && i < Math.ceil(maxTx / PAGE) + 1; i++) {
-    const r = await rpcCall<{ data?: TxBlock[]; nextCursor?: unknown; hasNextPage?: boolean }>(
-      'suix_queryTransactionBlocks',
-      [{ filter: { FromAddress: sender }, options: { showEvents: true } }, cursor ?? null, PAGE, true],
-      opts,
-    ).catch(() => ({ data: [] as TxBlock[], nextCursor: null, hasNextPage: false }));
-    for (const tx of r?.data ?? []) {
-      for (const ev of tx.events ?? []) {
-        const struct = orderStructOf(ev.type);
-        if (struct) {
-          const p = ev.parsedJson ?? {};
-          orders.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
-        } else if (ev.type && SESSION_AUTHORIZED_RE.test(ev.type)) {
-          const p = ev.parsedJson ?? {};
-          learnedSessionAuthType ??= ev.type; // warm the by-account backstop's type
-          if (p.session) auths.push({ session: String(p.session), accountId: String(p.account_id ?? ''), type: ev.type });
-        }
+    const page = await queryEventsPage({ Sender: sender }, cursor, PAGE, opts).catch(
+      () => ({ data: [] as SuiEvent[], nextCursor: null, hasNextPage: false }),
+    );
+    for (const ev of page.data) {
+      const struct = orderStructOf(ev.type);
+      if (struct) {
+        const p = ev.parsedJson ?? {};
+        orders.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
+      } else if (ev.type && SESSION_AUTHORIZED_RE.test(ev.type)) {
+        const p = ev.parsedJson ?? {};
+        learnedSessionAuthType ??= ev.type; // warm the by-account backstop's type
+        if (p.session) auths.push({ session: String(p.session), accountId: String(p.account_id ?? ''), type: ev.type });
       }
     }
-    if (!r?.hasNextPage || !r?.nextCursor) break;
-    cursor = r.nextCursor;
+    if (!page.hasNextPage || !page.nextCursor || page.data.length === 0) break;
+    cursor = page.nextCursor;
   }
   return { orders, auths };
 }
@@ -1008,14 +1111,24 @@ const big = (v: unknown): bigint => {
  * primary exposure figure is open_quantity, exact within the scan window (short
  * market cadences keep a whole market's life in the window).
  */
+const oiCache = new Map<string, { oi: V2OpenInterest; at: number }>();
+const OI_CACHE_TTL_MS = 30_000;
+
 export async function onchainMarketOpenInterest(
   marketId: string,
   opts?: GetOptions,
 ): Promise<V2OpenInterest> {
   const want = marketId.toLowerCase();
-  // Deep: one focused market — page so a busy market's full open set is counted
-  // (max payout at risk / exposure), not just the newest 50 orders.
-  const rows = await scanOrderEvents((p) => String(p.expiry_market_id).toLowerCase() === want, 300, opts, true);
+  // Cache per market (short TTL): the risk/analytics panels poll OI for EVERY active
+  // market on a 15s interval, and each read deep-scans the order stream over the
+  // rate-limited GraphQL event index — a fresh scan per poll per market would throttle.
+  // The TTL bounds a market's real re-scan rate to ~30s while the UI still polls freely.
+  const cached = oiCache.get(want);
+  if (cached && Date.now() - cached.at < OI_CACHE_TTL_MS) return cached.oi;
+  // One focused market, paged so a busy market's open set is counted (max payout at
+  // risk / exposure). Depth is bounded: short market cadences (1m/5m/1h) keep a market's
+  // whole life in a small window, so ~100 recent order events cover its open set.
+  const rows = await scanOrderEvents((p) => String(p.expiry_market_id).toLowerCase() === want, 100, opts, true);
   const minted = new Map<string, bigint>();
   const closed = new Map<string, bigint>();
   for (const r of rows) {
@@ -1033,12 +1146,15 @@ export async function onchainMarketOpenInterest(
       openQty += rem;
     }
   }
-  return {
+  const oi: V2OpenInterest = {
     expiry_market_id: marketId,
     open_order_count,
     open_quantity: openQty.toString(),
     open_floor_shares: '0',
   };
+  if (oiCache.size > 200) oiCache.clear(); // bound growth across many viewed markets
+  oiCache.set(want, { oi, at: Date.now() });
+  return oi;
 }
 
 /* -------------------------------- vault ---------------------------------- */

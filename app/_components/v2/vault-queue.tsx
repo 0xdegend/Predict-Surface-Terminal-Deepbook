@@ -14,6 +14,7 @@
  * Amounts are NOT summable across sides: a supply escrows DUSDC, a withdraw escrows
  * PLP shares. The column is labelled per row for that reason.
  */
+import { useState } from 'react';
 import { LuClock, LuArrowDownToLine, LuArrowUpFromLine } from 'react-icons/lu';
 import { GlassError } from '../ui/glass-error';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
@@ -27,10 +28,14 @@ import type { LpQueueEntry } from '@/lib/sui/v2/lp-queue';
 
 type Row = { side: 'supply' | 'withdraw'; entry: LpQueueEntry };
 
+/** Rows shown per page — keeps the card short even when the queue runs into the hundreds. */
+const PAGE_SIZE = 8;
+
 export function V2VaultQueue() {
   const acct = usePredictAccountV2();
   const mounted = useMounted();
   const { queues, isLoading, error } = useLpQueue(acct.accountId);
+  const [pageState, setPageState] = useState(0);
 
   const sym = predictV2Config.quote.symbol;
   const rows: Row[] = queues
@@ -41,6 +46,16 @@ export function V2VaultQueue() {
     : [];
 
   const busy = acct.busy === 'cancel';
+
+  // Page-clamp derived, not stored: the queue refetches every 12s and entries drain as
+  // they fill, so `pageState` can point past the end — clamp it to a valid page in render
+  // rather than tracking shrinking counts with an effect.
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const page = Math.min(pageState, pageCount - 1);
+  const pageStart = page * PAGE_SIZE;
+  const pageRows = rows.slice(pageStart, pageStart + PAGE_SIZE);
+  const rangeStart = rows.length === 0 ? 0 : pageStart + 1;
+  const rangeEnd = Math.min(pageStart + PAGE_SIZE, rows.length);
 
   async function cancel(r: Row) {
     if (r.side === 'supply') await acct.cancelSupply(r.entry.index);
@@ -84,6 +99,7 @@ export function V2VaultQueue() {
           update, and you can cancel them from here until they fill.
         </p>
       ) : (
+        <>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px] font-mono text-[12px] tabular-nums">
             <thead>
@@ -96,7 +112,7 @@ export function V2VaultQueue() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {pageRows.map((r) => {
                 const isSupply = r.side === 'supply';
                 // Only the connected account can cancel its own request — the chain
                 // enforces it too (the Auth is bound to the account), so this is
@@ -151,6 +167,36 @@ export function V2VaultQueue() {
             </tbody>
           </table>
         </div>
+
+        {pageCount > 1 && (
+          <div className="flex items-center justify-between pt-0.5 text-[11px] text-text-3">
+            <span className="tabular-nums">
+              {rangeStart}–{rangeEnd} of {rows.length}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPageState(page - 1)}
+                disabled={page === 0}
+                className="rounded-lg border border-line px-2.5 py-1 text-text-2 transition-colors hover:bg-white/[0.05] hover:text-text-1 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                Prev
+              </button>
+              <span className="px-1 tabular-nums">
+                {page + 1} / {pageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPageState(page + 1)}
+                disabled={page >= pageCount - 1}
+                className="rounded-lg border border-line px-2.5 py-1 text-text-2 transition-colors hover:bg-white/[0.05] hover:text-text-1 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}

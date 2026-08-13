@@ -5,15 +5,12 @@ import { onchainPythLatest, onchainPythObservations } from '@/lib/api/v2/onchain
  * GET /api/v2/pyth?kind=latest | ?kind=history&limit=N — the BTC Pyth spot feed,
  * read on-chain SERVER-SIDE.
  *
- * WHY THIS EXISTS: the chart's live edge + the top spot tape read the Pyth feed by
- * polling public JSON-RPC proxies (suix_queryEvents / sui_getObject) ~1-2x/s. Those
- * proxies sit behind Cloudflare, which bot-challenges a browser making that many
- * rapid same-origin-less calls — so the reads worked in Node/curl but died in the
- * browser (nav price blank, chart stuck on "Loading live chart"), while the surface
- * (gRPC, a different path) stayed live. Running the read here, server-side, sidesteps
- * that entirely: the server sends the WAF-clearing UA (browsers can't set one), it
- * isn't subject to the interactive browser challenge, and the browser now fetches its
- * OWN origin (no cross-origin JSON-RPC at all). Same pattern as /api/v2/leaderboard.
+ * WHY THIS EXISTS: the chart's live edge + the top spot tape read the Pyth feed
+ * ~1-2x/s (latest via gRPC `getObject`, history via GraphQL `events`). Doing that from
+ * the browser at that rate got Cloudflare-challenged on the old public proxies (nav
+ * price blank, chart stuck on "Loading live chart"). Running the read here, server-side,
+ * sidesteps it: the read stays same-origin from the browser's view, off the interactive
+ * challenge path. Same pattern as /api/v2/leaderboard.
  *
  * `nodejs` runtime (the on-chain reader needs it) + `force-dynamic`; the cache-control
  * header still lets the CDN share one read across every viewer, so the origin does at
