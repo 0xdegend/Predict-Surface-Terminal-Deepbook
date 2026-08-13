@@ -753,7 +753,7 @@ select:focus-visible,
 .tour-spot {
   border-radius: 12px;
   box-shadow:
-    0 0 0 9999px rgba(8, 9, 11, 0.66),
+    0 0 0 9999px rgba(8, 9, 11, 0.8),
     0 0 0 1px var(--accent-line),
     0 0 26px -2px var(--accent-glow);
 }

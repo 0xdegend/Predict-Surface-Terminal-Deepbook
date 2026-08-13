@@ -32,6 +32,7 @@ import { buildSurface, type SmileInput, type Surface } from '@/lib/svi/surface';
 import { buildSurfaceMesh, ivColor, type SurfaceMesh } from '@/lib/svi/mesh';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useV2SurfaceStore } from '@/lib/store/v2-surface-store';
+import { useTourStore } from '@/lib/store/tour-store';
 import { useV2SurfaceInputs } from '@/lib/hooks/use-v2-surface-inputs';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
@@ -1990,16 +1991,20 @@ function LegendRow({
  * The open/collapsed choice is remembered in localStorage; defaults to open on
  * desktop and collapsed on mobile (keeps the hero clear + the blur box off LCP on
  * phones). `suppressed` (trade popover open) hides it without unmounting, so the
- * collapse state survives and it reliably reappears on close.
+ * collapse state survives and it reliably reappears on close. It's also hidden
+ * while the guided tour is running so the tour's own copy is the only thing
+ * explaining the surface (the pill would otherwise sit lit over the spotlight and
+ * distract); it comes back the moment the tour ends, collapse state intact.
  */
 function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
   const isDesktop = useMediaQuery('(min-width: 640px)');
+  const tourActive = useTourStore((s) => s.active);
   const [pref, setPref] = useState<'open' | 'collapsed' | null>(() => {
     if (typeof window === 'undefined') return null;
     const v = localStorage.getItem('predict.surfaceGuide');
     return v === 'open' || v === 'collapsed' ? v : null;
   });
-  if (suppressed) return null;
+  if (suppressed || tourActive) return null;
 
   // No explicit choice yet → open on desktop, collapsed on mobile.
   const expanded = pref ? pref === 'open' : isDesktop;
