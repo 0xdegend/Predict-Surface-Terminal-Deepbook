@@ -105,6 +105,9 @@ export function V2Chrome() {
           label: 'Admin',
           desc: 'Claim protocol builder fees',
           icon: LuKeyRound,
+          // Full-width row like Docs (not a 5th tile) so the launcher grid never
+          // leaves an odd hole. Matches the "any Admin row" note above.
+          footer: true,
         },
         ...SOCIAL_ITEMS,
       ]
