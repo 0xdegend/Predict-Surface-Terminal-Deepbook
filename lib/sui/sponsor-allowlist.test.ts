@@ -45,4 +45,29 @@ describe('sponsor-allowlist', () => {
     const kind = await kindOf(`${FOREIGN}::whatever::do_thing`);
     expect(() => sponsoredTargets(kind)).toThrow(/Refusing to sponsor a call outside the Predict packages/);
   });
+
+  it('allows framework coin::redeem_funds (coinWithBalance draws from an address balance)', async () => {
+    // The regression this guards: a gasless trade whose DUSDC sits as a Sui address
+    // balance makes coinWithBalance inject 0x2::coin::redeem_funds, which was refused
+    // before reaching Enoki. It must be allowed AND returned (so Enoki permits it too).
+    const kind = await kindOf('0x2::coin::redeem_funds');
+    expect(sponsoredTargets(kind)).toContain(
+      `${normalizeSuiAddress('0x2')}::coin::redeem_funds`,
+    );
+  });
+
+  it('allows a mixed Predict + framework-redeem PTB (auto-deposit from an address balance)', async () => {
+    const kind = await kindOf(
+      '0x2::coin::redeem_funds',
+      `${PREDICT}::account::deposit_funds`,
+    );
+    const targets = sponsoredTargets(kind);
+    expect(targets.some((t) => t.endsWith('::coin::redeem_funds'))).toBe(true);
+    expect(targets.some((t) => t.endsWith('::account::deposit_funds'))).toBe(true);
+  });
+
+  it('still refuses a non-redeem framework call (allowlist is exact, not all of 0x2)', async () => {
+    const kind = await kindOf('0x2::coin::burn');
+    expect(() => sponsoredTargets(kind)).toThrow(/Refusing to sponsor a call outside the Predict packages/);
+  });
 });
