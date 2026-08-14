@@ -738,3 +738,52 @@ describe('isFlowInterruption', () => {
     expect(isFlowInterruption(parseIntent('63800'))).toBe(false);
   });
 });
+
+describe('parseIntent — vault_deposit', () => {
+  it('deposit asks with an amount → vault_deposit carrying the amount', () => {
+    const cases: [string, number][] = [
+      ['add 10 dusdc to the vault', 10],
+      ['add 10 to the vault', 10],
+      ['deposit 25 into the liquidity pool', 25],
+      ['supply the pool with 50 dusdc', 50],
+      ['put $100 in the vault', 100],
+      ['add 1,000 dusdc to the vault', 1000],
+      ['top up the vault with 5.5', 5.5],
+      // "move" is a vault deposit here (destination named), not a ticket adjustment.
+      ['move 10 to the vault', 10],
+    ];
+    for (const [msg, amount] of cases) {
+      const i = parseIntent(msg);
+      expect(i.kind, msg).toBe('vault_deposit');
+      if (i.kind === 'vault_deposit') expect(i.amount, msg).toBe(amount);
+    }
+  });
+
+  it('a deposit ask with no amount → vault_deposit, amount undefined (Kelly asks)', () => {
+    for (const msg of ['add to the vault', 'provide liquidity', 'supply the liquidity pool']) {
+      const i = parseIntent(msg);
+      expect(i.kind, msg).toBe('vault_deposit');
+      if (i.kind === 'vault_deposit') expect(i.amount, msg).toBeUndefined();
+    }
+  });
+
+  it('definitional vault asks stay the glossary, not a deposit', () => {
+    for (const msg of ['what is the vault', 'how does the liquidity pool work', 'explain the vault']) {
+      expect(parseIntent(msg).kind, msg).toBe('explain');
+    }
+  });
+
+  it('withdrawals / removals are not a deposit (fall through)', () => {
+    for (const msg of ['withdraw 10 from the vault', 'remove my liquidity', 'cancel my vault deposit']) {
+      expect(parseIntent(msg).kind, msg).not.toBe('vault_deposit');
+    }
+  });
+
+  it('a vault mention is a deposit, never a mistaken bet confirmation', () => {
+    // The place-confirmation guard: "put 10 dusdc in the vault" must NOT read as
+    // "confirm the pending bet with 10 dusdc" — it routes to a vault deposit instead.
+    expect(placeConfirmation('put 10 dusdc in the vault')).toBeNull();
+    expect(isPlaceConfirmation('add 10 dusdc to the vault')).toBe(false);
+    expect(parseIntent('put 10 dusdc in the vault').kind).toBe('vault_deposit');
+  });
+});

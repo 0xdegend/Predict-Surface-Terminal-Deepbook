@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { respondToIntent, timeLeftLabel, type CopilotContext, type BetCandidate } from './respond';
+import { toQuote } from '@/config/scale';
 import { startOfUtcDay } from '@/lib/insights/events';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
@@ -987,5 +988,61 @@ describe('respondToIntent — range_bet', () => {
     const r = respondToIntent({ kind: 'range_bet', conviction: 'even', horizon: 'soonest' }, ctx({ candidates: [] }));
     expect(r.range).toBeUndefined();
     expect(r.text[0]).toMatch(/no live market/i);
+  });
+});
+
+describe('respondToIntent — vault_deposit', () => {
+  const wallet = (over: Partial<NonNullable<CopilotContext['wallet']>> = {}) => ({
+    connected: true,
+    hasAccount: true,
+    accountBase: toQuote(100),
+    walletBase: toQuote(0),
+    ...over,
+  });
+
+  it('connected + funded + an amount → a tap-to-confirm vault deposit card', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 10 }, ctx({ wallet: wallet() }));
+    expect(r.vaultDeposit).toBeDefined();
+    expect(r.vaultDeposit!.amount).toBe(10);
+    expect(r.vaultDeposit!.label).toMatch(/vault/i);
+    expect(r.text.join(' ')).toMatch(/queue|vault/i);
+    expect(r.text.join(' ')).not.toMatch(/—/); // no em dash
+  });
+
+  it('not connected → guidance only, no deposit card', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 10 }, ctx({ wallet: { connected: false, hasAccount: false, accountBase: 0n, walletBase: 0n } }));
+    expect(r.vaultDeposit).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/connect/i);
+  });
+
+  it('no trading account → offer to create one first (no deposit yet)', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 10 }, ctx({ wallet: wallet({ hasAccount: false }) }));
+    expect(r.vaultDeposit).toBeUndefined();
+    expect(r.action).toEqual({ kind: 'create_account', label: 'Create trading account' });
+  });
+
+  it('no amount named → asks how much (shows what is available)', () => {
+    const r = respondToIntent({ kind: 'vault_deposit' }, ctx({ wallet: wallet() }));
+    expect(r.vaultDeposit).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/how much/i);
+    expect(r.text.join(' ')).toMatch(/100 DUSDC/);
+  });
+
+  it('more than available → caps to what they hold and confirms that', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 1000 }, ctx({ wallet: wallet({ accountBase: toQuote(40), walletBase: toQuote(60) }) }));
+    expect(r.vaultDeposit).toBeDefined();
+    expect(r.vaultDeposit!.amount).toBe(100); // 40 account + 60 wallet
+    expect(r.text.join(' ')).toMatch(/most you can add/i);
+  });
+
+  it('out of funds → points to the faucet, no deposit card', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 10 }, ctx({ wallet: wallet({ accountBase: 0n, walletBase: 0n }) }));
+    expect(r.vaultDeposit).toBeUndefined();
+    expect(r.text.join(' ')).toMatch(/faucet|out of test tokens/i);
+  });
+
+  it('out of funds but grant-eligible → offers the test-token drip', () => {
+    const r = respondToIntent({ kind: 'vault_deposit', amount: 10 }, ctx({ wallet: wallet({ accountBase: 0n, walletBase: 0n, grantEligible: true }) }));
+    expect(r.action).toEqual({ kind: 'get_tokens', label: 'Get test tokens' });
   });
 });

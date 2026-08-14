@@ -161,6 +161,11 @@ export interface RangeSuggestion {
  *  real flow in the screen (createAccount / the starter-grant airdrop). */
 export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: string };
 
+/** A vault deposit the chat renders as a tap-to-confirm card. Kelly proposes it; the
+ *  trader taps to sign (the screen calls `acct.requestSupply`). `amount` is the DUSDC
+ *  to queue into the async LP; `label` is the button text. */
+export type VaultDepositAction = { amount: number; label: string };
+
 /** A shareable snapshot the chat offers to post as an image card (a "Share to X"
  *  affordance under the answer). `fear_greed` carries the reading; `win_rate` is a
  *  bare signal (the screen builds the track-record card payload from its live
@@ -183,6 +188,10 @@ export interface CopilotReply {
   /** An onboarding action card (create account / get test tokens). The screen
    *  renders a button that runs the real flow. */
   action?: OnboardAction;
+  /** A vault deposit the chat renders as a tap-to-confirm card. The screen wires the
+   *  tap to `acct.requestSupply` (Kelly proposes; the trader signs). Used by
+   *  "add 10 DUSDC to the vault". */
+  vaultDeposit?: VaultDepositAction;
   /** A snapshot the chat can offer to share as an image card (e.g. fear & greed). */
   share?: ShareCard;
   /** An outbound link rendered as a tappable chip under the message (e.g. the
@@ -1729,6 +1738,76 @@ function getTokensReply(ctx: CopilotContext): CopilotReply {
   return { text: ['I can only auto-send test tokens to a brand-new wallet, and yours is already set up. You can top up from the testnet faucet instead.'] };
 }
 
+/** DUSDC amount with clean formatting: whole numbers show no decimals, else two. */
+function fmtDusdc(amount: number): string {
+  return `${num(amount, amount % 1 === 0 ? 0 : 2)} DUSDC`;
+}
+
+/**
+ * "Add 10 DUSDC to the vault / supply the liquidity pool" — Kelly proposes a deposit
+ * into the async LP and hands back a tap-to-confirm card; the trader signs it (the
+ * screen calls acct.requestSupply). State-aware from ctx.wallet (mirrors onboarding):
+ * not connected → guidance; no account → offer to create one first; out of funds →
+ * point to the grant/faucet; no amount → ask how much; over balance → cap to what
+ * they have. Never signs here — the `vaultDeposit` field just renders the card.
+ */
+function vaultDepositReply(ctx: CopilotContext, amount?: number): CopilotReply {
+  const w = ctx.wallet;
+  if (!w || !w.connected) {
+    return { text: ['To add to the vault, first tap Connect (top right) to sign in. Then I can move it over for you.'] };
+  }
+  if (!w.hasAccount) {
+    return {
+      text: [
+        'Adding to the vault needs a trading account first, a one-time free setup that holds your funds and positions.',
+        'Want me to create it now? Then we can do the deposit.',
+      ],
+      action: { kind: 'create_account', label: 'Create trading account' },
+    };
+  }
+  const spendable = readyFunds(w); // account + wallet, human units — a deposit can top up from the wallet
+  if (spendable <= 0) {
+    if (w.grantEligible) {
+      return {
+        text: ['To add to the vault you’ll need some DUSDC first, and your wallet’s empty. Want me to drop in some free test tokens to get you going?'],
+        action: { kind: 'get_tokens', label: 'Get test tokens' },
+      };
+    }
+    return { text: ['You’re out of test tokens, so there’s nothing to add yet. Top up from the testnet faucet, then tell me how much to put in the vault.'] };
+  }
+  if (amount == null) {
+    return {
+      text: [
+        `How much would you like to add to the vault? You’ve got ${fmtDusdc(spendable)} available across your account and wallet.`,
+        'Just say an amount, like “add 10 to the vault”.',
+      ],
+    };
+  }
+  if (amount <= 0) {
+    return { text: ['Tell me a positive amount to add, like “add 10 to the vault”.'] };
+  }
+  if (amount > spendable + 1e-6) {
+    const capped = Math.floor(spendable * 100) / 100;
+    if (capped <= 0) {
+      return { text: ['That’s more than you have available right now. Top up first, then tell me how much to add.'] };
+    }
+    return {
+      text: [
+        `That’s a bit more than you have available. The most you can add right now is ${fmtDusdc(capped)} (your account plus wallet).`,
+        `Want me to queue ${fmtDusdc(capped)} into the vault?`,
+      ],
+      vaultDeposit: { amount: capped, label: `Add ${fmtDusdc(capped)} to vault` },
+    };
+  }
+  return {
+    text: [
+      `Ready to add ${fmtDusdc(amount)} to the vault. It joins the queue and starts earning at the next vault update, and if your trading account is short the difference tops up from your wallet in the same transaction.`,
+      'Tap to confirm and sign, that’s the only step.',
+    ],
+    vaultDeposit: { amount, label: `Add ${fmtDusdc(amount)} to vault` },
+  };
+}
+
 function positioningReply(ctx: CopilotContext): CopilotReply {
   const funding = ctx.insights?.funding.binancePct ?? ctx.insights?.funding.avgPct ?? null;
   const lines = positioningLines(ctx.positioning ?? null, funding);
@@ -1825,6 +1904,8 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return createAccountReply(ctx);
     case 'get_tokens':
       return getTokensReply(ctx);
+    case 'vault_deposit':
+      return vaultDepositReply(ctx, intent.amount);
     case 'adjust_ticket':
       return adjustReply(intent, ctx);
     case 'next_market':

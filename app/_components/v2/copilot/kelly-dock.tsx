@@ -31,7 +31,7 @@ import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { LuX } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
-import { fromQuote } from '@/config/scale';
+import { fromQuote, toQuote } from '@/config/scale';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
@@ -414,8 +414,8 @@ function KellyPanel({
       ...m,
       { id: nextId(), role: 'user', text: [text] },
       // Share cards need their modals (they live on the full page), so drop `share`
-      // here to avoid a dead chip; text/bet/link carry over.
-      { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, link: reply.link },
+      // here to avoid a dead chip; text/bet/link + the vault-deposit card carry over.
+      { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, link: reply.link, vaultDeposit: reply.vaultDeposit },
     ]);
   }
 
@@ -639,6 +639,45 @@ function KellyPanel({
     }
   }
 
+  // Confirm a vault deposit from a chat card → queue DUSDC into the async LP, the SAME
+  // flow the Vault panel runs (acct.requestSupply, topping up from the wallet in the
+  // same tx when the trading account is short). Kelly proposed it; this is the trader's
+  // tap signing it. A missing account is handed off to the Trade tab (like onboarding).
+  async function handleVaultDeposit(amount: number) {
+    if (!acct.owner) {
+      pushBot(['Tap Connect (top right) to sign in first, then I’ll add it to the vault for you.']);
+      return;
+    }
+    if (!acct.wrapperExists) {
+      pushBot(['You’ll need a trading account first. Open the Trade tab to set it up, then I can add to the vault for you.']);
+      return;
+    }
+    if (!(amount > 0)) return;
+    const amt = toQuote(amount);
+    const spendable = acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+    if (amt > spendable) {
+      pushBot([`That’s more than you have available right now (${num(fromQuote(spendable), 2)} DUSDC across your account and wallet). Try a smaller amount.`]);
+      return;
+    }
+    const shortfall = amt > acct.balanceBase ? amt - acct.balanceBase : 0n;
+    setBusy(true);
+    try {
+      const digest = await acct.requestSupply(amt, shortfall > 0n ? shortfall : undefined);
+      pushBot(
+        digest
+          ? [
+              `Done. Your ${Number.isInteger(amount) ? amount : amount.toFixed(2)} DUSDC is queued into the vault and starts earning at the next vault update.`,
+              'You can track it or cancel it any time from the Vault page.',
+            ]
+          : ['That didn’t go through, so nothing was added to the vault. You can try again, or do it from the Vault page.'],
+      );
+    } catch {
+      pushBot(['That didn’t go through, so nothing was added to the vault. You can try again, or do it from the Vault page.']);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // The primed ticket target, matched against the drawer's OWN live markets + pricers
   // (both already mounted while the drawer is open), so the in-place ticket prices live.
   const ticketMarket = markets.find((m) => m.expiry_market_id === storeMarketId) ?? null;
@@ -680,6 +719,7 @@ function KellyPanel({
             onSend={handleSend}
             onPlaceBet={handlePlaceBet}
             onEditBet={() => router.push('/v2/copilot')}
+            onVaultDeposit={handleVaultDeposit}
             busy={busy}
             suggestions={DOCK_CHIPS}
             hideHeader

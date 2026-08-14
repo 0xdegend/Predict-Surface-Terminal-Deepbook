@@ -86,6 +86,9 @@ export type CopilotIntent =
   | { kind: 'onboarding' }
   | { kind: 'create_account' }
   | { kind: 'get_tokens' }
+  // "Add 10 DUSDC to the vault / supply the liquidity pool" — deposit into the vault
+  // (async LP). `amount` is the DUSDC to queue (undefined → Kelly asks how much).
+  | { kind: 'vault_deposit'; amount?: number }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -296,6 +299,10 @@ export function placeConfirmation(message: string): { stake?: number; leverage?:
   // place it"). "do it" (a confirm) is spared — only "do i/we/you …" bails.
   if (/^(?:should|shall|can|could|would|does|is|are|was|were|what|which|how|why|when|will|might|worth)\b/.test(t)) return null;
   if (/^do (?:i|we|you)\b/.test(t)) return null;
+  // A message that names the vault / liquidity pool is a DEPOSIT request (handled by
+  // the vault_deposit intent), not a confirmation of the pending BET — so "put 10
+  // dusdc in the vault" never places a trade. (A trade confirm never names the vault.)
+  if (/\bvault\b|liquidity pool|\bliquidity\b|\blps?\b|\bplp\b|\bthe pool\b/.test(t)) return null;
 
   // "<verb> it/this/that/(the|my) bet/trade/position" — the object keeps a bare
   // "trade 66000" (a new spec) from matching. Plus standalone affirmations.
@@ -571,6 +578,35 @@ function wantsGetTokens(text: string): boolean {
   return /\bairdrop\b|\bfaucet\b|\btest (?:tokens?|dusdc|money|funds|coins?)\b|\bfree (?:tokens?|dusdc|money|coins?)\b|\b(?:get|give|send|grab|claim|need|want|drip)\b[^?]{0,16}\b(?:dusdc|tokens?|test funds|test money)\b|\bfund (?:my )?(?:account|wallet)\b|\btop ?up\b[^?]{0,12}\b(?:account|wallet|balance)\b|\bstarter grant\b/.test(text);
 }
 
+/** "Add 10 DUSDC to the vault / deposit into the liquidity pool / supply the pool /
+ *  provide liquidity" — a request to DEPOSIT into the vault (async LP), which Kelly
+ *  proposes and the trader confirms + signs. Requires a deposit verb AND a
+ *  vault/LP/pool destination, and is NOT a withdrawal (those fall through — there's
+ *  no withdraw intent yet). Pulls the amount when one's given. The definitional
+ *  "what is the vault" has no deposit verb, so it still routes to the glossary. */
+function wantsVaultDeposit(text: string): { amount?: number } | null {
+  // Name the vault / liquidity pool / LP as the destination.
+  if (!/\bvault\b|liquidity pool|\bliquidity\b|\blps?\b|\bplp\b|\bthe pool\b/.test(text)) return null;
+  // A withdrawal / cancel is a different action (no intent for it yet) — let it fall through.
+  if (/\bwithdraw\b|\bremove\b|\bpull\b|\btake out\b|\bunstake\b|\bredeem\b|\bcancel\b|\bexit\b/.test(text)) return null;
+  // A deposit action verb.
+  if (!/\b(?:add|deposit|put|supply|provide|contribute|top ?up|throw|move|send|stake|lend|fund|invest|park)\b/.test(text)) return null;
+  return { amount: vaultAmount(text) };
+}
+
+/** Pull a DUSDC amount from a vault-deposit message: prefers a "N dusdc" / "$N"
+ *  figure, else the first plain number. Undefined when none is named (Kelly then
+ *  asks how much). */
+function vaultAmount(text: string): number | undefined {
+  const m =
+    text.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:dusdc|dollars?|bucks?|usd)\b/) ??
+    text.match(/\$(\d[\d,]*(?:\.\d+)?)/) ??
+    text.match(/\b(\d[\d,]*(?:\.\d+)?)\b/);
+  if (!m) return undefined;
+  const n = parseFloat(m[1].replace(/,/g, ''));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 /** "How do I get started / onboard me / new here / where do I begin." The general
  *  first-run guidance (state-aware). Kept narrow so "how does this work" stays the
  *  explainer. */
@@ -819,6 +855,13 @@ export function parseIntent(message: string): CopilotIntent {
   // trade-param branch so "find the strike at 64,730" isn't read as building one.
   const find = wantsFindStrike(raw);
   if (find) return { kind: 'find_strike', price: find.price, dir: find.dir };
+  // "Add 10 DUSDC to the vault / supply the liquidity pool" → a vault deposit Kelly
+  // proposes (the trader confirms + signs). BEFORE the trade branches so the amount
+  // ("10 dusdc") isn't read as a bet, and before adjust/TRADE_PARAM which would
+  // claim the number. The definitional "what is the vault" has no deposit verb, so
+  // it still falls through to the glossary.
+  const vault = wantsVaultDeposit(raw);
+  if (vault) return { kind: 'vault_deposit', ...(vault.amount != null ? { amount: vault.amount } : {}) };
   // Start the guided wizard on an explicit "set up a trade"-style phrase, on raw
   // text — it must beat the NON_DIRECTIONAL strip (which would remove "set up").
   if (has(raw, START_TRADE_PHRASES)) return { kind: 'start_trade' };

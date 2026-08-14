@@ -69,7 +69,7 @@ import { matchPositionsToClose, positionCloseLabel } from '@/lib/copilot/close-m
 import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import { num, quote as fmtQuote } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
-import { fromQuote } from '@/config/scale';
+import { fromQuote, toQuote } from '@/config/scale';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { pythSpot, qkV2, getMarketOrders } from '@/lib/api/v2/client';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -480,7 +480,7 @@ export function V2CopilotScreen({
     pushUser(userText);
     setThinking(true);
     replyTimer.current = setTimeout(() => {
-      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, range: reply.range, action: reply.action, share: reply.share, link: reply.link }]);
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, range: reply.range, action: reply.action, vaultDeposit: reply.vaultDeposit, share: reply.share, link: reply.link }]);
       setThinking(false);
     }, 600);
   }
@@ -533,6 +533,47 @@ export function V2CopilotScreen({
     setThinking(true);
     try {
       await grant.claim();
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  // Confirm a vault deposit from a chat card → queue DUSDC into the async LP, the
+  // SAME flow the Vault panel runs (acct.requestSupply, topping up from the wallet in
+  // the same tx when the trading account is short). Kelly proposed it; this is where
+  // the trader's tap signs it. Gated on a connected wallet + a trading account, and
+  // re-checked against the live balance at tap time (the reply's amount is fixed).
+  async function handleVaultDeposit(amount: number) {
+    if (!acct.owner) {
+      botAfterBeat(['Tap Connect (top right) to sign in first, then I’ll add it to the vault for you.']);
+      return;
+    }
+    if (!acct.wrapperExists) {
+      botAfterBeat(['You’ll need a trading account before you can add to the vault. Say “create my account” and I’ll set it up, then we can deposit.']);
+      return;
+    }
+    if (!(amount > 0)) return;
+    const amt = toQuote(amount);
+    const spendable = acct.balanceBase + (acct.walletDusdcBase ?? 0n);
+    if (amt > spendable) {
+      botAfterBeat([`That’s more than you have available right now (${fmtQuote(fromQuote(spendable))} ${predictV2Config.quote.symbol} across your account and wallet). Try a smaller amount.`]);
+      return;
+    }
+    // Short on the account balance → top up the difference from the wallet in the same tx.
+    const shortfall = amt > acct.balanceBase ? amt - acct.balanceBase : 0n;
+    setThinking(true);
+    try {
+      const digest = await acct.requestSupply(amt, shortfall > 0n ? shortfall : undefined);
+      pushBot(
+        digest
+          ? [
+              `Done. Your ${num(amount, amount % 1 === 0 ? 0 : 2)} ${predictV2Config.quote.symbol} is queued into the vault and will start earning at the next vault update.`,
+              'You can track it or cancel it any time from the Vault page.',
+            ]
+          : ['That didn’t go through, so nothing was added to the vault. You can try again, or do it from the Vault page.'],
+      );
+    } catch {
+      pushBot(['That didn’t go through, so nothing was added to the vault. You can try again, or do it from the Vault page.']);
     } finally {
       setThinking(false);
     }
@@ -1129,7 +1170,9 @@ export function V2CopilotScreen({
       // Only pure informational reads interrupt (isFlowInterruption); a real
       // answer (a number / up / down / "cancel") still feeds advanceFlow below.
       const interrupt = parseIntent(text);
-      if (isFlowInterruption(interrupt)) {
+      // A vault deposit mid-wizard is answered like an interruption (its confirm card
+      // is a separate action, not a trade answer), keeping the half-built trade paused.
+      if (isFlowInterruption(interrupt) || interrupt.kind === 'vault_deposit') {
         const answer = readReply(interrupt, now, spot, candidates);
         // Drop any bet so a stray suggestion can't clobber the half-built trade,
         // then tack the resume nudge onto the end of the answer.
@@ -1279,6 +1322,7 @@ export function V2CopilotScreen({
                 onPlaceRange={handlePlaceRange}
                 onEditBet={handleEditBet}
                 onAction={handleOnboardAction}
+                onVaultDeposit={handleVaultDeposit}
                 onShare={handleShare}
                 busy={thinking}
                 suggestions={PAUSED_CHIPS}

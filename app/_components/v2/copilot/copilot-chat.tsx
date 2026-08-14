@@ -12,13 +12,13 @@
  * ticket. Nothing here signs or mints.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins, LuBrackets } from 'react-icons/lu';
+import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins, LuBrackets, LuDroplets } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num, pct } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
-import type { BetSuggestion, RangeSuggestion, OnboardAction, ShareCard } from '@/lib/copilot/respond';
+import type { BetSuggestion, RangeSuggestion, OnboardAction, ShareCard, VaultDepositAction } from '@/lib/copilot/respond';
 
 export interface ChatMessage {
   id: string;
@@ -29,6 +29,8 @@ export interface ChatMessage {
   range?: RangeSuggestion;
   /** An onboarding step rendered as a one-tap button (create account / get tokens). */
   action?: OnboardAction;
+  /** A vault deposit rendered as a tap-to-confirm card (add DUSDC to the vault). */
+  vaultDeposit?: VaultDepositAction;
   /** A snapshot the message can offer to share as an image card (fear & greed). */
   share?: ShareCard;
   /** An outbound link chip under the message (e.g. "message the dev on X"). */
@@ -57,6 +59,7 @@ export function CopilotChat({
   onPlaceRange,
   onEditBet,
   onAction,
+  onVaultDeposit,
   onShare,
   busy,
   threadEnd,
@@ -73,6 +76,9 @@ export function CopilotChat({
   onEditBet: () => void;
   /** Run an onboarding action (create trading account / get test tokens). */
   onAction?: (kind: OnboardAction['kind']) => void;
+  /** Confirm a vault deposit — the screen signs `acct.requestSupply` for `amount`.
+   *  Optional; hosts that don't support depositing here can omit it. */
+  onVaultDeposit?: (amount: number) => void;
   /** Open the share dialog for a shareable snapshot (fear & greed card). */
   onShare?: (share: ShareCard) => void;
   busy?: boolean;
@@ -171,7 +177,7 @@ export function CopilotChat({
       {/* thread */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onPlaceRange={onPlaceRange} onEditBet={onEditBet} onAction={onAction} onShare={onShare} busy={busy} />
+          <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onPlaceRange={onPlaceRange} onEditBet={onEditBet} onAction={onAction} onVaultDeposit={onVaultDeposit} onShare={onShare} busy={busy} />
         ))}
         {busy && <TypingBubble />}
         {threadEnd}
@@ -247,6 +253,7 @@ function MessageBubble({
   onPlaceRange,
   onEditBet,
   onAction,
+  onVaultDeposit,
   onShare,
   busy,
 }: {
@@ -255,6 +262,7 @@ function MessageBubble({
   onPlaceRange?: (range: RangeSuggestion) => void;
   onEditBet: () => void;
   onAction?: (kind: OnboardAction['kind']) => void;
+  onVaultDeposit?: (amount: number) => void;
   onShare?: (share: ShareCard) => void;
   busy?: boolean;
 }) {
@@ -295,6 +303,12 @@ function MessageBubble({
       {message.action && onAction && (
         <div className="rise w-full" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
           <ActionCard action={message.action} onAction={onAction} busy={busy} />
+        </div>
+      )}
+      {/* A vault deposit lands the same way — a tap-to-confirm card the trader signs. */}
+      {message.vaultDeposit && onVaultDeposit && (
+        <div className="rise w-full" style={{ animationDelay: `${message.text.length * LINE_DELAY + 80}ms` }}>
+          <VaultDepositCard action={message.vaultDeposit} onConfirm={() => onVaultDeposit(message.vaultDeposit!.amount)} busy={busy} />
         </div>
       )}
       {/* A "Share to X" chip on shareable answers (fear & greed) — opens the card dialog. */}
@@ -360,6 +374,36 @@ function ActionCard({ action, onAction, busy }: { action: OnboardAction; onActio
       {busy ? pending : action.label}
       {!busy && <span aria-hidden>→</span>}
     </button>
+  );
+}
+
+/** The vault-deposit confirm card: the amount to queue + a plain note on how the async
+ *  LP works, then a single tap-to-confirm button (the screen signs the deposit). Shows
+ *  a pending label while the transaction is in flight. */
+function VaultDepositCard({ action, onConfirm, busy }: { action: VaultDepositAction; onConfirm: () => void; busy?: boolean }) {
+  return (
+    <div className="glass-card w-[88%] overflow-hidden p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-semibold text-accent">
+          <LuDroplets size={14} />
+          ADD TO VAULT
+        </span>
+        <span className="font-mono text-[13px] font-semibold tabular-nums text-text-1">
+          ${num(action.amount, action.amount % 1 === 0 ? 0 : 2)}
+        </span>
+      </div>
+      <p className="mt-2 text-[11px] leading-snug text-text-3">
+        Joins the queue and starts earning at the next vault update. If your account is short, the rest tops up from your wallet in the same transaction.
+      </p>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={busy}
+        className="mt-2.5 w-full rounded-lg border border-(--accent-line) bg-(--accent-soft) py-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-up/15 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      >
+        {busy ? 'Adding to vault…' : `${action.label} →`}
+      </button>
+    </div>
   );
 }
 
