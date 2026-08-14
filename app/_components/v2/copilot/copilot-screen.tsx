@@ -49,7 +49,6 @@ import { SuccessModal } from '@/app/_components/ui/success-modal';
 import { FearGreedShareModal } from './fear-greed-share-modal';
 import { EventsShareModal } from './events-share-modal';
 import { PerfShareCardModal } from '@/app/_components/positions/perf-share-card-modal';
-import type { PerfShareData } from '@/app/_components/positions/perf-share-card-canvas';
 import {
   marketRows,
   volState,
@@ -112,7 +111,13 @@ const PAUSED_CHIPS = ['Analyze BTC', "What's the fear and greed?", 'Why is BTC m
 /** The trader's settled track record, mirrored out of the open-bets subtree so the
  *  screen can answer "did I win my last trade?" / "what's my win rate?" and build
  *  the share card without subscribing to history itself. */
-type CopilotRecord = { stats: WinStats; curve: number[]; lastTrade: PastPrediction | null };
+type CopilotRecord = {
+  stats: WinStats;
+  curve: number[];
+  lastTrade: PastPrediction | null;
+  /** Raw settled rows, so the share card can window by timeframe (1D/1W/1M/All). */
+  history: PastPrediction[];
+};
 
 /**
  * The starter grant funds a near-empty wallet: gated purely on a DUSDC balance
@@ -342,7 +347,7 @@ export function V2CopilotScreen({
   const [shareCard, setShareCard] = useState<ShareCard | null>(null);
   // The track-record share payload, snapshotted when the user taps "Share to X"
   // (an event handler — so we never call the ref-reading builder during render).
-  const [perfShare, setPerfShare] = useState<PerfShareData | null>(null);
+  const [perfHistory, setPerfHistory] = useState<PastPrediction[] | null>(null);
   // The guided step-by-step wizard's state (null = not in a guided flow).
   const [flow, setFlow] = useState<TradeFlow | null>(null);
   // The bet currently set up + shown on a card (wizard review or a one-shot
@@ -913,32 +918,14 @@ export function V2CopilotScreen({
   // no pending suggestion (e.g. after an edit, or a strike picked on the surface).
   // Binary + a live market with a real strike only; placeBetDirect re-quotes and
   // gates everything else, so the odds fields here are unused placeholders.
-  // Build the track-record share-card payload from the latest history (read
-  // imperatively, so tapping "Share to X" uses fresh stats without subscribing the
-  // screen). Mirrors the Portfolio page's PerfShareData exactly. Null = nothing to
-  // share yet (no settled bets).
-  function perfShareData(): PerfShareData | null {
-    const r = recordRef.current;
-    if (!r || r.stats.total === 0) return null;
-    const { stats } = r;
-    return {
-      winRate: stats.winRate,
-      wins: stats.wins,
-      losses: stats.losses,
-      settled: stats.total,
-      realizedPnl: stats.realizedPnl,
-      staked: stats.staked,
-      avgRoi: stats.staked > 0 ? stats.realizedPnl / stats.staked : 0,
-      best: stats.best,
-      streak: stats.streak ? { count: stats.streak.count, won: stats.streak.result === 'won' } : null,
-      curve: r.curve,
-    };
-  }
-
-  // Open a share card. For the win-rate track record, snapshot the image payload
-  // now (from the live history ref) so the modal has fresh data.
+  // Open a share card. For the win-rate track record, snapshot the raw settled
+  // history now (from the live ref) so the modal can window it by timeframe with
+  // fresh data. Null when there's nothing settled to share.
   function handleShare(card: ShareCard) {
-    if (card.kind === 'win_rate') setPerfShare(perfShareData());
+    if (card.kind === 'win_rate') {
+      const r = recordRef.current;
+      setPerfHistory(r && r.stats.total > 0 ? r.history : null);
+    }
     setShareCard(card);
   }
 
@@ -1313,7 +1300,7 @@ export function V2CopilotScreen({
           headline={shareCard?.kind === 'events' ? shareCard.headline : null}
           onClose={() => setShareCard(null)}
         />
-        <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />
+        <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} history={perfHistory} />
       </>
     );
   }
@@ -1386,7 +1373,7 @@ export function V2CopilotScreen({
         headline={shareCard?.kind === 'events' ? shareCard.headline : null}
         onClose={() => setShareCard(null)}
       />
-      <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} data={perfShare} />
+      <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} history={perfHistory} />
     </>
   );
 }
@@ -1528,7 +1515,7 @@ function CopilotOpenBets({
   const { history } = useV2History(acct.accountId, marketMap, acct.owner);
   const record = useMemo<CopilotRecord>(() => {
     const { stats } = derivePortfolioHistory([], history);
-    return { stats, curve: equityCurve(history).map((p) => p.cumulative), lastTrade: history[0] ?? null };
+    return { stats, curve: equityCurve(history).map((p) => p.cumulative), lastTrade: history[0] ?? null, history };
   }, [history]);
   useEffect(() => {
     summaryRef.current = summarizePositions(positions);

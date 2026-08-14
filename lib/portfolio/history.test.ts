@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { derivePortfolioHistory, winRateSeries } from './history';
+import { derivePortfolioHistory, winRateSeries, perfWindow, PERF_RANGES, type PastPrediction } from './history';
 import type { PositionSummary } from '@/lib/api/types';
 
 const Q = 1_000_000; // 6dec
@@ -106,5 +106,77 @@ describe('winRateSeries', () => {
 
   it('is empty-safe', () => {
     expect(winRateSeries([])).toEqual([]);
+  });
+});
+
+const NOW = 1_700_000_000_000;
+const HR = 3_600_000;
+const DAY = 24 * HR;
+
+/** Minimal closed-history row; result defaults from the pnl sign. */
+function row(over: Partial<PastPrediction> & { settledAt: number; pnl: number }): PastPrediction {
+  const cost = over.cost ?? 1;
+  return {
+    key: `k${over.settledAt}`,
+    oracleId: '0xo',
+    underlying: 'BTC',
+    up: true,
+    strike: 65_000,
+    expiry: 0,
+    result: over.pnl > 0 ? 'won' : 'lost',
+    contracts: 1,
+    cost,
+    payout: cost + over.pnl,
+    roi: cost > 0 ? over.pnl / cost : 0,
+    entryPrice: 0.5,
+    ...over,
+  };
+}
+
+describe('perfWindow', () => {
+  // newest-first, exactly as derivePortfolioHistory returns history.
+  const hist: PastPrediction[] = [
+    row({ settledAt: NOW - 1 * HR, pnl: 5, cost: 10 }), // win, inside 1D
+    row({ settledAt: NOW - 2 * DAY, pnl: -3, cost: 3 }), // loss, inside 1W
+    row({ settledAt: NOW - 20 * DAY, pnl: 8, cost: 4 }), // win, inside 1M
+    row({ settledAt: NOW - 40 * DAY, pnl: -2, cost: 2 }), // loss, only All
+  ];
+  const ms = (k: string) => PERF_RANGES.find((r) => r.key === k)!.ms;
+
+  it('filters to the trailing window', () => {
+    expect(perfWindow(hist, ms('1D'), NOW).total).toBe(1);
+    expect(perfWindow(hist, ms('1W'), NOW).total).toBe(2);
+    expect(perfWindow(hist, ms('1M'), NOW).total).toBe(3);
+    expect(perfWindow(hist, ms('All'), NOW).total).toBe(4);
+  });
+
+  it('recomputes aggregates for the window', () => {
+    const w = perfWindow(hist, ms('1M'), NOW); // pnls 5, -3, 8
+    expect(w.wins).toBe(2);
+    expect(w.losses).toBe(1);
+    expect(w.winRate).toBeCloseTo(2 / 3, 6);
+    expect(w.realizedPnl).toBeCloseTo(10, 6);
+    expect(w.staked).toBeCloseTo(17, 6);
+    expect(w.avgRoi).toBeCloseTo(10 / 17, 6);
+    expect(w.best).toBeCloseTo(8, 6);
+  });
+
+  it('curve is within-window cumulative (oldest→newest), ending at realizedPnl', () => {
+    const w = perfWindow(hist, ms('1M'), NOW);
+    expect(w.curve).toEqual([8, 5, 10]);
+    expect(w.curve[w.curve.length - 1]).toBeCloseTo(w.realizedPnl, 6);
+  });
+
+  it('streak reads from the newest close inside the window', () => {
+    expect(perfWindow(hist, ms('1D'), NOW).streak).toEqual({ count: 1, won: true });
+    expect(perfWindow(hist, ms('All'), NOW).streak).toEqual({ count: 1, won: true });
+  });
+
+  it('empty history → zeros and no streak', () => {
+    const w = perfWindow([], ms('All'), NOW);
+    expect(w.total).toBe(0);
+    expect(w.winRate).toBe(0);
+    expect(w.streak).toBeNull();
+    expect(w.curve).toEqual([]);
   });
 });

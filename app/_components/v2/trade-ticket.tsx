@@ -36,7 +36,7 @@ import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
-import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
+import { upFair, rangeFair, defaultBand, type SviFloat } from '@/lib/svi/svi';
 import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
 import { dateUTC, countdown, pct, signed, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
@@ -52,7 +52,7 @@ import {
 import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, leverageSliderMax, MIN_STAKE_BASE, mintAmountBase, minQuantityForBudget } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
-import { V2SmileChart } from './smile-chart';
+import { RangeLadder } from './range-ladder';
 import { InstantTradingToggle } from './session/instant-trading-toggle';
 import { SessionPill } from './session/session-pill';
 import { SessionGasWarning } from './session/session-gas-warning';
@@ -209,6 +209,26 @@ export function V2TradeTicket({
     // this new default through `shownBet` without a local state write.
     if (sized !== stake) setStake(sized);
   }, [acct.walletDusdcBase, acct.balanceBase, stake, setStake]);
+
+  // Range mode lands with a ready-to-adjust 50/50 band (the interquartile band),
+  // so there's never an empty "tap two levels" state to stare at. Seeds ONCE per
+  // market — never on live forward drift (so the handles never jump under the
+  // trader) and never while a curve pick is mid-anchor. A different market
+  // (new expiry_market_id) re-seeds a fresh default, overwriting a stale band
+  // from the market just left.
+  const seededBandRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (mode !== 'range' || !pricer || !market) return;
+    if (seededBandRef.current === market.expiry_market_id) return;
+    if (rangeAnchorPrice != null) return; // mid-pick on the odds curve — don't stomp it
+    const tick = BigInt(market.admission_tick_size);
+    const band = defaultBand(pricer.forward, pricer.svi);
+    const lo = toFloat(snapStrikeToAdmission(fromFloat(band.lower), tick));
+    let hi = toFloat(snapStrikeToAdmission(fromFloat(band.higher), tick));
+    if (hi <= lo) hi = lo + toFloat(tick);
+    setRangeBand(lo, hi);
+    seededBandRef.current = market.expiry_market_id;
+  }, [mode, pricer, market, rangeAnchorPrice, setRangeBand]);
 
   // Until mounted, the connected account is unknown (SSR has no wallet, but the
   // client restores it synchronously) — render a stable placeholder so the
@@ -384,14 +404,13 @@ export function V2TradeTicket({
     setConfirmOpen(true);
   }
 
-  // Set the range band from two typed prices (the faster alternative to tapping
-  // the curve). Snap both to the admission grid so they're real mintable strikes,
-  // and if they land on the same tick, push the upper one out by one tick so it's
-  // always a real band. The store sorts low/high, so order typed doesn't matter.
-  function setRangeFromInput(lo: number, hi: number) {
-    const a = toFloat(snapStrikeToAdmission(fromFloat(lo), admissionTickSize));
-    let b = toFloat(snapStrikeToAdmission(fromFloat(hi), admissionTickSize));
-    if (a === b) b = a + admStep;
+  // Reset returns to the seeded 50/50 default (never an empty band) — the store
+  // always holds a real, adjustable band in range mode.
+  function resetToDefault() {
+    const band = defaultBand(pricer!.forward, svi);
+    const a = toFloat(snapStrikeToAdmission(fromFloat(band.lower), admissionTickSize));
+    let b = toFloat(snapStrikeToAdmission(fromFloat(band.higher), admissionTickSize));
+    if (b <= a) b = a + admStep;
     setRangeBand(a, b);
   }
 
@@ -793,46 +812,47 @@ export function V2TradeTicket({
         </div>
 
         {rangeMode ? (
-          !bandSet ? (
-            // No band yet → tap two levels on the embedded odds curve (legacy
-            // RangeTicket parity — self-contained, so it works wherever the rail
-            // curve is out of reach).
-            <>
-              {/* Prominent instruction callout (accent bar + bright text) so it's
-                  obvious how to build a range — not a faint grey line. */}
-              <div className="flex items-start gap-2.5 rounded-lg border border-up/30 bg-(--accent-soft) p-2.5">
-                <span aria-hidden className="mt-0.5 h-3.5 w-px shrink-0 bg-accent" />
-                <p className="text-[12px] leading-relaxed text-text-1">
-                  {anchorStrike != null ? (
-                    <>
-                      Lower level set at{' '}
-                      <span className="tabular-nums text-accent">{usd(anchorStrike)}</span>, now tap
-                      the <span className="text-accent">upper</span> price on the curve.
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-accent">Type a low and high price</span> below, or tap
-                      two levels on the curve, to bet BTC settles between them.
-                    </>
-                  )}
-                </p>
-              </div>
-              {/* Fast path: type the two prices directly. Snaps to the grid + sets
-                  the band, flipping to the same view a two-tap pick produces. */}
-              <RangeManualInput atm={atm} admStep={admStep} onSet={setRangeFromInput} disabled={tooCloseToExpiry} />
-              <V2SmileChart market={market} pricer={pricer} />
-            </>
+          anchorStrike != null && !bandSet ? (
+            // Mid-pick on the Odds-tab curve (rare): the first tap set an anchor and
+            // cleared the band, so guide to the second tap. Otherwise the band is
+            // always seeded (50/50 default) and the ladder below is the picker.
+            <div className="flex items-start gap-2.5 rounded-lg border border-up/30 bg-(--accent-soft) p-2.5">
+              <span aria-hidden className="mt-0.5 h-3.5 w-px shrink-0 bg-accent" />
+              <p className="text-[12px] leading-relaxed text-text-1">
+                Lower level set at{' '}
+                <span className="tabular-nums text-accent">{usd(anchorStrike)}</span>, now tap the{' '}
+                <span className="text-accent">upper</span> price on the odds curve.
+              </p>
+            </div>
           ) : (
             <>
-              <p className="text-[12px] leading-relaxed text-text-2">
-                Win if <span className="text-text-1">BTC</span> settles{' '}
-                <span className="text-up">between {usd(lowerStrike)} and {usd(higherStrike)}</span> at expiry.
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="min-w-0 text-[12px] leading-relaxed text-text-2">
+                  Win if <span className="text-text-1">BTC</span> settles{' '}
+                  <span className="text-up">inside your band</span> at expiry.
+                </p>
+                <button
+                  type="button"
+                  onClick={resetToDefault}
+                  className="ctrl-soft shrink-0 rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-text-3 transition-colors hover:text-text-1"
+                >
+                  Reset
+                </button>
+              </div>
 
-              {/* The band lives on the curve: drag either edge handle to adjust it
-                  (works on touch too), tap elsewhere to re-pick, or Reset on the
-                  chart. This is the only band control — no separate steppers. */}
-              <V2SmileChart market={market} pricer={pricer} />
+              {/* Horizontal range picker — live LOW/HIGH inputs on top, a filled
+                  price strip you drag/tap below. Snaps to real admission strikes;
+                  the Odds tab keeps the full curve. */}
+              <RangeLadder
+                forward={pricer.forward}
+                svi={svi}
+                admStep={admStep}
+                admissionTickSize={admissionTickSize}
+                lower={lowerStrike}
+                higher={higherStrike}
+                onChange={(lo, hi) => setRangeBand(lo, hi)}
+                disabled={tooCloseToExpiry}
+              />
 
               {betSection}
               {leverageSection}
@@ -1090,84 +1110,3 @@ function Row({ label, children }: { label: React.ReactNode; children: React.Reac
   );
 }
 
-/**
- * Type-a-range: two price inputs + Set, the fast alternative to tapping two points
- * on the odds curve. Local string state so a field can be empty / mid-edit; the
- * parent snaps to the admission grid and sorts low/high, so order and off-grid
- * values are fine. Set stays disabled until both are positive and distinct; Enter
- * in either field submits. Placeholders show example levels around the current
- * price so the expected input is obvious.
- */
-function RangeManualInput({
-  atm,
-  admStep,
-  onSet,
-  disabled,
-}: {
-  atm: number;
-  admStep: number;
-  onSet: (lo: number, hi: number) => void;
-  disabled?: boolean;
-}) {
-  const [lo, setLo] = useState('');
-  const [hi, setHi] = useState('');
-  const parse = (v: string): number | null => {
-    if (!/^\d[\d,]*(?:\.\d+)?$/.test(v.trim())) return null;
-    const n = Number(v.replace(/,/g, ''));
-    return Number.isFinite(n) && n > 0 ? n : null;
-  };
-  const loN = parse(lo);
-  const hiN = parse(hi);
-  const ready = !disabled && loN != null && hiN != null && loN !== hiN;
-  const submit = () => {
-    // Re-check inline (not via `ready`) so TS narrows loN/hiN to numbers here.
-    if (disabled || loN == null || hiN == null || loN === hiN) return;
-    onSet(loN, hiN);
-  };
-  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      submit();
-    }
-  };
-  const field = (
-    value: string,
-    set: (v: string) => void,
-    label: string,
-    placeholder: string,
-  ) => (
-    <label className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wider text-text-3">{label}</span>
-      <div className="ctrl-soft flex items-center gap-1 rounded-md px-2 py-1.5 focus-within:border-white/20">
-        <span className="text-[10px] text-text-3">$</span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={value}
-          onChange={(e) => set(e.target.value)}
-          onKeyDown={onKey}
-          placeholder={placeholder}
-          disabled={disabled}
-          aria-label={`Range ${label.toLowerCase()} price`}
-          className="w-full min-w-0 bg-transparent text-right font-mono tabular-nums text-text-1 outline-none placeholder:text-text-3/50"
-        />
-      </div>
-    </label>
-  );
-  return (
-    <div className="flex items-end gap-2">
-      {field(lo, setLo, 'Low', Math.round(atm - 3 * admStep).toLocaleString('en-US'))}
-      {field(hi, setHi, 'High', Math.round(atm + 3 * admStep).toLocaleString('en-US'))}
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!ready}
-        className={`shrink-0 rounded-md px-3 py-2 text-[11px] font-medium uppercase tracking-wider transition-colors ${
-          ready ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3 opacity-60'
-        }`}
-      >
-        Set
-      </button>
-    </div>
-  );
-}

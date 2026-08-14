@@ -73,6 +73,79 @@ export function equityCurve(history: PastPrediction[]): EquityPoint[] {
   });
 }
 
+export type PerfRangeKey = '1D' | '1W' | '1M' | 'All';
+
+/** Trailing time windows for the performance filter + shareable card. `All` = Infinity. */
+export const PERF_RANGES: { key: PerfRangeKey; ms: number; label: string }[] = [
+  { key: '1D', ms: 24 * 3_600_000, label: 'Last 24h' },
+  { key: '1W', ms: 7 * 24 * 3_600_000, label: 'Last 7 days' },
+  { key: '1M', ms: 30 * 24 * 3_600_000, label: 'Last 30 days' },
+  { key: 'All', ms: Infinity, label: 'All time' },
+];
+
+export interface PerfWindow {
+  total: number;
+  wins: number;
+  losses: number;
+  winRate: number; // 0..1
+  realizedPnl: number; // DUSDC, signed
+  staked: number; // DUSDC cost basis
+  avgRoi: number; // realizedPnl / staked
+  best: number; // best single-trade PnL
+  streak: { count: number; won: boolean } | null;
+  /** Within-window cumulative realized PnL, oldest→newest (rebased to 0 at window start). */
+  curve: number[];
+}
+
+/**
+ * Track-record stats over a trailing time window — the data behind the shareable
+ * performance card at any of the 1D/1W/1M/All ranges. Filters the closed history to
+ * `[now − rangeMs, now]` (`rangeMs = Infinity` → all-time), recomputes the same
+ * aggregates as `derivePortfolioHistory`, and rebases the curve to 0 at the window
+ * start so the headline PnL equals the curve's endpoint. `unclaimed` is omitted on
+ * purpose — it's a live count, not part of a settled window.
+ */
+export function perfWindow(history: PastPrediction[], rangeMs: number, now: number): PerfWindow {
+  const cutoff = rangeMs === Infinity ? -Infinity : now - rangeMs;
+  const rows = history.filter((h) => h.settledAt >= cutoff);
+  const wins = rows.filter((h) => h.result === 'won').length;
+  const losses = rows.length - wins;
+  const realizedPnl = rows.reduce((s, h) => s + h.pnl, 0);
+  const staked = rows.reduce((s, h) => s + h.cost, 0);
+  const pnls = rows.map((h) => h.pnl);
+
+  // `history` arrives newest-first, so the streak is the leading run from the
+  // newest close still inside the window.
+  let streak: PerfWindow['streak'] = null;
+  if (rows.length > 0) {
+    const r = rows[0].result;
+    let count = 0;
+    for (const h of rows) {
+      if (h.result !== r) break;
+      count++;
+    }
+    streak = { count, won: r === 'won' };
+  }
+
+  // Curve: oldest→newest cumulative within the window.
+  const asc = [...rows].sort((a, b) => a.settledAt - b.settledAt);
+  let cum = 0;
+  const curve = asc.map((h) => (cum += h.pnl));
+
+  return {
+    total: rows.length,
+    wins,
+    losses,
+    winRate: rows.length > 0 ? wins / rows.length : 0,
+    realizedPnl,
+    staked,
+    avgRoi: staked > 0 ? realizedPnl / staked : 0,
+    best: pnls.length ? Math.max(...pnls) : 0,
+    streak,
+    curve,
+  };
+}
+
 /**
  * Cumulative win-rate curve (each point 0..1) over the settled history, in
  * chronological order — the running share of bets won after each close. `history`

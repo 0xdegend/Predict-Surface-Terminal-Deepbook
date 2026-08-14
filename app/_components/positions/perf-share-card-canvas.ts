@@ -42,6 +42,10 @@ export interface PerfShareData {
   streak: { count: number; won: boolean } | null;
   /** Chronological cumulative realized-PnL values (oldest→newest) for the curve. */
   curve: number[];
+  /** Timeframe of these figures, shown as the header pill (e.g. "LAST 24H"). When
+   *  omitted the card reads "TRACK RECORD" (all-time). Keeps a windowed card from
+   *  ever being mistaken for an all-time one. */
+  rangeLabel?: string;
 }
 
 export type PerfShareVariant = 'mascot' | 'record' | 'spotlight';
@@ -146,7 +150,7 @@ function drawBackground({ ctx, c, accent }: Ctx, variant: PerfShareVariant) {
   ctx.fillRect(0, 0, W, 3);
 }
 
-function drawHeader({ ctx, c, accent, sans }: Ctx) {
+function drawHeader({ ctx, c, accent, sans, d }: Ctx) {
   const brandY = 78;
   const markSize = 30;
   const logo = getShareLogo();
@@ -167,8 +171,8 @@ function drawHeader({ ctx, c, accent, sans }: Ctx) {
   const brandW = ctx.measureText('Skew').width;
   drawTag(ctx, 'DEEPBOOK · SUI', textX + brandW + 14, brandY - 19, c.text3, c.line, sans);
 
-  // Right pill: "TRACK RECORD".
-  drawPill(ctx, 'TRACK RECORD', W - P, brandY - 18, accent, sans);
+  // Right pill: the timeframe of these figures (all-time → "TRACK RECORD").
+  drawPill(ctx, (d.rangeLabel ?? 'Track record').toUpperCase(), W - P, brandY - 18, accent, sans);
 }
 
 function drawFooter({ ctx, c, sans }: Ctx) {

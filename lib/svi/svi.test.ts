@@ -5,6 +5,8 @@ import {
   upFair,
   dnFair,
   rangeFair,
+  strikeForUpProb,
+  defaultBand,
   impliedVol,
   totalVariance,
   logMoneyness,
@@ -90,6 +92,44 @@ describe('rangeFair', () => {
       upFair(lo, FORWARD, SVI) - upFair(hi, FORWARD, SVI),
       12,
     );
+  });
+});
+
+describe('strikeForUpProb', () => {
+  it('recovers a strike whose UP matches the target', () => {
+    for (const target of [0.75, 0.5, 0.25, 0.1, 0.9]) {
+      const strike = strikeForUpProb(target, FORWARD, SVI);
+      expect(upFair(strike, FORWARD, SVI)).toBeCloseTo(target, 4);
+    }
+  });
+
+  it('is monotone: a higher UP target maps to a lower strike', () => {
+    const hiProb = strikeForUpProb(0.75, FORWARD, SVI); // more likely above → lower strike
+    const loProb = strikeForUpProb(0.25, FORWARD, SVI); // less likely above → higher strike
+    expect(hiProb).toBeLessThan(loProb);
+  });
+
+  it('clamps degenerate targets into the open interval', () => {
+    // target 0/1 would need an infinite strike; clamped so it still returns finite.
+    expect(Number.isFinite(strikeForUpProb(0, FORWARD, SVI))).toBe(true);
+    expect(Number.isFinite(strikeForUpProb(1, FORWARD, SVI))).toBe(true);
+  });
+});
+
+describe('defaultBand', () => {
+  it('is a well-ordered ~50% band across forwards', () => {
+    for (const fwd of [FORWARD, 30_000, 100_000]) {
+      const { lower, higher } = defaultBand(fwd, SVI);
+      expect(lower).toBeLessThan(higher);
+      // Interquartile band: rangeFair = UP(0.75) - UP(0.25) ≈ 0.5 by construction.
+      expect(rangeFair(lower, higher, fwd, SVI)).toBeCloseTo(0.5, 3);
+    }
+  });
+
+  it('straddles the forward (band contains the current price)', () => {
+    const { lower, higher } = defaultBand(FORWARD, SVI);
+    expect(lower).toBeLessThan(FORWARD);
+    expect(higher).toBeGreaterThan(FORWARD);
   });
 });
 

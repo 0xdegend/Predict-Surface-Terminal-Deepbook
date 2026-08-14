@@ -97,6 +97,41 @@ export function rangeFair(
 }
 
 /**
+ * Invert UP for a strike: find the strike whose fair UP price ≈ `target`.
+ * UP is monotone non-increasing in strike (UP→1 for deep-low strikes, UP→0 for
+ * deep-high), so a bisection over a forward-anchored bracket converges cleanly.
+ * `target` is clamped to a hair inside (0, 1). Used to build a probability-defined
+ * band (see `defaultBand`); pure, no grid snapping — the caller snaps.
+ */
+export function strikeForUpProb(target: number, forward: number, svi: SviFloat): number {
+  const t = Math.min(0.999, Math.max(0.001, target));
+  // Bracket wide enough to straddle any plausible band: UP(lo) > t > UP(hi).
+  let lo = forward * 0.5;
+  let hi = forward * 2;
+  // upFair decreases with strike, so lo (small strike) has the higher UP.
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (upFair(mid, forward, svi) > t) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/**
+ * A neutral "50/50" range band centered on the distribution: the interquartile
+ * band `[UP=0.75, UP=0.25]`, so `rangeFair(lower, higher) ≈ 0.75 − 0.25 = 0.5` by
+ * construction. Skew-aware for free (it inverts the same `upFair` the curve draws),
+ * so the band leans correctly under skew. Returns raw floats — snap to the
+ * admission grid before use.
+ */
+export function defaultBand(forward: number, svi: SviFloat): { lower: number; higher: number } {
+  return {
+    lower: strikeForUpProb(0.75, forward, svi),
+    higher: strikeForUpProb(0.25, forward, svi),
+  };
+}
+
+/**
  * Implied volatility σ_IV(k) = sqrt(w(k) / T), T in years.
  * This is the Z-axis of the surface — what traders actually read.
  */

@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LuDownload, LuCopy, LuCheck } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { Modal } from '@/app/_components/ui/modal';
 import { signed, pct } from '@/lib/format';
+import { PERF_RANGES, perfWindow, type PerfRangeKey, type PastPrediction } from '@/lib/portfolio/history';
 import { loadShareLogo, loadBrandMarks } from './share-card-canvas';
 import {
   drawPerfShareCard,
@@ -20,20 +21,66 @@ import {
  *
  * X's web intent can't attach an upload, so "Share on X" copies the image to the
  * clipboard and opens the composer with prefilled text — the user pastes it in.
+ *
+ * A timeframe toggle (1D/1W/1M/All) lets the trader share any trailing window, not
+ * just all-time: the card is recomputed per window from the raw settled `history`
+ * and repainted live, and the card's header pill names the window so a 1D card is
+ * never mistaken for an all-time one. Default is All (matches the Performance card
+ * the Share button lives on).
  */
 export function PerfShareCardModal({
   open,
   onClose,
-  data,
+  history,
 }: {
   open: boolean;
   onClose: () => void;
-  data: PerfShareData | null;
+  history: PastPrediction[] | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const thumbRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
   const [variant, setVariant] = useState<PerfShareVariant>('mascot');
   const [status, setStatus] = useState<null | 'saved' | 'copied' | 'shared' | 'nocopy'>(null);
+  const [range, setRange] = useState<PerfRangeKey>('All');
+  // The windowing clock. Captured at mount and refreshed whenever a window is
+  // picked (in the toggle's onClick — the only place a fresh trailing window
+  // actually matters; the default "All" ignores it). Kept out of the render path
+  // so it stays pure.
+  const [now, setNow] = useState(() => Date.now());
+
+  // How many settled trades fall inside each window — empty windows are disabled.
+  const counts = useMemo(() => {
+    const m = {} as Record<PerfRangeKey, number>;
+    for (const r of PERF_RANGES) {
+      const cutoff = r.ms === Infinity ? -Infinity : now - r.ms;
+      m[r.key] = history ? history.filter((h) => h.settledAt >= cutoff).length : 0;
+    }
+    return m;
+  }, [history, now]);
+
+  // Fall back to All if the chosen window emptied out.
+  const effRange = counts[range] > 0 ? range : 'All';
+  const rangeDef = PERF_RANGES.find((r) => r.key === effRange)!;
+
+  // The card data for the active window (memoized so the repaint effects don't fire
+  // every render). `unclaimed` is dropped — a windowed record is settled-only.
+  const data: PerfShareData | null = useMemo(() => {
+    if (!history || history.length === 0) return null;
+    const w = perfWindow(history, rangeDef.ms, now);
+    return {
+      winRate: w.winRate,
+      wins: w.wins,
+      losses: w.losses,
+      settled: w.total,
+      realizedPnl: w.realizedPnl,
+      staked: w.staked,
+      avgRoi: w.avgRoi,
+      best: w.best,
+      streak: w.streak,
+      curve: w.curve,
+      rangeLabel: effRange === 'All' ? undefined : rangeDef.label,
+    };
+  }, [history, rangeDef, now, effRange]);
 
   // Repaint the large preview whenever the dialog opens or the style changes.
   useEffect(() => {
@@ -77,7 +124,7 @@ export function PerfShareCardModal({
       canvasRef.current ? canvasRef.current.toBlob(resolve, 'image/png') : resolve(null),
     );
 
-  const fileName = `skew-track-record-${variant}.png`;
+  const fileName = `skew-track-record-${effRange.toLowerCase()}-${variant}.png`;
 
   const save = async () => {
     const blob = await toBlob();
@@ -109,8 +156,9 @@ export function PerfShareCardModal({
   const shareOnX = async () => {
     const ok = await copyImage();
     if (data) {
+      const lead = effRange === 'All' ? 'My track record' : `My ${rangeDef.label.toLowerCase()}`;
       const text =
-        `My track record on @skew_sui: ${pct(data.winRate, 1)} win rate across ` +
+        `${lead} on @skew_sui: ${pct(data.winRate, 1)} win rate across ` +
         `${data.settled} settled markets (${signed(data.realizedPnl)} DUSDC) 📈\n\n` +
         `Trade the live volatility surface yourself 👇`;
       // `url=` makes X render a link-preview card (the site OG image) so an image
@@ -147,6 +195,40 @@ export function PerfShareCardModal({
       variant="glass"
       contentClassName="px-5 pb-5"
     >
+      {/* Timeframe — share any trailing window, not just all-time. Empty windows
+          are disabled; the card + text below update live. */}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <span className="eyebrow">Timeframe</span>
+        <div className="flex items-center gap-0.5 rounded-lg bg-bg-3 p-0.5">
+          {PERF_RANGES.map((r) => {
+            const enabled = counts[r.key] > 0;
+            const active = effRange === r.key;
+            return (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => {
+                  if (!enabled) return;
+                  setNow(Date.now()); // fresh trailing window at the moment it's picked
+                  setRange(r.key);
+                }}
+                disabled={!enabled}
+                aria-pressed={active}
+                className={`rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                  active
+                    ? 'bg-white/10 text-text-1'
+                    : enabled
+                      ? 'text-text-3 hover:text-text-2'
+                      : 'cursor-not-allowed text-text-3/35'
+                }`}
+              >
+                {r.key}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-5 sm:flex-row">
         <div className="w-full sm:flex-1 sm:self-center">
           <canvas

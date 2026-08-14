@@ -438,24 +438,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       <PerfShareCardModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
-        data={
-          stats.total > 0
-            ? {
-                winRate: stats.winRate,
-                wins: stats.wins,
-                losses: stats.losses,
-                settled: stats.total,
-                realizedPnl: stats.realizedPnl,
-                staked: stats.staked,
-                avgRoi: stats.staked > 0 ? stats.realizedPnl / stats.staked : 0,
-                best: stats.best,
-                streak: stats.streak
-                  ? { count: stats.streak.count, won: stats.streak.result === 'won' }
-                  : null,
-                curve: curve.map((p) => p.cumulative),
-              }
-            : null
-        }
+        history={stats.total > 0 ? history : null}
       />
 
       <p className="mt-6 text-[10px] text-text-3">Quote asset · {predictConfig.quote.symbol} · {predictConfig.network}</p>
