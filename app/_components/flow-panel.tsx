@@ -972,8 +972,8 @@ export function FlowPanel({
                   {closingSoon && !expired && (
                     <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
                       {tooCloseToExpiry
-                        ? "Too close to expiry to mint — a transaction can’t land in time. Pick another expiry."
-                        : `Closing in ${countdown(oracle.expiry, now)} — a mint may revert if the market settles before your transaction lands on-chain.`}
+                        ? 'Too close to expiry to mint. Pick another expiry.'
+                        : `Closing in ${countdown(oracle.expiry, now)}. May revert if the market settles first.`}
                     </div>
                   )}
 

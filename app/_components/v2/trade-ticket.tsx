@@ -510,8 +510,7 @@ export function V2TradeTicket({
             <span className="flex items-center gap-1.5">
               Max loss
               <InfoTip label="max loss with leverage">
-                You can never lose more than your ${payDollars.toFixed(2)} — a losing leveraged bet
-                closes early and pays $0. Leverage just shrinks your buffer:{' '}
+                Most you can lose is ${payDollars.toFixed(2)}. Leverage shrinks your buffer:{' '}
                 {knockoutMoveUsd != null && knockoutMoveUsd >= 1 ? (
                   <>
                     at {fmtLev(lev)}, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
@@ -537,12 +536,12 @@ export function V2TradeTicket({
     <div className={`glass-card p-3.5 ${quotable && !tooCloseToExpiry ? (tone === 'up' ? 'up glow-accent' : 'down glow-down') : ''}`}>
       {tooCloseToExpiry ? (
         <span className="text-text-2">
-          This market is about to settle — pick another market to trade.
+          About to settle. Pick another market.
         </span>
       ) : !probOk ? (
         <span className="text-text-2">
-          {rangeMode ? 'Band' : 'Strike'} too far from spot to trade — pick a level nearer{' '}
-          {usd(pricer.forward)} (only odds away from the 0%/100% extremes can be priced).
+          {rangeMode ? 'Band' : 'Strike'} too far from spot to trade. Pick a level nearer{' '}
+          {usd(pricer.forward)} (prices near 0% or 100% can’t be quoted).
         </span>
       ) : (
         <div className="flex flex-col">
@@ -627,8 +626,7 @@ export function V2TradeTicket({
               </div>
               {shortfall > 0n && (
                 <span className="text-[10px] leading-relaxed text-text-3">
-                  Not enough in your trading account — the shortfall deposits from your wallet in the same
-                  transaction.
+                  Short on account balance. The rest comes from your wallet in the same transaction.
                 </span>
               )}
             </div>
@@ -644,8 +642,8 @@ export function V2TradeTicket({
       {(closingSoon || tooCloseToExpiry) && (
         <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
           {tooCloseToExpiry
-            ? 'Too close to expiry to mint — a transaction can’t land in time. Pick another market.'
-            : `Closing in ${countdown(market.expiry, now)} — a mint may revert if the market settles before your transaction lands on-chain.`}
+            ? 'Too close to expiry to mint. Pick another market.'
+            : `Closing in ${countdown(market.expiry, now)}. May revert if the market settles first.`}
         </div>
       )}
 
@@ -655,8 +653,8 @@ export function V2TradeTicket({
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
         {oneTapPlace
-          ? 'One-tap is on, so this places your bet right away — no review step. Cost is an estimate; the exact amount is capped on-chain.'
-          : 'You’ll preview the trade next; cost is an estimate. Your wallet shows the exact amount before you approve.'}
+          ? 'One-tap places your bet instantly, no review. Final cost is capped on-chain.'
+          : 'You’ll preview the exact cost before approving.'}
       </p>
       {shareBase && (
         <button
@@ -702,7 +700,7 @@ export function V2TradeTicket({
           rel="noreferrer"
           className="glass-card px-3 py-2 text-[11px] text-accent underline-offset-2 hover:underline"
         >
-          Low balance — get testnet {sym} →
+          Low balance. Get testnet {sym} →
         </a>
       ) : null
     ) : null;
@@ -742,7 +740,7 @@ export function V2TradeTicket({
             'Review and confirm your trade',
           ],
           tip: rangeMode
-            ? 'Tip: tap two price levels on the odds curve to set your band, then drag its edges to resize.'
+            ? 'Tip: tap two price levels to set your band, then drag the edges.'
             : 'Tip: click the surface or a market in the list to load it here.',
         }}
       />
@@ -863,7 +861,7 @@ export function V2TradeTicket({
 
                 {!probOk && !tooCloseToExpiry && (
                   <p className="text-[12px] leading-relaxed text-text-2">
-                    That strike is too far from spot to price — move it nearer{' '}
+                    That strike is too far from spot to price. Move it nearer{' '}
                     <span className="text-text-1">{usd(pricer.forward)}</span> to continue.
                   </p>
                 )}
@@ -943,7 +941,7 @@ export function V2TradeTicket({
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'
             : acct.sessionActive
-              ? 'Instant trading is low on gas, so this one needs a wallet approval. Top it up to go pop-up-free again.'
+              ? 'Low on gas, so this one needs a wallet approval.'
               : armInstant
                 ? acct.gasless
                   ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`

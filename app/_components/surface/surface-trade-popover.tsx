@@ -440,8 +440,7 @@ function BinaryBody({
 
           {closingSoon && !expired && (
             <p className="rounded border border-down/40 bg-down/10 p-2 text-[10.5px] leading-snug text-down">
-              Closing in {countdown(oracle.expiry, now)} — a mint may revert if
-              it settles first.
+              Closing in {countdown(oracle.expiry, now)}. May revert if it settles first.
             </p>
           )}
 
