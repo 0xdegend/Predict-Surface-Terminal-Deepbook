@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { LuInfo } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
 
@@ -28,6 +28,7 @@ export function MintConfirmModal({
   maxWin,
   confirmLabel = 'Confirm mint',
   subtitle = 'Signed in with Google — mints instantly, no wallet pop-up',
+  extra,
 }: {
   open: boolean;
   onClose: () => void;
@@ -45,6 +46,11 @@ export function MintConfirmModal({
   /** Dialog subtitle. Defaults to the gasless-Enoki copy; pass an accurate
    *  line for callers shown to wallet users who WILL get a signing pop-up. */
   subtitle?: string;
+  /** Optional block rendered below the trade summary, above the buttons — used by
+   *  the trade ticket to fold the "turn on faster trades" opt-in into the review
+   *  step (so it doesn't lengthen the ticket). Rendered outside the mono/tabular
+   *  wrapper, so it keeps normal UI typography. */
+  extra?: ReactNode;
 }) {
   // The fox deliberates with you (thinking), then backs your call (confident)
   // the moment you reach for the mint button — or while the mint is in flight.
@@ -133,6 +139,10 @@ export function MintConfirmModal({
           or expires first.
         </p>
       </div>
+
+      {/* Optional opt-in (e.g. faster trades) — outside the mono wrapper so it reads
+          as normal UI, and below the summary so the trade is reviewed first. */}
+      {extra && <div className="mt-3">{extra}</div>}
     </Modal>
   );
 }

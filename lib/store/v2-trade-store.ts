@@ -29,15 +29,40 @@ export interface SharedTradeContext {
 
 /** The stake a fresh ticket seeds with, before we know the wallet balance. */
 export const STARTER_DEFAULT_STAKE = 10;
-/** Starter presets, biggest-first, used to right-size the default down. */
+/** Starter presets, biggest-first, used to right-size the default DOWN for a small wallet. */
 const STARTER_PRESETS = [10, 5, 1];
 /**
- * The biggest starter preset a wallet can actually cover (base units in), capped
- * at the $10 default and floored at $1 — so a small wallet lands on an amount it
- * can bet instead of a preselected $10 it has to clear first.
+ * The gentle, balance-scaled DEFAULT bet — modest relative to holdings (never a scary
+ * pre-filled amount) but not stuck at $10 for a well-funded wallet. Boundaries line up
+ * with the betPresets tiers, so the seeded default always matches one of the visible
+ * quick-pick chips. Biggest tier the balance clears wins.
+ */
+const DEFAULT_STAKE_TIERS: { min: number; stake: number }[] = [
+  { min: 0, stake: 10 },
+  { min: 1_000, stake: 25 },
+  { min: 3_000, stake: 50 },
+  { min: 10_000, stake: 100 },
+  { min: 50_000, stake: 250 },
+  { min: 100_000, stake: 500 },
+];
+
+/**
+ * The amount a fresh ticket pre-fills, sized to the wallet's spendable balance (base
+ * units in): a modestly funded wallet lands on $10, a well-funded one scales up
+ * (up to $500) so a large account isn't nudged to bet tiny. A near-empty wallet steps
+ * DOWN to the biggest starter preset it can actually cover ($10/$5/$1), floored at $1,
+ * so it never seeds an amount it has to clear first.
  */
 export function defaultStakeForBalance(spendableBase: bigint): number {
-  return STARTER_PRESETS.find((n) => spendableBase >= toQuote(n)) ?? 1;
+  let target = DEFAULT_STAKE_TIERS[0].stake;
+  for (const tier of DEFAULT_STAKE_TIERS) {
+    if (spendableBase >= toQuote(tier.min)) target = tier.stake;
+  }
+  // Can't cover the tier default (a tiny wallet) → step down to the biggest starter it can.
+  if (spendableBase < toQuote(target)) {
+    return STARTER_PRESETS.find((n) => spendableBase >= toQuote(n)) ?? 1;
+  }
+  return target;
 }
 
 /**

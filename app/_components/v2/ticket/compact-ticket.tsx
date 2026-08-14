@@ -47,7 +47,7 @@ import {
 } from '@/lib/sui/v2/quote';
 import { V2PayoutSlider } from './payout-slider';
 import { V2LeverageSlider } from './leverage-slider';
-import { InstantTradingToggle } from '../session/instant-trading-toggle';
+import { SessionOptInRow } from '../session/session-opt-in-row';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { SmileInput } from '@/lib/svi/surface';
@@ -349,8 +349,8 @@ function BinaryBody({
             </p>
           )}
 
-          {/* Turn instant trading on inside this trade's approval (no live session). */}
-          <InstantTradingToggle />
+          {/* Faster-trades opt-in moved into the confirm dialog (SessionOptInRow via
+              MintConfirmModal's `extra`), so this short ticket stays short. */}
           <MintButton
             tone={isUp ? 'up' : 'down'}
             busy={acct.busy === 'mint'}
@@ -389,14 +389,11 @@ function BinaryBody({
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'
-            : armInstant
-              ? acct.gasless
-                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
-                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
-              : acct.gasless
-                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
-                : 'Review your position, then approve it in your wallet'
+            : acct.gasless
+              ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+              : 'Review your position, then approve it in your wallet'
         }
+        extra={<SessionOptInRow />}
       />
 
       {mintSuccess && (
@@ -583,8 +580,8 @@ function RangeBody({
             </p>
           )}
 
-          {/* Turn instant trading on inside this trade's approval (no live session). */}
-          <InstantTradingToggle />
+          {/* Faster-trades opt-in moved into the confirm dialog (SessionOptInRow via
+              MintConfirmModal's `extra`), so this short ticket stays short. */}
           <MintButton
             tone="up"
             busy={acct.busy === 'mint'}
@@ -623,14 +620,11 @@ function RangeBody({
             ? acct.gasless
               ? 'Instant trading is on. This mints straight through, no sign step.'
               : 'Instant trading is on. This mints with no wallet pop-up.'
-            : armInstant
-              ? acct.gasless
-                ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
-                : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
-              : acct.gasless
-                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
-                : 'Review your position, then approve it in your wallet'
+            : acct.gasless
+              ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+              : 'Review your position, then approve it in your wallet'
         }
+        extra={<SessionOptInRow />}
       />
 
       {mintSuccess && (

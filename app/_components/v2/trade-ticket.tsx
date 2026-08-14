@@ -53,7 +53,7 @@ import { quantityForStake, winPayout, knockoutProbability, priceMoveToKnockout, 
 import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { RangeLadder } from './range-ladder';
-import { InstantTradingToggle } from './session/instant-trading-toggle';
+import { SessionOptInRow } from './session/session-opt-in-row';
 import { SessionPill } from './session/session-pill';
 import { SessionGasWarning } from './session/session-gas-warning';
 import { SharedTradeBanner } from './share/shared-trade-banner';
@@ -678,8 +678,8 @@ export function V2TradeTicket({
         </div>
       )}
 
-      {/* Turn instant trading on inside this trade's approval (no live session). */}
-      <InstantTradingToggle />
+      {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
+          (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
       <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
@@ -990,14 +990,11 @@ export function V2TradeTicket({
               : 'Instant trading is on. This mints with no wallet pop-up.'
             : acct.sessionActive
               ? 'Low on gas, so this one needs a wallet approval.'
-              : armInstant
-                ? acct.gasless
-                  ? `This also turns on faster trades for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so your next trades skip the sign step.`
-                  : `This also turns on instant trading for ${sessionDuration === '7d' ? '7 days' : '24 hours'}, so you won’t need to approve again.`
-                : acct.gasless
-                  ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
-                  : 'Review your position, then approve it in your wallet'
+              : acct.gasless
+                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                : 'Review your position, then approve it in your wallet'
         }
+        extra={<SessionOptInRow />}
       />
 
       {mintSuccess && (

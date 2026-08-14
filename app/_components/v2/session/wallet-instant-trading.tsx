@@ -4,8 +4,8 @@
  * WalletInstantTrading — the LIVE-session controls for instant trading, in the nav
  * wallet dropdown: the one-tap toggle and the End button (the old SessionPanel's two
  * controls, minus the bulky tiles). Turning instant trading ON — and the 24h/7d
- * choice — stays in the trade ticket (InstantTradingToggle), so this renders ONLY
- * while a session is live and self-hides otherwise. See [[sessions-delegated-trading]].
+ * choice — now lives in the mint-confirm dialog (SessionOptInRow), so this renders
+ * ONLY while a session is live and self-hides otherwise. See [[sessions-delegated-trading]].
  */
 import { LuZap } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';

@@ -3,11 +3,21 @@ import { defaultStakeForBalance, STARTER_DEFAULT_STAKE, betPresets } from './v2-
 import { toQuote } from '@/config/scale';
 
 describe('defaultStakeForBalance', () => {
-  it('defaults to $10 when the wallet covers it', () => {
+  it('defaults to $10 for a modestly funded wallet', () => {
     expect(defaultStakeForBalance(toQuote(10))).toBe(10);
-    expect(defaultStakeForBalance(toQuote(25))).toBe(10); // capped at the $10 default
-    expect(defaultStakeForBalance(toQuote(1000))).toBe(10);
+    expect(defaultStakeForBalance(toQuote(25))).toBe(10);
+    expect(defaultStakeForBalance(toQuote(500))).toBe(10);
+    expect(defaultStakeForBalance(toQuote(999))).toBe(10);
     expect(STARTER_DEFAULT_STAKE).toBe(10);
+  });
+
+  it('scales the default UP for higher-liquidity wallets (the reported bug)', () => {
+    expect(defaultStakeForBalance(toQuote(1_000))).toBe(25);
+    expect(defaultStakeForBalance(toQuote(3_000))).toBe(50);
+    expect(defaultStakeForBalance(toQuote(10_000))).toBe(100);
+    expect(defaultStakeForBalance(toQuote(18_071))).toBe(100); // no longer stuck at $10
+    expect(defaultStakeForBalance(toQuote(50_000))).toBe(250);
+    expect(defaultStakeForBalance(toQuote(250_000))).toBe(500);
   });
 
   it('steps down to the biggest preset a small wallet can cover', () => {
@@ -21,6 +31,12 @@ describe('defaultStakeForBalance', () => {
   it('floors at $1 even for a near-empty wallet', () => {
     expect(defaultStakeForBalance(toQuote(0.5))).toBe(1);
     expect(defaultStakeForBalance(0n)).toBe(1);
+  });
+
+  it('the seeded default always matches one of the visible presets', () => {
+    for (const bal of [50, 150, 400, 1_000, 3_000, 18_071, 60_000, 250_000]) {
+      expect(betPresets(toQuote(bal)), `bal ${bal}`).toContain(defaultStakeForBalance(toQuote(bal)));
+    }
   });
 });
 
