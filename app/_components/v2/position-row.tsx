@@ -230,6 +230,19 @@ function ActionButton({
       </span>
     );
   }
+  if (claim === 'clear_fallback') {
+    // Settled loss the keeper hasn't cleared — a manual clear so it doesn't linger.
+    return (
+      <button
+        onClick={onClick}
+        disabled={busy}
+        title="The automatic clear is late — clear this settled position yourself"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-2 transition-all hover:border-line-strong hover:text-text-1 disabled:opacity-50"
+      >
+        Clear <LuCircleX size={12} />
+      </button>
+    );
+  }
   const isFallbackClaim = claim === 'claim_fallback';
   return (
     <button

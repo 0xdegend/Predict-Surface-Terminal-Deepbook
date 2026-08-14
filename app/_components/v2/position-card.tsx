@@ -327,6 +327,17 @@ export function V2PositionCard({
               <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3">
                 Lost
               </span>
+            ) : claim === 'clear_fallback' ? (
+              // Settled loss the keeper hasn't cleared — let the trader clear it themselves.
+              <button
+                onClick={() => onRedeem(p)}
+                disabled={busy || p.sample}
+                title="The automatic clear is taking longer than usual, so you can clear this settled position yourself."
+                className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-2 transition-all hover:border-line-strong hover:text-text-1 disabled:opacity-50"
+              >
+                Clear
+                <LuCircleX size={14} />
+              </button>
             ) : (
               <button
                 onClick={() => onRedeem(p)}

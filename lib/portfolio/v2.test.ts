@@ -65,6 +65,14 @@ describe('settledClaimState (keeper auto-payout framing)', () => {
     expect(settledClaimState(base({ won: false, markValue: 0 }), now)).toBe('auto_clearing');
     expect(settledClaimState(base({ won: true, markValue: 0 }), now)).toBe('auto_clearing'); // paid nothing
   });
+
+  it('a settled loss the keeper is clearly late on offers a fallback clear', () => {
+    expect(settledClaimState(base({ won: false, markValue: 0, expiry: now - KEEPER_GRACE_MS - 1000 }), now)).toBe(
+      'clear_fallback',
+    );
+    // unknown expiry → we can't confirm the keeper will clear it, so expose the manual clear
+    expect(settledClaimState(base({ won: false, markValue: 0, expiry: undefined }), now)).toBe('clear_fallback');
+  });
 });
 
 describe('normalizeV2Position (real indexer row)', () => {

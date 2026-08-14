@@ -167,8 +167,8 @@ function PositionRow({
         </span>
       </div>
       {/* Auto-paying win → a quiet "paying out" note, no button (the keeper pays it).
-          Auto-clearing loss → "Lost", no button. Only a live close or a keeper-late
-          fallback claim gets an action. */}
+          Auto-clearing loss → "Lost", no button. A live close, a keeper-late fallback
+          claim (win), or a keeper-late fallback clear (loss) each gets an action. */}
       {claim === 'auto_paying' ? (
         <span className="shrink-0 px-2.5 py-1 text-[10px] text-up/80">Paying out…</span>
       ) : claim === 'auto_clearing' ? (
@@ -177,9 +177,10 @@ function PositionRow({
         <button
           onClick={onClose}
           disabled={busy || p.sample}
+          title={claim === 'clear_fallback' ? 'The automatic clear is late — clear this settled position yourself' : undefined}
           className="shrink-0 ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
         >
-          {claim === 'claim_fallback' ? 'Claim' : 'Close'}
+          {claim === 'claim_fallback' ? 'Claim' : claim === 'clear_fallback' ? 'Clear' : 'Close'}
         </button>
       )}
     </div>

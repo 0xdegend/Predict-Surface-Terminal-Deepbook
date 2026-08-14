@@ -105,22 +105,29 @@ export function winningClaimPayout(p: V2PortfolioPosition, closeQuantity: bigint
  *   - 'claim_fallback'— settled WIN but the keeper is clearly LATE (grace passed, or expiry
  *                       unknown so we can't confirm it's coming) → offer a manual claim so a
  *                       genuinely-stalled keeper never strands the payout.
- *   - 'auto_clearing' — settled LOSS (paid nothing) → "Lost"; the keeper clears it, no action.
+ *   - 'auto_clearing' — settled LOSS (paid nothing), keeper expected to clear it → "Lost", no action.
+ *   - 'clear_fallback'— settled LOSS but the keeper is clearly LATE (grace passed, or expiry
+ *                       unknown) → offer a manual "Clear" so a stalled keeper never leaves a
+ *                       dead row stuck in the list. Same redeem_settled call as a claim.
  *   - null            — not settled (live / awaiting settlement) → the normal close flow.
  * The keeper redeems ~15-78s after settlement, so the grace is comfortably past that.
  */
-export type SettledClaimState = 'auto_paying' | 'claim_fallback' | 'auto_clearing' | null;
+export type SettledClaimState = 'auto_paying' | 'claim_fallback' | 'auto_clearing' | 'clear_fallback' | null;
 
 /** Grace after a market settles before we assume the keeper is late and expose a manual
- *  claim. ~3 min is well past the keeper's usual ~15-78s. */
+ *  claim/clear. ~3 min is well past the keeper's usual ~15-78s. */
 export const KEEPER_GRACE_MS = 180_000;
 
 export function settledClaimState(p: V2PortfolioPosition, now: number): SettledClaimState {
   if (!p.settled) return null;
-  if (p.won === false || (p.markValue != null && p.markValue <= 0)) return 'auto_clearing';
-  // Settled winner still net-open → the keeper hasn't redeemed it. Show a manual claim only
-  // once the keeper is clearly late (or expiry is unknown, so we can't confirm it's coming).
+  // Late = the keeper has clearly missed its window (or expiry is unknown, so we can't
+  // confirm it's coming). Both winners and losers then get a manual fallback action.
   const late = p.expiry == null || now - p.expiry > KEEPER_GRACE_MS;
+  if (p.won === false || (p.markValue != null && p.markValue <= 0)) {
+    // Settled loss still net-open → the keeper hasn't cleared it. Offer a manual clear only
+    // once it's clearly late, so a genuinely-stalled keeper never strands a dead row.
+    return late ? 'clear_fallback' : 'auto_clearing';
+  }
   return late ? 'claim_fallback' : 'auto_paying';
 }
 

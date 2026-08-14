@@ -69,6 +69,36 @@ interface EventPage {
  *  endpoint + shape the leaderboard's v2-onchain-events already uses. */
 const graphqlUrl = () => `https://graphql.${predictV2Config.network}.sui.io/graphql`;
 
+/** The public GraphQL proxy 429s under load (Sui docs: prod wants a dedicated endpoint)
+ *  and 503s on a hiccup. Retry those — honoring Retry-After, else exponential backoff —
+ *  so a transient limit never fails a whole scan or the style/leaderboard seed. Success
+ *  and every other status pass straight through unchanged. */
+const EVENT_RETRY_MAX = 4;
+const EVENT_RETRY_BASE_MS = 400;
+const EVENT_RETRY_MAX_MS = 4_000;
+const sleepMs = (wait: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'));
+    const t = setTimeout(resolve, wait);
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); }, { once: true });
+  });
+async function postEvents(body: string, opts?: GetOptions): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(graphqlUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      signal: opts?.signal,
+      body,
+    });
+    if ((res.status !== 429 && res.status !== 503) || attempt >= EVENT_RETRY_MAX) return res;
+    const ra = Number(res.headers.get('retry-after'));
+    const backoff =
+      Number.isFinite(ra) && ra > 0 ? ra * 1_000 : Math.min(EVENT_RETRY_BASE_MS * 2 ** attempt, EVENT_RETRY_MAX_MS);
+    await sleepMs(backoff + Math.random() * 200, opts?.signal);
+  }
+}
+
 /** Translate the legacy JSON-RPC event filters this module builds into the GraphQL
  *  `EventFilter`. `MoveEventType` (event struct type) -> `type`; `MoveModule`
  *  (emitting module) -> `module` ("package::module"). The only two shapes callers pass. */
@@ -128,13 +158,10 @@ async function queryEventsPage(filter: unknown, cursor: unknown, limit: number, 
   // GraphQL hard-caps a page at 50 and THROWS above it (the old JSON-RPC proxies
   // silently truncated), so clamp — callers wanting more history already page.
   const last = Math.min(Math.max(1, limit), 50);
-  const res = await fetch(graphqlUrl(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store',
-    signal: opts?.signal,
-    body: JSON.stringify({ query: EVENTS_QUERY, variables: { filter: toEventFilter(filter), last, before } }),
-  });
+  const res = await postEvents(
+    JSON.stringify({ query: EVENTS_QUERY, variables: { filter: toEventFilter(filter), last, before } }),
+    opts,
+  );
   if (!res.ok) throw new PredictApiError(`events query -> ${res.status}`, res.status, graphqlUrl());
   const json = (await res.json()) as GqlEventsResponse;
   if (json.errors?.length) throw new PredictApiError(json.errors[0]?.message ?? 'events query failed', 0, graphqlUrl());

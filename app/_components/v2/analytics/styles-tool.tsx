@@ -4,16 +4,18 @@
  * V2StylesTool — how traders bet, for the new deployment (legacy StylesTab's
  * twin). A plain-language legend of the archetypes, the distribution across
  * classified traders, then the roster ranked by amount bet. Built on the shared
- * classifier (classifyV2Traders → classifyStyle) so a trader's archetype matches
- * everywhere; reuses the shared StyleBadge visuals.
+ * classifier so a trader's archetype matches everywhere; reuses the shared
+ * StyleBadge visuals.
  *
  * Presentational only — the roster comes pre-classified from the cached
- * `/api/v2/trader-styles` route (the whole retained ~8h window, not just the live
- * flow-tape window), via useV2TraderStylesRoster.
+ * `/api/v2/trader-styles` route, which now reads every trader's COMPLETE betting
+ * history from the accumulating style indexer (not a windowed fan-out), via
+ * useV2TraderStylesRoster. The roster can be long, so its rows paginate.
  *
  * v2 has no in-app trader profile yet, so roster rows link out to the account on
  * the explorer rather than a /trader page.
  */
+import { useState } from 'react';
 import { ALL_ARCHETYPES } from '@/lib/analytics/trader-style';
 import type { V2TraderStyles } from '@/lib/analytics/v2-trader-style';
 import { compact, shortId } from '@/lib/format';
@@ -23,9 +25,20 @@ import { StyleBadge, ARCH_VIS } from '@/app/_components/analytics/style-badge';
 
 const ACCOUNT_EXPLORER = (addr: string) => `https://suiscan.xyz/${predictV2Config.network}/account/${addr}`;
 
+/** Roster rows per page — the complete roster can run long, so it paginates. */
+const ROSTER_PAGE = 10;
+
 export function V2StylesTool({ styles, loading }: { styles: V2TraderStyles; loading: boolean }) {
   const { traders, distribution, total } = styles;
   const maxCount = Math.max(1, ...distribution.map((d) => d.count));
+
+  // Page-clamp derived, not stored: the roster refetches and reorders, so a stored page
+  // can point past the end — clamp it in render rather than chase it with an effect.
+  const [pageState, setPageState] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(traders.length / ROSTER_PAGE));
+  const page = Math.min(pageState, pageCount - 1);
+  const pageStart = page * ROSTER_PAGE;
+  const pageRows = traders.slice(pageStart, pageStart + ROSTER_PAGE);
 
   return (
     <div className="space-y-4">
@@ -62,7 +75,7 @@ export function V2StylesTool({ styles, loading }: { styles: V2TraderStyles; load
         <div className="head-divider px-4 py-3">
           <div className="text-[13px] font-semibold tracking-tight text-text-1">Trader styles</div>
           <div className="eyebrow mt-0.5 text-text-3">
-            {total > 0 ? `how ${total} traders bet` : 'from the last few hours of bets'}
+            {total > 0 ? `how ${total} traders bet, all-time` : 'from every bet so far'}
           </div>
         </div>
         <div className="p-4">
@@ -109,27 +122,57 @@ export function V2StylesTool({ styles, loading }: { styles: V2TraderStyles; load
             No wallet has placed enough bets to read a style yet.
           </div>
         ) : (
-          <div className="rows-divided">
-            {traders.map((t) => (
-              <a
-                key={t.owner}
-                href={ACCOUNT_EXPLORER(t.owner)}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_5%,transparent)]"
-              >
-                <WalletAvatar addr={t.owner} size={22} ring="rgba(255,255,255,0.10)" />
-                <span className="w-28 flex-none truncate font-mono text-[12px] text-text-2">{shortId(t.owner)}</span>
-                <span className="min-w-0 flex-1">
-                  <StyleBadge style={t.style} size="sm" />
+          <>
+            <div className="rows-divided">
+              {pageRows.map((t) => (
+                <a
+                  key={t.owner}
+                  href={ACCOUNT_EXPLORER(t.owner)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_5%,transparent)]"
+                >
+                  <WalletAvatar addr={t.owner} size={22} ring="rgba(255,255,255,0.10)" />
+                  <span className="w-28 flex-none truncate font-mono text-[12px] text-text-2">{shortId(t.owner)}</span>
+                  <span className="min-w-0 flex-1">
+                    <StyleBadge style={t.style} size="sm" />
+                  </span>
+                  <span className="flex-none text-right font-mono text-[12px] tabular-nums text-text-2">
+                    {compact(t.volume)}
+                    <span className="ml-1 text-[10px] text-text-3">DUSDC</span>
+                  </span>
+                </a>
+              ))}
+            </div>
+            {pageCount > 1 && (
+              <div className="flex items-center justify-between border-t border-line px-4 py-2.5 text-[11px] text-text-3">
+                <span className="tabular-nums">
+                  {pageStart + 1}–{Math.min(pageStart + ROSTER_PAGE, traders.length)} of {traders.length}
                 </span>
-                <span className="flex-none text-right font-mono text-[12px] tabular-nums text-text-2">
-                  {compact(t.volume)}
-                  <span className="ml-1 text-[10px] text-text-3">DUSDC</span>
-                </span>
-              </a>
-            ))}
-          </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setPageState(page - 1)}
+                    disabled={page === 0}
+                    className="rounded-lg border border-line px-2.5 py-1 text-text-2 transition-colors hover:bg-white/5 hover:text-text-1 disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-1 tabular-nums">
+                    {page + 1} / {pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPageState(page + 1)}
+                    disabled={page >= pageCount - 1}
+                    className="rounded-lg border border-line px-2.5 py-1 text-text-2 transition-colors hover:bg-white/5 hover:text-text-1 disabled:opacity-40 disabled:hover:bg-transparent"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

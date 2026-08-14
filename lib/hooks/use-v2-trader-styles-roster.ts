@@ -2,11 +2,10 @@
 
 /**
  * useV2TraderStylesRoster — the Analytics "Trader styles" roster, from
- * `/api/v2/trader-styles`. That route fans the per-market order feeds out across
- * the full retained market window server-side (the beta indexer has no global
- * order stream) and classifies every wallet, cached 2 min — so the browser makes
- * ONE request instead of 500, and the roster reflects the last ~8h of trades, not
- * just the tight live window the flow tape uses.
+ * `/api/v2/trader-styles`. That route serves the accumulating style indexer, which
+ * classifies every trader from their COMPLETE all-time betting history (not a
+ * windowed fan-out) and is cached server-side — so the browser makes ONE request
+ * and the roster is complete, not just the last few hours the flow tape shows.
  *
  * Pass `{ enabled: false }` (e.g. until the tab is opened) to skip the scan.
  */
