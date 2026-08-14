@@ -40,6 +40,31 @@ export function defaultStakeForBalance(spendableBase: bigint): number {
   return STARTER_PRESETS.find((n) => spendableBase >= toQuote(n)) ?? 1;
 }
 
+/**
+ * Bet-amount quick-pick presets, adaptive to the trader's spendable balance: a
+ * small wallet gets $1–$25, while a well-funded account gets bigger round numbers
+ * (up to $500–$5,000) so it isn't nudged to bet tiny. Ascending tiers, biggest
+ * covered one wins; always four values. An 18k balance → [100, 300, 500, 1000].
+ */
+const BET_PRESET_TIERS: { min: number; presets: number[] }[] = [
+  { min: 0, presets: [1, 5, 10, 25] },
+  { min: 100, presets: [5, 10, 25, 50] },
+  { min: 300, presets: [10, 25, 50, 100] },
+  { min: 1_000, presets: [25, 50, 100, 250] },
+  { min: 3_000, presets: [50, 100, 250, 500] },
+  { min: 10_000, presets: [100, 300, 500, 1_000] },
+  { min: 50_000, presets: [250, 500, 1_000, 2_500] },
+  { min: 100_000, presets: [500, 1_000, 2_500, 5_000] },
+];
+
+export function betPresets(spendableBase: bigint): number[] {
+  let picked = BET_PRESET_TIERS[0].presets;
+  for (const tier of BET_PRESET_TIERS) {
+    if (spendableBase >= toQuote(tier.min)) picked = tier.presets;
+  }
+  return picked;
+}
+
 interface V2TradeState {
   marketId: string | null;
   /** True when the user explicitly picked this market (tapped a row/card/surface

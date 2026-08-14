@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { defaultStakeForBalance, STARTER_DEFAULT_STAKE } from './v2-trade-store';
+import { defaultStakeForBalance, STARTER_DEFAULT_STAKE, betPresets } from './v2-trade-store';
 import { toQuote } from '@/config/scale';
 
 describe('defaultStakeForBalance', () => {
@@ -21,5 +21,37 @@ describe('defaultStakeForBalance', () => {
   it('floors at $1 even for a near-empty wallet', () => {
     expect(defaultStakeForBalance(toQuote(0.5))).toBe(1);
     expect(defaultStakeForBalance(0n)).toBe(1);
+  });
+});
+
+describe('betPresets', () => {
+  it('gives small wallets the $1–$25 ladder', () => {
+    expect(betPresets(toQuote(0))).toEqual([1, 5, 10, 25]);
+    expect(betPresets(toQuote(50))).toEqual([1, 5, 10, 25]);
+    expect(betPresets(toQuote(99.99))).toEqual([1, 5, 10, 25]);
+  });
+
+  it('scales the ladder up with the balance', () => {
+    expect(betPresets(toQuote(100))).toEqual([5, 10, 25, 50]);
+    expect(betPresets(toQuote(300))).toEqual([10, 25, 50, 100]);
+    expect(betPresets(toQuote(1_000))).toEqual([25, 50, 100, 250]);
+    expect(betPresets(toQuote(3_000))).toEqual([50, 100, 250, 500]);
+  });
+
+  it('lands on [100,300,500,1000] for a well-funded (18k) account', () => {
+    expect(betPresets(toQuote(18_071))).toEqual([100, 300, 500, 1_000]);
+  });
+
+  it('tops out at the largest tier', () => {
+    expect(betPresets(toQuote(50_000))).toEqual([250, 500, 1_000, 2_500]);
+    expect(betPresets(toQuote(250_000))).toEqual([500, 1_000, 2_500, 5_000]);
+  });
+
+  it('always returns four ascending values', () => {
+    for (const bal of [0, 100, 1_000, 18_071, 999_999]) {
+      const p = betPresets(toQuote(bal));
+      expect(p).toHaveLength(4);
+      for (let i = 1; i < p.length; i++) expect(p[i]).toBeGreaterThan(p[i - 1]);
+    }
   });
 });

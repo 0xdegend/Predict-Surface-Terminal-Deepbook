@@ -959,13 +959,16 @@ async function queryTxEventsPage(
 ): Promise<EventPage> {
   const before = (cursor as string | null | undefined) ?? null;
   const last = Math.min(Math.max(1, limit), 50);
-  const res = await fetch(graphqlUrl(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    cache: 'no-store',
-    signal: opts?.signal,
-    body: JSON.stringify({ query: TX_EVENTS_QUERY, variables: { filter, last, before } }),
-  });
+  // Route through postEvents (429/503 retry + backoff), NOT a raw fetch — this is
+  // the keeper-redeem scan's page fetch, and on a window-refocus refetch burst the
+  // public GraphQL proxy 429s. A raw fetch would throw, the caller's `.catch`
+  // swallows it to "no redeems", and every already-paid position resurrects as
+  // "paying out" for a few seconds until the next poll. Retrying keeps the fold
+  // correct so paid positions stay closed. See [[keeper-redeem-read-gap]].
+  const res = await postEvents(
+    JSON.stringify({ query: TX_EVENTS_QUERY, variables: { filter, last, before } }),
+    opts,
+  );
   if (!res.ok) throw new PredictApiError(`tx query -> ${res.status}`, res.status, graphqlUrl());
   const json = (await res.json()) as GqlTxResponse;
   if (json.errors?.length) throw new PredictApiError(json.errors[0]?.message ?? 'tx query failed', 0, graphqlUrl());

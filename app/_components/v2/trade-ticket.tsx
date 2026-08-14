@@ -31,7 +31,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LuShare2 } from 'react-icons/lu';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
-import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
+import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
@@ -74,8 +74,11 @@ import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
-const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+// Compact preset label so a big-account chip ("$2,500") never overflows: 1000 → $1k,
+// 2500 → $2.5k. Sub-$1k stays exact.
+const fmtPreset = (n: number) =>
+  n >= 1000 ? `$${(n / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k` : `$${n}`;
 // Compact payout multiple: full precision when small, but drop the decimals once
 // it's large enough that they're just noise (and width) — 2.29× stays 2.29×, but
 // 229.00× becomes 229× so a big-leverage ticket can't overflow the summary row.
@@ -341,6 +344,10 @@ export function V2TradeTicket({
   // figure that then jumps.
   const spendableBase =
     acct.walletDusdcBase !== undefined ? acct.balanceBase + acct.walletDusdcBase : undefined;
+  // Quick-pick amounts sized to what the trader can spend — small wallets get
+  // $1–$25, big accounts get $100+ so they aren't nudged to bet tiny. Falls back
+  // to the account balance while the wallet total is still loading.
+  const amountPresets = betPresets(spendableBase ?? acct.balanceBase);
 
   const closingSoon = isClosingSoon(market, now);
   const tooCloseToExpiry = isTooCloseToExpiry(market, now);
@@ -497,7 +504,7 @@ export function V2TradeTicket({
         </div>
       )}
       <div className="flex gap-1.5">
-        {AMOUNT_PRESETS.map((n) => (
+        {amountPresets.map((n) => (
           <button
             key={n}
             onClick={() => applyBet(String(n))}
@@ -505,7 +512,7 @@ export function V2TradeTicket({
               Number(shownBet) === n ? 'border border-up/40 bg-(--accent-soft) text-accent' : 'ctrl-soft text-text-3'
             }`}
           >
-            ${n}
+            {fmtPreset(n)}
           </button>
         ))}
       </div>
