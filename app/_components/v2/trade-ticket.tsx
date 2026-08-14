@@ -33,6 +33,7 @@ import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-accoun
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
+import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
@@ -53,6 +54,7 @@ import { V2PayoutSlider } from './ticket/payout-slider';
 import { V2LeverageSlider } from './ticket/leverage-slider';
 import { V2SmileChart } from './smile-chart';
 import { InstantTradingToggle } from './session/instant-trading-toggle';
+import { SessionPill } from './session/session-pill';
 import { SessionGasWarning } from './session/session-gas-warning';
 import { SharedTradeBanner } from './share/shared-trade-banner';
 import { TradeShareModal } from './share/trade-share-modal';
@@ -119,6 +121,9 @@ export function V2TradeTicket({
   const armInstant = useSessionPrefs((s) => s.armInstant);
   const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
   const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
+  // Which hero the trader is looking at, so the ticket title can tell them how to load
+  // a market: click the 3-D surface, or use the ticket itself when the chart is showing.
+  const heroView = useSurfaceStore((s) => s.heroView);
 
   // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
   // gas SUI). One tap drips a starter grant from the app treasury — the SAME
@@ -744,6 +749,22 @@ export function V2TradeTicket({
             : 'Tip: click the surface or a market in the list to load it here.',
         }}
       />
+
+      {/* Ticket title — sits UNDER the guide so "How it works" leads. The hint is dynamic
+          by hero (surface → click surface; chart → use the ticket) and forced to a single
+          line (truncates) so it never wraps into a second row. Desktop rail only; the
+          mobile sheet has its own header. */}
+      {!mobile && (
+        <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
+          <span aria-hidden className="h-3 w-px shrink-0 bg-accent/70" />
+          <span className="min-w-0 truncate">
+            Trade ticket · {heroView === 'chart' ? 'pick a side' : 'click surface'}
+          </span>
+          <span className="ml-auto shrink-0 normal-case">
+            <SessionPill />
+          </span>
+        </h2>
+      )}
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

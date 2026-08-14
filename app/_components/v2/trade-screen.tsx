@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { LuBoxes, LuChartArea, LuGift, LuPause, LuSparkles } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
@@ -35,7 +36,6 @@ import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
 import { V2RailTabs } from './rail-tabs';
-import { SessionPill } from './session/session-pill';
 import { SurfaceMountV2 } from './surface/surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -145,15 +145,9 @@ export function V2TradeScreen({
           <PausedTicket />
         ) : (
           <>
+            {/* The ticket owns its heading now (guide first, then the title) — see
+                V2TradeTicket. */}
             <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
-              {/* Rail ticket heading — mirrors legacy's TicketTitle chrome. */}
-              <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
-                <span className="h-3 w-px bg-accent/70" />
-                Trade ticket · click surface → mint
-                <span className="ml-auto shrink-0 normal-case">
-                  <SessionPill />
-                </span>
-              </h2>
               <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
             </div>
             {/* Odds ⇆ Analysis. Odds is the surface's own fair-probability curve;
@@ -302,6 +296,13 @@ function Hero({
   // Default to the 3-D surface on desktop, the lighter live chart on mobile.
   const wanted: HeroView = override ?? (canSurface && isDesktop ? 'surface' : 'chart');
   const view: HeroView = wanted === 'surface' && !canSurface ? 'chart' : wanted;
+
+  // Mirror the resolved view into the store so the ticket title's hint (click surface
+  // vs use the ticket) tracks which hero is actually showing.
+  const setHeroView = useSurfaceStore((s) => s.setHeroView);
+  useEffect(() => {
+    setHeroView(view);
+  }, [view, setHeroView]);
 
   return (
     <div className="relative h-full w-full">
