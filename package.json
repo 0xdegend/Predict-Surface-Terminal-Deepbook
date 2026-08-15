@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
+    "@mysten-incubation/memwal": "^0.1.2",
     "@mysten/dapp-kit-react": "^2.0.3",
     "@mysten/enoki": "^1.0.8",
     "@mysten/sui": "^2.24.0",
+    "@mysten/walrus": "^1.2.14",
     "@mysten/webcrypto-signer": "^0.1.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",

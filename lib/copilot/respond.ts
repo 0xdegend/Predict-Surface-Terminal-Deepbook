@@ -1906,6 +1906,12 @@ export function respondToIntent(intent: CopilotIntent, ctx: CopilotContext): Cop
       return getTokensReply(ctx);
     case 'vault_deposit':
       return vaultDepositReply(ctx, intent.amount);
+    case 'remember':
+    case 'recall_memory':
+      // Kelly's memory (Walrus) is handled async in the chat hosts, which intercept these
+      // before respondToIntent when the feature is on. If it's off or unwired, fall back to
+      // the generic help reply so the switch stays exhaustive and behavior is unchanged.
+      return helpReply();
     case 'adjust_ticket':
       return adjustReply(intent, ctx);
     case 'next_market':

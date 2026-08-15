@@ -89,6 +89,10 @@ export type CopilotIntent =
   // "Add 10 DUSDC to the vault / supply the liquidity pool" — deposit into the vault
   // (async LP). `amount` is the DUSDC to queue (undefined → Kelly asks how much).
   | { kind: 'vault_deposit'; amount?: number }
+  // "Remember that I ..." → store a durable memory (Kelly's Walrus-backed memory);
+  // `text` is the fact to save. "What do you remember about me?" → recall saved memories.
+  | { kind: 'remember'; text?: string }
+  | { kind: 'recall_memory'; query?: string }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -841,6 +845,39 @@ function targetFrom(text: string): BetTarget | null {
 }
 
 /**
+ * "What do you remember / know about me?" → recall the trader's saved memories. A
+ * question form, never a store: "what have you learned about me", "what do you know
+ * about me", "do you remember me", "my saved preferences" all hit.
+ */
+function wantsRecallMemory(raw: string): { query?: string } | null {
+  if (/\bdo you remember\b/.test(raw)) return {};
+  const memoryVerb = /\b(remember|know|learned|memor(?:y|ies|ized)|saved|stored)\b/.test(raw);
+  const aboutMe = /\b(about|of) me\b/.test(raw);
+  const myMemory = /\bmy (saved )?(preferences|memories|memory|notes|profile|style)\b/.test(raw);
+  const question = /\b(what|which|do you|did you|have you|anything)\b/.test(raw);
+  if (memoryVerb && (aboutMe || myMemory) && question) return {};
+  return null;
+}
+
+/**
+ * "Remember that I ..." / "note that I ..." / "keep in mind ..." → store a durable memory.
+ * Returns the fact with ORIGINAL casing (from `message`, not the lowercased raw) so it
+ * reads back naturally. Question forms are excluded (those recall). Requires at least two
+ * words after the verb, so a bare "remember me" doesn't store a junk fact.
+ */
+function wantsRemember(message: string): { text?: string } | null {
+  const t = message.trim();
+  const lower = t.toLowerCase();
+  if (/^(what|which|do you|did you|have you|can you)\b/.test(lower)) return null; // a question → recall
+  const m = lower.match(/\b(?:remember|note|keep in mind|don'?t forget)\b(?:\s+(?:that|this)\b)?[:,]?\s*(.+)/);
+  if (!m) return null;
+  const factStart = (m.index ?? 0) + m[0].length - m[1].length;
+  const fact = t.slice(factStart).trim().replace(/[.?!]+$/, '');
+  if (!fact || fact.split(/\s+/).length < 2) return null;
+  return { text: fact };
+}
+
+/**
  * Parse a message into an intent. Priority:
  *  1. A single clear direction (up XOR down) → a directional bet.
  *  2. Both/neither direction but an analysis ask → analyze.
@@ -862,6 +899,13 @@ export function parseIntent(message: string): CopilotIntent {
   // it still falls through to the glossary.
   const vault = wantsVaultDeposit(raw);
   if (vault) return { kind: 'vault_deposit', ...(vault.amount != null ? { amount: vault.amount } : {}) };
+  // "What do you remember about me?" → recall saved memories. "Remember that I ..." →
+  // store one. Checked here (a read/command about Kelly's memory) before the trade
+  // branches so "remember I like safe bets" isn't mis-read as a bet. Recall (a question)
+  // is tested before the store so "what do you remember about me" never stores.
+  if (wantsRecallMemory(raw)) return { kind: 'recall_memory' };
+  const remember = wantsRemember(message);
+  if (remember?.text) return { kind: 'remember', text: remember.text };
   // Start the guided wizard on an explicit "set up a trade"-style phrase, on raw
   // text — it must beat the NON_DIRECTIONAL strip (which would remove "set up").
   if (has(raw, START_TRADE_PHRASES)) return { kind: 'start_trade' };

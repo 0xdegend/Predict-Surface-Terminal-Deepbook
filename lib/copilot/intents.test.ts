@@ -787,3 +787,49 @@ describe('parseIntent — vault_deposit', () => {
     expect(parseIntent('put 10 dusdc in the vault').kind).toBe('vault_deposit');
   });
 });
+
+describe('parseIntent — memory (remember / recall)', () => {
+  it('"remember that I ..." → remember, carrying the fact in original casing', () => {
+    const cases: [string, string][] = [
+      ['remember that I prefer safer up bets', 'I prefer safer up bets'],
+      ['remember I like BTC 1h markets', 'I like BTC 1h markets'],
+      ['kelly, remember I avoid leverage', 'I avoid leverage'],
+      ['note that I trade mornings', 'I trade mornings'],
+      ['keep in mind I hate longshots', 'I hate longshots'],
+    ];
+    for (const [msg, text] of cases) {
+      const i = parseIntent(msg);
+      expect(i.kind, msg).toBe('remember');
+      if (i.kind === 'remember') expect(i.text, msg).toBe(text);
+    }
+  });
+
+  it('"what do you remember/know about me" → recall_memory', () => {
+    for (const msg of [
+      'what do you remember about me',
+      'what do you know about me',
+      'what have you learned about me',
+      'do you remember me',
+      'what are my saved preferences',
+    ]) {
+      expect(parseIntent(msg).kind, msg).toBe('recall_memory');
+    }
+  });
+
+  it('a recall question never stores (recall wins over remember)', () => {
+    const i = parseIntent('what do you remember about me');
+    expect(i.kind).toBe('recall_memory');
+  });
+
+  it('bare "remember me" does not store a junk one-word fact', () => {
+    expect(parseIntent('remember me').kind).not.toBe('remember');
+  });
+
+  it('does not fire on unrelated messages', () => {
+    for (const msg of ['set up a trade', 'safe up bet', 'analyze btc', "what's my win rate", 'what do you know about btc']) {
+      const k = parseIntent(msg).kind;
+      expect(k, msg).not.toBe('remember');
+      expect(k, msg).not.toBe('recall_memory');
+    }
+  });
+});

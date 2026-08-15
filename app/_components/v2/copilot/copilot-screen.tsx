@@ -43,6 +43,10 @@ import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
+import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
+import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
+import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
+import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -101,6 +105,10 @@ const COPILOT_LIVE = process.env.NEXT_PUBLIC_COPILOT_LIVE === '1';
 // server. Money paths (quotes/bet/place/adjust/close) NEVER route here. A client
 // per-session cap backs up the server's per-day cap so one tab can't drain credit.
 const COPILOT_AI = process.env.NEXT_PUBLIC_COPILOT_AI === '1';
+// Kelly's Walrus-backed memory (remember/recall). OFF by default — set
+// NEXT_PUBLIC_KELLY_MEMORY=1 AND configure the server (WALRUS_DELEGATE_KEY +
+// WALRUS_MEMORY_ACCOUNT_ID). Dark otherwise: the memory intents fall through to help.
+const KELLY_MEMORY = process.env.NEXT_PUBLIC_KELLY_MEMORY === '1';
 const AI_SESSION_CAP = 40;
 const AI_TIMEOUT_MS = 16_000;
 
@@ -236,6 +244,12 @@ export function V2CopilotScreen({
   // already subscribes to this hook (for its position pins), and it only refetches
   // ~every 12s, so reading it here adds no meaningful re-render load.
   const acct = usePredictAccountV2();
+  // Kelly's memory sign-in gate. `signedIn` is true once the connected wallet holds a valid
+  // session cookie (recall/remember require it); `ensureSignedIn()` mints one with a single
+  // personal-message signature. Passive continuity + auto-remember act only when already
+  // signed in (they never prompt); the explicit "remember …" path prompts once. Dark unless
+  // NEXT_PUBLIC_KELLY_MEMORY + a server secret are set.
+  const memoryAuth = useKellyMemoryAuth();
   // The Season-2 board, for "how am I doing on the leaderboard / what should I
   // improve". Same board the Ranks tab shows (a cached fetch on 8-06); read only to
   // fold the connected wallet's own standing into the answer at send time.
@@ -624,6 +638,40 @@ export function V2CopilotScreen({
     return () => clearTimeout(id);
   }, [acct.owner]);
 
+  // Passive continuity: a moment after a RETURNING trader connects, Kelly recalls what it
+  // has saved about them and opens with it ("good to see you back — here's what I remember").
+  // Only when they're ALREADY signed in to memory (a valid session cookie, typically from a
+  // prior visit) — we never prompt a signature just to greet. Once per connected wallet, and
+  // only while the thread is still fresh (no user turn yet), so it never barges into an ongoing
+  // chat. Fails soft: no saved notes, or a memory hiccup, just leaves the normal greeting. A
+  // brand-new trader has no memories → welcomeBackLines returns [] → no bubble (and the
+  // onboarding nudge above handles them instead). See lib/copilot/memory-greeting.ts.
+  const welcomedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!COPILOT_LIVE || !KELLY_MEMORY || !memoryAuth.signedIn) return;
+    const owner = acct.owner;
+    if (!owner || welcomedForRef.current === owner) return;
+    welcomedForRef.current = owner;
+    let cancelled = false;
+    void (async () => {
+      // Skip the recall if the thread already moved past a fresh greeting (reconnect
+      // mid-chat, or a re-greet after we already welcomed them).
+      if (messages.some((m) => m.role === 'user' || m.id === 'welcome-back')) return;
+      const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES);
+      if (cancelled) return;
+      const lines = welcomeBackLines(mems);
+      if (lines.length === 0) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.role === 'user' || m.id === 'welcome-back')) return prev;
+        return [...prev, { id: 'welcome-back', role: 'assistant', text: lines }];
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acct.owner, memoryAuth.signedIn]);
+
   // Grant success → a chat line (the toast + success modal fire too). Deduped by
   // digest so a re-render can't repeat it.
   const grantMsgRef = useRef<string | null>(null);
@@ -749,6 +797,7 @@ export function V2CopilotScreen({
       if (digest) {
         pulseFill({ marketId: bet.marketId, strike: plan!.strike, isUp: bet.isUp });
         pushBot([`Done — your ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+        autoRememberBetStyle(bet);
       } else {
         // It didn't place — keep the bet pending so "trade it" can retry it.
         pendingBetRef.current = bet;
@@ -818,6 +867,7 @@ export function V2CopilotScreen({
       if (digest) {
         pulseFill({ marketId: range.marketId, strike: (plan!.lower + plan!.higher) / 2, isUp: true });
         pushBot([`Done — your range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
+        autoRememberRangeStyle();
       } else {
         // It didn't place — keep the range pending so "trade it" can retry it.
         pendingRangeRef.current = range;
@@ -943,6 +993,69 @@ export function V2CopilotScreen({
     } finally {
       setThinking(false);
     }
+  }
+
+  // "Remember that I ..." → save a durable memory. "What do you remember about me?" →
+  // recall the trader's saved memories (semantic search). Memory is per-wallet + encrypted, so
+  // the trader signs in once (a plain signature, never a transaction) before Kelly reads or
+  // writes it. Signed server-side via the memory API (the delegate key is server-only); fails
+  // soft so a hiccup never breaks the chat.
+  async function answerMemory(intent: CopilotIntent, userText: string) {
+    pushUser(userText);
+    const owner = acct.owner;
+    if (!owner) {
+      botAfterBeat(['Connect your wallet (top-right) and I can remember things for you.']);
+      return;
+    }
+    setThinking(true);
+    try {
+      const ok = await memoryAuth.ensureSignedIn();
+      if (!ok) {
+        pushBot(
+          !memoryAuth.configured
+            ? ["My memory isn't switched on here yet, so I can't save that. Everything else still works."]
+            : ['To use memory I need a quick one-time signature so I know it’s really you. It doesn’t move any funds. Approve it in your wallet, then ask me again.'],
+        );
+        return;
+      }
+      if (intent.kind === 'recall_memory') {
+        const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, 8);
+        pushBot(
+          mems.length === 0
+            ? ["I don't have anything saved about you yet. Tell me a preference like “remember I prefer safer up bets” and I'll keep it."]
+            : ['Here’s what I remember about you:', ...mems.map((m) => `• ${m}`)],
+        );
+      } else if (intent.kind === 'remember') {
+        const fact = intent.text ?? '';
+        if (!fact) {
+          pushBot(['What should I remember? Try “remember I prefer safer up bets”.']);
+        } else {
+          const saved = await rememberFact(owner, fact);
+          pushBot(saved ? ['Got it. I’ll remember that.'] : ["I couldn't save that just now — give it a moment and try again."]);
+        }
+      }
+    } catch {
+      pushBot(["I couldn't reach your memory just now — give it a moment and ask again."]);
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  // Auto-remember: quietly record the trader's revealed style after a bet they place through
+  // Kelly, so passive continuity has something real to greet them with. Once per session per
+  // wallet, and ONLY when already signed in to memory (never prompts a signature mid-trade).
+  // Fire-and-forget: a memory hiccup never affects the trade. See lib/copilot/auto-memory.ts.
+  function autoRememberBetStyle(bet: BetSuggestion) {
+    const owner = acct.owner;
+    if (!KELLY_MEMORY || !owner || !memoryAuth.signedIn) return;
+    if (!claimAutoRememberSlot(owner)) return;
+    void rememberFact(owner, styleNoteForBet(bet));
+  }
+  function autoRememberRangeStyle() {
+    const owner = acct.owner;
+    if (!KELLY_MEMORY || !owner || !memoryAuth.signedIn) return;
+    if (!claimAutoRememberSlot(owner)) return;
+    void rememberFact(owner, styleNoteForRange());
   }
 
   // A short "typing" beat, then a bot line — for non-executing answers.
@@ -1190,6 +1303,12 @@ export function V2CopilotScreen({
       nextFlow = res.flow;
     } else {
       const intent = parseIntent(text);
+      if (KELLY_MEMORY && (intent.kind === 'remember' || intent.kind === 'recall_memory')) {
+        // Kelly's memory (Walrus). Handled async against the memory API — the delegate key
+        // is server-only, so the client just calls the route.
+        void answerMemory(intent, text);
+        return;
+      }
       if (intent.kind === 'busiest_strike' || intent.kind === 'surface_volume') {
         // Needs the orders feed (not in the surface's pricing data) — fetch it on
         // demand and answer async, so there's no standing cost when it's not asked.
