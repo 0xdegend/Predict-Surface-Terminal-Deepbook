@@ -3,8 +3,10 @@ import {
   classifyTenor,
   gateTrade,
   autoStopReason,
+  settleOutcome,
   gateReasonLabel,
   stopReasonLabel,
+  stopReasonKind,
   TENOR_BUCKETS,
   type ProposedTrade,
   type AutopilotRules,
@@ -214,5 +216,37 @@ describe('label helpers cover every code (plain language, no em-dash)', () => {
       expect(label.length).toBeGreaterThan(0);
       expect(label).not.toContain('—');
     }
+  });
+
+  it('reads planned finishes as complete and trouble as attention', () => {
+    expect(stopReasonKind('budget_spent')).toBe('complete');
+    expect(stopReasonKind('trade_cap_reached')).toBe('complete');
+    expect(stopReasonKind('duration_elapsed')).toBe('complete');
+    expect(stopReasonKind('loss_limit')).toBe('attention');
+    expect(stopReasonKind('session_expired')).toBe('attention');
+    expect(stopReasonKind('gas_low')).toBe('attention');
+    expect(stopReasonKind('feed_stall')).toBe('attention');
+  });
+});
+
+describe('settleOutcome', () => {
+  it('scores an UP binary: wins strictly above the strike', () => {
+    expect(settleOutcome({ side: 'up', strike: 100 }, 101)).toBe(true);
+    expect(settleOutcome({ side: 'up', strike: 100 }, 100)).toBe(false); // at strike = not above
+    expect(settleOutcome({ side: 'up', strike: 100 }, 99)).toBe(false);
+  });
+
+  it('scores a DOWN binary: wins at or below the strike', () => {
+    expect(settleOutcome({ side: 'down', strike: 100 }, 99)).toBe(true);
+    expect(settleOutcome({ side: 'down', strike: 100 }, 100)).toBe(true);
+    expect(settleOutcome({ side: 'down', strike: 100 }, 101)).toBe(false);
+  });
+
+  it('scores a range: wins inside (lower, higher]', () => {
+    const band = { side: 'range' as const, lower: 100, higher: 110 };
+    expect(settleOutcome(band, 105)).toBe(true);
+    expect(settleOutcome(band, 110)).toBe(true); // upper edge included
+    expect(settleOutcome(band, 100)).toBe(false); // lower edge excluded
+    expect(settleOutcome(band, 111)).toBe(false);
   });
 });

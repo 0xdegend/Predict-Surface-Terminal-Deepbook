@@ -35,7 +35,7 @@ import { fromQuote, toQuote } from '@/config/scale';
 import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
-import { parseIntent, placeConfirmation, type CopilotIntent } from '@/lib/copilot/intents';
+import { parseIntent, placeConfirmation, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
@@ -324,6 +324,10 @@ function KellyPanel({
 }) {
   const router = useRouter();
   const aiCallsRef = useRef(0);
+  // When the trader asks for a bet without naming an amount, Kelly asks "how much?"
+  // and parks the bet here; their next plain amount reply sizes + places it — so a
+  // bet never goes out at an amount the trader didn't choose.
+  const awaitingAmountRef = useRef<BetSuggestion | null>(null);
   // The trade ticket pops IN PLACE over the drawer (its own local flag, not the shared
   // `ticketSheetOpen`), so a confirmed bet never navigates the user out — wherever they
   // opened Kelly, the trade opens right there.
@@ -588,6 +592,25 @@ function KellyPanel({
     const t = text.trim();
     if (!t || busy) return;
 
+    // Kelly asked "how much?" for a set-up bet — a plain amount now sizes AND places
+    // it; "cancel" drops it; anything else falls through to be handled normally.
+    if (awaitingAmountRef.current) {
+      const amt = parseAmountReply(t);
+      if (amt != null) {
+        const bet = awaitingAmountRef.current;
+        awaitingAmountRef.current = null;
+        pushUser(t);
+        void placeBetDirect({ ...bet, amount: amt });
+        return;
+      }
+      if (/^(?:cancel|never ?mind|nvm|stop|forget it|no thanks|no)\b/i.test(t)) {
+        awaitingAmountRef.current = null;
+        pushReply(t, { text: ['No problem, I didn’t place anything. Ask me for another bet whenever you’re ready.'] });
+        return;
+      }
+      awaitingAmountRef.current = null; // not an amount — handle their new message normally
+    }
+
     // "Trade it" / "trade it with 1 dusdc" / "place it at 2x" → PLACE the bet Kelly just
     // suggested directly (with an optional stake/leverage override), then show it in the
     // open-bets panel below — no modal (that's reserved for the "Place this bet" button).
@@ -664,6 +687,13 @@ function KellyPanel({
     }
 
     const reply = readReply(intent, now);
+    // If the trader named a size in THIS request ("a $50 up trade"), carry it onto the
+    // suggestion so "place it" doesn't ask again. No size named leaves amount null, so
+    // placing asks "how much?" instead of assuming.
+    if (reply.bet && reply.bet.amount == null) {
+      const named = extractStake(t);
+      if (named != null) reply.bet.amount = named;
+    }
     // The Claude read long tail, for questions the rules drop to `help`.
     if (intent.kind === 'help' && COPILOT_AI && aiCallsRef.current < AI_SESSION_CAP) {
       void answerWithAI(t, reply);
@@ -704,11 +734,19 @@ function KellyPanel({
   // so the trader is never stuck. Google (gasless) places with no popup; an external
   // wallet still shows its own signing prompt (never bypassed); an armed session skips it.
   async function placeBetDirect(bet: BetSuggestion) {
+    // Never place an amount the trader didn't choose. No amount named → ask for it and
+    // park the bet; their next plain amount reply (parseAmountReply) sizes + places it.
+    if (bet.amount == null || bet.amount <= 0) {
+      awaitingAmountRef.current = bet;
+      pushBot([`How much DUSDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
+      return;
+    }
+
     const now = Date.now();
     const market = markets.find((m) => m.expiry_market_id === bet.marketId);
     const pricer = market ? pricers[bet.marketId] : undefined;
     const st0 = useV2TradeStore.getState();
-    const stake = bet.amount ?? st0.stake;
+    const stake = bet.amount; // guaranteed present by the guard above
     const leverage = bet.leverage ?? st0.leverage;
     const plan =
       market && pricer
@@ -744,7 +782,7 @@ function KellyPanel({
       const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
       const digest = await acct.mintBudget({ ...plan!.mint, deposit });
       if (digest) {
-        pushBot([`Done — your ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+        pushBot([`Done — your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
         autoRememberBetStyle(bet);
       } else {
         pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or tap Place this bet to do it from the ticket.']);

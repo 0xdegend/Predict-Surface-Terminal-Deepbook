@@ -40,6 +40,9 @@ export interface BinaryMintPlan {
   maxLev: number;
   stakeBase: bigint;
   estCostBase: bigint;
+  /** The sized position quantity (base units) — the notional that marks/settles.
+   *  Same figure the chain lands on for the budget, so live PnL matches the ticket. */
+  quantity: bigint;
   /** Slippage-padded ceiling — what the deposit must cover. */
   maxCost: bigint;
   /** Entry probability sits inside the quotable band (not a dead 0%/100% strike). */
@@ -93,6 +96,7 @@ export function planBinaryBudgetMint(p: BinaryBetParams): BinaryMintPlan {
     maxLev,
     stakeBase,
     estCostBase,
+    quantity,
     maxCost,
     probOk,
     stakeOk: stakeBase >= MIN_STAKE_BASE,
@@ -122,6 +126,8 @@ export interface RangeMintPlan {
   maxLev: number;
   stakeBase: bigint;
   estCostBase: bigint;
+  /** The sized position quantity (base units) — the notional that marks/settles. */
+  quantity: bigint;
   /** Slippage-padded ceiling — what the deposit must cover. */
   maxCost: bigint;
   /** Entry probability sits inside the quotable band (not a dead 0%/100% band). */
@@ -174,6 +180,7 @@ export function planRangeBudgetMint(p: RangeBetParams): RangeMintPlan {
     maxLev,
     stakeBase,
     estCostBase,
+    quantity,
     maxCost,
     probOk,
     stakeOk: stakeBase >= MIN_STAKE_BASE,

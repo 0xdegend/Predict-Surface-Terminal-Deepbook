@@ -52,6 +52,19 @@ export interface ProposedTrade {
   leverage: number;
   /** The stake the engine would place, in DUSDC. */
   sizeUsd: number;
+  /** Scoring detail (binary): the snapped strike (USD) the mint actually used, so a
+   *  settled position can be marked won/lost later. Absent on a simulated pick. */
+  strike?: number;
+  /** Scoring detail (range): the band edges (USD), same purpose as `strike`. */
+  lower?: number;
+  higher?: number;
+  /** Marking detail — carried onto the open position so live PnL uses the SAME math
+   *  as the rest of the terminal (lib/portfolio/v2). Entry win chance (0..1). */
+  entryProb?: number;
+  /** Sized notional (DUSDC) — what a win pays before the leverage floor. */
+  qty?: number;
+  /** All-in entry cost (DUSDC): stake plus the fee charged at mint. */
+  cost?: number;
 }
 
 /** The trader's own filter on Kelly's picks (the "your rules" half of "both"). */
@@ -202,6 +215,24 @@ export function autoStopReason(
   return null;
 }
 
+/**
+ * Score a settled position against the settlement price (USD) — did it win?
+ * Mirrors the receipt scorer (lib/walrus/receipts.ts::scoreCall): an UP wins when
+ * settlement is above the strike, a DOWN wins at/below it, and a range wins when
+ * settlement lands in (lower, higher]. Pure, so the loss-limit logic is testable
+ * without a chain read. The caller supplies the settlement price from on-chain.
+ */
+export function settleOutcome(
+  pos: { side: TradeSide; strike?: number; lower?: number; higher?: number },
+  settlementPrice: number,
+): boolean {
+  if (pos.side === 'range') {
+    return settlementPrice > (pos.lower ?? 0) && settlementPrice <= (pos.higher ?? 0);
+  }
+  const above = settlementPrice > (pos.strike ?? 0);
+  return pos.side === 'up' ? above : !above;
+}
+
 /** Plain-language reason a candidate was held back, for the run log. */
 export function gateReasonLabel(code: GateCode): string {
   switch (code) {
@@ -223,6 +254,26 @@ export function gateReasonLabel(code: GateCode): string {
       return 'Waiting: already traded this market';
     case 'max_concurrent_reached':
       return 'Waiting: at your open-positions limit';
+  }
+}
+
+/**
+ * How a stop READS to the trader: a planned finish vs something worth attention.
+ * Budget, trade cap, and duration are the run doing exactly what you set it to (a
+ * clean completion). Key/gas/feed trouble and the losing-streak guard are stops you
+ * want flagged. Drives the banner tone so a normal finish never looks like an error.
+ */
+export function stopReasonKind(reason: StopReason): 'complete' | 'attention' {
+  switch (reason) {
+    case 'budget_spent':
+    case 'trade_cap_reached':
+    case 'duration_elapsed':
+      return 'complete';
+    case 'loss_limit':
+    case 'session_expired':
+    case 'gas_low':
+    case 'feed_stall':
+      return 'attention';
   }
 }
 

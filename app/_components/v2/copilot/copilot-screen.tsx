@@ -45,7 +45,11 @@ import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
+import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
+import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
+import { ChatHistoryPanel } from './chat-history-panel';
+import type { StoredMessage } from '@/lib/walrus/chat-history';
 import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { recordCall, binaryIntent, rangeIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
@@ -90,6 +94,19 @@ const GREETING: ChatMessage = {
     'Try “analyze BTC”, “safe up bet”, or say “set up a trade” and I’ll walk you through it step by step.',
   ],
 };
+
+/** ChatMessage → the compact, JSON-safe shape we archive (text + a static bet/range
+ *  summary). Onboarding/share cards are transient and not persisted. */
+function toStored(msgs: ChatMessage[]): StoredMessage[] {
+  return msgs
+    .filter((m) => m.text && m.text.length > 0)
+    .map((m) => {
+      const sm: StoredMessage = { role: m.role, text: m.text };
+      if (m.bet) sm.bet = { isUp: m.bet.isUp, strike: m.bet.strikePrice, prob: m.bet.prob, amount: m.bet.amount };
+      if (m.range) sm.range = { lower: m.range.lower, higher: m.range.higher, prob: m.range.prob, amount: m.range.amount };
+      return sm;
+    });
+}
 
 // ── Coming-soon gate ────────────────────────────────────────────────────────
 // The co-pilot ships to production behind a "coming soon" overlay: the REAL live
@@ -256,6 +273,11 @@ export function V2CopilotScreen({
   // signed in (they never prompt); the explicit "remember …" path prompts once. Dark unless
   // NEXT_PUBLIC_KELLY_MEMORY + a server secret are set.
   const memoryAuth = useKellyMemoryAuth();
+  // Durable, per-wallet chat history (localStorage now + Walrus archive when signed in).
+  // Dark unless NEXT_PUBLIC_KELLY_HISTORY is set. See use-kelly-chat-history.
+  const chatHistory = useKellyChatHistory({ owner: acct.owner ?? null, signedIn: memoryAuth.signedIn });
+  const { persist: persistChat, newChat: newChatSession, enabled: historyEnabled } = chatHistory;
+  const [historyOpen, setHistoryOpen] = useState(false);
   // The Season-2 board, for "how am I doing on the leaderboard / what should I
   // improve". Same board the Ranks tab shows (a cached fetch on 8-06); read only to
   // fold the connected wallet's own standing into the answer at send time.
@@ -347,6 +369,14 @@ export function V2CopilotScreen({
 
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [thinking, setThinking] = useState(false);
+
+  // Save the conversation as it grows (localStorage now + a debounced Walrus archive).
+  // Only once the trader has actually said something, so a bare greeting isn't stored.
+  useEffect(() => {
+    if (!historyEnabled) return;
+    if (!messages.some((m) => m.role === 'user')) return;
+    persistChat(toStored(messages));
+  }, [messages, historyEnabled, persistChat]);
 
   // Fold today's biggest scheduled event into the greeting, once the calendar
   // lands and only while the session is still fresh (just the greeting, no chat
@@ -695,6 +725,26 @@ export function V2CopilotScreen({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acct.owner, memoryAuth.signedIn]);
+
+  // Kelly's remembered STYLE for this trader (parsed from their memory notes), so an
+  // open-ended "recommend a bet" lands in their usual direction / risk level. Recalled
+  // once per wallet per session while signed in; only the best-value fallback uses it.
+  const stylePrefsRef = useRef<StylePrefs | null>(null);
+  const prefsForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!COPILOT_LIVE || !KELLY_MEMORY || !memoryAuth.signedIn) return;
+    const owner = acct.owner;
+    if (!owner || prefsForRef.current === owner) return;
+    prefsForRef.current = owner;
+    let cancelled = false;
+    void (async () => {
+      const mems = await recallMemories(owner, 'trading style: direction lean and risk preference', 8);
+      if (!cancelled) stylePrefsRef.current = parseStylePrefs(mems);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [acct.owner, memoryAuth.signedIn]);
 
   // Grant success → a chat line (the toast + success modal fire too). Deduped by
@@ -1276,6 +1326,7 @@ export function V2CopilotScreen({
       record: recordRef.current,
       leaderboard: standingFor(leaderboardRows, acct.owner),
       selection,
+      preference: stylePrefsRef.current,
     });
   }
 
@@ -1436,6 +1487,13 @@ export function V2CopilotScreen({
     // will place. A non-bet reply mid-wizard clears it (we're still collecting
     // slots); a plain answer keeps the last suggestion so "trade it" still works.
     if (reply.bet) {
+      // If the trader named a size in THIS request ("a $50 up trade"), carry it onto
+      // the suggestion so "place it" doesn't ask again. No size named leaves amount
+      // null, so placing it asks "how much?" instead of assuming.
+      if (reply.bet.amount == null) {
+        const named = extractStake(text);
+        if (named != null) reply.bet.amount = named;
+      }
       applyBet(reply.bet);
       pendingBetRef.current = reply.bet;
       pendingRangeRef.current = null; // a bet is now the "trade it" target, not a range
@@ -1443,6 +1501,10 @@ export function V2CopilotScreen({
       // "What range should I trade?" → load the band into the range ticket + light
       // it on the surface, and make it the "trade it" target so "trade it with $10
       // at 2x" places THIS range. Clear the binary side so only one is ever active.
+      if (reply.range.amount == null) {
+        const named = extractStake(text);
+        if (named != null) reply.range.amount = named;
+      }
       applyRange(reply.range);
       pendingRangeRef.current = reply.range;
       pendingBetRef.current = null;
@@ -1481,6 +1543,18 @@ export function V2CopilotScreen({
     serverNow,
   };
 
+  // The "past chats" slide-over — rendered in both live layouts (paused + full) so
+  // the history button works in either. Dark unless NEXT_PUBLIC_KELLY_HISTORY is set.
+  const historyPanel =
+    historyEnabled && historyOpen ? (
+      <ChatHistoryPanel
+        onClose={() => setHistoryOpen(false)}
+        history={chatHistory}
+        signedIn={memoryAuth.signedIn}
+        onSignIn={() => void memoryAuth.ensureSignedIn()}
+      />
+    ) : null;
+
   // Gated for launch: real (live) surface + a sample chat, blurred behind a
   // "coming soon" overlay. Flip COPILOT_LIVE to take it live.
   if (!COPILOT_LIVE) {
@@ -1517,6 +1591,8 @@ export function V2CopilotScreen({
                 onShare={handleShare}
                 busy={thinking}
                 suggestions={PAUSED_CHIPS}
+                onOpenHistory={historyEnabled ? () => setHistoryOpen(true) : undefined}
+                onNewChat={historyEnabled ? () => { newChatSession(); setMessages([GREETING]); } : undefined}
                 threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
               />
             </div>
@@ -1536,6 +1612,7 @@ export function V2CopilotScreen({
           onClose={() => setShareCard(null)}
         />
         <PerfShareCardModal open={shareCard?.kind === 'win_rate'} onClose={() => setShareCard(null)} history={perfHistory} />
+        {historyPanel}
       </>
     );
   }
@@ -1570,6 +1647,8 @@ export function V2CopilotScreen({
             onShare={handleShare}
             busy={thinking}
             suggestions={chips}
+            onOpenHistory={historyEnabled ? () => setHistoryOpen(true) : undefined}
+            onNewChat={historyEnabled ? () => { newChatSession(); setMessages([GREETING]); } : undefined}
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
             threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
           />
@@ -1580,6 +1659,7 @@ export function V2CopilotScreen({
           trader taps "Place this bet" (or a surface pick), so the surface owns the
           page instead of a permanent ticket rail. */}
       <V2CopilotTicketModal market={selected} pricer={pricer} serverNow={serverNow} />
+      {historyPanel}
 
       {/* Starter-grant confirmation — a gasless, popup-less drip is easy to miss on
           a toast alone (mirrors the ticket). */}

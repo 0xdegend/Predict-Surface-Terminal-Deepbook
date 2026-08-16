@@ -39,6 +39,7 @@ import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget, ExplainTopic, EventRange } from './intents';
+import { preferenceLine, type StylePrefs } from './style-prefs';
 
 const usd = (v: number) => `$${compact(v)}`;
 
@@ -105,6 +106,11 @@ export interface CopilotContext {
    *  I improve". Read from the SAME board the Ranks tab shows (lib/leaderboard/v2
    *  `standingFor`). Null until it loads, or when no wallet is connected. */
   leaderboard?: LeaderboardStanding | null;
+  /** A soft style bias from Kelly's remembered notes about this trader (parsed by
+   *  lib/copilot/style-prefs). Only the open-ended "recommend a bet" path uses it, to
+   *  break a tie / pick a default in the trader's usual style. An explicit ask always
+   *  wins (the host doesn't pass this into directional/sized requests). */
+  preference?: StylePrefs | null;
 }
 
 /** The "current BTC price" to SHOW the trader — the tape's spot when we have it,
@@ -673,22 +679,33 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
     // there is one, else by the surface's own slight tilt (chance of a pop vs a
     // drop), and load a SAFE bet into the ticket so "best bet" is always actionable.
     const rec = recommendation(ctx.insights);
+    const pref = ctx.preference ?? null;
+    // Side by the off-chain lean; if there's none, fall back to the trader's usual
+    // lean (remembered), then to the surface's own slight tilt.
     const isUpPick =
       rec?.pick === 'up' ? true
       : rec?.pick === 'down' ? false
+      : pref?.lean === 'up' ? true
+      : pref?.lean === 'down' ? false
       : upFair(pricer.forward * 1.01, pricer.forward, pricer.svi) >= 1 - upFair(pricer.forward * 0.99, pricer.forward, pricer.svi);
     const dir: BetDirection = isUpPick ? 'up' : 'down';
-    const strikePrice = toFloat(strikeForDirectionFair(CONVICTION_TARGET.safe, pricer.forward, pricer.svi, market.admission_tick_size, isUpPick));
+    // Default to a safer pick, unless the trader usually goes for bigger payouts.
+    const conv: Conviction = pref?.risk === 'bold' ? 'longshot' : 'safe';
+    const convWord = conv === 'longshot' ? 'longshot' : 'safer';
+    const strikePrice = toFloat(strikeForDirectionFair(CONVICTION_TARGET[conv], pricer.forward, pricer.svi, market.admission_tick_size, isUpPick));
     const prob = directionFair(strikePrice, pricer.forward, pricer.svi, isUpPick);
     const payoutMult = payoutMultiple(prob);
     const label = timeLeftLabel(market.expiry, ctx.now);
+    // Personalize the opener when the pick reflects the trader's remembered style.
+    const persona = pref ? preferenceLine(pref) : null;
     return {
       text: [
-        "Nothing's clearly mispriced right now. The surface is pricing moves about as often as they've actually happened, so it's a fair, efficient market.",
-        `So here's the most solid value bet I'd pick: a safer ${dir.toUpperCase()} on the ${windowAdj(market.expiry, ctx.now)} market. It wins if BTC is ${isUpPick ? 'above' : 'below'} $${num(strikePrice, 0)} at the close, about ${pct(prob, 0)} to win, and pays ~${payoutMult.toFixed(2)}×.`,
-        'Not financial advice. I’ve loaded it into your ticket. Tap “Place this bet” to trade it, or say “longshot bet” if you want a bigger payout.',
+        persona ??
+          "Nothing's clearly mispriced right now. The surface is pricing moves about as often as they've actually happened, so it's a fair, efficient market.",
+        `Here's the most solid value bet I'd pick: a ${convWord} ${dir.toUpperCase()} on the ${windowAdj(market.expiry, ctx.now)} market. It wins if BTC is ${isUpPick ? 'above' : 'below'} $${num(strikePrice, 0)} at the close, about ${pct(prob, 0)} to win, and pays ~${payoutMult.toFixed(2)}×.`,
+        `Not financial advice. I’ve loaded it into your ticket. Tap “Place this bet” to trade it, or say “${conv === 'longshot' ? 'safe bet' : 'longshot bet'}” for a different risk level.`,
       ],
-      bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir, isUp: isUpPick, strikePrice, prob, payoutMult, conviction: 'safe', timeLeftLabel: label },
+      bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir, isUp: isUpPick, strikePrice, prob, payoutMult, conviction: conv, timeLeftLabel: label },
     };
   }
   const conv: Conviction = best.implied > 0.6 ? 'safe' : best.implied < 0.35 ? 'longshot' : 'even';

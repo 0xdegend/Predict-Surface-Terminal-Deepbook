@@ -12,7 +12,7 @@
  * ticket. Nothing here signs or mints.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins, LuBrackets, LuDroplets } from 'react-icons/lu';
+import { LuArrowUp, LuTrendingUp, LuTrendingDown, LuClock, LuWallet, LuCoins, LuBrackets, LuDroplets, LuHistory, LuPlus } from 'react-icons/lu';
 import { FaXTwitter } from 'react-icons/fa6';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num, pct } from '@/lib/format';
@@ -66,6 +66,8 @@ export function CopilotChat({
   pinnedTop,
   suggestions,
   hideHeader,
+  onOpenHistory,
+  onNewChat,
 }: {
   messages: ChatMessage[];
   onSend: (text: string) => void;
@@ -94,6 +96,10 @@ export function CopilotChat({
   /** The suggestion chips. Adaptive: the screen passes context-aware prompts that
    *  shift with the live market. Falls back to the static set when omitted. */
   suggestions?: string[];
+  /** Open the "past chats" panel. When set, a history button shows in the header. */
+  onOpenHistory?: () => void;
+  /** Start a fresh conversation (archives the current one). Shows a new-chat button. */
+  onNewChat?: () => void;
 }) {
   const chips = suggestions && suggestions.length > 0 ? suggestions : CHIPS;
   const [draft, setDraft] = useState('');
@@ -168,6 +174,30 @@ export function CopilotChat({
             <h2 className="text-[12.5px] font-semibold tracking-tight text-text-1">Kelly</h2>
             <span className="text-[9.5px] uppercase tracking-wider text-text-3">Auto · beta · grounded in live data</span>
           </div>
+          {(onOpenHistory || onNewChat) && (
+            <div className="ml-auto flex items-center gap-1.5">
+              {onNewChat && (
+                <button
+                  onClick={onNewChat}
+                  title="New chat"
+                  aria-label="New chat"
+                  className="group glass-inset inline-flex h-7 w-7 items-center justify-center text-text-2 transition-all hover:border-(--accent-line) hover:text-text-1"
+                >
+                  <LuPlus size={14} className="transition-colors group-hover:text-accent" />
+                </button>
+              )}
+              {onOpenHistory && (
+                <button
+                  onClick={onOpenHistory}
+                  title="Past chats"
+                  aria-label="Past chats"
+                  className="group glass-inset inline-flex h-7 w-7 items-center justify-center text-text-2 transition-all hover:border-(--accent-line) hover:text-text-1"
+                >
+                  <LuHistory size={14} className="transition-colors group-hover:text-accent" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
