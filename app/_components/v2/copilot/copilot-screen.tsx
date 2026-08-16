@@ -47,6 +47,7 @@ import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
+import { recordCall, binaryClaim, rangeClaim } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -109,6 +110,11 @@ const COPILOT_AI = process.env.NEXT_PUBLIC_COPILOT_AI === '1';
 // NEXT_PUBLIC_KELLY_MEMORY=1 AND configure the server (WALRUS_DELEGATE_KEY +
 // WALRUS_MEMORY_ACCOUNT_ID). Dark otherwise: the memory intents fall through to help.
 const KELLY_MEMORY = process.env.NEXT_PUBLIC_KELLY_MEMORY === '1';
+// Kelly's Verifiable Call Receipts (Walrus). When on, each concrete call Kelly makes (a bet or
+// range recommendation) is signed + stored on Walrus as a public, content-addressed receipt, so
+// her track record is checkable, not claimed. OFF by default — set NEXT_PUBLIC_KELLY_RECEIPTS=1
+// AND configure WALRUS_WRITER_KEY on the server. See lib/walrus/receipts.ts.
+const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
 const AI_SESSION_CAP = 40;
 const AI_TIMEOUT_MS = 16_000;
 
@@ -488,10 +494,36 @@ export function V2CopilotScreen({
   const pushUser = (t: string) => setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: [t] }]);
   const pushBot = (text: string[]) => setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text }]);
 
+  // Verifiable Call Receipts: when Kelly surfaces a concrete call (a bet or range with a real
+  // fair probability), sign + store it on Walrus as a public, checkable receipt. Fire-and-forget
+  // + deduped (see receipts-client), so it never slows the reply and repeat asks don't double-log.
+  // Needs a live forward for the market (skip quietly if we can't build a meaningful claim).
+  function maybeRecordCall(reply: CopilotReply) {
+    if (!KELLY_RECEIPTS) return;
+    const spot = readSpot();
+    if (!spot) return;
+    if (reply.bet && reply.bet.prob > 0) {
+      const forward = pricers[reply.bet.marketId]?.forward;
+      if (forward) {
+        void recordCall(
+          binaryClaim({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice, prob: reply.bet.prob, spot, forward }),
+        );
+      }
+    } else if (reply.range && reply.range.prob > 0) {
+      const forward = pricers[reply.range.marketId]?.forward;
+      if (forward) {
+        void recordCall(
+          rangeClaim({ marketId: reply.range.marketId, expiry: reply.range.expiry, lower: reply.range.lower, higher: reply.range.higher, prob: reply.range.prob, spot, forward }),
+        );
+      }
+    }
+  }
+
   // Echo the user's line, then reveal the co-pilot's reply after a short "typing"
   // beat so it reads as processed, not pasted in.
   function pushExchange(userText: string, reply: CopilotReply) {
     pushUser(userText);
+    maybeRecordCall(reply);
     setThinking(true);
     replyTimer.current = setTimeout(() => {
       setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, range: reply.range, action: reply.action, vaultDeposit: reply.vaultDeposit, share: reply.share, link: reply.link }]);

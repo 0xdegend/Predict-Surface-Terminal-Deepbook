@@ -40,6 +40,7 @@ import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
+import { recordCall, binaryClaim } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { marketRows, volState, bias as pulseBias } from '@/lib/copilot/pulse';
 import { askKellyAI, type AiContext, type AiTurn } from '@/lib/copilot/ai';
@@ -67,6 +68,9 @@ const COPILOT_AI = process.env.NEXT_PUBLIC_COPILOT_AI === '1';
 // NEXT_PUBLIC_KELLY_MEMORY=1 AND configure the server (WALRUS_DELEGATE_KEY +
 // WALRUS_MEMORY_ACCOUNT_ID). Dark otherwise: memory intents fall through to help.
 const KELLY_MEMORY = process.env.NEXT_PUBLIC_KELLY_MEMORY === '1';
+// Kelly's Verifiable Call Receipts (Walrus) — see copilot-screen.tsx. Each concrete call Kelly
+// makes is signed + stored on Walrus. OFF unless NEXT_PUBLIC_KELLY_RECEIPTS=1 + WALRUS_WRITER_KEY.
+const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
 const AI_SESSION_CAP = 40;
 const AI_TIMEOUT_MS = 16_000;
 
@@ -450,6 +454,7 @@ function KellyPanel({
     setMessages((m) => [...m, { id: nextId(), role: 'user', text: [text] }]);
   }
   function pushReply(text: string, reply: CopilotReply) {
+    maybeRecordCall(reply);
     setMessages((m) => [
       ...m,
       { id: nextId(), role: 'user', text: [text] },
@@ -457,6 +462,18 @@ function KellyPanel({
       // here to avoid a dead chip; text/bet/link + the vault-deposit card carry over.
       { id: nextId(), role: 'assistant', text: reply.text, bet: reply.bet, link: reply.link, vaultDeposit: reply.vaultDeposit },
     ]);
+  }
+
+  // Verifiable Call Receipts: sign + store on Walrus each concrete call Kelly makes (see
+  // copilot-screen.tsx). The dock shows binary bets only, so it records those. Fire-and-forget +
+  // deduped; skips quietly without a live spot/forward.
+  function maybeRecordCall(reply: CopilotReply) {
+    if (!KELLY_RECEIPTS || !reply.bet || reply.bet.prob <= 0 || !spot) return;
+    const forward = pricers[reply.bet.marketId]?.forward;
+    if (!forward) return;
+    void recordCall(
+      binaryClaim({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice, prob: reply.bet.prob, spot, forward }),
+    );
   }
 
   function readReply(intent: CopilotIntent, now: number): CopilotReply {

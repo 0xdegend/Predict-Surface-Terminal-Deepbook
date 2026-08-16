@@ -9,12 +9,12 @@
  *
  * Admin side: who owns our code (immutable) and how much DUSDC is waiting.
  *
- * POLICY — we attach only when the slot is EMPTY. `set_builder_code` has no
- * overwrite guard on-chain, so we *could* re-attribute a user who arrives carrying
- * a rival's code (and they could take ours the same way — it's last-writer-wins).
- * We don't, because that would silently reassign something the user opted into
- * elsewhere. `hasForeignCode` exists to MEASURE how often that happens, so the
- * call can be made on evidence rather than guesswork.
+ * POLICY (the protocol's intended use, confirmed by the lead 2026-08-16) — we ensure
+ * OUR code is on the account for every trade placed here: attach when the slot is empty
+ * OR carries another app's code, and skip only when it's already ours. `set_builder_code`
+ * is last-writer-wins with no overwrite guard, so this is exactly how the protocol expects
+ * each app to attribute its own trades, and the user can change or unset it any time.
+ * `hasForeignCode` stays as telemetry (how often a user arrives carrying a rival's code).
  */
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { useV2ReadClient } from '@/lib/sui/grpc';
@@ -40,8 +40,8 @@ export interface BuilderCodeStatus {
   attachedCodeId: string | null;
   /** The account is already attributed to us — mints go through unchanged. */
   isOurs: boolean;
-  /** The account carries ANOTHER app's code: they trade here, that app earns.
-   *  We deliberately do not overwrite it — this flag is for telemetry. */
+  /** The account carries ANOTHER app's code. We now overwrite it on the next trade
+   *  (the intended attribution pattern); this flag stays for telemetry. */
   hasForeignCode: boolean;
   /** Ride a `set_builder_code` along with the next mint. */
   shouldAttach: boolean;
@@ -68,10 +68,10 @@ export function useBuilderCode(wrapperId: string | undefined): BuilderCodeStatus
     attachedCodeId,
     isOurs,
     hasForeignCode,
-    // Only when we KNOW the slot is empty. While the read is in flight we hold
-    // off rather than guess — a wrong attach is a wasted command in the user's
-    // PTB, and worse, an overwrite we explicitly promised not to do.
-    shouldAttach: builderCodeEnabled && !!wrapperId && q.isSuccess && attachedCodeId === null,
+    // Attach whenever the account isn't already ours (empty OR a rival's code), so
+    // trades placed here always credit us; skip only when it's already ours (no
+    // redundant command). While the read is in flight we hold off rather than guess.
+    shouldAttach: builderCodeEnabled && !!wrapperId && q.isSuccess && !isOurs,
     isLoading: q.isLoading,
   };
 }
