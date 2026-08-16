@@ -7,12 +7,11 @@
  * GET  → Kelly's public track record: the recent calls, scored against live market settlement
  *        where available (won / lost / pending), plus a resolved-only win rate.
  *
- * SECURITY (hardening for a later slice, before this is a public trust surface): the mint trusts
- * the client-supplied probability/spot/forward. The TRACK RECORD is already objective (it scores
- * on strike/band vs real settlement, so a forged probability can't change won/lost), but to stop
- * a caller polluting the FEED with calls Kelly never surfaced, the server should recompute the
- * fair probability from the live pricer and/or require auth. Ships dark behind
- * NEXT_PUBLIC_KELLY_RECEIPTS, and returns 503 if WALRUS_WRITER_KEY isn't configured.
+ * TRUST: the client sends only a structural INTENT (which market, up/down/range, which strike or
+ * band). The server loads the LIVE pricer for that market and recomputes the fair probability,
+ * spot, and forward itself, so a caller can't forge Kelly's odds — and a call on a dead or fake
+ * market is rejected outright (load_live_pricer aborts). The record is thus honest end to end.
+ * Ships dark behind NEXT_PUBLIC_KELLY_RECEIPTS, and returns 503 if WALRUS_WRITER_KEY isn't set.
  */
 import { NextResponse } from 'next/server';
 import {
@@ -20,12 +19,14 @@ import {
   listCallReceipts,
   trackRecord,
   summarizeClaim,
-  type CallClaim,
-  type CallKind,
+  claimFromIntent,
+  type CallIntent,
   type CallSource,
   type ReceiptIndexEntry,
 } from '@/lib/walrus/receipts';
-import { getV2MarketState } from '@/lib/api/v2/client';
+import { getV2MarketState, getPythLatest, pythSpot } from '@/lib/api/v2/client';
+import { simulateLivePricer, v2GrpcClient, fairUp, fairDn, fairRange } from '@/lib/sui/v2/pricer';
+import { predictV2Config } from '@/config/predict';
 import { toFloat } from '@/config/scale';
 
 export const runtime = 'nodejs';
@@ -36,38 +37,24 @@ const posNum = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-/** Validate + normalize a client-supplied claim into a CallClaim, or null if malformed. */
-function parseClaim(body: Record<string, unknown>): CallClaim | null {
-  const c = (body.claim ?? body) as Record<string, unknown>;
-  const kind = c.kind === 'range' ? 'range' : c.kind === 'binary' ? 'binary' : null;
+/** Validate a client-supplied INTENT (structural only), or null if malformed. */
+function parseIntent(body: Record<string, unknown>): CallIntent | null {
+  const kind = body.kind === 'range' ? 'range' : body.kind === 'binary' ? 'binary' : null;
   if (!kind) return null;
-  const marketId = String(c.marketId ?? '').trim();
-  const expiry = Number(c.expiry);
-  const probability = Number(c.probability);
-  const spotAtCall = posNum(c.spotAtCall);
-  const forward = posNum(c.forward);
+  const marketId = String(body.marketId ?? '').trim();
+  const expiry = Number(body.expiry);
   if (!marketId || !Number.isFinite(expiry) || expiry <= 0) return null;
-  if (!(probability >= 0 && probability <= 1) || spotAtCall == null || forward == null) return null;
-
-  const base = {
-    kind: kind as CallKind,
-    asset: 'BTC' as const,
-    probability,
-    spotAtCall,
-    forward,
-    expiry,
-    marketId,
-  };
+  const source: CallSource = body.source === 'ai' ? 'ai' : 'rules';
   if (kind === 'binary') {
-    const strike = posNum(c.strike);
-    const direction = c.direction === 'down' ? 'down' : c.direction === 'up' ? 'up' : null;
+    const strike = posNum(body.strike);
+    const direction = body.direction === 'down' ? 'down' : body.direction === 'up' ? 'up' : null;
     if (strike == null || !direction) return null;
-    return { ...base, direction, strike };
+    return { kind, marketId, expiry, source, direction, strike };
   }
-  const lower = posNum(c.lower);
-  const higher = posNum(c.higher);
+  const lower = posNum(body.lower);
+  const higher = posNum(body.higher);
   if (lower == null || higher == null || higher <= lower) return null;
-  return { ...base, lower, higher };
+  return { kind, marketId, expiry, source, lower, higher };
 }
 
 export async function POST(req: Request): Promise<NextResponse> {
@@ -80,11 +67,30 @@ export async function POST(req: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ ok: false, error: 'bad_request' }, { status: 400 });
   }
-  const claim = parseClaim(body);
-  if (!claim) return NextResponse.json({ ok: false, error: 'invalid_claim' }, { status: 400 });
-  const source: CallSource = body.source === 'ai' ? 'ai' : 'rules';
+  const intent = parseIntent(body);
+  if (!intent) return NextResponse.json({ ok: false, error: 'invalid_intent' }, { status: 400 });
+
+  // Recompute the trustworthy fields from the LIVE pricer. This also validates the market:
+  // load_live_pricer aborts on a nonexistent / expired / stale market, so a call can only be
+  // recorded on a real, currently-tradeable one.
+  let priced;
   try {
-    const { id, blobId } = await mintCallReceipt({ claim, source });
+    const pricer = await simulateLivePricer(v2GrpcClient(), intent.marketId);
+    const probability =
+      intent.kind === 'range'
+        ? fairRange(pricer, intent.lower!, intent.higher!)
+        : intent.direction === 'up'
+          ? fairUp(pricer, intent.strike!)
+          : fairDn(pricer, intent.strike!);
+    if (!(probability >= 0 && probability <= 1)) throw new Error('probability out of range');
+    const spot = pythSpot(await getPythLatest(predictV2Config.asset.pythFeedId).catch(() => null)) ?? pricer.forward;
+    priced = { probability, spotAtCall: spot, forward: pricer.forward };
+  } catch {
+    return NextResponse.json({ ok: false, error: 'market_not_priceable' }, { status: 400 });
+  }
+
+  try {
+    const { id, blobId } = await mintCallReceipt({ claim: claimFromIntent(intent, priced), source: intent.source });
     return NextResponse.json({ ok: true, id, blobId });
   } catch {
     // Fail soft — a Walrus hiccup should never surface to the trader (the call was made anyway).

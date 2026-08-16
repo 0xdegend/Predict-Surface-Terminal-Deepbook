@@ -2,74 +2,66 @@
  * lib/copilot/receipts-client.ts — client side of Verifiable Call Receipts.
  *
  * When Kelly surfaces a concrete call (a bet/range recommendation), the host fires
- * `recordCall` here, which POSTs to /api/kelly/receipts. The route signs + stores the receipt
- * on Walrus (server-only writer key). Fire-and-forget + fail-soft: recording a call must never
- * slow or break a reply. Deduped per (market + side/band) and capped per session so re-renders
- * and repeat asks don't spam the store. `fetchTrackRecord` reads Kelly's public scoreboard.
+ * `recordCall` here with a structural INTENT (which market, side/band). The route loads the
+ * live pricer and recomputes the fair odds itself, then signs + stores the receipt on Walrus
+ * (server-only writer key). Fire-and-forget + fail-soft: recording a call must never slow or
+ * break a reply. Deduped per (market + side/band) and capped per session so re-renders and
+ * repeat asks don't spam the store. `fetchTrackRecord` reads Kelly's public scoreboard.
  *
- * Types come in via `import type` so the server-only lib/walrus/receipts module is never bundled.
+ * The intent carries NO odds/spot/forward — those are server-computed, so a caller can't forge
+ * Kelly's numbers. Types come in via `import type` so the server-only receipts module is never bundled.
  */
-import type { CallClaim, CallSource } from '@/lib/walrus/receipts';
+import type { CallIntent, CallSource } from '@/lib/walrus/receipts';
 
 const _recorded = new Set<string>();
 let _count = 0;
 const SESSION_CAP = 60;
 
-function callKey(claim: CallClaim): string {
-  return claim.kind === 'range'
-    ? `r:${claim.marketId}:${Math.round(claim.lower ?? 0)}-${Math.round(claim.higher ?? 0)}`
-    : `b:${claim.marketId}:${claim.direction}:${Math.round(claim.strike ?? 0)}`;
+function callKey(intent: CallIntent): string {
+  return intent.kind === 'range'
+    ? `r:${intent.marketId}:${Math.round(intent.lower ?? 0)}-${Math.round(intent.higher ?? 0)}`
+    : `b:${intent.marketId}:${intent.direction}:${Math.round(intent.strike ?? 0)}`;
 }
 
-/** Build a binary call claim from a bet card + live spot/forward. */
-export function binaryClaim(o: {
+/** Build a binary call intent from a bet card. Odds are computed server-side. */
+export function binaryIntent(o: {
   marketId: string;
   expiry: number;
   isUp: boolean;
   strikePrice: number;
-  prob: number;
-  spot: number;
-  forward: number;
-}): CallClaim {
+  source?: CallSource;
+}): CallIntent {
   return {
     kind: 'binary',
-    asset: 'BTC',
+    marketId: o.marketId,
+    expiry: o.expiry,
+    source: o.source ?? 'rules',
     direction: o.isUp ? 'up' : 'down',
     strike: o.strikePrice,
-    probability: o.prob,
-    spotAtCall: o.spot,
-    forward: o.forward,
-    expiry: o.expiry,
-    marketId: o.marketId,
   };
 }
 
-/** Build a range call claim from a range card + live spot/forward. */
-export function rangeClaim(o: {
+/** Build a range call intent from a range card. Odds are computed server-side. */
+export function rangeIntent(o: {
   marketId: string;
   expiry: number;
   lower: number;
   higher: number;
-  prob: number;
-  spot: number;
-  forward: number;
-}): CallClaim {
+  source?: CallSource;
+}): CallIntent {
   return {
     kind: 'range',
-    asset: 'BTC',
+    marketId: o.marketId,
+    expiry: o.expiry,
+    source: o.source ?? 'rules',
     lower: o.lower,
     higher: o.higher,
-    probability: o.prob,
-    spotAtCall: o.spot,
-    forward: o.forward,
-    expiry: o.expiry,
-    marketId: o.marketId,
   };
 }
 
 /** Record a call Kelly just made. Deduped + capped + fail-soft; never throws. */
-export async function recordCall(claim: CallClaim, source: CallSource = 'rules'): Promise<void> {
-  const key = callKey(claim);
+export async function recordCall(intent: CallIntent): Promise<void> {
+  const key = callKey(intent);
   if (_recorded.has(key) || _count >= SESSION_CAP) return;
   _recorded.add(key);
   _count += 1;
@@ -77,7 +69,7 @@ export async function recordCall(claim: CallClaim, source: CallSource = 'rules')
     await fetch('/api/kelly/receipts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ claim, source }),
+      body: JSON.stringify(intent),
     });
   } catch {
     /* fail soft — the call was still made; the receipt just didn't store this time */

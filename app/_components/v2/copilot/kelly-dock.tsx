@@ -40,7 +40,7 @@ import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
-import { recordCall, binaryClaim } from '@/lib/copilot/receipts-client';
+import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
 import { marketRows, volState, bias as pulseBias } from '@/lib/copilot/pulse';
 import { askKellyAI, type AiContext, type AiTurn } from '@/lib/copilot/ai';
@@ -465,15 +465,12 @@ function KellyPanel({
   }
 
   // Verifiable Call Receipts: sign + store on Walrus each concrete call Kelly makes (see
-  // copilot-screen.tsx). The dock shows binary bets only, so it records those. Fire-and-forget +
-  // deduped; skips quietly without a live spot/forward.
+  // copilot-screen.tsx). The dock shows binary bets only, so it records those. We send only the
+  // structural intent; the server computes the fair odds from the live pricer. Fire-and-forget +
+  // deduped. The `prob > 0` guard skips the prob:0 "trade it" reconstruction.
   function maybeRecordCall(reply: CopilotReply) {
-    if (!KELLY_RECEIPTS || !reply.bet || reply.bet.prob <= 0 || !spot) return;
-    const forward = pricers[reply.bet.marketId]?.forward;
-    if (!forward) return;
-    void recordCall(
-      binaryClaim({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice, prob: reply.bet.prob, spot, forward }),
-    );
+    if (!KELLY_RECEIPTS || !reply.bet || reply.bet.prob <= 0) return;
+    void recordCall(binaryIntent({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice }));
   }
 
   function readReply(intent: CopilotIntent, now: number): CopilotReply {
@@ -612,6 +609,7 @@ function KellyPanel({
           );
           if (fresh.bet) {
             const sized: BetSuggestion = { ...fresh.bet, amount: stake ?? fresh.bet.amount, leverage: leverage ?? fresh.bet.leverage };
+            maybeRecordCall(fresh); // a fresh re-recommendation is a new Kelly call — log it too
             const amt = sized.amount;
             const stakeStr = amt == null ? '' : ` with your ${Number.isInteger(amt) ? amt : amt.toFixed(2)} DUSDC`;
             setMessages((m) => [

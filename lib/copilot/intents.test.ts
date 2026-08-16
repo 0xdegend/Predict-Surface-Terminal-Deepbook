@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseIntent, isPlaceConfirmation, placeConfirmation, isFlowInterruption, type CopilotIntent } from './intents';
+import {
+  parseIntent,
+  isPlaceConfirmation,
+  placeConfirmation,
+  isFlowInterruption,
+  parseAmountReply,
+  extractStake,
+  type CopilotIntent,
+} from './intents';
 
 describe('parseIntent', () => {
   it('empty / greeting → help', () => {
@@ -831,5 +839,41 @@ describe('parseIntent — memory (remember / recall)', () => {
       expect(k, msg).not.toBe('remember');
       expect(k, msg).not.toBe('recall_memory');
     }
+  });
+});
+
+describe('parseAmountReply (the answer to "how much?")', () => {
+  it('reads a plain amount, with or without $ / dusdc / lead-ins', () => {
+    expect(parseAmountReply('50')).toBe(50);
+    expect(parseAmountReply('$50')).toBe(50);
+    expect(parseAmountReply('50 dusdc')).toBe(50);
+    expect(parseAmountReply('bet 10')).toBe(10);
+    expect(parseAmountReply('make it 30')).toBe(30);
+    expect(parseAmountReply('about 25 please')).toBe(25);
+    expect(parseAmountReply('12.5')).toBe(12.5);
+    expect(parseAmountReply('$1,000')).toBe(1000);
+  });
+
+  it('returns null for anything that is not basically an amount', () => {
+    for (const m of ['up', 'cancel', '2x', "what's the payout", 'up bet', 'trade it', '']) {
+      expect(parseAmountReply(m), m).toBeNull();
+    }
+  });
+});
+
+describe('extractStake (capture a named size from a request)', () => {
+  it('captures an explicit money amount from a longer request', () => {
+    expect(extractStake('set up a $50 up trade')).toBe(50);
+    expect(extractStake('up bet 20 dusdc')).toBe(20);
+    expect(extractStake('bet 10 up')).toBe(10);
+    expect(extractStake('put 15 on an up trade')).toBe(15);
+  });
+
+  it('never mistakes a strike or a leverage for a stake', () => {
+    expect(extractStake('up trade')).toBeNull();
+    expect(extractStake('safe up bet')).toBeNull();
+    expect(extractStake('up bet at 2x')).toBeNull();
+    expect(extractStake('give me an up trade for the next 5 minutes')).toBeNull();
+    expect(extractStake('up above 66000')).toBeNull();
   });
 });

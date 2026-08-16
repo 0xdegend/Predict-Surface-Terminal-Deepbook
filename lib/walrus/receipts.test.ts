@@ -8,7 +8,9 @@ import {
   scoreCall,
   trackRecord,
   summarizeClaim,
+  claimFromIntent,
   type CallClaim,
+  type CallIntent,
   type CallReceipt,
   type CallReceiptCore,
   type ReceiptIndexEntry,
@@ -151,5 +153,30 @@ describe('summarizeClaim', () => {
   });
   it('labels a range call', () => {
     expect(summarizeClaim(rangeClaim)).toBe('BTC stays $112,000–$118,000 (50%)');
+  });
+});
+
+describe('claimFromIntent — server-priced claim assembly', () => {
+  it('builds a binary claim from a structural intent + server-computed priced fields', () => {
+    const intent: CallIntent = { kind: 'binary', marketId: '0xm', expiry: 123, source: 'rules', direction: 'up', strike: 115_000 };
+    expect(claimFromIntent(intent, { probability: 0.68, spotAtCall: 116_000, forward: 116_050 })).toEqual({
+      kind: 'binary',
+      asset: 'BTC',
+      probability: 0.68,
+      spotAtCall: 116_000,
+      forward: 116_050,
+      expiry: 123,
+      marketId: '0xm',
+      direction: 'up',
+      strike: 115_000,
+    });
+  });
+
+  it('builds a range claim and carries the source through', () => {
+    const intent: CallIntent = { kind: 'range', marketId: '0xm2', expiry: 456, source: 'ai', lower: 112_000, higher: 118_000 };
+    const claim = claimFromIntent(intent, { probability: 0.5, spotAtCall: 115_000, forward: 115_050 });
+    expect(claim).toMatchObject({ kind: 'range', lower: 112_000, higher: 118_000, probability: 0.5, marketId: '0xm2' });
+    // The intent's strike/direction don't leak into a range claim.
+    expect((claim as { strike?: number }).strike).toBeUndefined();
   });
 });

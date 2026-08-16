@@ -360,6 +360,44 @@ export function isPlaceConfirmation(message: string): boolean {
   return placeConfirmation(message) !== null;
 }
 
+/**
+ * Read a bet SIZE out of a reply that is basically just an amount — the answer to
+ * Kelly's "how much do you want to bet?". Accepts "50", "$50", "50 dusdc",
+ * "bet 10", "make it 30", "about 25 please". Returns the DUSDC amount, or null when
+ * the message isn't an amount (so the caller can treat it as a normal message). A
+ * bare leverage like "2x" is NOT an amount, so it returns null.
+ */
+export function parseAmountReply(message: string): number | null {
+  const t = message.toLowerCase().trim().replace(/[,$]/g, '');
+  if (!t) return null;
+  const stripped = t
+    .replace(/^(?:i(?:'|')?ll |i want to |i wanna |let'?s |make it |do |bet |stake |put |use |go |with |for |about |around |maybe )+/g, '')
+    .trim();
+  const m = stripped.match(/^(\d+(?:\.\d+)?)\s*(?:dusdc|dollars?|bucks)?\.?\s*(?:please|thanks?)?$/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Pull an explicit DUSDC amount named ANYWHERE in a request ("set up a $50 up
+ * trade", "up bet 20 dusdc", "bet 10 up"). Requires a money marker ($ / dusdc / a
+ * stake verb) so a 4-5 digit STRIKE (66000) or a leverage (2x) is never mistaken
+ * for a stake. Returns null when no amount is named, which is the signal for Kelly
+ * to ASK how much rather than assume. Used to capture the size from the request so
+ * a trader who did say "$50" isn't asked again.
+ */
+export function extractStake(message: string): number | null {
+  const t = message.toLowerCase().replace(/,/g, '');
+  const m =
+    t.match(/\$(\d+(?:\.\d+)?)(?!\s*x)\b/) ??
+    t.match(/\b(\d+(?:\.\d+)?)\s*dusdc\b/) ??
+    t.match(/\b(?:bet|stake|staking|risk|wager|put)\s+\$?(\d+(?:\.\d+)?)(?!\s*x)\b/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /** "What are the odds BTC is above $67k / of a 1% move up?" — a question about the
  *  chance at a specific level or move. Needs an odds cue AND a number. */
 /** Pull a price level from text: a % MOVE ("1% move up") or an absolute strike

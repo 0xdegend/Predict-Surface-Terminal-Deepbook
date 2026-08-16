@@ -42,12 +42,12 @@ import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
-import { parseIntent, placeConfirmation, isFlowInterruption, type CopilotIntent } from '@/lib/copilot/intents';
+import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
-import { recordCall, binaryClaim, rangeClaim } from '@/lib/copilot/receipts-client';
+import { recordCall, binaryIntent, rangeIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -379,6 +379,10 @@ export function V2CopilotScreen({
   // with $10 at 2x" places the visible band. Only one of the two is ever set — a
   // bet reply clears the range ref and vice-versa.
   const pendingRangeRef = useRef<RangeSuggestion | null>(null);
+  // When the trader asks for a bet without naming an amount, Kelly asks "how much?"
+  // and parks the set-up bet/range here; their next plain amount reply sizes + places
+  // it. This is what stops a bet ever going out at an amount the trader didn't choose.
+  const awaitingAmountRef = useRef<{ kind: 'bet'; bet: BetSuggestion } | { kind: 'range'; range: RangeSuggestion } | null>(null);
   // Latest roll-up of the trader's own positions, written by the open-bets tray
   // (which already subscribes to them) so "how's my portfolio?" reads it without
   // this screen subscribing — keeps the surface out of the per-tick re-render.
@@ -494,28 +498,17 @@ export function V2CopilotScreen({
   const pushUser = (t: string) => setMessages((prev) => [...prev, { id: nextId(), role: 'user', text: [t] }]);
   const pushBot = (text: string[]) => setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', text }]);
 
-  // Verifiable Call Receipts: when Kelly surfaces a concrete call (a bet or range with a real
-  // fair probability), sign + store it on Walrus as a public, checkable receipt. Fire-and-forget
-  // + deduped (see receipts-client), so it never slows the reply and repeat asks don't double-log.
-  // Needs a live forward for the market (skip quietly if we can't build a meaningful claim).
+  // Verifiable Call Receipts: when Kelly surfaces a concrete call (a bet or range recommendation),
+  // sign + store it on Walrus as a public, checkable receipt. We send only the structural intent
+  // (market + side/band); the server recomputes the fair odds from the live pricer. Fire-and-forget
+  // + deduped (see receipts-client). The `prob > 0` guard skips the prob:0 "trade it"
+  // reconstructions (betFromSelection/rangeFromSelection), which aren't genuine Kelly calls.
   function maybeRecordCall(reply: CopilotReply) {
     if (!KELLY_RECEIPTS) return;
-    const spot = readSpot();
-    if (!spot) return;
     if (reply.bet && reply.bet.prob > 0) {
-      const forward = pricers[reply.bet.marketId]?.forward;
-      if (forward) {
-        void recordCall(
-          binaryClaim({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice, prob: reply.bet.prob, spot, forward }),
-        );
-      }
+      void recordCall(binaryIntent({ marketId: reply.bet.marketId, expiry: reply.bet.expiry, isUp: reply.bet.isUp, strikePrice: reply.bet.strikePrice }));
     } else if (reply.range && reply.range.prob > 0) {
-      const forward = pricers[reply.range.marketId]?.forward;
-      if (forward) {
-        void recordCall(
-          rangeClaim({ marketId: reply.range.marketId, expiry: reply.range.expiry, lower: reply.range.lower, higher: reply.range.higher, prob: reply.range.prob, spot, forward }),
-        );
-      }
+      void recordCall(rangeIntent({ marketId: reply.range.marketId, expiry: reply.range.expiry, lower: reply.range.lower, higher: reply.range.higher }));
     }
   }
 
@@ -781,11 +774,25 @@ export function V2CopilotScreen({
     // question gets swallowed by the wizard (re-showing the review / asking for a
     // strike) instead of being answered normally.
     setFlow(null);
+
+    // Never place an amount the trader didn't choose. If no amount was named, ASK for
+    // it and park the bet — their next plain amount reply (parseAmountReply) sizes and
+    // places it. This is the guard that stops a silent, balance-scaled default bet.
+    if (bet.amount == null || bet.amount <= 0) {
+      awaitingAmountRef.current = { kind: 'bet', bet };
+      setThinking(true);
+      replyTimer.current = setTimeout(() => {
+        pushBot([`How much DUSDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
+        setThinking(false);
+      }, 350);
+      return;
+    }
+
     const now = Date.now();
     const market = markets.find((m) => m.expiry_market_id === bet.marketId);
     const pricer = market ? pricers[bet.marketId] : undefined;
     const st0 = useV2TradeStore.getState();
-    const stake = bet.amount ?? st0.stake;
+    const stake = bet.amount; // guaranteed present by the guard above
     const leverage = bet.leverage ?? st0.leverage;
     const plan =
       market && pricer
@@ -828,7 +835,7 @@ export function V2CopilotScreen({
       const digest = await acct.mintBudget({ ...plan!.mint, deposit });
       if (digest) {
         pulseFill({ marketId: bet.marketId, strike: plan!.strike, isUp: bet.isUp });
-        pushBot([`Done — your ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+        pushBot([`Done — your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
         autoRememberBetStyle(bet);
       } else {
         // It didn't place — keep the bet pending so "trade it" can retry it.
@@ -851,11 +858,23 @@ export function V2CopilotScreen({
   async function placeRangeDirect(range: RangeSuggestion, userText: string) {
     pushUser(userText);
     setFlow(null); // confirming ends any wizard, whether it places or hands off
+
+    // Same guard as placeBetDirect: never place an amount the trader didn't choose.
+    if (range.amount == null || range.amount <= 0) {
+      awaitingAmountRef.current = { kind: 'range', range };
+      setThinking(true);
+      replyTimer.current = setTimeout(() => {
+        pushBot([`How much DUSDC do you want to put on this range bet ($${num(range.lower, 0)}–$${num(range.higher, 0)})? Type an amount, like 10.`]);
+        setThinking(false);
+      }, 350);
+      return;
+    }
+
     const now = Date.now();
     const market = markets.find((m) => m.expiry_market_id === range.marketId);
     const pricer = market ? pricers[range.marketId] : undefined;
     const st0 = useV2TradeStore.getState();
-    const stake = range.amount ?? st0.stake;
+    const stake = range.amount; // guaranteed present by the guard above
     const leverage = range.leverage ?? st0.leverage;
     const plan =
       market && pricer
@@ -898,7 +917,7 @@ export function V2CopilotScreen({
       const digest = await acct.mintBudget({ ...plan!.mint, deposit });
       if (digest) {
         pulseFill({ marketId: range.marketId, strike: (plan!.lower + plan!.higher) / 2, isUp: true });
-        pushBot([`Done — your range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
+        pushBot([`Done — your $${num(stake, 0)} range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
         autoRememberRangeStyle();
       } else {
         // It didn't place — keep the range pending so "trade it" can retry it.
@@ -1267,6 +1286,27 @@ export function V2CopilotScreen({
     const now = Date.now();
     const spot = readSpot();
     const candidates = liveCandidates();
+
+    // Kelly asked "how much?" for a set-up bet — a plain amount now sizes AND places
+    // it; "cancel"/"never mind" drops it; anything else falls through so they can ask
+    // something different instead. This is the other half of the no-silent-amount guard.
+    if (awaitingAmountRef.current) {
+      const amt = parseAmountReply(text);
+      if (amt != null) {
+        const pend = awaitingAmountRef.current;
+        awaitingAmountRef.current = null;
+        if (pend.kind === 'bet') void placeBetDirect({ ...pend.bet, amount: amt }, text);
+        else void placeRangeDirect({ ...pend.range, amount: amt }, text);
+        return;
+      }
+      if (/^(?:cancel|never ?mind|nvm|stop|forget it|no thanks|no)\b/i.test(text.trim())) {
+        awaitingAmountRef.current = null;
+        pushUser(text);
+        botAfterBeat(['No problem, I didn’t place anything. Ask me for another bet whenever you’re ready.']);
+        return;
+      }
+      awaitingAmountRef.current = null; // not an amount — handle their new message normally
+    }
 
     // "Trade it" / "place it" / "open the trade" / "yes" → place the bet directly
     // (no in-app confirm step), reusing the ticket's exact budget mint. The review

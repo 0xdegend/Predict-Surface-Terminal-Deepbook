@@ -25,6 +25,8 @@ import {
   LuSparkles,
   LuChartCandlestick,
   LuArrowUpRight,
+  LuBadgeCheck,
+  LuGauge,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
@@ -78,9 +80,20 @@ const VAULT_ITEMS: MenuItem[] = [
  *  as a full-width footer. Quests / Competitions render the shared showcase
  *  panels under the v2 shell; Docs renders the shared manual under the v2 shell
  *  too (/v2/docs) so it keeps the Latest chrome and its in-page links stay on /v2. */
+// Kelly's Track Record ships with the receipts feature — nav entry only when it's on.
+const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
+// Autopilot is dark until released — nav entry only when it's on.
+const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
+
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
   { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
+  ...(AUTOPILOT
+    ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: LuGauge } as MenuItem]
+    : []),
+  ...(KELLY_RECEIPTS
+    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed on Walrus', icon: LuBadgeCheck } as MenuItem]
+    : []),
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },

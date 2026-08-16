@@ -52,6 +52,51 @@ export interface CallClaim {
   marketId: string;
 }
 
+/**
+ * The structural "what the call is about" — the ONLY thing the client sends. The server
+ * recomputes the trustworthy fields (probability, spot, forward) from the LIVE pricer before
+ * minting, so a caller can't forge Kelly's odds. See app/api/kelly/receipts/route.ts.
+ */
+export interface CallIntent {
+  kind: CallKind;
+  marketId: string;
+  /** Market settle time (ms) — a client hint used only to gate WHEN a call is resolved;
+   *  scoring is strike/band vs settlement, so a wrong value never changes won/lost. */
+  expiry: number;
+  source: CallSource;
+  /** binary */
+  direction?: 'up' | 'down';
+  strike?: number;
+  /** range */
+  lower?: number;
+  higher?: number;
+}
+
+/** The fields the server computes from the live pricer (never trusted from the client). */
+export interface PricedFields {
+  probability: number;
+  spotAtCall: number;
+  forward: number;
+}
+
+/**
+ * Assemble a full, scoreable claim from a validated client intent + the server-computed
+ * priced fields. The route validates the intent's structural fields before calling this.
+ */
+export function claimFromIntent(intent: CallIntent, priced: PricedFields): CallClaim {
+  const base = {
+    asset: 'BTC' as const,
+    probability: priced.probability,
+    spotAtCall: priced.spotAtCall,
+    forward: priced.forward,
+    expiry: intent.expiry,
+    marketId: intent.marketId,
+  };
+  return intent.kind === 'range'
+    ? { ...base, kind: 'range', lower: intent.lower, higher: intent.higher }
+    : { ...base, kind: 'binary', direction: intent.direction, strike: intent.strike };
+}
+
 /** The signable core of a receipt (everything the signature covers). */
 export interface CallReceiptCore {
   version: 1;
@@ -278,11 +323,7 @@ export function trackRecord(
 
 /* ------------------------------- summarize ------------------------------- */
 
-/** A compact one-line label for a call (for feeds / share cards). */
-export function summarizeClaim(claim: CallClaim): string {
-  const pct = `${Math.round(claim.probability * 100)}%`;
-  if (claim.kind === 'range') {
-    return `BTC stays $${Math.round(claim.lower ?? 0).toLocaleString()}–$${Math.round(claim.higher ?? 0).toLocaleString()} (${pct})`;
-  }
-  return `BTC ${claim.direction === 'up' ? 'above' : 'below'} $${Math.round(claim.strike ?? 0).toLocaleString()} (${pct})`;
-}
+// The display formatters live in the dependency-free receipt-format module (so the OG image /
+// per-call page can use them without pulling the Walrus write SDK). Re-exported here so existing
+// server callers keep importing them from '@/lib/walrus/receipts'.
+export { summarizeClaim, claimHeadline, receiptBlobUrl, fetchCallReceipt } from './receipt-format';
