@@ -74,6 +74,9 @@ export interface OpenPosition {
   leverage?: number;
   /** When it was placed (ms epoch) — carried into the results tape for ordering. */
   openedAt?: number;
+  /** On-chain tx digest of the real placement (Phase 1), so the verifiable session
+   *  report can carry a checkable proof per trade. Null for a watch-mode sim. */
+  digest?: string | null;
 }
 
 /** One finished trade in a run's results tape (settled won/lost, or pending when it
@@ -93,6 +96,9 @@ export interface RunTradeResult {
   pnlUsd: number;
   /** When it was placed (ms epoch). */
   at: number;
+  /** On-chain tx digest of the real placement, so a saved run's trades stay verifiable
+   *  in the session report even after the rolling log scrolls off. Null for a sim. */
+  digest?: string | null;
 }
 
 /** A finished run, saved to the Results archive (persisted). Completes in place as
@@ -114,6 +120,9 @@ export interface RunResult {
   pendingCount: number;
   realizedPnlUsd: number;
   trades: RunTradeResult[];
+  /** Walrus blob id of the signed, verifiable session report, once the trader mints one
+   *  for this run (on demand). Absent until then. */
+  reportBlobId?: string;
 }
 
 interface Run {
@@ -203,6 +212,7 @@ function toTradeResult(pos: OpenPosition, outcome: RunTradeResult['outcome'], pn
     outcome,
     pnlUsd,
     at: pos.openedAt ?? pos.expiry,
+    digest: pos.digest ?? null,
   };
 }
 
@@ -327,6 +337,8 @@ interface AutopilotState {
   deleteResult: (id: string) => void;
   /** Empty the whole Results archive. */
   clearHistory: () => void;
+  /** Attach the minted verifiable-report blob id to a saved run. */
+  attachReport: (id: string, blobId: string) => void;
 
   /** Reload-safety hook (called once after the persisted state rehydrates): a run
    *  never resumes placing trades. An armed run lands stopped (open positions still
@@ -437,6 +449,7 @@ export const useAutopilotStore = create<AutopilotState>()(
                 cost: trade.cost,
                 leverage: trade.leverage,
                 openedAt: now,
+                digest: opts.digest ?? null,
               },
             ],
           },
@@ -489,6 +502,8 @@ export const useAutopilotStore = create<AutopilotState>()(
 
       deleteResult: (id) => set((s) => ({ history: s.history.filter((r) => r.id !== id) })),
       clearHistory: () => set({ history: [] }),
+      attachReport: (id, blobId) =>
+        set((s) => ({ history: s.history.map((r) => (r.id === id ? { ...r, reportBlobId: blobId } : r)) })),
 
       _resumeAfterReload: () =>
         set((s) => {

@@ -15,6 +15,7 @@
     "@mysten-incubation/memwal": "^0.1.2",
     "@mysten/dapp-kit-react": "^2.0.3",
     "@mysten/enoki": "^1.0.8",
+    "@mysten/seal": "^1.4.3",
     "@mysten/sui": "^2.24.0",
     "@mysten/walrus": "^1.2.14",
     "@mysten/webcrypto-signer": "^0.1.2",

@@ -24,6 +24,7 @@ import {
   LuGauge,
   LuZap,
   LuShieldCheck,
+  LuShare2,
   LuCircleCheck,
   LuHand,
   LuWallet,
@@ -62,6 +63,11 @@ import { useAutopilotStore, type AutopilotLogEntry, type RunResult, type RunTrad
 import { stopReasonLabel, stopReasonKind, type StopReason, type Tenor, type TradeSide } from '@/lib/autopilot/policy';
 import { PRESETS, presetPatch, matchPreset, planSentence, type PresetId, type AutopilotPreset } from '@/lib/autopilot/presets';
 import { parseSetup, resolveSetup, type ResolvedSetup } from '@/lib/autopilot/setup-parser';
+import { buildSessionReportInput, mintSessionReport, reportBlobUrl } from '@/lib/autopilot/report-client';
+
+// The verifiable session report reuses the Walrus writer-key infra behind the receipts flag,
+// so it only shows where that's configured (the route 503s otherwise).
+const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
 
 /** How the session is funded when arming LIVE trading (a per-run choice). */
 type FundingMode = 'deposit' | 'existing';
@@ -597,7 +603,8 @@ function RunResultCard({ r, onDelete }: { r: RunResult; onDelete: () => void }) 
               ))}
             </div>
           )}
-          <div className="flex justify-end border-t border-white/6 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 border-t border-white/6 px-3 py-2">
+            {KELLY_RECEIPTS ? <ReportControl r={r} /> : <span />}
             <button
               onClick={onDelete}
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-3 transition-colors hover:text-down"
@@ -608,6 +615,77 @@ function RunResultCard({ r, onDelete }: { r: RunResult; onDelete: () => void }) 
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Mint / open the run's verifiable session report. Not yet minted → a "Sign this run to Walrus"
+ * button that assembles the report (config + trades + digests + decision log) and stores it,
+ * signed by Kelly, immutably. Minted → a Verify link (opens the signed blob on the public Walrus
+ * aggregator) + a Share button. On-demand so the trader mints once the run has fully settled.
+ */
+function ReportControl({ r }: { r: RunResult }) {
+  const attachReport = useAutopilotStore((s) => s.attachReport);
+  const [minting, setMinting] = useState(false);
+
+  async function mint() {
+    if (minting) return;
+    setMinting(true);
+    try {
+      const { log, rules, limits } = useAutopilotStore.getState();
+      const blobId = await mintSessionReport(buildSessionReportInput({ run: r, rules, limits, log }));
+      if (blobId) attachReport(r.id, blobId);
+    } finally {
+      setMinting(false);
+    }
+  }
+
+  function share() {
+    if (!r.reportBlobId) return;
+    const url = reportBlobUrl(r.reportBlobId);
+    const net = r.realizedPnlUsd;
+    const line = `Here's exactly what my Skew Autopilot did while I was away: ${r.tradeCount} trades, ${r.wins}W/${r.losses}L, ${net >= 0 ? '+' : '-'}$${Math.abs(net) % 1 === 0 ? Math.abs(net).toFixed(0) : Math.abs(net).toFixed(2)}. Signed to Walrus, no edits:`;
+    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(line)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
+  }
+
+  if (r.reportBlobId) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <a
+          href={reportBlobUrl(r.reportBlobId)}
+          target="_blank"
+          rel="noreferrer"
+          title="Open the signed report on Walrus"
+          className="group glass-inset inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-2 transition-all hover:border-(--accent-line) hover:text-text-1"
+        >
+          <LuShieldCheck size={11} className="text-up" /> Verify on Walrus
+          <LuExternalLink size={10} className="text-text-3" />
+        </a>
+        <button
+          onClick={share}
+          title="Share this run"
+          aria-label="Share this run"
+          className="group glass-inset inline-flex h-6.5 w-6.5 items-center justify-center rounded-md text-text-3 transition-all hover:border-(--accent-line) hover:text-text-1"
+        >
+          <LuShare2 size={11} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => void mint()}
+      disabled={minting}
+      className="group glass-inset inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-2 transition-all hover:border-(--accent-line) hover:text-text-1 disabled:opacity-60"
+    >
+      {minting ? (
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-line border-t-accent" />
+      ) : (
+        <LuShieldCheck size={11} className="transition-colors group-hover:text-accent" />
+      )}
+      {minting ? 'Signing to Walrus…' : 'Sign this run to Walrus'}
+    </button>
   );
 }
 
