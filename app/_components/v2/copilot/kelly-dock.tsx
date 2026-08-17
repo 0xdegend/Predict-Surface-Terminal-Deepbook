@@ -36,7 +36,7 @@ import { CopilotChat, type ChatMessage } from './copilot-chat';
 import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { parseIntent, placeConfirmation, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
-import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
+import { recallMemories, recallMemoriesForAI, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallReplyLines } from '@/lib/copilot/memory-greeting';
 import { firstVisitToday } from '@/lib/copilot/greeting-cadence';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
@@ -517,15 +517,22 @@ function KellyPanel({
 
   async function answerWithAI(text: string, fallback: CopilotReply) {
     const history: AiTurn[] = messages.slice(-6).map((m) => ({ role: m.role, text: m.text.join(' ') }));
+    const context = buildAiContext();
     pushUser(text);
     setBusy(true);
     aiCallsRef.current += 1;
+    // Ground Claude in the trader's saved memory (same as the full page) so it can answer
+    // personal questions from what they saved. Signed-in only; capped so it never stalls.
+    if (KELLY_MEMORY && memoryAuth.signedIn && acct.owner) {
+      const mems = await recallMemoriesForAI(acct.owner);
+      if (mems.length) context.memories = mems;
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     const showFallback = () =>
       setMessages((m) => [...m, { id: nextId(), role: 'assistant', text: fallback.text, link: fallback.link }]);
     try {
-      const reply = await askKellyAI({ message: text, history, context: buildAiContext() }, controller.signal);
+      const reply = await askKellyAI({ message: text, history, context }, controller.signal);
       if (reply.available && reply.text?.length) {
         setMessages((m) => [...m, { id: nextId(), role: 'assistant', text: reply.text! }]);
       } else showFallback();

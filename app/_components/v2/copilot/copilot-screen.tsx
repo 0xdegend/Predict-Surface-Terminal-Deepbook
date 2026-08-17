@@ -43,7 +43,7 @@ import { CopilotStatBar } from './copilot-stat-bar';
 import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
-import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
+import { recallMemories, recallMemoriesForAI, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, welcomeBackFromHint, rememberedName, recallReplyLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { firstVisitToday, readGreetingHint, cacheGreetingHint } from '@/lib/copilot/greeting-cadence';
 import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
@@ -1348,6 +1348,13 @@ export function V2CopilotScreen({
     pushUser(text);
     setThinking(true);
     aiCallsRef.current += 1;
+    // Ground Claude in the trader's saved memory so it can answer personal questions the
+    // rules don't specifically classify ("what's my target", "do I usually bet up"). Only
+    // when signed in to memory; capped so a slow memory service never delays the answer.
+    if (KELLY_MEMORY && memoryAuth.signedIn && acct.owner) {
+      const mems = await recallMemoriesForAI(acct.owner);
+      if (mems.length) context.memories = mems;
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     const showFallback = () =>

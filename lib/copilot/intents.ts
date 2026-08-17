@@ -921,13 +921,13 @@ function classifyRecall(raw: string): { subject: RecallSubject; query?: string }
     return { subject: 'name', query: 'the trader’s name' };
   }
   if (
-    /\bwhat(?:'?s| is| are)?\s+my\s+(?:trading\s+)?(?:style|preferences?|prefs|habits?|tendenc(?:y|ies))\b/.test(raw) ||
+    /\bwhat(?:'?s| is| are)?\s+my\s+(?:trading\s+)?(?:style|preferences?|prefs|habits?|tendenc(?:y|ies)|goals?|targets?)\b/.test(raw) ||
     /\bwhat\s+style\b[^?]*\bi\b/.test(raw) ||
     /\bhow\s+do\s+i\s+(?:like\s+to\s+)?(?:trade|bet|play)\b/.test(raw) ||
     /\bwhat\s+(?:kind|type|sort)\s+of\s+(?:bets?|trades?|markets?)\s+do\s+i\b/.test(raw) ||
     /\bwhat\s+do\s+i\s+(?:like|prefer)\s+to\s+(?:trade|bet)\b/.test(raw)
   ) {
-    return { subject: 'style', query: 'the trader’s trading style, direction lean, and risk preference' };
+    return { subject: 'style', query: 'the trader’s trading style, direction lean, risk preference, and goals' };
   }
   if (wantsRecallMemory(raw)) return { subject: 'general' };
   return null;

@@ -43,6 +43,9 @@ export interface AiContext {
     streak?: { won: boolean; count: number } | null;
     last?: { side: string; result: 'won' | 'lost'; pnl: number } | null;
   } | null;
+  /** Things the trader asked Kelly to remember (name, preferences, goals, notes), already
+   *  plain text, so the LLM can answer questions about the trader from their own memory. */
+  memories?: string[] | null;
 }
 
 export interface AiTurn {
@@ -107,6 +110,10 @@ export function formatAiContext(c: AiContext): string {
         `Track record: ${r.wins} wins and ${r.losses} losses across ${r.total} settled bets (${Math.round(r.winRate * 100)}% win rate), ${usd2(r.realizedPnl)} realized.${streak}${last}`,
       );
     }
+  }
+  if (c.memories && c.memories.length) {
+    const list = c.memories.slice(0, 8).map((m) => `- ${m.slice(0, 200)}`).join('\n');
+    lines.push(`Things the trader has asked you to remember about them (use these to answer questions about the trader, and greet or refer to them by name if you know it):\n${list}`);
   }
   return lines.length ? lines.join('\n') : 'No live context is available right now.';
 }

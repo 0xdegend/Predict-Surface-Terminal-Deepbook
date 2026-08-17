@@ -76,6 +76,25 @@ export async function recallMemories(owner: string, query: string, limit = 6): P
   }
 }
 
+/** A broad query that pulls the trader's name, preferences, style, goals, and notes —
+ *  used to ground the LLM tier so it can answer personal questions the rules don't
+ *  specifically classify. */
+const AI_MEMORY_QUERY = 'the trader’s name, preferences, trading style, goals, and notes';
+
+/**
+ * Recall a trader's memories to ground the LLM, capped so a slow memory service never
+ * delays Kelly's answer (returns [] after ~2.5s or on any hiccup). Feed the result into
+ * the AI context so Claude can answer questions about the trader from what they saved.
+ */
+export async function recallMemoriesForAI(owner: string): Promise<string[]> {
+  const timeout = new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 2500));
+  try {
+    return await Promise.race([recallMemories(owner, AI_MEMORY_QUERY, 8), timeout]);
+  } catch {
+    return [];
+  }
+}
+
 /** Store a fact about a trader. Returns true when the relayer accepted and indexed it. */
 export async function rememberFact(owner: string, text: string): Promise<boolean> {
   try {

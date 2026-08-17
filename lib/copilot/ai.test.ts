@@ -86,4 +86,19 @@ describe('formatAiContext', () => {
     expect(out).toMatch(/no clear direction/i);
     expect(out).not.toContain('(slight)');
   });
+
+  it('renders saved memories so the LLM can answer questions about the trader', () => {
+    const out = formatAiContext({ memories: ['your name is Degendev', 'my target is 5% a week'] });
+    expect(out).toMatch(/remember about them/i);
+    expect(out).toContain('- your name is Degendev');
+    expect(out).toContain('- my target is 5% a week');
+  });
+
+  it('omits the memory block when none are passed, and caps a long note', () => {
+    expect(formatAiContext({ spot: 64_000 })).not.toMatch(/remember about them/i);
+    const long = 'x'.repeat(500);
+    const out = formatAiContext({ memories: [long] });
+    expect(out).toContain('x'.repeat(200));
+    expect(out).not.toContain('x'.repeat(201));
+  });
 });
