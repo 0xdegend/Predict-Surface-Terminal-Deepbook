@@ -42,14 +42,14 @@ export interface TrackRecordShareData {
   recent: { summary: string; outcome: 'won' | 'lost' | 'pending' }[];
 }
 
-interface Base {
+export interface Base {
   ctx: CanvasRenderingContext2D;
   c: Theme;
   sans: string;
   mono: string;
 }
 
-function setup(canvas: HTMLCanvasElement, scale: number): Base | null {
+export function setup(canvas: HTMLCanvasElement, scale: number): Base | null {
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   canvas.width = Math.round(W * scale);
@@ -71,7 +71,7 @@ function ellipsize(ctx: CanvasRenderingContext2D, text: string, maxW: number): s
 
 /* ─────────────────────────── shared chrome ─────────────────────────── */
 
-function drawBackground(b: Base, accent: string) {
+export function drawBackground(b: Base, accent: string) {
   const { ctx, c } = b;
   ctx.fillStyle = c.bg;
   ctx.fillRect(0, 0, W, H);
@@ -107,7 +107,7 @@ function drawBackground(b: Base, accent: string) {
   ctx.fillRect(0, 0, W, 3);
 }
 
-function drawHeader(b: Base, accent: string) {
+export function drawHeader(b: Base, accent: string) {
   const { ctx, c, sans } = b;
   const brandY = 78;
   const markSize = 30;
@@ -153,7 +153,7 @@ function drawHeader(b: Base, accent: string) {
   ctx.fillText(label, x + padX + dot + gap, y + h / 2 + 5);
 }
 
-function drawFooter(b: Base) {
+export function drawFooter(b: Base) {
   const { ctx, c, sans } = b;
   ctx.textAlign = 'left';
   const y = H - 30;

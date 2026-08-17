@@ -33,6 +33,7 @@ import {
 import { fetchTrackRecord, type TrackRecordCall } from '@/lib/copilot/receipts-client';
 import { KellyTrackRecordShareModal } from './kelly-track-record-share-modal';
 import type { TrackRecordShareData } from './kelly-track-record-share-card-canvas';
+import { KellyCallShareModal } from './kelly-call-share-modal';
 import { walrusConfig } from '@/config/walrus';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { useNow } from '@/lib/hooks/use-now';
@@ -77,6 +78,7 @@ export function KellyTrackRecordPanel() {
   const loadingEmpty = q.isLoading && !data;
 
   const [shareOpen, setShareOpen] = useState(false);
+  const [callShare, setCallShare] = useState<TrackRecordCall | null>(null);
   // The card the Share button posts: this tab's own record + its latest calls as proof.
   const shareData = useMemo<TrackRecordShareData | null>(() => {
     if (!active) return null;
@@ -195,7 +197,7 @@ export function KellyTrackRecordPanel() {
           ) : activeCalls.length === 0 ? (
             <EmptyState tab={tab} />
           ) : (
-            activeCalls.map((c) => <CallRow key={c.id} call={c} now={now} />)
+            activeCalls.map((c) => <CallRow key={c.id} call={c} now={now} onShare={setCallShare} />)
           )}
         </div>
       </div>
@@ -211,6 +213,22 @@ export function KellyTrackRecordPanel() {
       </p>
 
       <KellyTrackRecordShareModal open={shareOpen} data={shareData} onClose={() => setShareOpen(false)} />
+      <KellyCallShareModal
+        open={callShare != null}
+        data={
+          callShare
+            ? {
+                role: callShare.role,
+                outcome: callShare.outcome,
+                summary: callShare.summary,
+                createdAt: callShare.createdAt,
+                expiry: callShare.expiry,
+                blobId: callShare.blobId,
+              }
+            : null
+        }
+        onClose={() => setCallShare(null)}
+      />
     </div>
   );
 }
@@ -292,12 +310,7 @@ function StatCard({
   );
 }
 
-function CallRow({ call, now }: { call: TrackRecordCall; now: number }) {
-  function shareCall() {
-    const url = typeof window !== 'undefined' ? `${window.location.origin}/v2/track-record/${call.blobId}` : '';
-    const text = `Kelly's call, signed to Walrus the moment it was made: ${call.summary}`;
-    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
-  }
+function CallRow({ call, now, onShare }: { call: TrackRecordCall; now: number; onShare: (c: TrackRecordCall) => void }) {
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3.5">
       <div className="min-w-0">
@@ -307,7 +320,7 @@ function CallRow({ call, now }: { call: TrackRecordCall; now: number }) {
       <div className="flex items-center gap-1.5 sm:gap-2">
         <OutcomePill outcome={call.outcome} />
         <button
-          onClick={shareCall}
+          onClick={() => onShare(call)}
           title="Share this call"
           aria-label="Share this call"
           className="group glass-inset inline-flex h-6 w-6 flex-none items-center justify-center text-text-3 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
