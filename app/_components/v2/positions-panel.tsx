@@ -28,7 +28,14 @@ import { winningClaimPayout, positionWinPayout, settledClaimState, type V2Portfo
 /** Max position cards shown in the rail before deferring to Portfolio. */
 const MAX_SHOWN = 3;
 
-export function V2PositionsPanel() {
+/**
+ * `liveOnly` hides SETTLED rows and shows only live, in-play bets. The keeper auto-redeems
+ * settled winners within seconds ([[keeper-redeem-read-gap]]), so during the brief window
+ * before that redeem is folded in, an already-paid winner can linger here as a stale
+ * "Claim" row. The trade rail / Portfolio keep settled rows on purpose (a stalled keeper
+ * needs a manual claim), but the co-pilot "open positions" watch-list wants live bets only.
+ */
+export function V2PositionsPanel({ liveOnly = false }: { liveOnly?: boolean }) {
   const acct = usePredictAccountV2();
   // SSR has no wallet but the client restores one synchronously — branch on the
   // owner only after mount so the server and first client paint match.
@@ -41,7 +48,7 @@ export function V2PositionsPanel() {
   const { celebrate, overlay: claimCelebration } = useClaimCelebration();
 
   const sym = predictV2Config.quote.symbol;
-  const open = positions.filter((p) => p.qty > 0);
+  const open = positions.filter((p) => p.qty > 0 && (!liveOnly || !p.settled));
   const shown = open.slice(0, MAX_SHOWN);
 
   // Confirmed from the dialog with the chosen partial amount (base units).

@@ -18,8 +18,14 @@
 import { MemWal } from '@mysten-incubation/memwal';
 import { walrusConfig } from '@/config/walrus';
 
-/** Namespace prefix for all Kelly memories (isolates them from any other app surface). */
-const KELLY_NS = 'kelly';
+/**
+ * Namespace prefix for all Kelly memories (isolates them from any other app surface).
+ * Bumped to `.v2` on 2026-08-17 to abandon leftover Phase-1 verification writes (a
+ * "Per-user ns proof …" test entry + a seeded demo note) that were surfacing in recall.
+ * MemWal exposes no delete, so a namespace bump is the clean reset; safe pre-launch (no
+ * real trader memories yet). Raise the suffix again if we ever need another clean slate.
+ */
+const KELLY_NS = 'kelly.v2';
 
 /** Each trader gets their own namespace within the shared account, so memories never mix. */
 export function namespaceForUser(owner: string): string {

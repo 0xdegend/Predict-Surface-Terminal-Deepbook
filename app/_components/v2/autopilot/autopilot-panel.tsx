@@ -18,7 +18,7 @@
  * numerals, teal (up) / coral (down) semantics, hairline dividers.
  */
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { IconType } from 'react-icons';
 import {
   LuGauge,
@@ -41,6 +41,12 @@ import {
   LuChevronDown,
   LuInbox,
   LuClock,
+  LuScale,
+  LuFlame,
+  LuSlidersHorizontal,
+  LuSparkles,
+  LuArrowRight,
+  LuPower,
 } from 'react-icons/lu';
 import { ReviewButton } from '@/app/_components/ticket/review-button';
 import { MASCOT_SRC } from '@/lib/mascot';
@@ -54,9 +60,14 @@ import { useAutopilotEngine, type AutopilotOpenView, type AutopilotPerf } from '
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useAutopilotStore, type AutopilotLogEntry, type RunResult, type RunTradeResult } from '@/lib/store/autopilot-store';
 import { stopReasonLabel, stopReasonKind, type StopReason, type Tenor, type TradeSide } from '@/lib/autopilot/policy';
+import { PRESETS, presetPatch, matchPreset, planSentence, type PresetId, type AutopilotPreset } from '@/lib/autopilot/presets';
+import { parseSetup, resolveSetup, type ResolvedSetup } from '@/lib/autopilot/setup-parser';
 
 /** How the session is funded when arming LIVE trading (a per-run choice). */
 type FundingMode = 'deposit' | 'existing';
+
+type Rules = ReturnType<typeof useAutopilotStore.getState>['rules'];
+type Limits = ReturnType<typeof useAutopilotStore.getState>['limits'];
 
 interface Props {
   markets: V2Market[];
@@ -126,6 +137,8 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const [fundingMode, setFundingMode] = useState<FundingMode>('deposit');
   const [arming, setArming] = useState(false);
   const [view, setView] = useState<'cockpit' | 'results'>('cockpit');
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false); // the "Set it up for me" chat card
 
   // Load the persisted run + results after mount (see skipHydration in the store): a
   // reload restores an in-progress run's open trades, and _resumeAfterReload lands it
@@ -138,7 +151,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const stopped = status === 'stopped';
   const live = !dryRun; // "live trading" vs "watch mode"
 
-  const remaining = Math.max(0, limits.budgetUsd - run.spentUsd);
   const timeLeftMs = armed ? Math.max(0, limits.armDurationMs - (now - run.armedAt)) : limits.armDurationMs;
   const openCount = useMemo(() => run.open.filter((p) => p.expiry > now).length, [run.open, now]);
 
@@ -213,8 +225,36 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     setRules({ sides: has ? rules.sides.filter((x) => x !== side) : [...rules.sides, side] });
   }
 
+  // Which style the current config matches (null = the trader customized away from all).
+  const activePreset = matchPreset(rules, limits);
+  function applyPreset(id: PresetId) {
+    const patch = presetPatch(id);
+    setRules(patch.rules); // leaves budget / per-trade / run length untouched
+    setLimits(patch.limits);
+  }
+
+  /**
+   * Take Kelly's "set it up for me" proposal and write it onto the visible controls
+   * (style + money + mode). Nothing arms here: the plan line and the Start button below
+   * are still the trader's confirm. Per-bet is kept within the budget, and the mode is
+   * only changed when the trader actually named one.
+   */
+  function applySetup(r: ResolvedSetup) {
+    const patch = presetPatch(r.preset);
+    setRules(patch.rules);
+    setLimits({
+      ...patch.limits,
+      budgetUsd: r.budgetUsd,
+      perTradeUsd: Math.min(r.perTradeUsd, r.budgetUsd),
+      armDurationMs: r.durationMins * 60_000,
+    });
+    if (r.live != null) setDryRun(!r.live);
+    setSetupOpen(false);
+    setCustomizeOpen(false);
+  }
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-5">
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
       {/* ── View tabs (cockpit vs saved results) ───────────────────────────── */}
       <ViewTabs view={view} onView={setView} resultCount={history.length} running={armed} />
 
@@ -222,75 +262,65 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         <ResultsView history={history} onDelete={deleteResult} onClear={clearHistory} />
       ) : (
         <>
-      {/* ── Hero / status ──────────────────────────────────────────────────── */}
-      <div className="glass-card mb-4 flex flex-col gap-5 overflow-hidden p-5 sm:flex-row sm:items-center sm:gap-6 sm:p-6">
-        <div className="relative mx-auto flex h-20 w-20 flex-none items-center justify-center sm:mx-0 sm:h-24 sm:w-24">
+      {/* ── Slim sticky header: status + primary action, always reachable ──── */}
+      <div className="glass-card sticky top-0 z-20 mb-4 flex items-center gap-3 p-3.5 backdrop-blur-md sm:gap-4">
+        <div className="relative flex h-11 w-11 flex-none items-center justify-center sm:h-12 sm:w-12">
           <span
             aria-hidden
             className="absolute inset-0"
             style={{ background: 'radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 70%)' }}
           />
-          <Image src={MASCOT_SRC.thinking} alt="Kelly the fox" width={96} height={96} className="relative h-full w-full object-contain" />
+          <Image src={MASCOT_SRC.thinking} alt="Kelly the fox" width={48} height={48} className="relative h-full w-full object-contain" />
         </div>
-
         <div className="min-w-0 flex-1">
-          <p className="eyebrow mb-1 flex items-center gap-1.5">
-            <LuGauge size={12} className="text-accent" /> Kelly · Autopilot
+          <p className="eyebrow flex items-center gap-1.5">
+            <LuGauge size={11} className="text-accent" /> Kelly · Autopilot
           </p>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-[22px] font-semibold tracking-tight text-text-1 sm:text-[26px]">Autopilot</h1>
+          <div className="mt-0.5 flex items-center gap-2">
+            <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[19px]">Autopilot</h1>
             <StatusPill status={status} settling={stopped && openCount > 0} />
           </div>
-          <p className="mt-1.5 max-w-lg text-[12.5px] leading-relaxed text-text-2">
-            Kelly picks her best-value bet and places it for you, within the rules and budget you set. You can stop it any
-            time, and every trade is logged.
-          </p>
         </div>
-
-        <div className="flex flex-none flex-col items-stretch gap-2 sm:w-40">
-          {armed ? (
-            <ReviewButton tone="down" onClick={() => disarm('manual', Date.now())}>
-              Stop Autopilot
-            </ReviewButton>
-          ) : (
-            <ReviewButton tone="up" onClick={handleArm} disabled={!canArm}>
-              {arming
-                ? live && !sessionReady
-                  ? 'Approve in wallet…'
-                  : 'Arming…'
-                : live
-                  ? 'Arm live trading'
-                  : stopped
-                    ? 'Arm again'
-                    : 'Arm watch mode'}
-            </ReviewButton>
-          )}
-          {!armed && armIssue && <p className="text-center text-[10.5px] leading-tight text-text-3">{armIssue}</p>}
+        <div className="flex flex-none items-center gap-2">
           {stopped && (
             <button
               onClick={() => reset()}
-              className="group glass-inset inline-flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+              className="group glass-inset hidden items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1 sm:inline-flex"
             >
               <LuTrash2 size={12} className="transition-colors duration-200 group-hover:text-accent" /> Clear log
             </button>
           )}
+          <div className="flex w-32 flex-col sm:w-40">
+            {armed ? (
+              <ReviewButton tone="down" onClick={() => disarm('manual', Date.now())}>
+                Stop Autopilot
+              </ReviewButton>
+            ) : (
+              <ReviewButton tone="up" onClick={handleArm} disabled={!canArm}>
+                {arming
+                  ? live && !sessionReady
+                    ? 'Approve in wallet…'
+                    : 'Starting…'
+                  : live
+                    ? 'Start trading'
+                    : 'Start watching'}
+              </ReviewButton>
+            )}
+          </div>
         </div>
       </div>
+      {!armed && armIssue && (
+        <p className="mb-4 -mt-1 flex items-center justify-end gap-1.5 text-[10.5px] leading-tight text-text-3">
+          <LuTriangleAlert size={11} className="flex-none" /> {armIssue}
+        </p>
+      )}
 
-      {/* ── Trading mode (watch vs live) ───────────────────────────────────── */}
-      <TradingModeCard
-        armed={armed}
-        live={live}
-        onSetLive={(on) => setDryRun(!on)}
-        fundingMode={fundingMode}
-        onSetFunding={setFundingMode}
-        budgetUsd={limits.budgetUsd}
-        sessionReady={sessionReady}
-        sessionExpiresInMs={sessionExpiresInMs}
-        error={acct.error}
-      />
+      {/* ── Stat band: live market + lifetime performance, at a glance ─────── */}
+      <div className="mb-4">
+        <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
+      </div>
 
-      {/* ── Stop / reload banner ───────────────────────────────────────────── */}
+      {/* ── Stop / reload banner (prominent, right under the header) ────────── */}
       {stopped &&
         (interruptedByReload ? (
           <ReloadBanner settlingCount={openCount} />
@@ -298,194 +328,111 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           <StoppedBanner reason={stopReason} settlingCount={openCount} />
         ))}
 
-      {/* ── Live meters ────────────────────────────────────────────────────── */}
-      <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Meter
-          icon={LuWallet}
-          label="Budget"
-          value={`$${num(run.spentUsd, 0)}`}
-          sub={`of $${num(limits.budgetUsd, 0)}`}
-          frac={limits.budgetUsd > 0 ? run.spentUsd / limits.budgetUsd : 0}
-          color="var(--up)"
-        />
-        <Meter
-          icon={LuActivity}
-          label="Trades"
-          value={num(run.tradeCount, 0)}
-          sub={`of ${num(limits.maxTrades, 0)}`}
-          frac={limits.maxTrades > 0 ? run.tradeCount / limits.maxTrades : 0}
-          color="#6aa6e6"
-        />
-        <Meter
-          icon={LuLayers}
-          label="Open now"
-          value={num(openCount, 0)}
-          sub={`of ${num(limits.maxConcurrent, 0)}`}
-          frac={limits.maxConcurrent > 0 ? openCount / limits.maxConcurrent : 0}
-          color="#c9a0ff"
-        />
-        <Meter
-          icon={LuTimer}
-          label={armed ? 'Time left' : 'Runs for'}
-          value={mmss(timeLeftMs)}
-          sub={armed ? 'remaining' : 'once armed'}
-          frac={armed && limits.armDurationMs > 0 ? 1 - timeLeftMs / limits.armDurationMs : 0}
-          color="#9aa4af"
-        />
-      </div>
-
-      {/* ── Live performance + open trades ─────────────────────────────────── */}
-      {(engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0) && (
-        <PerformancePanel perf={engine.perf} positions={engine.positions} />
-      )}
-
-      {/* ── Settings (editable when idle/stopped, summary when armed) ───────── */}
-      {armed ? (
-        <SettingsSummary rules={rules} limits={limits} remaining={remaining} />
-      ) : (
-        <div className="mb-4 grid gap-3 md:grid-cols-2">
-          {/* Your rules */}
-          <div className="glass-card p-4">
-            <p className="eyebrow mb-3 flex items-center gap-1.5">
-              <LuGauge size={12} className="text-accent" /> Your rules
-            </p>
-            <div className="flex flex-col gap-3.5">
-              <Field label="Only bet at least this likely">
-                {PROB_CHOICES.map((p) => (
-                  <Chip key={p} active={Math.abs(rules.minProb - p) < 1e-9} onClick={() => setRules({ minProb: p })}>
-                    {Math.round(p * 100)}%
-                  </Chip>
-                ))}
-              </Field>
-              <Field label="Windows to trade">
-                {(['soonest', 'hour', 'today'] as Tenor[]).map((t) => (
-                  <Chip key={t} active={rules.tenors.includes(t)} onClick={() => toggleTenor(t)}>
-                    {TENOR_LABEL[t]}
-                  </Chip>
-                ))}
-              </Field>
-              <Field label="Direction">
-                <Chip active={rules.sides.includes('up')} onClick={() => toggleSide('up')}>
-                  <LuTrendingUp size={12} className="mr-1 inline text-up" /> UP
-                </Chip>
-                <Chip active={rules.sides.includes('down')} onClick={() => toggleSide('down')}>
-                  <LuTrendingDown size={12} className="mr-1 inline text-down" /> DOWN
-                </Chip>
-                <Chip active={false} disabled title="Range bets come next">
-                  Range · soon
-                </Chip>
-              </Field>
-              <Field label="Max leverage">
-                {LEV_CHOICES.map((l) => (
-                  <Chip key={l} active={rules.maxLeverage === l} onClick={() => setRules({ maxLeverage: l })}>
-                    {l}x
-                  </Chip>
-                ))}
-              </Field>
-            </div>
+      {/* ── Setup (idle or stopped): configure ⟷ mode / assistant / plan ───── */}
+      {!armed && (
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <PresetPicker active={activePreset} onApply={applyPreset} />
+            <MoneyCard limits={limits} setLimits={setLimits} />
+            <CustomizeSection
+              open={customizeOpen}
+              onToggle={() => setCustomizeOpen((o) => !o)}
+              custom={activePreset === null}
+              rules={rules}
+              limits={limits}
+              setRules={setRules}
+              setLimits={setLimits}
+              toggleTenor={toggleTenor}
+              toggleSide={toggleSide}
+            />
           </div>
-
-          {/* Safety limits */}
-          <div className="glass-card p-4">
-            <p className="eyebrow mb-3 flex items-center gap-1.5">
-              <LuShieldCheck size={12} className="text-accent" /> Safety limits
-            </p>
-            <div className="flex flex-col gap-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <NumField
-                  label="Total budget"
-                  prefix="$"
-                  value={limits.budgetUsd}
-                  min={1}
-                  max={100_000}
-                  onChange={(v) => setLimits({ budgetUsd: v })}
+          <div className="flex min-w-0 flex-col gap-4">
+            <TradingModeCard
+              armed={armed}
+              live={live}
+              onSetLive={(on) => setDryRun(!on)}
+              fundingMode={fundingMode}
+              onSetFunding={setFundingMode}
+              budgetUsd={limits.budgetUsd}
+              sessionReady={sessionReady}
+              sessionExpiresInMs={sessionExpiresInMs}
+              onEndSession={async () => {
+                await acct.endSession();
+              }}
+              error={acct.error}
+            />
+            {status === 'idle' &&
+              (setupOpen ? (
+                <KellySetupCard
+                  current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
+                  onApply={applySetup}
+                  onClose={() => setSetupOpen(false)}
                 />
-                <NumField
-                  label="Per trade"
-                  prefix="$"
-                  value={limits.perTradeUsd}
-                  min={1}
-                  max={Math.max(1, limits.budgetUsd)}
-                  onChange={(v) => setLimits({ perTradeUsd: v })}
-                />
-                <NumField
-                  label="Max trades"
-                  value={limits.maxTrades}
-                  min={1}
-                  max={100}
-                  onChange={(v) => setLimits({ maxTrades: v })}
-                />
-                <NumField
-                  label="Stop after losses"
-                  value={limits.maxConsecutiveLosses}
-                  min={1}
-                  max={20}
-                  onChange={(v) => setLimits({ maxConsecutiveLosses: v })}
-                />
-              </div>
-              <Field label="Cooldown between trades">
-                {COOLDOWN_CHOICES.map((c) => (
-                  <Chip key={c} active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
-                    {c / 1000}s
-                  </Chip>
-                ))}
-              </Field>
-              <Field label="Run for">
-                {DURATION_CHOICES.map((m) => (
-                  <Chip key={m} active={limits.armDurationMs === m * 60_000} onClick={() => setLimits({ armDurationMs: m * 60_000 })}>
-                    {durationLabel(m)}
-                  </Chip>
-                ))}
-              </Field>
-            </div>
+              ) : (
+                <SetupPrompt onOpen={() => setSetupOpen(true)} />
+              ))}
+            <PlanLine rules={rules} limits={limits} live={live} presetId={activePreset} />
           </div>
         </div>
       )}
 
-      {/* ── Run log ────────────────────────────────────────────────────────── */}
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="text-[13px] font-semibold text-text-1">Run log</h2>
-        {armed && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-(--accent-soft) px-2 py-0.5 text-[10.5px] font-medium text-up">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
-            </span>
-            Live
-          </span>
-        )}
-        {engine.ready ? null : (
-          <span className="ml-auto text-[10.5px] text-text-3">Waiting for the live feed…</span>
-        )}
-      </div>
-      <div className="glass-card overflow-hidden">
-        {log.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
-            <LuGauge size={22} className="text-text-3" />
-            <p className="text-[13px] text-text-1">Nothing yet.</p>
-            <p className="max-w-xs text-[12px] leading-relaxed text-text-2">
-              Arm Autopilot and Kelly starts watching the surface. Every trade she would place shows up here as it
-              happens.
-            </p>
-          </div>
-        ) : (
-          <div className="rows-divided max-h-[22rem] overflow-y-auto">
-            {log.map((e) => (
-              <LogRow key={e.id} entry={e} now={now} />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* ── Armed: the locked plan + the running-mode banner ───────────────── */}
+      {armed && (
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+          <PlanLine rules={rules} limits={limits} live={live} presetId={activePreset} />
+          <TradingModeCard
+            armed={armed}
+            live={live}
+            onSetLive={(on) => setDryRun(!on)}
+            fundingMode={fundingMode}
+            onSetFunding={setFundingMode}
+            budgetUsd={limits.budgetUsd}
+            sessionReady={sessionReady}
+            sessionExpiresInMs={sessionExpiresInMs}
+            onEndSession={async () => {
+              await acct.endSession();
+            }}
+            error={acct.error}
+          />
+        </div>
+      )}
 
-      {/* ── Footer note ────────────────────────────────────────────────────── */}
-      <p className="mt-4 flex items-start gap-1.5 text-[10.5px] leading-relaxed text-text-3">
-        <LuShieldCheck size={12} className="mt-px flex-none" />
-        <span>
-          Live trading places bets with your session key, which can only spend your trading-account balance. It can&rsquo;t
-          withdraw or move money out, Autopilot stops at the budget and limits you set, and you can stop the run at any
-          moment. Depositing a fresh budget pins the on-chain ceiling to exactly that amount.
-        </span>
-      </p>
+      {/* ── Live / last-run: meters, then performance ⟷ run log ────────────── */}
+      {status !== 'idle' && (
+        <div className="mb-4 flex flex-col gap-4">
+          <MetersStrip
+            spentUsd={run.spentUsd}
+            budgetUsd={limits.budgetUsd}
+            tradeCount={run.tradeCount}
+            maxTrades={limits.maxTrades}
+            openCount={openCount}
+            maxConcurrent={limits.maxConcurrent}
+            armed={armed}
+            timeLeftMs={timeLeftMs}
+            armDurationMs={limits.armDurationMs}
+          />
+          {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <PerformancePanel perf={engine.perf} positions={engine.positions} />
+              <RunLogPanel log={log} now={now} armed={armed} ready={engine.ready} />
+            </div>
+          ) : (
+            <RunLogPanel log={log} now={now} armed={armed} ready={engine.ready} />
+          )}
+        </div>
+      )}
+
+      {/* ── Footer safety note (setup only) ────────────────────────────────── */}
+      {status === 'idle' && (
+        <p className="flex items-start gap-1.5 text-[10.5px] leading-relaxed text-text-3">
+          <LuShieldCheck size={12} className="mt-px flex-none" />
+          <span>
+            Live trading places bets with your session key, which can only spend your trading-account balance. It
+            can&rsquo;t withdraw or move money out, Autopilot stops at the budget and limits you set, and you can stop the
+            run at any moment. Depositing a fresh budget pins the on-chain ceiling to exactly that amount.
+          </span>
+        </p>
+      )}
         </>
       )}
     </div>
@@ -572,7 +519,7 @@ function ResultsView({
         <LuInbox size={24} className="text-text-3" />
         <p className="text-[13px] text-text-1">No finished runs yet.</p>
         <p className="max-w-xs text-[12px] leading-relaxed text-text-2">
-          Arm Autopilot from the Autopilot tab. When a run ends, its results are saved here so you can see how Kelly did
+          Start Autopilot from the Autopilot tab. When a run ends, its results are saved here so you can see how Kelly did
           over time.
         </p>
       </div>
@@ -723,6 +670,7 @@ function TradingModeCard({
   budgetUsd,
   sessionReady,
   sessionExpiresInMs,
+  onEndSession,
   error,
 }: {
   armed: boolean;
@@ -733,13 +681,14 @@ function TradingModeCard({
   budgetUsd: number;
   sessionReady: boolean;
   sessionExpiresInMs: number | null;
+  onEndSession: () => Promise<void>;
   error: string | null;
 }) {
   // While armed, the mode is locked in — show a compact running banner, no controls.
   if (armed) {
     return (
       <div
-        className={`glass-inset mb-4 flex items-start gap-2.5 p-3.5 ${live ? 'border-up/30' : ''}`}
+        className={`glass-inset flex items-start gap-2.5 p-3.5 ${live ? 'border-up/30' : ''}`}
       >
         {live ? <LuRadioTower size={15} className="mt-px flex-none text-up" /> : <LuEye size={15} className="mt-px flex-none text-accent" />}
         <p className="text-[12px] leading-relaxed text-text-2">
@@ -753,7 +702,7 @@ function TradingModeCard({
   }
 
   return (
-    <div className="glass-card mb-4 flex flex-col gap-3.5 p-4">
+    <div className="glass-card flex flex-col gap-3.5 p-4">
       {/* Watch vs Live segmented toggle */}
       <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-white/4 p-1">
         <ModeTab active={!live} icon={LuEye} label="Watch mode" sub="No spending" onClick={() => onSetLive(false)} />
@@ -768,10 +717,7 @@ function TradingModeCard({
       ) : (
         <div className="flex flex-col gap-3">
           {sessionReady ? (
-            <p className="flex items-center gap-1.5 text-[12px] text-text-2">
-              <LuShieldCheck size={13} className="flex-none text-up" />
-              Instant trading is on{sessionExpiresInMs != null ? `, expires in ${hoursMins(sessionExpiresInMs)}` : ''}.
-            </p>
+            <SessionStatusRow expiresInMs={sessionExpiresInMs} onEndSession={onEndSession} />
           ) : (
             <p className="text-[12px] leading-relaxed text-text-2">
               You&rsquo;ll approve one signature to turn on your session key. After that, Kelly places bets with no
@@ -803,6 +749,81 @@ function TradingModeCard({
               {error}
             </p>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The "instant trading is on" status, with a way to fully END the session. Ending sweeps
+ * the session key's leftover SUI gas back to the wallet (so it can fund the next one) and
+ * turns off one-tap trading everywhere, since the app and Autopilot share one session key.
+ * Left-over DUSDC budget stays in the trading account. Guarded by an inline confirm because
+ * it costs a signature and affects the whole app.
+ */
+function SessionStatusRow({
+  expiresInMs,
+  onEndSession,
+}: {
+  expiresInMs: number | null;
+  onEndSession: () => Promise<void>;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  const [ending, setEnding] = useState(false);
+
+  async function end() {
+    setEnding(true);
+    try {
+      await onEndSession();
+    } finally {
+      setEnding(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <LuShieldCheck size={13} className="flex-none text-up" />
+        <span className="text-[12px] text-text-2">
+          Instant trading is on{expiresInMs != null ? `, expires in ${hoursMins(expiresInMs)}` : ''}.
+        </span>
+        {!confirm && (
+          <button
+            type="button"
+            onClick={() => setConfirm(true)}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-text-3 transition-colors hover:text-down"
+          >
+            <LuPower size={11} /> End session
+          </button>
+        )}
+      </div>
+
+      {confirm && (
+        <div className="flex flex-col gap-2 rounded-lg border border-down/30 bg-down/10 p-2.5">
+          <p className="text-[11.5px] leading-relaxed text-text-2">
+            End your session and send any leftover gas back to your wallet. Your trading balance stays in your account for
+            next time, and one-tap trading turns off here and across the app. You can start a fresh session whenever.
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={end}
+              disabled={ending}
+              className="inline-flex items-center gap-1.5 rounded-md border border-down/40 bg-down/15 px-3 py-1.5 text-[11.5px] font-semibold text-down transition-colors hover:bg-down/25 disabled:opacity-50"
+            >
+              {ending ? 'Ending…' : 'End session and return gas'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirm(false)}
+              disabled={ending}
+              className="rounded-md px-2.5 py-1.5 text-[11.5px] font-medium text-text-3 transition-colors hover:text-text-1 disabled:opacity-50"
+            >
+              Keep it on
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -877,7 +898,7 @@ function FundingOption({
 function PerformancePanel({ perf, positions }: { perf: AutopilotPerf; positions: AutopilotOpenView[] }) {
   const resolved = perf.wins + perf.losses;
   return (
-    <div className="mb-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {/* Summary */}
       <div className="glass-card p-4">
         <div className="flex items-end justify-between gap-3">
@@ -995,8 +1016,8 @@ function ReloadBanner({ settlingCount }: { settlingCount: number }) {
           {settlingCount > 0
             ? `Your ${settlingCount} open trade${settlingCount === 1 ? ' is' : 's are'} still here and settling. `
             : ''}
-          Autopilot paused placing new trades when the page reloaded, so nothing traded on its own. Arm again to keep it
-          going.
+          Autopilot paused placing new trades when the page reloaded, so nothing traded on its own. Start it again to keep
+          it going.
         </span>
       </div>
     </div>
@@ -1147,33 +1168,761 @@ function NumField({
   );
 }
 
-function SettingsSummary({
-  rules,
-  limits,
-  remaining,
-}: {
-  rules: ReturnType<typeof useAutopilotStore.getState>['rules'];
-  limits: ReturnType<typeof useAutopilotStore.getState>['limits'];
-  remaining: number;
-}) {
-  const sides = rules.sides.map((s) => (s === 'range' ? 'range' : s.toUpperCase())).join(' / ') || 'none';
-  const windows = rules.tenors.map((t) => TENOR_LABEL[t]).join(', ') || 'none';
+/* ----------------------- setup: set it up for me ------------------------- */
+
+/** The collapsed entry: a friendly nudge that opens Kelly's plain-words setup. */
+function SetupPrompt({ onOpen }: { onOpen: () => void }) {
   return (
-    <div className="glass-card mb-4 flex flex-wrap gap-x-6 gap-y-2 p-4 text-[12px]">
-      <SummaryItem label="Betting" value={`${sides} · ${Math.round(rules.minProb * 100)}%+ · up to ${rules.maxLeverage}x`} />
-      <SummaryItem label="Windows" value={windows} />
-      <SummaryItem label="Per trade" value={`$${num(limits.perTradeUsd, 0)}`} />
-      <SummaryItem label="Budget left" value={`$${num(remaining, 0)}`} />
-      <SummaryItem label="Cooldown" value={`${limits.cooldownMs / 1000}s`} />
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group glass-inset flex w-full items-center gap-3 rounded-xl border-transparent p-3.5 text-left transition-all hover:border-(--accent-line)"
+    >
+      <span className="relative flex h-10 w-10 flex-none items-center justify-center">
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full"
+          style={{ background: 'radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 70%)' }}
+        />
+        <Image src={MASCOT_SRC.thinking} alt="" width={40} height={40} aria-hidden className="relative h-full w-full object-contain" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold text-text-1">
+          Set it up for me <LuSparkles size={13} className="text-accent" />
+        </span>
+        <span className="mt-0.5 block text-[11.5px] leading-relaxed text-text-3">
+          New here? Tell Kelly in plain words and she&rsquo;ll pick your settings. Or set them yourself below.
+        </span>
+      </span>
+      <LuArrowRight size={16} className="flex-none text-text-3 transition-colors group-hover:text-accent" />
+    </button>
+  );
+}
+
+const SETUP_SUGGESTIONS = ['Keep it safe with $25', 'Balanced, $50 for an hour', 'Go bold with $100', 'Watch mode first, $25'];
+
+/** Build the same plain-English plan the PlanLine shows, from a resolved proposal. */
+function previewSentence(r: ResolvedSetup): string {
+  const patch = presetPatch(r.preset);
+  const rules: Rules = {
+    minProb: patch.rules.minProb!,
+    minEdge: 0,
+    tenors: patch.rules.tenors!,
+    sides: patch.rules.sides!,
+    maxLeverage: patch.rules.maxLeverage!,
+  };
+  const limits: Limits = {
+    budgetUsd: r.budgetUsd,
+    perTradeUsd: r.perTradeUsd,
+    maxTrades: patch.limits.maxTrades!,
+    maxConcurrent: patch.limits.maxConcurrent!,
+    cooldownMs: patch.limits.cooldownMs!,
+    armDurationMs: r.durationMins * 60_000,
+    maxConsecutiveLosses: patch.limits.maxConsecutiveLosses!,
+  };
+  return planSentence(rules, limits);
+}
+
+/**
+ * The "set it up for me" card. The trader says what they want in plain words (or taps a
+ * suggestion); a pure parser reads it into a proposal and Kelly echoes it back as the exact
+ * plan and money before anything is applied. "Use this setup" writes it onto the controls
+ * below, where the plan line and the Start button remain the real confirm. Nothing arms here.
+ */
+function KellySetupCard({
+  current,
+  onApply,
+  onClose,
+}: {
+  current: { budgetUsd: number; perTradeUsd: number; armDurationMs: number };
+  onApply: (r: ResolvedSetup) => void;
+  onClose: () => void;
+}) {
+  const [text, setText] = useState('');
+  const trimmed = text.trim();
+  const resolved = trimmed ? resolveSetup(parseSetup(trimmed), current) : null;
+  const preset = resolved ? PRESETS.find((p) => p.id === resolved.preset) ?? null : null;
+
+  return (
+    <div className="glass-card flex flex-col gap-3 p-4">
+      <div className="flex items-start gap-3">
+        <Image
+          src={MASCOT_SRC.thinking}
+          alt=""
+          width={36}
+          height={36}
+          aria-hidden
+          className="mt-0.5 h-9 w-9 flex-none rounded-full object-contain"
+        />
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow flex items-center gap-1.5">
+            <LuSparkles size={12} className="text-accent" /> Set it up for me
+          </p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
+            Tell me how you want to play it and how much, and I&rsquo;ll set the controls. You still get the final say
+            below.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-none rounded-md px-2 py-1 text-[11px] text-text-3 transition-colors hover:text-text-1"
+        >
+          Close
+        </button>
+      </div>
+
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={'Try "cautious, $25 for an hour"'}
+        aria-label="Describe your setup in plain words"
+        autoFocus
+        className="glass-inset w-full rounded-lg px-3 py-2.5 text-[16px] text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line)"
+      />
+
+      <div className="flex flex-wrap gap-1.5">
+        {SETUP_SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setText(s)}
+            className="glass-inset rounded-full px-2.5 py-1 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {resolved && preset ? (
+        <div className="flex flex-col gap-2.5 rounded-lg border border-(--accent-line) bg-(--accent-soft) p-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="eyebrow">Kelly will set</span>
+            <span className="rounded-full bg-white/10 px-1.5 py-px text-[9.5px] font-medium text-text-1">{preset.name}</span>
+            {resolved.live != null && (
+              <span
+                className={`rounded-full px-1.5 py-px text-[9.5px] font-medium ${
+                  resolved.live ? 'bg-(--up-soft) text-up' : 'bg-white/10 text-text-2'
+                }`}
+              >
+                {resolved.live ? 'Live trading' : 'Watch mode'}
+              </span>
+            )}
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-text-1">{previewSentence(resolved)}</p>
+          <button
+            type="button"
+            onClick={() => onApply(resolved)}
+            className="inline-flex items-center justify-center gap-1.5 self-start rounded-lg border border-(--accent-line) bg-(--accent-soft) px-3.5 py-2 text-[12.5px] font-semibold text-text-1 transition-all duration-150 hover:brightness-110"
+          >
+            Use this setup <LuArrowRight size={13} />
+          </button>
+        </div>
+      ) : (
+        <p className="text-[11px] leading-relaxed text-text-3">
+          Say a style (safe, balanced, or bold), an amount, and how long. I&rsquo;ll fill in the rest, and you can change
+          anything after.
+        </p>
+      )}
     </div>
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+/* ---------------------------- setup: presets ----------------------------- */
+
+const PRESET_ICON: Record<PresetId, IconType> = { cautious: LuShieldCheck, balanced: LuScale, bold: LuFlame };
+const BUDGET_CHOICES = [10, 25, 50, 100];
+const PERTRADE_CHOICES = [2, 5, 10, 25];
+
+function PresetPicker({ active, onApply }: { active: PresetId | null; onApply: (id: PresetId) => void }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="eyebrow">{label}</span>
-      <span className="font-mono text-[12.5px] tabular-nums text-text-1">{value}</span>
+    <div>
+      <p className="eyebrow mb-2 flex items-center gap-1.5">
+        <LuGauge size={12} className="text-accent" /> How should Kelly bet?
+        {active === null && (
+          <span className="rounded-full bg-white/6 px-1.5 py-px text-[9.5px] font-medium text-text-2">Custom</span>
+        )}
+      </p>
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        {PRESETS.map((p) => (
+          <PresetCard key={p.id} preset={p} active={active === p.id} onClick={() => onApply(p.id)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PresetCard({ preset, active, onClick }: { preset: AutopilotPreset; active: boolean; onClick: () => void }) {
+  const Icon = PRESET_ICON[preset.id];
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex flex-col gap-2 rounded-xl border p-3.5 text-left transition-all duration-150 ${
+        active ? 'border-(--accent-line) bg-(--accent-soft)' : 'glass-inset border-transparent hover:border-white/10'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${active ? 'bg-(--accent-soft)' : 'bg-white/6'}`}>
+          <Icon size={16} className={active ? 'text-accent' : 'text-text-2'} />
+        </span>
+        <RiskDots level={preset.risk} active={active} />
+      </div>
+      <div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13.5px] font-semibold text-text-1">{preset.name}</span>
+          {active && <LuCircleCheck size={13} className="text-accent" />}
+        </div>
+        <span className="text-[10.5px] text-text-3">{preset.tagline}</span>
+      </div>
+      <p className="text-[11px] leading-relaxed text-text-2">{preset.blurb}</p>
+    </button>
+  );
+}
+
+function RiskDots({ level, active }: { level: 1 | 2 | 3; active: boolean }) {
+  return (
+    <span className="flex items-center gap-1" aria-label={`Risk level ${level} of 3`}>
+      {[1, 2, 3].map((i) => (
+        <span
+          key={i}
+          className={`h-1.5 w-1.5 rounded-full ${i <= level ? (active ? 'bg-accent' : 'bg-text-2') : 'bg-white/12'}`}
+        />
+      ))}
+    </span>
+  );
+}
+
+/* ----------------------------- setup: money ------------------------------ */
+
+function MoneyCard({ limits, setLimits }: { limits: Limits; setLimits: (p: Partial<Limits>) => void }) {
+  return (
+    <div className="glass-card p-4">
+      <p className="eyebrow mb-3 flex items-center gap-1.5">
+        <LuWallet size={12} className="text-accent" /> How much, and how long
+      </p>
+      <div className="flex flex-col gap-4">
+        <MoneyField
+          label="Total budget"
+          hint="the most it can spend"
+          value={limits.budgetUsd}
+          choices={BUDGET_CHOICES}
+          min={1}
+          max={100_000}
+          // Keep per-trade within the budget so a smaller budget can't imply a bigger bet.
+          onChange={(v) => setLimits({ budgetUsd: v, perTradeUsd: Math.min(limits.perTradeUsd, v) })}
+        />
+        <MoneyField
+          label="Each bet"
+          hint="size per trade"
+          value={limits.perTradeUsd}
+          choices={PERTRADE_CHOICES}
+          min={1}
+          max={Math.max(1, limits.budgetUsd)}
+          onChange={(v) => setLimits({ perTradeUsd: v })}
+        />
+        <div className="flex flex-col gap-1.5">
+          <span className="eyebrow">For how long</span>
+          <div className="flex flex-wrap gap-1.5">
+            {DURATION_CHOICES.map((m) => (
+              <Chip
+                key={m}
+                active={limits.armDurationMs === m * 60_000}
+                onClick={() => setLimits({ armDurationMs: m * 60_000 })}
+              >
+                {durationLabel(m)}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MoneyField({
+  label,
+  hint,
+  value,
+  choices,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  choices: number[];
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <span className="eyebrow">{label}</span>
+        {hint && <span className="text-[10px] text-text-3">{hint}</span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {choices.map((c) => (
+          <Chip key={c} active={value === c} onClick={() => onChange(clamp(c, min, max))}>
+            ${c}
+          </Chip>
+        ))}
+        <div className="glass-inset flex items-center gap-0.5 px-2.5">
+          <span className="text-[13px] text-text-3">$</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            value={value}
+            min={min}
+            max={max}
+            aria-label={`${label} (custom amount)`}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isNaN(v)) onChange(clamp(Math.round(v), min, max));
+            }}
+            className="w-14 min-w-0 bg-transparent py-1.5 font-mono text-[16px] tabular-nums text-text-1 outline-none"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ setup: plan ------------------------------ */
+
+function PlanLine({
+  rules,
+  limits,
+  live,
+  presetId,
+}: {
+  rules: Rules;
+  limits: Limits;
+  live: boolean;
+  presetId: PresetId | null;
+}) {
+  const preset = presetId ? PRESETS.find((p) => p.id === presetId) : null;
+  return (
+    <div className="glass-inset flex items-start gap-3 border-l-2 border-(--accent-line) p-3.5">
+      <Image
+        src={MASCOT_SRC.thinking}
+        alt=""
+        width={32}
+        height={32}
+        aria-hidden
+        className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
+      />
+      <div className="min-w-0">
+        <p className="eyebrow mb-1 flex items-center gap-1.5">
+          The plan
+          <span className="rounded-full bg-white/6 px-1.5 py-px text-[9.5px] font-medium text-text-2">
+            {preset ? preset.name : 'Custom'}
+          </span>
+        </p>
+        <p className="text-[13px] leading-relaxed text-text-1">{planSentence(rules, limits)}</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-text-3">
+          {live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* --------------------------- setup: customize ---------------------------- */
+
+function CustomizeSection({
+  open,
+  onToggle,
+  custom,
+  rules,
+  limits,
+  setRules,
+  setLimits,
+  toggleTenor,
+  toggleSide,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  custom: boolean;
+  rules: Rules;
+  limits: Limits;
+  setRules: (p: Partial<Rules>) => void;
+  setLimits: (p: Partial<Limits>) => void;
+  toggleTenor: (t: Tenor) => void;
+  toggleSide: (s: TradeSide) => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="glass-inset flex w-full items-center gap-2 rounded-lg px-4 py-2.5 text-left transition-colors hover:border-white/10"
+      >
+        <LuSlidersHorizontal size={13} className="flex-none text-accent" />
+        <span className="text-[12.5px] font-medium text-text-1">Customize</span>
+        <span className="hidden text-[10.5px] text-text-3 sm:inline">odds, leverage, windows, cooldown</span>
+        {custom && (
+          <span className="rounded-full bg-(--accent-soft) px-1.5 py-px text-[9.5px] font-medium text-accent">on</span>
+        )}
+        <LuChevronDown
+          size={14}
+          className={`ml-auto flex-none text-text-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="mt-2 grid gap-3 md:grid-cols-2">
+          <div className="glass-card p-4">
+            <p className="eyebrow mb-3">How she picks</p>
+            <div className="flex flex-col gap-3.5">
+              <Field label="Only bet at least this likely">
+                {PROB_CHOICES.map((p) => (
+                  <Chip key={p} active={Math.abs(rules.minProb - p) < 1e-9} onClick={() => setRules({ minProb: p })}>
+                    {Math.round(p * 100)}%
+                  </Chip>
+                ))}
+              </Field>
+              <Field label="Windows to trade">
+                {(['soonest', 'hour', 'today'] as Tenor[]).map((t) => (
+                  <Chip key={t} active={rules.tenors.includes(t)} onClick={() => toggleTenor(t)}>
+                    {TENOR_LABEL[t]}
+                  </Chip>
+                ))}
+              </Field>
+              <Field label="Direction">
+                <Chip active={rules.sides.includes('up')} onClick={() => toggleSide('up')}>
+                  <LuTrendingUp size={12} className="mr-1 inline text-up" /> UP
+                </Chip>
+                <Chip active={rules.sides.includes('down')} onClick={() => toggleSide('down')}>
+                  <LuTrendingDown size={12} className="mr-1 inline text-down" /> DOWN
+                </Chip>
+                <Chip active={false} disabled title="Range bets come next">
+                  Range · soon
+                </Chip>
+              </Field>
+              <Field label="Max leverage">
+                {LEV_CHOICES.map((l) => (
+                  <Chip key={l} active={rules.maxLeverage === l} onClick={() => setRules({ maxLeverage: l })}>
+                    {l}x
+                  </Chip>
+                ))}
+              </Field>
+            </div>
+          </div>
+
+          <div className="glass-card p-4">
+            <p className="eyebrow mb-3">Pacing and stops</p>
+            <div className="flex flex-col gap-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <NumField
+                  label="Max trades"
+                  value={limits.maxTrades}
+                  min={1}
+                  max={100}
+                  onChange={(v) => setLimits({ maxTrades: v })}
+                />
+                <NumField
+                  label="Stop after losses"
+                  value={limits.maxConsecutiveLosses}
+                  min={1}
+                  max={20}
+                  onChange={(v) => setLimits({ maxConsecutiveLosses: v })}
+                />
+              </div>
+              <Field label="Cooldown between trades">
+                {COOLDOWN_CHOICES.map((c) => (
+                  <Chip key={c} active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
+                    {c / 1000}s
+                  </Chip>
+                ))}
+              </Field>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------- dashboard stats ---------------------------- */
+
+/** A small teal "this is live" pulse dot. */
+function LivePulse() {
+  return (
+    <span className="relative flex h-1.5 w-1.5">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
+      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
+    </span>
+  );
+}
+
+const SPARK_UP = '#3ecf9a';
+const SPARK_DOWN = '#f0796b';
+
+/**
+ * A tiny live price sparkline on a canvas. It keeps its own rolling buffer of the last
+ * ~55 values (fed the live spot each render) and redraws on change. Canvas (not state)
+ * keeps it off the React render path: no per-tick re-render, and no ref reads during
+ * render. Trend colours the line teal (up over the window) or coral (down).
+ */
+function Sparkline({ value }: { value: number | null }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const bufRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (value != null && Number.isFinite(value)) {
+      const buf = bufRef.current;
+      if (buf.length === 0 || buf[buf.length - 1] !== value) {
+        buf.push(value);
+        if (buf.length > 55) buf.shift();
+      }
+    }
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const w = cv.clientWidth;
+    const h = cv.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const nw = Math.round(w * dpr);
+    const nh = Math.round(h * dpr);
+    if (cv.width !== nw || cv.height !== nh) {
+      cv.width = nw;
+      cv.height = nh;
+    }
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const b = bufRef.current;
+    if (b.length < 2) return;
+    const min = Math.min(...b);
+    const max = Math.max(...b);
+    const range = max - min || 1;
+    const px = (i: number) => (i / (b.length - 1)) * w;
+    const py = (v: number) => h - 2 - ((v - min) / range) * (h - 4);
+    const stroke = b[b.length - 1] >= b[0] ? SPARK_UP : SPARK_DOWN;
+
+    ctx.beginPath();
+    ctx.moveTo(px(0), py(b[0]));
+    for (let i = 1; i < b.length; i++) ctx.lineTo(px(i), py(b[i]));
+    ctx.lineTo(px(b.length - 1), h);
+    ctx.lineTo(px(0), h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, `${stroke}2e`);
+    grad.addColorStop(1, `${stroke}00`);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(px(0), py(b[0]));
+    for (let i = 1; i < b.length; i++) ctx.lineTo(px(i), py(b[i]));
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(px(b.length - 1), py(b[b.length - 1]), 2, 0, Math.PI * 2);
+    ctx.fillStyle = stroke;
+    ctx.fill();
+  }, [value]);
+
+  return <canvas ref={canvasRef} className="h-full w-full" aria-hidden />;
+}
+
+/** A generic KPI tile: label (+ optional live pulse), a big number, a small sub. */
+function StatTile({
+  label,
+  value,
+  sub,
+  valueClass,
+  icon: Icon,
+  live,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string;
+  valueClass?: string;
+  icon?: IconType;
+  live?: boolean;
+}) {
+  return (
+    <div className="glass-inset flex min-w-0 flex-col gap-1 p-3">
+      <span className="eyebrow flex items-center gap-1.5">
+        {Icon && <Icon size={11} className="flex-none text-text-3" />}
+        <span className="truncate">{label}</span>
+        {live && <LivePulse />}
+      </span>
+      <span className={`font-mono text-[19px] font-semibold leading-none tabular-nums tracking-tight ${valueClass ?? 'text-text-1'}`}>
+        {value}
+      </span>
+      {sub && <span className="truncate font-mono text-[10.5px] tabular-nums text-text-3">{sub}</span>}
+    </div>
+  );
+}
+
+/** The live-market tile: BTC spot with a pulse + an inline sparkline that moves. */
+function LivePriceTile({ spot, watching }: { spot: number | null; watching: number }) {
+  return (
+    <div className="glass-inset flex min-w-0 flex-col gap-1 p-3">
+      <span className="eyebrow flex items-center gap-1.5">
+        BTC <LivePulse />
+      </span>
+      <div className="flex items-end gap-2">
+        <span className="font-mono text-[19px] font-semibold leading-none tabular-nums tracking-tight text-text-1">
+          {spot != null ? `$${num(spot, 0)}` : '—'}
+        </span>
+        <div className="h-6 min-w-0 flex-1">
+          <Sparkline value={spot} />
+        </div>
+      </div>
+      <span className="truncate font-mono text-[10.5px] tabular-nums text-text-3">
+        watching {watching} market{watching === 1 ? '' : 's'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The top-of-dashboard stat band: one live-market tile plus Autopilot's lifetime
+ * numbers (from saved results). Always shown, so the page opens with something alive
+ * and a sense of track record even before a run starts.
+ */
+function StatBand({ spot, watching, history }: { spot: number | null; watching: number; history: RunResult[] }) {
+  const net = history.reduce((a, r) => a + r.realizedPnlUsd, 0);
+  const wins = history.reduce((a, r) => a + r.wins, 0);
+  const losses = history.reduce((a, r) => a + r.losses, 0);
+  const runs = history.length;
+  const trades = history.reduce((a, r) => a + r.tradeCount, 0);
+  const resolved = wins + losses;
+  const winRate = resolved > 0 ? Math.round((wins / resolved) * 100) : null;
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <LivePriceTile spot={spot} watching={watching} />
+      <StatTile
+        label="All-time P&L"
+        value={runs > 0 ? signedUsd(net) : '$0.00'}
+        valueClass={runs > 0 ? pnlClass(net) : 'text-text-2'}
+        sub={`${runs} run${runs === 1 ? '' : 's'} · ${trades} trade${trades === 1 ? '' : 's'}`}
+        icon={LuTrendingUp}
+      />
+      <StatTile
+        label="Win rate"
+        value={winRate != null ? `${winRate}%` : '—'}
+        sub={`${wins}W / ${losses}L`}
+        icon={LuActivity}
+      />
+      <StatTile label="Runs" value={num(runs, 0)} sub={runs > 0 ? 'saved to results' : 'none yet'} icon={LuHistory} />
+    </div>
+  );
+}
+
+/** The four live meters (budget / trades / open / time), a full-width strip. */
+function MetersStrip({
+  spentUsd,
+  budgetUsd,
+  tradeCount,
+  maxTrades,
+  openCount,
+  maxConcurrent,
+  armed,
+  timeLeftMs,
+  armDurationMs,
+}: {
+  spentUsd: number;
+  budgetUsd: number;
+  tradeCount: number;
+  maxTrades: number;
+  openCount: number;
+  maxConcurrent: number;
+  armed: boolean;
+  timeLeftMs: number;
+  armDurationMs: number;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      <Meter
+        icon={LuWallet}
+        label="Budget"
+        value={`$${num(spentUsd, 0)}`}
+        sub={`of $${num(budgetUsd, 0)}`}
+        frac={budgetUsd > 0 ? spentUsd / budgetUsd : 0}
+        color="var(--up)"
+      />
+      <Meter
+        icon={LuActivity}
+        label="Trades"
+        value={num(tradeCount, 0)}
+        sub={`of ${num(maxTrades, 0)}`}
+        frac={maxTrades > 0 ? tradeCount / maxTrades : 0}
+        color="#6aa6e6"
+      />
+      <Meter
+        icon={LuLayers}
+        label="Open now"
+        value={num(openCount, 0)}
+        sub={`of ${num(maxConcurrent, 0)}`}
+        frac={maxConcurrent > 0 ? openCount / maxConcurrent : 0}
+        color="#c9a0ff"
+      />
+      <Meter
+        icon={LuTimer}
+        label={armed ? 'Time left' : 'Ran for'}
+        value={mmss(timeLeftMs)}
+        sub={armed ? 'remaining' : 'of the run'}
+        frac={armed && armDurationMs > 0 ? 1 - timeLeftMs / armDurationMs : 0}
+        color="#9aa4af"
+      />
+    </div>
+  );
+}
+
+/** The run log as a self-contained panel (its own header), so it can sit in a grid cell. */
+function RunLogPanel({
+  log,
+  now,
+  armed,
+  ready,
+}: {
+  log: AutopilotLogEntry[];
+  now: number;
+  armed: boolean;
+  ready: boolean;
+}) {
+  return (
+    <div className="glass-card flex flex-col overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-white/6 px-4 py-2.5">
+        <h2 className="text-[13px] font-semibold text-text-1">Run log</h2>
+        {armed && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-(--accent-soft) px-2 py-0.5 text-[10.5px] font-medium text-up">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
+            </span>
+            Live
+          </span>
+        )}
+        {!ready && <span className="ml-auto text-[10.5px] text-text-3">Waiting for the live feed…</span>}
+      </div>
+      {log.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+          <LuGauge size={22} className="text-text-3" />
+          <p className="text-[13px] text-text-1">Nothing yet.</p>
+          <p className="max-w-xs text-[12px] leading-relaxed text-text-2">
+            Kelly logs every trade she places here as it happens.
+          </p>
+        </div>
+      ) : (
+        <div className="rows-divided max-h-112 overflow-y-auto">
+          {log.map((e) => (
+            <LogRow key={e.id} entry={e} now={now} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

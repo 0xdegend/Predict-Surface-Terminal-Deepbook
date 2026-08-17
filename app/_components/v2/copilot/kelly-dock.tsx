@@ -37,7 +37,7 @@ import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { parseIntent, placeConfirmation, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
-import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
+import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, personalizeMemory } from '@/lib/copilot/memory-greeting';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
@@ -559,7 +559,9 @@ function KellyPanel({
         pushBot(
           mems.length === 0
             ? ["I don't have anything saved about you yet. Tell me a preference like “remember I prefer safer up bets” and I'll keep it."]
-            : ['Here’s what I remember about you:', ...mems.map((m) => `• ${m}`)],
+            : mems.length === 1
+              ? [`I remember that ${personalizeMemory(mems[0])}.`]
+              : ['Here’s what I remember about you:', ...mems.map((m) => `• ${personalizeMemory(m)}`)],
         );
       } else if (intent.kind === 'remember') {
         const fact = intent.text ?? '';
@@ -908,10 +910,13 @@ function KellyPanel({
 function DrawerOpenBets() {
   const acct = usePredictAccountV2();
   const { positions } = useV2PortfolioPositions(acct.accountId, acct.owner);
-  if (!positions.some((p) => p.qty > 0)) return null;
+  // Live bets only — settled winners are keeper-redeemed within seconds, so including them
+  // would flash an already-paid "Claim" row on open until the redeem folds in
+  // ([[keeper-redeem-read-gap]]). Portfolio remains the full claim surface.
+  if (!positions.some((p) => p.qty > 0 && !p.settled)) return null;
   return (
     <div className="mt-1 border-t border-line pt-3.5">
-      <V2PositionsPanel />
+      <V2PositionsPanel liveOnly />
     </div>
   );
 }

@@ -44,7 +44,7 @@ import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
-import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
+import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, personalizeMemory } from '@/lib/copilot/memory-greeting';
 import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
@@ -1124,7 +1124,9 @@ export function V2CopilotScreen({
         pushBot(
           mems.length === 0
             ? ["I don't have anything saved about you yet. Tell me a preference like “remember I prefer safer up bets” and I'll keep it."]
-            : ['Here’s what I remember about you:', ...mems.map((m) => `• ${m}`)],
+            : mems.length === 1
+              ? [`I remember that ${personalizeMemory(mems[0])}.`]
+              : ['Here’s what I remember about you:', ...mems.map((m) => `• ${personalizeMemory(m)}`)],
         );
       } else if (intent.kind === 'remember') {
         const fact = intent.text ?? '';
@@ -1837,11 +1839,16 @@ function CopilotOpenBets({
     positionsRef.current = positions;
     recordRef.current = record;
   }, [positions, record, summaryRef, positionsRef, recordRef]);
-  const hasOpen = positions.some((p) => p.qty > 0);
-  if (!hasOpen) return null;
+  // Only live, in-play bets belong in this "open positions" watch-list. Settled winners are
+  // auto-redeemed by the keeper within seconds, so including them would flash an already-paid
+  // "Claim" row on landing until the redeem folds in ([[keeper-redeem-read-gap]]). The full
+  // list (incl. settled) still flows to the refs above, so "close my bet" / "how's my
+  // portfolio?" and the Portfolio page are unaffected.
+  const hasLiveOpen = positions.some((p) => p.qty > 0 && !p.settled);
+  if (!hasLiveOpen) return null;
   return (
     <div className="mt-1 border-t border-line pt-3.5">
-      <V2PositionsPanel />
+      <V2PositionsPanel liveOnly />
     </div>
   );
 }

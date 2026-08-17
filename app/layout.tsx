@@ -100,7 +100,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-bg-0 text-text-1">
+      {/* Extensions also inject onto <body> (e.g. __processed_<uuid>__); suppressHydrationWarning
+          does not cascade from <html>, so the body needs its own. One level deep only, so this
+          never hides a real mismatch inside <Providers> or the app tree. */}
+      <body suppressHydrationWarning className="min-h-full flex flex-col bg-bg-0 text-text-1">
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -179,16 +179,16 @@ function SignedOut({ onSignIn }: { onSignIn: () => void }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
       <LuLock size={22} className="text-text-3" />
-      <p className="text-[13px] text-text-1">Sign in to see your past chats</p>
+      <p className="text-[13px] text-text-1">Unlock your saved chats</p>
       <p className="max-w-xs text-[12px] leading-relaxed text-text-2">
-        A one-time wallet signature unlocks your saved conversations across devices. Your current chat is still kept on
-        this device either way.
+        A quick, gas-free signature (separate from connecting your wallet) keeps your saved chats private and lets them
+        follow you across devices. It lasts about a week. Your current chat stays on this device either way.
       </p>
       <button
         onClick={onSignIn}
         className="group glass-inset mt-1 inline-flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-text-2 transition-all hover:border-(--accent-line) hover:text-text-1"
       >
-        Sign in to Kelly
+        Unlock chats
       </button>
     </div>
   );

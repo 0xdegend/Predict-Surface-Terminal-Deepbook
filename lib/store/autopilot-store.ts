@@ -25,6 +25,7 @@ import {
   type StopReason,
   type TradeSide,
 } from '@/lib/autopilot/policy';
+import { presetPatch, DEFAULT_PRESET } from '@/lib/autopilot/presets';
 
 export type AutopilotStatus = 'idle' | 'armed' | 'stopped';
 
@@ -133,24 +134,28 @@ interface Run {
   settled: RunTradeResult[];
 }
 
-/** Gentle, conservative defaults: a small budget, a modest per-trade size, a
- *  short leash. The trader widens these on purpose, they are never pre-set high. */
+// A fresh setup lands on the Balanced preset, so the DEFAULTS are DERIVED from it (one
+// source of truth — the preset picker highlights "Balanced" on first load with no drift).
+// Only the money + time fields, which a preset never sets, are chosen here: a small
+// budget, a modest per-trade size, a short leash. The trader widens these on purpose.
+const _balanced = presetPatch(DEFAULT_PRESET);
+
 export const DEFAULT_RULES: AutopilotRules = {
-  minProb: 0.6,
   minEdge: 0,
-  tenors: ['soonest', 'hour'],
-  sides: ['up', 'down'],
-  maxLeverage: 2,
+  minProb: _balanced.rules.minProb!,
+  maxLeverage: _balanced.rules.maxLeverage!,
+  tenors: _balanced.rules.tenors!,
+  sides: _balanced.rules.sides!,
 };
 
 export const DEFAULT_LIMITS: AutopilotLimits = {
   budgetUsd: 25,
   perTradeUsd: 5,
-  maxTrades: 5,
-  maxConcurrent: 3,
-  cooldownMs: 90_000,
   armDurationMs: 60 * 60_000,
-  maxConsecutiveLosses: 3,
+  maxTrades: _balanced.limits.maxTrades!,
+  maxConcurrent: _balanced.limits.maxConcurrent!,
+  cooldownMs: _balanced.limits.cooldownMs!,
+  maxConsecutiveLosses: _balanced.limits.maxConsecutiveLosses!,
 };
 
 const MAX_LOG = 120;
