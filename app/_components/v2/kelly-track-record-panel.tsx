@@ -13,7 +13,7 @@
  * House style matches the Leaderboard panel: max-w-5xl container, glass cards, mono numerals,
  * teal (up) / coral (down) semantics, hairline dividers.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +31,8 @@ import {
   LuRefreshCw,
 } from 'react-icons/lu';
 import { fetchTrackRecord, type TrackRecordCall } from '@/lib/copilot/receipts-client';
+import { KellyTrackRecordShareModal } from './kelly-track-record-share-modal';
+import type { TrackRecordShareData } from './kelly-track-record-share-card-canvas';
 import { walrusConfig } from '@/config/walrus';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { useNow } from '@/lib/hooks/use-now';
@@ -74,14 +76,25 @@ export function KellyTrackRecordPanel() {
   const isForecast = tab === 'forecast';
   const loadingEmpty = q.isLoading && !data;
 
-  function share() {
-    const label = isForecast ? 'Forecast' : 'Pick';
-    const wrTxt = wr == null ? '' : ` ${label} win rate so far: ${Math.round(wr * 100)}%.`;
-    const url = typeof window !== 'undefined' ? `${window.location.origin}/v2/track-record` : '';
-    const text = `Kelly calls BTC and signs every prediction to Walrus the second it's made, with no edits after the fact.${wrTxt} See the receipts:`;
-    const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-    window.open(intent, '_blank', 'noopener,noreferrer');
-  }
+  const [shareOpen, setShareOpen] = useState(false);
+  // The card the Share button posts: this tab's own record + its latest calls as proof.
+  const shareData = useMemo<TrackRecordShareData | null>(() => {
+    if (!active) return null;
+    const recent = (data?.calls ?? [])
+      .filter((c) => (isForecast ? c.role === 'read' : c.role !== 'read'))
+      .slice(0, 3)
+      .map((c) => ({ summary: c.summary, outcome: c.outcome }));
+    return {
+      tab,
+      winRate: active.winRate,
+      total: active.total,
+      won: active.won,
+      lost: active.lost,
+      settled: active.resolved,
+      pending: active.pending,
+      recent,
+    };
+  }, [active, data?.calls, isForecast, tab]);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5">
@@ -124,7 +137,7 @@ export function KellyTrackRecordPanel() {
             )}
           </div>
           <button
-            onClick={share}
+            onClick={() => setShareOpen(true)}
             className="group glass-inset inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
           >
             <LuShare2 size={12} className="transition-colors duration-200 group-hover:text-accent" />
@@ -196,6 +209,8 @@ export function KellyTrackRecordPanel() {
           settlement, so a call stays <span className="text-text-2">Awaiting settle</span> until its market settles.
         </span>
       </p>
+
+      <KellyTrackRecordShareModal open={shareOpen} data={shareData} onClose={() => setShareOpen(false)} />
     </div>
   );
 }
