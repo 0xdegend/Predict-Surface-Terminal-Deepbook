@@ -53,7 +53,7 @@ import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
 import { ChatHistoryPanel } from './chat-history-panel';
 import type { StoredMessage } from '@/lib/walrus/chat-history';
 import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
-import { recordCall, binaryIntent, rangeIntent } from '@/lib/copilot/receipts-client';
+import { recordCall, binaryIntent, rangeIntent, readIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type RangeSuggestion, type CopilotReply, type OnboardAction, type ShareCard } from '@/lib/copilot/respond';
 import { askKellyAI, isPerformanceQuestion, type AiContext, type AiTurn } from '@/lib/copilot/ai';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
@@ -796,6 +796,22 @@ export function V2CopilotScreen({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acct.owner, memoryAuth.signedIn]);
+
+  // Verifiable forecast record: when Kelly has a directional lean on the soonest market, sign
+  // + store it as a 'read' receipt on Walrus. The server prices it at its own live forward and
+  // later scores it as a plain hit rate (did BTC end that way), so it's a provable "is the AI
+  // right?" scoreboard. Deduped to one read per market (receipts-client), so it captures her
+  // standing hourly call, fail-soft, behind the same flag as the rest of receipts. A 'range'
+  // (no-direction) read isn't scoreable as a hit, so it's skipped.
+  const readMarketId = rows[0]?.marketId ?? null;
+  const readExpiry = rows[0]?.expiry ?? null;
+  const readPick = lean?.pick ?? null;
+  useEffect(() => {
+    if (!COPILOT_LIVE || !KELLY_RECEIPTS) return;
+    if (!readMarketId || readExpiry == null) return;
+    if (readPick !== 'up' && readPick !== 'down') return;
+    void recordCall(readIntent({ marketId: readMarketId, expiry: readExpiry, direction: readPick, source: 'rules' }));
+  }, [readMarketId, readExpiry, readPick]);
 
   // Kelly's remembered STYLE for this trader (parsed from their memory notes), so an
   // open-ended "recommend a bet" lands in their usual direction / risk level. Recalled

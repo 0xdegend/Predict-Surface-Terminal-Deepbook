@@ -28,11 +28,17 @@ import { kv } from '@/lib/server/kv';
 export type CallKind = 'binary' | 'range';
 export type CallSource = 'rules' | 'ai';
 export type CallOutcome = 'won' | 'lost' | 'pending';
+/** What the call IS: a 'pick' is a concrete bet Kelly recommended (a specific strike/band to
+ *  trade); a 'read' is her directional market forecast (which way BTC goes from here), scored
+ *  as a plain hit-rate against the call-time price. Absent ⇒ 'pick' (all pre-forecast receipts). */
+export type CallRole = 'pick' | 'read';
 
 /** The falsifiable claim: what Kelly predicted and how it gets scored. Prices are in USD. */
 export interface CallClaim {
   kind: CallKind;
   asset: 'BTC';
+  /** Whether this is a concrete bet pick or a directional read/forecast. Absent ⇒ 'pick'. */
+  role?: CallRole;
   /** binary only — the side that pays (up = settles above strike). */
   direction?: 'up' | 'down';
   /** binary only — the strike, in USD. */
@@ -64,6 +70,9 @@ export interface CallIntent {
    *  scoring is strike/band vs settlement, so a wrong value never changes won/lost. */
   expiry: number;
   source: CallSource;
+  /** 'read' for a directional forecast (strike is the SERVER's live forward, not client-sent);
+   *  absent/'pick' for a concrete bet recommendation. */
+  role?: CallRole;
   /** binary */
   direction?: 'up' | 'down';
   strike?: number;
@@ -92,9 +101,18 @@ export function claimFromIntent(intent: CallIntent, priced: PricedFields): CallC
     expiry: intent.expiry,
     marketId: intent.marketId,
   };
-  return intent.kind === 'range'
-    ? { ...base, kind: 'range', lower: intent.lower, higher: intent.higher }
-    : { ...base, kind: 'binary', direction: intent.direction, strike: intent.strike };
+  if (intent.kind === 'range') {
+    return { ...base, kind: 'range', lower: intent.lower, higher: intent.higher };
+  }
+  // A read's strike is the call-time forward (set by the route), so it scores as "did BTC end
+  // above/below where it was when Kelly called it". A pick keeps the recommended strike.
+  return {
+    ...base,
+    kind: 'binary',
+    direction: intent.direction,
+    strike: intent.role === 'read' ? priced.forward : intent.strike,
+    ...(intent.role === 'read' ? { role: 'read' as const } : {}),
+  };
 }
 
 /** The signable core of a receipt (everything the signature covers). */

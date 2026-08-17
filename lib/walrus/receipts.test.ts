@@ -179,4 +179,27 @@ describe('claimFromIntent — server-priced claim assembly', () => {
     // The intent's strike/direction don't leak into a range claim.
     expect((claim as { strike?: number }).strike).toBeUndefined();
   });
+
+  it('builds a READ claim: strike is the server forward, tagged role "read"', () => {
+    // A read carries no client strike — the route uses its own live forward as the level.
+    const intent: CallIntent = { kind: 'binary', marketId: '0xm3', expiry: 789, source: 'rules', role: 'read', direction: 'up' };
+    const claim = claimFromIntent(intent, { probability: 0.5, spotAtCall: 116_000, forward: 116_200 });
+    expect(claim).toMatchObject({ kind: 'binary', role: 'read', direction: 'up', strike: 116_200, marketId: '0xm3' });
+  });
+});
+
+describe('read (forecast) receipts', () => {
+  const readUp: CallClaim = {
+    kind: 'binary', asset: 'BTC', role: 'read', direction: 'up', strike: 116_200,
+    probability: 0.5, spotAtCall: 116_000, forward: 116_200, expiry: 789, marketId: '0xm3',
+  };
+  it('scores a read as a plain hit against its call-time price', () => {
+    expect(scoreCall(readUp, 116_500)).toBe('won'); // BTC ended above the call level
+    expect(scoreCall(readUp, 116_000)).toBe('lost');
+    expect(scoreCall(readUp, null)).toBe('pending');
+  });
+  it('summarizes a read as a forecast, without the ~50% probability', () => {
+    expect(summarizeClaim(readUp)).toBe('Called BTC up from $116,200');
+    expect(summarizeClaim({ ...readUp, direction: 'down' })).toBe('Called BTC down from $116,200');
+  });
 });

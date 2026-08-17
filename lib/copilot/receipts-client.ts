@@ -11,13 +11,16 @@
  * The intent carries NO odds/spot/forward — those are server-computed, so a caller can't forge
  * Kelly's numbers. Types come in via `import type` so the server-only receipts module is never bundled.
  */
-import type { CallIntent, CallSource } from '@/lib/walrus/receipts';
+import type { CallIntent, CallRole, CallSource } from '@/lib/walrus/receipts';
 
 const _recorded = new Set<string>();
 let _count = 0;
 const SESSION_CAP = 60;
 
 function callKey(intent: CallIntent): string {
+  // One read per market (Kelly's standing directional call for that hour); a pick is keyed by
+  // its side/strike or band so distinct recommendations each record once.
+  if (intent.role === 'read') return `read:${intent.marketId}`;
   return intent.kind === 'range'
     ? `r:${intent.marketId}:${Math.round(intent.lower ?? 0)}-${Math.round(intent.higher ?? 0)}`
     : `b:${intent.marketId}:${intent.direction}:${Math.round(intent.strike ?? 0)}`;
@@ -38,6 +41,24 @@ export function binaryIntent(o: {
     source: o.source ?? 'rules',
     direction: o.isUp ? 'up' : 'down',
     strike: o.strikePrice,
+  };
+}
+
+/** Build a directional READ (forecast) intent from Kelly's surface read. No strike — the
+ *  server uses its own live forward as the scoring level, so the call can't be gamed. */
+export function readIntent(o: {
+  marketId: string;
+  expiry: number;
+  direction: 'up' | 'down';
+  source?: CallSource;
+}): CallIntent {
+  return {
+    kind: 'binary',
+    role: 'read',
+    marketId: o.marketId,
+    expiry: o.expiry,
+    source: o.source ?? 'rules',
+    direction: o.direction,
   };
 }
 
@@ -81,19 +102,29 @@ export interface TrackRecordCall {
   blobId: string;
   createdAt: number;
   source: CallSource;
+  /** 'read' = a directional forecast, 'pick' = a concrete bet recommendation. */
+  role: CallRole;
   outcome: 'won' | 'lost' | 'pending';
   summary: string;
   expiry: number;
   marketId: string;
 }
 
-export interface TrackRecordResponse {
+/** A win/loss roll-up over one slice of calls (all, forecasts, or picks). */
+export interface TrackRecordSplit {
   total: number;
   resolved: number;
   won: number;
   lost: number;
   pending: number;
   winRate: number | null;
+}
+
+export interface TrackRecordResponse extends TrackRecordSplit {
+  /** Kelly's directional forecasts only (hit rate vs a 50% baseline). */
+  forecast: TrackRecordSplit;
+  /** Kelly's concrete bet recommendations only. */
+  picks: TrackRecordSplit;
   calls: TrackRecordCall[];
 }
 

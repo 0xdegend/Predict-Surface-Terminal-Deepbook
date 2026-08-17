@@ -46,9 +46,13 @@ function parseIntent(body: Record<string, unknown>): CallIntent | null {
   if (!marketId || !Number.isFinite(expiry) || expiry <= 0) return null;
   const source: CallSource = body.source === 'ai' ? 'ai' : 'rules';
   if (kind === 'binary') {
-    const strike = posNum(body.strike);
     const direction = body.direction === 'down' ? 'down' : body.direction === 'up' ? 'up' : null;
-    if (strike == null || !direction) return null;
+    if (!direction) return null;
+    // A 'read' (directional forecast) carries no client strike — the server uses its own live
+    // forward as the strike, so the call can't be gamed by sending a favorable level.
+    if (body.role === 'read') return { kind, marketId, expiry, source, role: 'read', direction };
+    const strike = posNum(body.strike);
+    if (strike == null) return null;
     return { kind, marketId, expiry, source, direction, strike };
   }
   const lower = posNum(body.lower);
@@ -76,12 +80,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   let priced;
   try {
     const pricer = await simulateLivePricer(v2GrpcClient(), intent.marketId);
+    // A read is priced at the live forward (its scoring strike); a pick at its own strike.
+    const binaryStrike = intent.role === 'read' ? pricer.forward : intent.strike!;
     const probability =
       intent.kind === 'range'
         ? fairRange(pricer, intent.lower!, intent.higher!)
         : intent.direction === 'up'
-          ? fairUp(pricer, intent.strike!)
-          : fairDn(pricer, intent.strike!);
+          ? fairUp(pricer, binaryStrike)
+          : fairDn(pricer, binaryStrike);
     if (!(probability >= 0 && probability <= 1)) throw new Error('probability out of range');
     const spot = pythSpot(await getPythLatest(predictV2Config.asset.pythFeedId).catch(() => null)) ?? pricer.forward;
     priced = { probability, spotAtCall: spot, forward: pricer.forward };
@@ -136,6 +142,16 @@ export async function GET(req: Request): Promise<NextResponse> {
   const entries = await listCallReceipts(limit);
   const settled = await settlementMap(entries, now);
   const tr = trackRecord(entries, (id) => settled.get(id) ?? null);
+  // Split the scoreboard by role: 'read' = Kelly's directional forecasts (hit rate vs 50%),
+  // everything else = concrete bet picks. The overall block stays as-is for back-compat.
+  const split = (calls: typeof tr.calls) => {
+    const won = calls.filter((c) => c.outcome === 'won').length;
+    const lost = calls.filter((c) => c.outcome === 'lost').length;
+    const pending = calls.filter((c) => c.outcome === 'pending').length;
+    return { total: calls.length, resolved: won + lost, won, lost, pending, winRate: won + lost > 0 ? won / (won + lost) : null };
+  };
+  const reads = tr.calls.filter((c) => c.claim.role === 'read');
+  const picks = tr.calls.filter((c) => c.claim.role !== 'read');
   return NextResponse.json({
     total: tr.total,
     resolved: tr.resolved,
@@ -143,11 +159,14 @@ export async function GET(req: Request): Promise<NextResponse> {
     lost: tr.lost,
     pending: tr.pending,
     winRate: tr.winRate,
+    forecast: split(reads),
+    picks: split(picks),
     calls: tr.calls.map((c) => ({
       id: c.id,
       blobId: c.blobId,
       createdAt: c.createdAt,
       source: c.source,
+      role: c.claim.role ?? 'pick',
       outcome: c.outcome,
       summary: summarizeClaim(c.claim),
       expiry: c.claim.expiry,

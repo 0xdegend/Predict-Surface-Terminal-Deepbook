@@ -11,6 +11,11 @@ import { walrusConfig } from '@/config/walrus';
 
 /** A compact one-line label for a call (feeds, share cards, OG). */
 export function summarizeClaim(claim: CallClaim): string {
+  // A read is a directional forecast scored at the call-time price, so we phrase it as a call
+  // "from $X" and drop the ~50% probability (it's at-the-money, so the number says nothing).
+  if (claim.role === 'read') {
+    return `Called BTC ${claim.direction === 'up' ? 'up' : 'down'} from $${Math.round(claim.strike ?? 0).toLocaleString()}`;
+  }
   const pct = `${Math.round(claim.probability * 100)}%`;
   if (claim.kind === 'range') {
     return `BTC stays $${Math.round(claim.lower ?? 0).toLocaleString()}–$${Math.round(claim.higher ?? 0).toLocaleString()} (${pct})`;
@@ -20,6 +25,9 @@ export function summarizeClaim(claim: CallClaim): string {
 
 /** The claim without the trailing probability, for headline use on a card. */
 export function claimHeadline(claim: CallClaim): string {
+  if (claim.role === 'read') {
+    return `Kelly called BTC ${claim.direction === 'up' ? 'up' : 'down'} from $${Math.round(claim.strike ?? 0).toLocaleString()}`;
+  }
   if (claim.kind === 'range') {
     return `BTC settles between $${Math.round(claim.lower ?? 0).toLocaleString()} and $${Math.round(claim.higher ?? 0).toLocaleString()}`;
   }

@@ -108,6 +108,21 @@ export function KellyTrackRecordPanel() {
               {wr == null ? '—' : `${Math.round(wr * 100)}%`}
             </div>
             <p className="eyebrow mt-1.5">Win rate</p>
+            {data && (data.forecast.resolved > 0 || data.picks.resolved > 0) && (
+              <p className="mt-1.5 font-mono text-[10px] tabular-nums text-text-3">
+                {data.forecast.winRate != null && (
+                  <span>
+                    Forecasts <span className="text-text-2">{Math.round(data.forecast.winRate * 100)}%</span>
+                  </span>
+                )}
+                {data.forecast.winRate != null && data.picks.winRate != null && <span className="px-1">·</span>}
+                {data.picks.winRate != null && (
+                  <span>
+                    Picks <span className="text-text-2">{Math.round(data.picks.winRate * 100)}%</span>
+                  </span>
+                )}
+              </p>
+            )}
           </div>
           <button
             onClick={share}
@@ -224,7 +239,16 @@ function CallRow({ call, now }: { call: TrackRecordCall; now: number }) {
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3.5">
       <div className="min-w-0">
         <p className="truncate font-mono text-[13px] text-text-1">{call.summary}</p>
-        <p className="mt-0.5 text-[10.5px] tabular-nums text-text-3">{ago(call.createdAt, now)}</p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-[10.5px] tabular-nums text-text-3">
+          <span
+            className={`rounded-sm px-1 py-px text-[9.5px] font-medium tracking-wide uppercase ${
+              call.role === 'read' ? 'bg-(--accent-soft) text-accent' : 'bg-white/5 text-text-2'
+            }`}
+          >
+            {call.role === 'read' ? 'Forecast' : 'Pick'}
+          </span>
+          {ago(call.createdAt, now)}
+        </p>
       </div>
       <div className="flex items-center gap-1.5 sm:gap-2">
         <OutcomePill outcome={call.outcome} />
