@@ -40,6 +40,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { CopilotIntent, Conviction, BetDirection, Horizon, MetricKind, OddsLevel, BetTarget, ExplainTopic, EventRange } from './intents';
 import { preferenceLine, type StylePrefs } from './style-prefs';
+import { learnedOpener, type LearnedProfile } from './lessons';
 
 const usd = (v: number) => `$${compact(v)}`;
 
@@ -111,6 +112,11 @@ export interface CopilotContext {
    *  break a tie / pick a default in the trader's usual style. An explicit ask always
    *  wins (the host doesn't pass this into directional/sized requests). */
   preference?: StylePrefs | null;
+  /** An outcome-derived profile of what the trader actually WINS at (lib/copilot/lessons),
+   *  from their settled bets. Like `preference` it only nudges the open-ended "best bet"
+   *  pick, and only as a fallback: an explicit ask, then the off-chain lean, then a stated
+   *  preference all rank ahead of it. Null until enough settled history exists. */
+  learned?: LearnedProfile | null;
 }
 
 /** The "current BTC price" to SHOW the trader — the tape's spot when we have it,
@@ -680,24 +686,31 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
     // drop), and load a SAFE bet into the ticket so "best bet" is always actionable.
     const rec = recommendation(ctx.insights);
     const pref = ctx.preference ?? null;
-    // Side by the off-chain lean; if there's none, fall back to the trader's usual
-    // lean (remembered), then to the surface's own slight tilt.
+    const learned = ctx.learned ?? null;
+    // Side by the off-chain lean; if there's none, fall back to the trader's stated
+    // lean (remembered), then to what their results lean (learned), then to the
+    // surface's own slight tilt.
     const isUpPick =
       rec?.pick === 'up' ? true
       : rec?.pick === 'down' ? false
       : pref?.lean === 'up' ? true
       : pref?.lean === 'down' ? false
+      : learned?.lean === 'up' ? true
+      : learned?.lean === 'down' ? false
       : upFair(pricer.forward * 1.01, pricer.forward, pricer.svi) >= 1 - upFair(pricer.forward * 0.99, pricer.forward, pricer.svi);
     const dir: BetDirection = isUpPick ? 'up' : 'down';
-    // Default to a safer pick, unless the trader usually goes for bigger payouts.
-    const conv: Conviction = pref?.risk === 'bold' ? 'longshot' : 'safe';
+    // Default to a safer pick, unless the trader usually goes for bigger payouts (stated),
+    // or their own results have paid off on bolder bets (learned).
+    const risk = pref?.risk ?? learned?.risk ?? 'safe';
+    const conv: Conviction = risk === 'bold' ? 'longshot' : 'safe';
     const convWord = conv === 'longshot' ? 'longshot' : 'safer';
     const strikePrice = toFloat(strikeForDirectionFair(CONVICTION_TARGET[conv], pricer.forward, pricer.svi, market.admission_tick_size, isUpPick));
     const prob = directionFair(strikePrice, pricer.forward, pricer.svi, isUpPick);
     const payoutMult = payoutMultiple(prob);
     const label = timeLeftLabel(market.expiry, ctx.now);
-    // Personalize the opener when the pick reflects the trader's remembered style.
-    const persona = pref ? preferenceLine(pref) : null;
+    // Personalize the opener when the pick reflects the trader's remembered style, or
+    // failing that, what their own settled results lean toward.
+    const persona = (pref ? preferenceLine(pref) : null) ?? (learned ? learnedOpener(learned) : null);
     return {
       text: [
         persona ??

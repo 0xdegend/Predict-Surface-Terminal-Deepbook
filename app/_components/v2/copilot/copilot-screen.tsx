@@ -46,6 +46,7 @@ import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, e
 import { recallMemories, recallMemoriesForAI, rememberFact } from '@/lib/copilot/memory-client';
 import { welcomeBackLines, welcomeBackFromHint, rememberedName, recallReplyLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
 import { firstVisitToday, readGreetingHint, cacheGreetingHint } from '@/lib/copilot/greeting-cadence';
+import { deriveLearnedProfile, learnedLessonNotes, claimLessonSlot } from '@/lib/copilot/lessons';
 import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
@@ -1405,6 +1406,7 @@ export function V2CopilotScreen({
       leaderboard: standingFor(leaderboardRows, acct.owner),
       selection,
       preference: stylePrefsRef.current,
+      learned: deriveLearnedProfile(recordRef.current?.history ?? []),
     });
   }
 
@@ -1676,7 +1678,7 @@ export function V2CopilotScreen({
                 suggestions={PAUSED_CHIPS}
                 onOpenHistory={historyEnabled ? () => setHistoryOpen(true) : undefined}
                 onNewChat={historyEnabled ? () => { newChatSession(); setMessages([GREETING]); } : undefined}
-                threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
+                threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} memorySignedIn={memoryAuth.signedIn} />}
               />
             </div>
           </div>
@@ -1733,7 +1735,7 @@ export function V2CopilotScreen({
             onOpenHistory={historyEnabled ? () => setHistoryOpen(true) : undefined}
             onNewChat={historyEnabled ? () => { newChatSession(); setMessages([GREETING]); } : undefined}
             pinnedTop={<CopilotRead bias={lean} vol={vol} upChance={rows[0]?.upChance ?? null} closes={candles?.closes ?? null} />}
-            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} />}
+            threadEnd={<CopilotOpenBets summaryRef={portfolioRef} positionsRef={positionsRef} recordRef={recordRef} memorySignedIn={memoryAuth.signedIn} />}
           />
         </aside>
       </main>
@@ -1899,10 +1901,13 @@ function CopilotOpenBets({
   summaryRef,
   positionsRef,
   recordRef,
+  memorySignedIn,
 }: {
   summaryRef: MutableRefObject<PortfolioSummary | null>;
   positionsRef: MutableRefObject<V2PortfolioPosition[]>;
   recordRef: MutableRefObject<CopilotRecord | null>;
+  /** Whether the trader is signed in to Kelly memory (gates the durable lesson write). */
+  memorySignedIn: boolean;
 }) {
   const acct = usePredictAccountV2();
   const { positions, marketMap } = useV2PortfolioPositions(acct.accountId, acct.owner);
@@ -1920,6 +1925,19 @@ function CopilotOpenBets({
     positionsRef.current = positions;
     recordRef.current = record;
   }, [positions, record, summaryRef, positionsRef, recordRef]);
+  // The learning loop: once the settled history is rich enough, derive what the trader
+  // actually wins at and write those lessons to Kelly's memory (durable, so they show in
+  // the greeting/recall and ground the LLM; the recommendation reads them live via
+  // deriveLearnedProfile). Once per wallet per session, signed-in only, fire-and-forget.
+  useEffect(() => {
+    if (!KELLY_MEMORY || !memorySignedIn) return;
+    const owner = acct.owner;
+    if (!owner) return;
+    const notes = learnedLessonNotes(deriveLearnedProfile(history));
+    if (notes.length === 0) return;
+    if (!claimLessonSlot(owner)) return; // don't re-write on every 15s history poll
+    for (const note of notes) void rememberFact(owner, note);
+  }, [history, memorySignedIn, acct.owner]);
   // Only live, in-play bets belong in this "open positions" watch-list. Settled winners are
   // auto-redeemed by the keeper within seconds, so including them would flash an already-paid
   // "Claim" row on landing until the redeem folds in ([[keeper-redeem-read-gap]]). The full
