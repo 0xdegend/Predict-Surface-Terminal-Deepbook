@@ -18,6 +18,7 @@ import {
   LuBrackets,
   LuHistory,
   LuLock,
+  LuCornerDownLeft,
 } from 'react-icons/lu';
 import { useNow } from '@/lib/hooks/use-now';
 import { num } from '@/lib/format';
@@ -40,11 +41,14 @@ export function ChatHistoryPanel({
   history,
   signedIn,
   onSignIn,
+  onContinue,
 }: {
   onClose: () => void;
   history: KellyChatHistory;
   signedIn: boolean;
   onSignIn: () => void;
+  /** Reopen a past chat in the live thread to keep talking. Omit to keep it read-only. */
+  onContinue?: (convo: StoredConversation) => void;
 }) {
   const { refreshList, loadConversation, conversations, listLoading } = history;
   const now = useNow(60_000);
@@ -92,38 +96,54 @@ export function ChatHistoryPanel({
         </div>
 
         {/* body */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {viewing ? (
-            <Transcript convo={viewing} />
-          ) : !signedIn ? (
-            <SignedOut onSignIn={onSignIn} />
-          ) : listLoading && conversations.length === 0 ? (
-            <ListSkeleton />
-          ) : conversations.length === 0 ? (
-            <Empty />
-          ) : (
-            <ul className="divide-y divide-line">
-              {conversations.map((c) => (
-                <li key={c.id}>
-                  <button
-                    onClick={() => void openConversation(c.id)}
-                    disabled={loadingId != null}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03] disabled:opacity-60"
-                  >
-                    <LuMessageSquare size={15} className="flex-none text-text-3" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] text-text-1">{c.preview}</span>
-                      <span className="mt-0.5 block text-[10.5px] tabular-nums text-text-3">
-                        {ago(c.updatedAt, now)} · {c.count} messages
+        {viewing ? (
+          <>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <Transcript convo={viewing} />
+            </div>
+            {onContinue && (
+              <div className="border-t border-line p-3">
+                <button
+                  onClick={() => onContinue(viewing)}
+                  className="group glass-inset inline-flex w-full items-center justify-center gap-1.5 px-3 py-2.5 text-[12.5px] font-medium text-text-1 transition-all hover:border-(--accent-line)"
+                >
+                  <LuCornerDownLeft size={14} className="text-accent" /> Continue this chat
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {!signedIn ? (
+              <SignedOut onSignIn={onSignIn} />
+            ) : listLoading && conversations.length === 0 ? (
+              <ListSkeleton />
+            ) : conversations.length === 0 ? (
+              <Empty />
+            ) : (
+              <ul className="divide-y divide-line">
+                {conversations.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      onClick={() => void openConversation(c.id)}
+                      disabled={loadingId != null}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 disabled:opacity-60"
+                    >
+                      <LuMessageSquare size={15} className="flex-none text-text-3" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] text-text-1">{c.preview}</span>
+                        <span className="mt-0.5 block text-[10.5px] tabular-nums text-text-3">
+                          {ago(c.updatedAt, now)} · {c.count} messages
+                        </span>
                       </span>
-                    </span>
-                    {loadingId === c.id && <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line border-t-accent" />}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                      {loadingId === c.id && <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line border-t-accent" />}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

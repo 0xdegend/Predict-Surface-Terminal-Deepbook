@@ -17,6 +17,7 @@
  */
 import { MemWal } from '@mysten-incubation/memwal';
 import { walrusConfig } from '@/config/walrus';
+import { isMeaningfulMemory } from '@/lib/copilot/memory-quality';
 
 /**
  * Namespace prefix for all Kelly memories (isolates them from any other app surface).
@@ -54,21 +55,42 @@ export function getKellyMemory(): MemWal {
 }
 
 export interface RememberedMemory {
-  /** Stable id (also the vector row id). */
+  /** The relayer's job id (also the vector row id once indexed). Known immediately. */
   id: string;
-  /** Walrus blob id holding the encrypted memory. */
-  blobId: string;
+  /** The relayer's accept status, e.g. "pending". */
+  status: string;
 }
 
 /**
- * Store a memory for a trader and wait until it is indexed. Namespaced per wallet.
- * `text` should be a short, self-contained fact, e.g. "prefers safer UP bets near the money".
+ * Store a memory for a trader and return as soon as the relayer ACCEPTS the job (a
+ * fast 202), so Kelly can acknowledge instantly. The relayer keeps embedding,
+ * Seal-encrypting, uploading to Walrus, and indexing in the BACKGROUND — that
+ * pipeline is the ~10-30s the old `rememberAndWait` used to block the reply on.
+ * Namespaced per wallet.
+ *
+ * The write is optimistic: the caller should acknowledge, then run
+ * `confirmRememberForUser(id, owner)` after the response (via `after()`) to catch a
+ * genuine failure. `text` should be a short, self-contained fact, e.g.
+ * "prefers safer UP bets near the money".
  */
 export async function rememberForUser(owner: string, text: string): Promise<RememberedMemory> {
-  const r = await getKellyMemory().rememberAndWait(text, namespaceForUser(owner), {
-    timeoutMs: 150_000,
-  });
-  return { id: r.id, blobId: r.blob_id };
+  const r = await getKellyMemory().remember(text, namespaceForUser(owner));
+  return { id: r.job_id, status: r.status };
+}
+
+/**
+ * Best-effort confirmation of an accepted remember job: poll it to its terminal
+ * state and log (never throw) if it failed or timed out. Meant to run AFTER the
+ * response has gone out (via Next's `after()`), so the trader's ack stays instant
+ * and an optimistic "saved" never silently swallows a real failure. A memory that
+ * didn't stick just won't turn up in recall.
+ */
+export async function confirmRememberForUser(jobId: string, owner: string): Promise<void> {
+  try {
+    await getKellyMemory().waitForRememberJob(jobId, { timeoutMs: 150_000 });
+  } catch (err) {
+    console.error(`[kelly-memory] remember job ${jobId} for ${owner} did not confirm:`, err);
+  }
 }
 
 export interface RecalledMemory {
@@ -89,5 +111,10 @@ export async function recallForUser(
     namespace: namespaceForUser(owner),
     limit,
   });
-  return (res.results ?? []).map((m) => ({ text: m.text ?? '' }));
+  // Drop any filler fragment ("from now", "for later") a pre-guard write left behind, so
+  // leftover junk never renders in the greeting or the "what do you remember" list. There's
+  // no per-item delete on Walrus Memory, so hiding it at recall is how we retire one.
+  return (res.results ?? [])
+    .map((m) => ({ text: m.text ?? '' }))
+    .filter((m) => isMeaningfulMemory(m.text));
 }

@@ -37,7 +37,8 @@ import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { parseIntent, placeConfirmation, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
-import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, personalizeMemory } from '@/lib/copilot/memory-greeting';
+import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallReplyLines } from '@/lib/copilot/memory-greeting';
+import { firstVisitToday } from '@/lib/copilot/greeting-cadence';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
@@ -420,10 +421,13 @@ function KellyPanel({
       const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES);
       if (cancelled) return;
       const lines = welcomeBackLines(mems);
-      if (lines.length === 0) return;
+      if (lines.length === 0) return; // nothing personal to say → keep the full intro
+      // Shared with the full page: first co-pilot landing of the day keeps the whole
+      // intro; a repeat visit the same day swaps it for the short welcome-back line.
+      const returning = !firstVisitToday(owner);
       setMessages((m) => {
         if (m.some((x) => x.role === 'user' || x.id === 'welcome-back')) return m;
-        return [...m, { id: 'welcome-back', role: 'assistant', text: lines }];
+        return returning ? [{ id: 'welcome-back', role: 'assistant', text: lines }] : m;
       });
     })();
     return () => {
@@ -555,21 +559,21 @@ function KellyPanel({
         return;
       }
       if (intent.kind === 'recall_memory') {
-        const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, 8);
-        pushBot(
-          mems.length === 0
-            ? ["I don't have anything saved about you yet. Tell me a preference like “remember I prefer safer up bets” and I'll keep it."]
-            : mems.length === 1
-              ? [`I remember that ${personalizeMemory(mems[0])}.`]
-              : ['Here’s what I remember about you:', ...mems.map((m) => `• ${personalizeMemory(m)}`)],
-        );
+        const subject = intent.subject ?? 'general';
+        const mems = await recallMemories(owner, intent.query ?? MEMORY_GREETING_QUERY, 8);
+        pushBot(recallReplyLines(subject, mems));
       } else if (intent.kind === 'remember') {
         const fact = intent.text ?? '';
         if (!fact) {
           pushBot(['What should I remember? Try “remember I prefer safer up bets”.']);
         } else {
           const saved = await rememberFact(owner, fact);
-          pushBot(saved ? ['Got it. I’ll remember that.'] : ["I couldn't save that just now — give it a moment and try again."]);
+          const nm = fact.match(/^your name is (.+)$/i);
+          pushBot(
+            saved
+              ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']
+              : ["I couldn't save that just now — give it a moment and try again."],
+          );
         }
       }
     } catch {

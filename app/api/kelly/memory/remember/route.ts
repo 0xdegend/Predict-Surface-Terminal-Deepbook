@@ -9,9 +9,9 @@
  * NEXT_PUBLIC_KELLY_MEMORY, and returns { ok: false } if WALRUS_DELEGATE_KEY /
  * WALRUS_MEMORY_ACCOUNT_ID isn't configured.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { cookies } from 'next/headers';
-import { rememberForUser } from '@/lib/walrus/memory';
+import { rememberForUser, confirmRememberForUser } from '@/lib/walrus/memory';
 import { KELLY_AUTH_COOKIE, readSession } from '@/lib/server/kelly-auth';
 
 export const runtime = 'nodejs';
@@ -35,7 +35,12 @@ export async function POST(req: Request): Promise<NextResponse> {
   const text = String(body.text ?? '').trim().slice(0, 2000);
   if (!text) return NextResponse.json({ ok: false });
   try {
+    // Fast path: the relayer accepts the job and we acknowledge right away; the
+    // embed/encrypt/upload/index finishes in the background. `after()` runs the
+    // durability check once the response is out, so a real failure still gets logged
+    // without making the trader wait ~10-30s for the Walrus write to confirm.
     const r = await rememberForUser(owner, text);
+    after(() => confirmRememberForUser(r.id, owner));
     return NextResponse.json({ ok: true, id: r.id });
   } catch {
     return NextResponse.json({ ok: false });

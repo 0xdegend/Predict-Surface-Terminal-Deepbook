@@ -13,9 +13,14 @@
  * are always one tap away even when free text is messy.
  */
 
+import { isMeaningfulMemory } from './memory-quality';
+
 export type Conviction = 'safe' | 'even' | 'longshot';
 export type Horizon = 'soonest' | 'hour' | 'today';
 export type BetDirection = 'up' | 'down';
+/** What a memory-recall question is asking for: the trader's name, their trading
+ *  style/preferences, or an open "what do you remember about me". */
+export type RecallSubject = 'name' | 'style' | 'general';
 /** A single market metric the trader can ask about directly — answered with a
  *  focused one/two-liner instead of the full market read. */
 export type MetricKind = 'fear_greed' | 'funding' | 'liquidations' | 'max_pain' | 'price' | 'change_24h' | 'open_interest';
@@ -92,7 +97,7 @@ export type CopilotIntent =
   // "Remember that I ..." → store a durable memory (Kelly's Walrus-backed memory);
   // `text` is the fact to save. "What do you remember about me?" → recall saved memories.
   | { kind: 'remember'; text?: string }
-  | { kind: 'recall_memory'; query?: string }
+  | { kind: 'recall_memory'; query?: string; subject?: RecallSubject }
   | { kind: 'adjust_ticket'; stake?: number; leverage?: number; strike?: number; dir?: BetDirection; flip?: boolean }
   | { kind: 'close_position'; all?: boolean; winnings?: boolean; dir?: BetDirection; strike?: number }
   | { kind: 'directional_bet'; dir: BetDirection; conviction: Conviction; horizon: Horizon; target?: BetTarget }
@@ -898,6 +903,37 @@ function wantsRecallMemory(raw: string): { query?: string } | null {
 }
 
 /**
+ * Classify a memory-recall question so Kelly answers it directly from her saved memory:
+ *  - a DIRECT name question ("what is my name", "who am I") → subject 'name'
+ *  - a style/preference question ("what's my trading style", "how do I like to trade",
+ *    "what style do I like using for trading") → subject 'style'
+ *  - the open "what do you remember about me / my saved preferences" → subject 'general'
+ * Returns null for anything that isn't asking about the trader themselves (so market
+ * questions like "what's the best bet" are never swallowed). The `query` steers the
+ * semantic recall toward the right memory; the reply is built by recallReplyLines.
+ */
+function classifyRecall(raw: string): { subject: RecallSubject; query?: string } | null {
+  if (
+    /\bwhat(?:'?s| is|s)?\s+my\s+name\b/.test(raw) ||
+    /\bwho\s+am\s+i\b\s*\??$/.test(raw) ||
+    /\b(?:do|did)\s+you\s+(?:know|remember|recall)\s+(?:what\s+)?my\s+name\b/.test(raw)
+  ) {
+    return { subject: 'name', query: 'the trader’s name' };
+  }
+  if (
+    /\bwhat(?:'?s| is| are)?\s+my\s+(?:trading\s+)?(?:style|preferences?|prefs|habits?|tendenc(?:y|ies))\b/.test(raw) ||
+    /\bwhat\s+style\b[^?]*\bi\b/.test(raw) ||
+    /\bhow\s+do\s+i\s+(?:like\s+to\s+)?(?:trade|bet|play)\b/.test(raw) ||
+    /\bwhat\s+(?:kind|type|sort)\s+of\s+(?:bets?|trades?|markets?)\s+do\s+i\b/.test(raw) ||
+    /\bwhat\s+do\s+i\s+(?:like|prefer)\s+to\s+(?:trade|bet)\b/.test(raw)
+  ) {
+    return { subject: 'style', query: 'the trader’s trading style, direction lean, and risk preference' };
+  }
+  if (wantsRecallMemory(raw)) return { subject: 'general' };
+  return null;
+}
+
+/**
  * "Remember that I ..." / "note that I ..." / "keep in mind ..." → store a durable memory.
  * Returns the fact with ORIGINAL casing (from `message`, not the lowercased raw) so it
  * reads back naturally. Question forms are excluded (those recall). Requires at least two
@@ -913,6 +949,42 @@ function wantsRemember(message: string): { text?: string } | null {
   const fact = t.slice(factStart).trim().replace(/[.?!]+$/, '');
   if (!fact || fact.split(/\s+/).length < 2) return null;
   return { text: fact };
+}
+
+/** Words that follow "I'm …" but are never a name (trading/mood terms), so "I'm bullish"
+ *  or "I'm ready" is not stored as a name. Compared lowercased. */
+const NON_NAME = new Set([
+  'bullish', 'bearish', 'up', 'down', 'long', 'short', 'in', 'out', 'back', 'here', 'done',
+  'new', 'not', 'ready', 'good', 'fine', 'okay', 'ok', 'sure', 'looking', 'trying', 'thinking',
+  'betting', 'feeling', 'going', 'holding', 'buying', 'selling', 'watching', 'confident',
+  'nervous', 'curious', 'later', 'soon', 'tomorrow', 'now', 'still', 'just', 'confused',
+  'interested', 'bored', 'winning', 'losing', 'set', 'about',
+]);
+
+function cleanName(s: string): string {
+  const t = s.replace(/[.,!?'’"]+$/, '').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+/**
+ * Pull the trader's NAME out of a message they use to introduce themselves, so Kelly can
+ * greet them by it. Two tiers:
+ *  - Explicit ("my name is X", "call me X", "name's X", "I'm called X") → accepted unless the
+ *    word is a known non-name.
+ *  - Loose ("I'm X" / "I am X") → accepted only when X reads like a name (Capitalized + not a
+ *    trading/mood term), so "I'm bullish" or "I'm ready" never becomes a name.
+ * Returns the name with a capitalized first letter, or null. Pure + unit-tested.
+ */
+export function extractName(message: string): string | null {
+  const t = message.trim();
+  let m = t.match(/\b(?:my name is|name['’]?s|call me|i(?:'|’)?m called)\s+([A-Za-z][\w'’.-]{1,23})/i);
+  if (m) {
+    const name = cleanName(m[1]);
+    if (name && !NON_NAME.has(name.toLowerCase())) return name;
+  }
+  m = t.match(/\bi(?:'|’)?m\s+([A-Za-z][\w'’.-]{1,23})\b/i) ?? t.match(/\bi am\s+([A-Za-z][\w'’.-]{1,23})\b/i);
+  if (m && /^[A-Z]/.test(m[1]) && !NON_NAME.has(m[1].toLowerCase())) return cleanName(m[1]);
+  return null;
 }
 
 /**
@@ -937,13 +1009,22 @@ export function parseIntent(message: string): CopilotIntent {
   // it still falls through to the glossary.
   const vault = wantsVaultDeposit(raw);
   if (vault) return { kind: 'vault_deposit', ...(vault.amount != null ? { amount: vault.amount } : {}) };
-  // "What do you remember about me?" → recall saved memories. "Remember that I ..." →
-  // store one. Checked here (a read/command about Kelly's memory) before the trade
-  // branches so "remember I like safe bets" isn't mis-read as a bet. Recall (a question)
-  // is tested before the store so "what do you remember about me" never stores.
-  if (wantsRecallMemory(raw)) return { kind: 'recall_memory' };
+  // A question about the trader themselves ("what is my name", "what's my trading style",
+  // "what do you remember about me?") → recall saved memories and answer it. "Remember that
+  // I ..." → store one. Checked here (a read/command about Kelly's memory) before the trade
+  // branches so "remember I like safe bets" isn't mis-read as a bet. Recall (a question) is
+  // tested before the store so "what do you remember about me" never stores.
+  const recall = classifyRecall(raw);
+  if (recall) return { kind: 'recall_memory', subject: recall.subject, ...(recall.query ? { query: recall.query } : {}) };
+  // A name introduction ("my name is Degendev", "I'm Degendev") stores a clean "your name is
+  // X" fact. Checked BEFORE wantsRemember so "My name is X, remember that" captures the name,
+  // not the dangling "that" after "remember" (which had stored a junk fragment).
+  const name = extractName(message);
+  if (name) return { kind: 'remember', text: `your name is ${name}` };
+  // Only store a "remember that …" tail that actually carries content — never a filler
+  // fragment like "from now" / "for later" (the loose parse would otherwise keep it).
   const remember = wantsRemember(message);
-  if (remember?.text) return { kind: 'remember', text: remember.text };
+  if (remember?.text && isMeaningfulMemory(remember.text)) return { kind: 'remember', text: remember.text };
   // Start the guided wizard on an explicit "set up a trade"-style phrase, on raw
   // text — it must beat the NON_DIRECTIONAL strip (which would remove "set up").
   if (has(raw, START_TRADE_PHRASES)) return { kind: 'start_trade' };

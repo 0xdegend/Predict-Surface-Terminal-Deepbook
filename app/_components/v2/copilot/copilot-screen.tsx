@@ -13,7 +13,7 @@
  * pattern: selectMarket + setMode + setIsUp + setStrikePrice + markPicked). The
  * surface + ticket are the existing components, unchanged.
  */
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { LuSparkles, LuPause } from 'react-icons/lu';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -44,7 +44,8 @@ import { CopilotRead } from './copilot-read';
 import { V2MarketPicker } from '../market-picker';
 import { parseIntent, placeConfirmation, isFlowInterruption, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, rememberFact } from '@/lib/copilot/memory-client';
-import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, personalizeMemory } from '@/lib/copilot/memory-greeting';
+import { welcomeBackLines, welcomeBackFromHint, rememberedName, recallReplyLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES } from '@/lib/copilot/memory-greeting';
+import { firstVisitToday, readGreetingHint, cacheGreetingHint } from '@/lib/copilot/greeting-cadence';
 import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
@@ -95,6 +96,10 @@ const GREETING: ChatMessage = {
   ],
 };
 
+// useLayoutEffect on the client (runs before paint, so a greeting swap never flashes),
+// useEffect on the server (where layout effects warn and do nothing anyway).
+const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
 /** ChatMessage → the compact, JSON-safe shape we archive (text + a static bet/range
  *  summary). Onboarding/share cards are transient and not persisted. */
 function toStored(msgs: ChatMessage[]): StoredMessage[] {
@@ -106,6 +111,27 @@ function toStored(msgs: ChatMessage[]): StoredMessage[] {
       if (m.range) sm.range = { lower: m.range.lower, higher: m.range.higher, prob: m.range.prob, amount: m.range.amount };
       return sm;
     });
+}
+
+/** StoredMessage[] → ChatMessage[] to reopen a saved chat in the live thread. The
+ *  interactive bet/range cards can't be rebuilt from the stored summary, so a message
+ *  that was only a card folds into the same short line the history transcript shows;
+ *  text carries over as-is. Used when continuing a past chat. */
+function fromStored(msgs: StoredMessage[]): ChatMessage[] {
+  return msgs.map((m, i) => {
+    const lines = m.text.filter((t) => t.trim().length > 0);
+    if (lines.length === 0 && m.bet) {
+      lines.push(
+        `${m.bet.isUp ? 'UP' : 'DOWN'} $${num(m.bet.strike, 0)} · ${Math.round(m.bet.prob * 100)}%${m.bet.amount != null ? ` · $${num(m.bet.amount, 0)}` : ''}`,
+      );
+    }
+    if (lines.length === 0 && m.range) {
+      lines.push(
+        `$${num(m.range.lower, 0)}–$${num(m.range.higher, 0)} · ${Math.round(m.range.prob * 100)}%${m.range.amount != null ? ` · $${num(m.range.amount, 0)}` : ''}`,
+      );
+    }
+    return { id: `restored-${i}`, role: m.role, text: lines.length ? lines : [' '] } satisfies ChatMessage;
+  });
 }
 
 // ── Coming-soon gate ────────────────────────────────────────────────────────
@@ -693,14 +719,53 @@ export function V2CopilotScreen({
     return () => clearTimeout(id);
   }, [acct.owner]);
 
+  // First-vs-repeat visit today, decided ONCE per wallet and shared by the two greeting
+  // effects below (both would otherwise call firstVisitToday, which stamps the day, and
+  // the second call would misread a genuine first visit as a repeat).
+  const returningRef = useRef<{ owner: string; returning: boolean } | null>(null);
+  const resolveReturning = useCallback((owner: string): boolean => {
+    if (returningRef.current?.owner === owner) return returningRef.current.returning;
+    const returning = !firstVisitToday(owner);
+    returningRef.current = { owner, returning };
+    return returning;
+  }, []);
+  // Set to the owner once we've painted the welcome-back from the local hint, so the async
+  // recall below doesn't redundantly re-set it (which would read as a flash).
+  const openingRenderedRef = useRef<string | null>(null);
+
+  // NO-FLASH greeting: on a REPEAT visit we have a device-local hint (the trader's name +
+  // whether they have notes) cached from a prior recall, so we paint the short welcome-back
+  // BEFORE the browser paints — navigating back never shows the long intro and then swaps.
+  // Runs only while the thread is still the fresh greeting. First visit of the day, or no
+  // cached hint yet, falls through to the async recall below (which seeds the hint for next
+  // time). Independent of the memory sign-in check on purpose: the hint is a local display
+  // value, so we can greet by name before the auth/recall round-trip resolves.
+  useIsoLayoutEffect(() => {
+    if (!KELLY_MEMORY) return;
+    const owner = acct.owner;
+    if (!owner) return;
+    if (!resolveReturning(owner)) return; // first visit today → keep the full intro
+    const hint = readGreetingHint(owner);
+    if (!hint) return; // no cache yet → the async effect greets (one-time flash, then cached)
+    const lines = welcomeBackFromHint(hint);
+    if (lines.length === 0) return;
+    openingRenderedRef.current = owner;
+    // The updater's `prev` guard is authoritative: an active chat (a user turn, or a
+    // welcome-back already shown) is never clobbered — the updater returns prev unchanged.
+    setMessages((prev) =>
+      prev.some((m) => m.role === 'user' || m.id === 'welcome-back')
+        ? prev
+        : [{ id: 'welcome-back', role: 'assistant', text: lines }],
+    );
+  }, [acct.owner, resolveReturning]);
+
   // Passive continuity: a moment after a RETURNING trader connects, Kelly recalls what it
-  // has saved about them and opens with it ("good to see you back — here's what I remember").
-  // Only when they're ALREADY signed in to memory (a valid session cookie, typically from a
-  // prior visit) — we never prompt a signature just to greet. Once per connected wallet, and
-  // only while the thread is still fresh (no user turn yet), so it never barges into an ongoing
-  // chat. Fails soft: no saved notes, or a memory hiccup, just leaves the normal greeting. A
-  // brand-new trader has no memories → welcomeBackLines returns [] → no bubble (and the
-  // onboarding nudge above handles them instead). See lib/copilot/memory-greeting.ts.
+  // has saved about them and (on a repeat visit) opens with the short welcome-back. Only
+  // when they're ALREADY signed in to memory (a valid session cookie, typically from a prior
+  // visit) — we never prompt a signature just to greet. Once per connected wallet, and only
+  // while the thread is still fresh (no user turn yet), so it never barges into an ongoing
+  // chat. Every resolve also caches a hint so the NEXT landing greets without a flash. Fails
+  // soft: no saved notes, or a memory hiccup, just leaves the normal greeting.
   const welcomedForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!COPILOT_LIVE || !KELLY_MEMORY || !memoryAuth.signedIn) return;
@@ -714,11 +779,15 @@ export function V2CopilotScreen({
       if (messages.some((m) => m.role === 'user' || m.id === 'welcome-back')) return;
       const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES);
       if (cancelled) return;
+      // Seed the local hint so the next landing paints the right greeting before recall.
+      cacheGreetingHint(owner, { name: rememberedName(mems), hasNotes: mems.some((m) => m.trim().length > 0) });
       const lines = welcomeBackLines(mems);
-      if (lines.length === 0) return;
+      if (lines.length === 0) return; // nothing personal to say → keep the full intro
+      if (!resolveReturning(owner)) return; // first visit today → keep the full intro
+      if (openingRenderedRef.current === owner) return; // already painted from the hint pre-paint
       setMessages((prev) => {
         if (prev.some((m) => m.role === 'user' || m.id === 'welcome-back')) return prev;
-        return [...prev, { id: 'welcome-back', role: 'assistant', text: lines }];
+        return [{ id: 'welcome-back', role: 'assistant', text: lines }];
       });
     })();
     return () => {
@@ -1120,21 +1189,21 @@ export function V2CopilotScreen({
         return;
       }
       if (intent.kind === 'recall_memory') {
-        const mems = await recallMemories(owner, MEMORY_GREETING_QUERY, 8);
-        pushBot(
-          mems.length === 0
-            ? ["I don't have anything saved about you yet. Tell me a preference like “remember I prefer safer up bets” and I'll keep it."]
-            : mems.length === 1
-              ? [`I remember that ${personalizeMemory(mems[0])}.`]
-              : ['Here’s what I remember about you:', ...mems.map((m) => `• ${personalizeMemory(m)}`)],
-        );
+        const subject = intent.subject ?? 'general';
+        const mems = await recallMemories(owner, intent.query ?? MEMORY_GREETING_QUERY, 8);
+        pushBot(recallReplyLines(subject, mems));
       } else if (intent.kind === 'remember') {
         const fact = intent.text ?? '';
         if (!fact) {
           pushBot(['What should I remember? Try “remember I prefer safer up bets”.']);
         } else {
           const saved = await rememberFact(owner, fact);
-          pushBot(saved ? ['Got it. I’ll remember that.'] : ["I couldn't save that just now — give it a moment and try again."]);
+          const nm = fact.match(/^your name is (.+)$/i);
+          pushBot(
+            saved
+              ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']
+              : ["I couldn't save that just now — give it a moment and try again."],
+          );
         }
       }
     } catch {
@@ -1554,6 +1623,11 @@ export function V2CopilotScreen({
         history={chatHistory}
         signedIn={memoryAuth.signedIn}
         onSignIn={() => void memoryAuth.ensureSignedIn()}
+        onContinue={(convo) => {
+          setMessages(fromStored(convo.messages));
+          chatHistory.resume(convo);
+          setHistoryOpen(false);
+        }}
       />
     ) : null;
 

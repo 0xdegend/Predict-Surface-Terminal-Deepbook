@@ -41,6 +41,10 @@ export interface KellyChatHistory {
   newChat: () => void;
   /** Read this device's saved working chat (to continue it after a reload), or null. */
   restore: () => StoredMessage[] | null;
+  /** Adopt a saved conversation as the working chat so new turns continue it: its id
+   *  becomes the working id (new turns append + re-archive under it) and it's mirrored
+   *  to this device. The caller loads the messages into the visible thread. */
+  resume: (convo: StoredConversation) => void;
   conversations: ConversationIndexEntry[];
   listLoading: boolean;
   refreshList: () => void;
@@ -138,6 +142,26 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
     return null;
   }, [enabled, owner, setId]);
 
+  const resume = useCallback(
+    (convo: StoredConversation) => {
+      if (!enabled || !owner) return;
+      // Flush the chat we're leaving so it isn't lost, then adopt the loaded one.
+      if (latestRef.current.length) void flushToWalrus(latestRef.current);
+      setId(convo.id);
+      latestRef.current = convo.messages;
+      savedSigRef.current = ''; // let the first new turn re-archive under this id
+      try {
+        window.localStorage.setItem(
+          workingKey(owner),
+          JSON.stringify({ id: convo.id, messages: convo.messages, updatedAt: Date.now() } satisfies WorkingCopy),
+        );
+      } catch {
+        // storage full / unavailable — the debounced Walrus save still runs on the next turn
+      }
+    },
+    [enabled, owner, flushToWalrus, setId],
+  );
+
   const newChat = useCallback(() => {
     if (latestRef.current.length) void flushToWalrus(latestRef.current);
     if (owner) {
@@ -190,5 +214,5 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
     return () => window.removeEventListener('pagehide', onHide);
   }, [enabled, flushToWalrus]);
 
-  return { enabled, conversationId, persist, newChat, restore, conversations, listLoading, refreshList, loadConversation };
+  return { enabled, conversationId, persist, newChat, restore, resume, conversations, listLoading, refreshList, loadConversation };
 }

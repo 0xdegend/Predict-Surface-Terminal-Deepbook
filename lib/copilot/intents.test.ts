@@ -6,6 +6,7 @@ import {
   isFlowInterruption,
   parseAmountReply,
   extractStake,
+  extractName,
   type CopilotIntent,
 } from './intents';
 
@@ -812,6 +813,16 @@ describe('parseIntent — memory (remember / recall)', () => {
     }
   });
 
+  it('a name introduction → remember "your name is X" (captured before the remember tail)', () => {
+    // The reported bug: "…remember that from now" used to store the fragment "from now".
+    expect(parseIntent('My name is Degendev, make sure you remember that from now')).toEqual({
+      kind: 'remember',
+      text: 'your name is Degendev',
+    });
+    expect(parseIntent('call me Bob')).toEqual({ kind: 'remember', text: 'your name is Bob' });
+    expect(parseIntent("I'm Degendev")).toEqual({ kind: 'remember', text: 'your name is Degendev' });
+  });
+
   it('"what do you remember/know about me" → recall_memory', () => {
     for (const msg of [
       'what do you remember about me',
@@ -829,8 +840,53 @@ describe('parseIntent — memory (remember / recall)', () => {
     expect(i.kind).toBe('recall_memory');
   });
 
+  it('a direct "what is my name" question → recall_memory with subject "name"', () => {
+    for (const msg of ['what is my name', "what's my name", 'whats my name', 'who am i?', 'do you know my name']) {
+      const i = parseIntent(msg);
+      expect(i.kind, msg).toBe('recall_memory');
+      if (i.kind === 'recall_memory') expect(i.subject, msg).toBe('name');
+    }
+  });
+
+  it('a trading-style question → recall_memory with subject "style"', () => {
+    for (const msg of [
+      "what's my trading style",
+      'what are my preferences',
+      'what style do I like using for trading',
+      'how do I like to trade',
+      'what kind of bets do I like',
+    ]) {
+      const i = parseIntent(msg);
+      expect(i.kind, msg).toBe('recall_memory');
+      if (i.kind === 'recall_memory') expect(i.subject, msg).toBe('style');
+    }
+  });
+
+  it('the open "what do you remember about me" → subject "general"', () => {
+    const i = parseIntent('what do you remember about me');
+    if (i.kind === 'recall_memory') expect(i.subject).toBe('general');
+  });
+
+  it('a market question is never mistaken for a recall', () => {
+    for (const msg of ["what's the best bet right now", 'what is btc doing', 'what should I bet', 'how volatile is btc']) {
+      expect(parseIntent(msg).kind, msg).not.toBe('recall_memory');
+    }
+  });
+
   it('bare "remember me" does not store a junk one-word fact', () => {
     expect(parseIntent('remember me').kind).not.toBe('remember');
+  });
+
+  it('does not store a filler tail like "from now" / "for later" (no content)', () => {
+    // The "from now" bug source: a loose remember-tail with no real content. Without a
+    // name in the message, these must not become a stored memory.
+    expect(parseIntent('remember that from now').kind).not.toBe('remember');
+    expect(parseIntent('note that for later').kind).not.toBe('remember');
+    // But a tail that DOES carry content still stores.
+    expect(parseIntent('remember that from now on I trade mornings')).toEqual({
+      kind: 'remember',
+      text: 'from now on I trade mornings',
+    });
   });
 
   it('does not fire on unrelated messages', () => {
@@ -839,6 +895,28 @@ describe('parseIntent — memory (remember / recall)', () => {
       expect(k, msg).not.toBe('remember');
       expect(k, msg).not.toBe('recall_memory');
     }
+  });
+});
+
+describe('extractName', () => {
+  it('reads explicit introductions and capitalizes the name', () => {
+    expect(extractName('my name is degendev')).toBe('Degendev');
+    expect(extractName('My name is Degendev, remember that')).toBe('Degendev');
+    expect(extractName('call me Bob')).toBe('Bob');
+    expect(extractName("i'm called Sara")).toBe('Sara');
+  });
+
+  it('accepts a capitalized "I\'m X" name but rejects trading / mood words', () => {
+    expect(extractName("I'm Degendev")).toBe('Degendev');
+    expect(extractName("I'm bullish")).toBeNull();
+    expect(extractName("I'm ready")).toBeNull();
+    expect(extractName("I'm long on BTC")).toBeNull();
+    expect(extractName("I'm not sure yet")).toBeNull();
+  });
+
+  it('returns null when there is no introduction', () => {
+    expect(extractName('set up a safe up bet')).toBeNull();
+    expect(extractName('what do you remember about me')).toBeNull();
   });
 });
 
