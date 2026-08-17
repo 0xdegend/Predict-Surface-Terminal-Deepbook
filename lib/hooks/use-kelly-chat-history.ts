@@ -16,9 +16,18 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StoredMessage, StoredConversation, ConversationIndexEntry } from '@/lib/walrus/chat-history';
+import type { SealEnvelope } from '@/lib/kelly/chat-seal-id';
 
 const KELLY_HISTORY = process.env.NEXT_PUBLIC_KELLY_HISTORY === '1';
 const SAVE_DEBOUNCE_MS = 4_000;
+
+/** The Seal encrypt/decrypt seam (from useKellyChatSeal). Optional — when absent or `off`,
+ *  chats are stored in plaintext exactly as before. */
+export interface ChatSealSeam {
+  on: boolean;
+  encrypt: (conversationId: string, messages: StoredMessage[]) => Promise<SealEnvelope | null>;
+  decrypt: (blob: unknown) => Promise<StoredMessage[] | null>;
+}
 
 function newConversationId(): string {
   return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -33,6 +42,8 @@ interface WorkingCopy {
 
 export interface KellyChatHistory {
   enabled: boolean;
+  /** True when Seal E2E is active, so new archives are encrypted before they leave the browser. */
+  sealOn: boolean;
   /** The current working conversation id (stable until newChat / restore). */
   conversationId: string;
   /** Save the current transcript: localStorage now + a debounced Walrus archive. */
@@ -51,8 +62,17 @@ export interface KellyChatHistory {
   loadConversation: (id: string) => Promise<StoredConversation | null>;
 }
 
-export function useKellyChatHistory({ owner, signedIn }: { owner: string | null; signedIn: boolean }): KellyChatHistory {
+export function useKellyChatHistory({
+  owner,
+  signedIn,
+  seal,
+}: {
+  owner: string | null;
+  signedIn: boolean;
+  seal?: ChatSealSeam;
+}): KellyChatHistory {
   const enabled = KELLY_HISTORY;
+  const sealOn = !!seal?.on;
   const [conversationId, setConversationId] = useState('');
   const idRef = useRef('');
   const latestRef = useRef<StoredMessage[]>([]);
@@ -60,6 +80,12 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [conversations, setConversations] = useState<ConversationIndexEntry[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  // Keep the latest Seal seam in a ref so the debounced flush / load closures use it without
+  // being torn down and re-created on every render.
+  const sealRef = useRef<ChatSealSeam | undefined>(seal);
+  useEffect(() => {
+    sealRef.current = seal;
+  }, [seal]);
 
   const setId = useCallback((id: string) => {
     idRef.current = id;
@@ -94,10 +120,25 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
       if (sig === savedSigRef.current) return; // nothing new since the last save
       savedSigRef.current = sig;
       try {
+        // Seal on ⇒ encrypt in the browser and send only the opaque envelope. If encryption
+        // hiccups we FAIL CLOSED (skip this archive, retry next turn) rather than fall back to
+        // plaintext — once a trader's chats are private, we never write their words in the clear.
+        const sealSeam = sealRef.current;
+        let payload: Record<string, unknown>;
+        if (sealSeam?.on) {
+          const envelope = await sealSeam.encrypt(idRef.current, messages);
+          if (!envelope) {
+            savedSigRef.current = '';
+            return;
+          }
+          payload = { id: idRef.current, enc: envelope, count: messages.length };
+        } else {
+          payload = { id: idRef.current, messages };
+        }
         const r = await fetch('/api/kelly/chat', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ id: idRef.current, messages }),
+          body: JSON.stringify(payload),
         });
         if (!r.ok) savedSigRef.current = ''; // let a later save retry
       } catch {
@@ -195,8 +236,17 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
       try {
         const r = await fetch(`/api/kelly/chat/${encodeURIComponent(id)}`);
         if (!r.ok) return null;
-        const d = (await r.json()) as { conversation: StoredConversation | null };
-        return d.conversation ?? null;
+        const d = (await r.json()) as { conversation: (StoredConversation & { enc?: unknown }) | null };
+        const convo = d.conversation;
+        if (!convo) return null;
+        // Encrypted blob (has an `enc` envelope): decrypt in the browser, prompting the one-time
+        // session-key signature on first open. Legacy plaintext blobs have `messages` and pass through.
+        if (convo.enc) {
+          const messages = await sealRef.current?.decrypt(convo);
+          if (!messages) return null; // Seal off, declined, or a decrypt error — can't show it
+          return { id: convo.id, createdAt: convo.createdAt, updatedAt: convo.updatedAt, messages };
+        }
+        return convo;
       } catch {
         return null;
       }
@@ -214,5 +264,5 @@ export function useKellyChatHistory({ owner, signedIn }: { owner: string | null;
     return () => window.removeEventListener('pagehide', onHide);
   }, [enabled, flushToWalrus]);
 
-  return { enabled, conversationId, persist, newChat, restore, resume, conversations, listLoading, refreshList, loadConversation };
+  return { enabled, sealOn, conversationId, persist, newChat, restore, resume, conversations, listLoading, refreshList, loadConversation };
 }

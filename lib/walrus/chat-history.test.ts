@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeConversation, upsertEntry, type ConversationIndexEntry } from './chat-history';
+import { sanitizeConversation, sanitizeEncryptedInput, upsertEntry, type ConversationIndexEntry } from './chat-history';
+import { wrapSealEnvelope } from '@/lib/kelly/chat-seal-id';
 
 const NOW = 1_800_000_000_000;
 
@@ -51,6 +52,41 @@ describe('sanitizeConversation — untrusted input hardening', () => {
     );
     expect(convo!.messages[1].bet).toBeUndefined();
     expect(convo!.messages[1].text).toEqual(['ok']);
+  });
+});
+
+describe('sanitizeEncryptedInput — encrypted save hardening', () => {
+  const env = wrapSealEnvelope('dede0558abcd', 'Y2lwaGVydGV4dA=='); // { v:1, enc:'seal', id, ct }
+
+  it('accepts a valid id + Seal envelope + count', () => {
+    const out = sanitizeEncryptedInput('conv-abcdef', env, 7);
+    expect(out).not.toBeNull();
+    expect(out!.id).toBe('conv-abcdef');
+    expect(out!.enc).toEqual(env);
+    expect(out!.count).toBe(7);
+  });
+
+  it('rejects a bad id', () => {
+    expect(sanitizeEncryptedInput('short', env, 3)).toBeNull();
+    expect(sanitizeEncryptedInput('has spaces!!', env, 3)).toBeNull();
+  });
+
+  it('rejects a non-envelope enc (e.g. leaked plaintext messages)', () => {
+    expect(sanitizeEncryptedInput('conv-abcdef', { messages: [{ role: 'user', text: ['hi'] }] }, 1)).toBeNull();
+    expect(sanitizeEncryptedInput('conv-abcdef', null, 1)).toBeNull();
+    expect(sanitizeEncryptedInput('conv-abcdef', { enc: 'seal', ct: 5, id: 'x' }, 1)).toBeNull();
+  });
+
+  it('rejects an oversized ciphertext', () => {
+    const huge = wrapSealEnvelope('id', 'A'.repeat(2_000_001));
+    expect(sanitizeEncryptedInput('conv-abcdef', huge, 1)).toBeNull();
+  });
+
+  it('clamps a junk count into range', () => {
+    expect(sanitizeEncryptedInput('conv-abcdef', env, 0)!.count).toBe(1);
+    expect(sanitizeEncryptedInput('conv-abcdef', env, -4)!.count).toBe(1);
+    expect(sanitizeEncryptedInput('conv-abcdef', env, 99_999)!.count).toBe(500);
+    expect(sanitizeEncryptedInput('conv-abcdef', env, NaN)!.count).toBe(1);
   });
 });
 

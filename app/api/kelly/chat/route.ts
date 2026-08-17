@@ -11,7 +11,13 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { KELLY_AUTH_COOKIE, readSession } from '@/lib/server/kelly-auth';
-import { saveConversation, listConversations, sanitizeConversation } from '@/lib/walrus/chat-history';
+import {
+  saveConversation,
+  saveEncryptedConversation,
+  listConversations,
+  sanitizeConversation,
+  sanitizeEncryptedInput,
+} from '@/lib/walrus/chat-history';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -37,11 +43,24 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (!owner) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   if (!process.env.WALRUS_WRITER_KEY) return NextResponse.json({ ok: false, error: 'not_configured' }, { status: 503 });
 
-  let body: { id?: unknown; messages?: unknown };
+  let body: { id?: unknown; messages?: unknown; enc?: unknown; count?: unknown };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ ok: false, error: 'bad_request' }, { status: 400 });
+  }
+
+  // Encrypted save: the client already Seal-encrypted the messages, so we store the opaque
+  // envelope and never see the plaintext. Detected by the presence of `enc`.
+  if (body.enc !== undefined) {
+    const input = sanitizeEncryptedInput(body.id, body.enc, body.count);
+    if (!input) return NextResponse.json({ ok: false, error: 'nothing_to_save' }, { status: 400 });
+    try {
+      const { id, blobId } = await saveEncryptedConversation(owner, input, Date.now());
+      return NextResponse.json({ ok: true, id, blobId });
+    } catch {
+      return NextResponse.json({ ok: false, error: 'save_failed' }, { status: 502 });
+    }
   }
 
   const convo = sanitizeConversation(body.id, body.messages, Date.now());

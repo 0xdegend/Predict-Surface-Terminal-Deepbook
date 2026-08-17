@@ -13,11 +13,14 @@
  *
  * Privacy note: Walrus blobs are public to anyone holding the (unguessable,
  * content-addressed) blobId, and the id is only ever exposed to the authenticated
- * owner. Encrypting the transcript (Seal, like Kelly memory) is a follow-up.
+ * owner. When Seal E2E is on, the client encrypts the messages BEFORE they reach this
+ * module, so an encrypted conversation's blob holds only opaque ciphertext (the enc
+ * envelope) — the server, and anyone holding the blobId, sees nothing readable.
  */
 import { storeJson, readBlobJson } from '@/lib/walrus/client';
 import { walrusConfig } from '@/config/walrus';
 import { kv } from '@/lib/server/kv';
+import { readSealEnvelope, type SealEnvelope } from '@/lib/kelly/chat-seal-id';
 
 /** A persisted message — a compact, JSON-safe subset of the UI ChatMessage. Only the
  *  parts needed to re-read the conversation (text + a static bet/range summary). */
@@ -38,6 +41,24 @@ export interface StoredConversation {
   messages: StoredMessage[];
 }
 
+/** The blob body for a Seal-encrypted conversation: cleartext metadata (id + timestamps,
+ *  non-sensitive) wrapping the encrypted messages. The server stores + serves this opaque
+ *  `enc` envelope but can never read it. */
+export interface EncryptedConversation {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  enc: SealEnvelope;
+}
+
+/** Either blob shape can come back from Walrus (legacy plaintext or E2E encrypted). */
+export type ConversationBlob = StoredConversation | EncryptedConversation;
+
+/** True when a fetched blob is the encrypted shape (holds a Seal envelope). */
+export function isEncryptedConversation(b: unknown): b is EncryptedConversation {
+  return !!b && typeof b === 'object' && readSealEnvelope((b as { enc?: unknown }).enc) != null;
+}
+
 /** A compact index row (kept in KV) so past chats list without a blob fetch. */
 export interface ConversationIndexEntry {
   id: string;
@@ -46,8 +67,11 @@ export interface ConversationIndexEntry {
   updatedAt: number;
   /** Number of messages in the saved transcript. */
   count: number;
-  /** The first thing the trader said, for the list row (already trimmed). */
+  /** The first thing the trader said, for the list row (already trimmed). Empty when
+   *  the chat is encrypted (the server can't read it — the row shows "Private chat"). */
   preview: string;
+  /** True when this conversation's blob is Seal-encrypted (client-side E2E). */
+  enc?: boolean;
 }
 
 const MAX_CONVERSATIONS = 100;
@@ -55,6 +79,8 @@ const MAX_MESSAGES = 500;
 const MAX_LINES = 40;
 const MAX_LINE_LEN = 4_000;
 const PREVIEW_LEN = 90;
+/** Cap the stored ciphertext (base64) so an encrypted save can't be abused as bulk storage. */
+const MAX_CT_LEN = 2_000_000;
 
 function indexKey(owner: string): string {
   return `kelly:chat:${owner.toLowerCase()}`;
@@ -98,6 +124,22 @@ export function sanitizeConversation(rawId: unknown, rawMessages: unknown, now: 
   // Nothing worth archiving until the trader has actually said something.
   if (!messages.some((m) => m.role === 'user')) return null;
   return { id, createdAt: now, updatedAt: now, messages };
+}
+
+/** Coerce an untrusted ENCRYPTED save into a safe shape: a valid id, a well-formed Seal
+ *  envelope within the size cap, and a message count for the list row. The messages
+ *  themselves are opaque ciphertext, so there's nothing else to sanitize. Null when invalid. */
+export function sanitizeEncryptedInput(
+  rawId: unknown,
+  rawEnc: unknown,
+  rawCount: unknown,
+): { id: string; enc: SealEnvelope; count: number } | null {
+  const id = typeof rawId === 'string' && /^[a-zA-Z0-9_-]{6,64}$/.test(rawId) ? rawId : null;
+  if (!id) return null;
+  const enc = readSealEnvelope(rawEnc);
+  if (!enc || enc.ct.length > MAX_CT_LEN) return null;
+  const count = Math.min(Math.max(Math.trunc(Number(rawCount) || 0), 1), MAX_MESSAGES);
+  return { id, enc, count };
 }
 
 /** The list-row preview: the first thing the trader said. */
@@ -167,6 +209,36 @@ export async function saveConversation(owner: string, convo: StoredConversation)
   return { id: convo.id, blobId };
 }
 
+/**
+ * Save (or update) a Seal-ENCRYPTED conversation. The blob body carries only cleartext
+ * metadata + the opaque `enc` envelope, so the stored transcript is unreadable to the
+ * server and to anyone holding the blobId. The index row is marked `enc` with no preview
+ * (the server can't read one). Server-only (signs the Walrus write with the writer key).
+ */
+export async function saveEncryptedConversation(
+  owner: string,
+  input: { id: string; enc: SealEnvelope; count: number },
+  now: number,
+): Promise<{ id: string; blobId: string }> {
+  const existing = await readIndex(owner);
+  const prior = existing.find((e) => e.id === input.id);
+  const createdAt = prior?.createdAt ?? now;
+  const body: EncryptedConversation = { id: input.id, createdAt, updatedAt: now, enc: input.enc };
+
+  const { blobId } = await storeJson(body, { epochs: walrusConfig.defaultEpochs, deletable: true });
+  const entry: ConversationIndexEntry = {
+    id: input.id,
+    blobId,
+    createdAt,
+    updatedAt: now,
+    count: input.count,
+    preview: '',
+    enc: true,
+  };
+  await writeIndex(owner, upsertEntry(existing, entry));
+  return { id: input.id, blobId };
+}
+
 /* --------------------------------- list ---------------------------------- */
 
 /** A trader's past conversations, newest first. */
@@ -175,13 +247,14 @@ export async function listConversations(owner: string, limit = 50): Promise<Conv
   return (await readIndex(owner)).slice(0, n);
 }
 
-/** Read one conversation's latest transcript. Only resolves ids in the owner's index
- *  (so a caller can never read another wallet's blob by guessing an id). */
-export async function readConversation(owner: string, id: string): Promise<StoredConversation | null> {
+/** Read one conversation's latest blob (plaintext or the opaque encrypted envelope). Only
+ *  resolves ids in the owner's index (so a caller can never read another wallet's blob by
+ *  guessing an id). Encrypted blobs are returned as-is; only the owner's browser can decrypt. */
+export async function readConversation(owner: string, id: string): Promise<ConversationBlob | null> {
   const entry = (await readIndex(owner)).find((e) => e.id === id);
   if (!entry) return null;
   try {
-    return await readBlobJson<StoredConversation>(entry.blobId);
+    return await readBlobJson<ConversationBlob>(entry.blobId);
   } catch {
     return null;
   }

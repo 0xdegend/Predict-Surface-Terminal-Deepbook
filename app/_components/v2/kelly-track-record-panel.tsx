@@ -13,6 +13,7 @@
  * House style matches the Leaderboard panel: max-w-5xl container, glass cards, mono numerals,
  * teal (up) / coral (down) semantics, hairline dividers.
  */
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
@@ -51,8 +52,11 @@ function ago(ms: number, now: number): string {
   return `${Math.floor(d / 7)}w ago`;
 }
 
+type Tab = 'forecast' | 'pick';
+
 export function KellyTrackRecordPanel() {
   const now = useNow(60_000);
+  const [tab, setTab] = useState<Tab>('forecast');
   const q = useQuery({
     queryKey: ['kelly', 'track-record'],
     queryFn: () => fetchTrackRecord(60),
@@ -62,14 +66,19 @@ export function KellyTrackRecordPanel() {
   });
 
   const data = q.data ?? null;
-  const calls = data?.calls ?? [];
-  const wr = data?.winRate ?? null;
+  // Each tab reads its OWN roll-up (the server splits by role), so the two win rates
+  // never mix: forecasts score only directional reads, picks only concrete bets.
+  const active = data ? (tab === 'forecast' ? data.forecast : data.picks) : null;
+  const activeCalls = (data?.calls ?? []).filter((c) => (tab === 'forecast' ? c.role === 'read' : c.role !== 'read'));
+  const wr = active?.winRate ?? null;
+  const isForecast = tab === 'forecast';
   const loadingEmpty = q.isLoading && !data;
 
   function share() {
-    const wrTxt = wr == null ? '' : ` Win rate so far: ${Math.round(wr * 100)}%.`;
+    const label = isForecast ? 'Forecast' : 'Pick';
+    const wrTxt = wr == null ? '' : ` ${label} win rate so far: ${Math.round(wr * 100)}%.`;
     const url = typeof window !== 'undefined' ? `${window.location.origin}/v2/track-record` : '';
-    const text = `Kelly calls BTC and signs every prediction to Walrus the second it's made — no edits after the fact.${wrTxt} See the receipts:`;
+    const text = `Kelly calls BTC and signs every prediction to Walrus the second it's made, with no edits after the fact.${wrTxt} See the receipts:`;
     const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
     window.open(intent, '_blank', 'noopener,noreferrer');
   }
@@ -107,20 +116,10 @@ export function KellyTrackRecordPanel() {
             >
               {wr == null ? '—' : `${Math.round(wr * 100)}%`}
             </div>
-            <p className="eyebrow mt-1.5">Win rate</p>
-            {data && (data.forecast.resolved > 0 || data.picks.resolved > 0) && (
+            <p className="eyebrow mt-1.5">{isForecast ? 'Forecast win rate' : 'Pick win rate'}</p>
+            {active && active.resolved > 0 && (
               <p className="mt-1.5 font-mono text-[10px] tabular-nums text-text-3">
-                {data.forecast.winRate != null && (
-                  <span>
-                    Forecasts <span className="text-text-2">{Math.round(data.forecast.winRate * 100)}%</span>
-                  </span>
-                )}
-                {data.forecast.winRate != null && data.picks.winRate != null && <span className="px-1">·</span>}
-                {data.picks.winRate != null && (
-                  <span>
-                    Picks <span className="text-text-2">{Math.round(data.picks.winRate * 100)}%</span>
-                  </span>
-                )}
+                {active.won} won · {active.lost} lost · {active.resolved} settled
               </p>
             )}
           </div>
@@ -134,19 +133,31 @@ export function KellyTrackRecordPanel() {
         </div>
       </div>
 
-      {/* ── Stats ────────────────────────────────────────────────────────── */}
+      {/* ── Tabs ─────────────────────────────────────────────────────────── */}
+      <div role="tablist" aria-label="Track record type" className="glass-inset mb-4 inline-flex gap-1 rounded-lg p-1">
+        <TabButton active={isForecast} onClick={() => setTab('forecast')} icon={LuSparkles} label="Forecasts" count={data?.forecast.total} />
+        <TabButton active={!isForecast} onClick={() => setTab('pick')} icon={LuTarget} label="Picks" count={data?.picks.total} />
+      </div>
+
+      {/* ── Stats (per tab) ──────────────────────────────────────────────── */}
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <StatCard icon={LuTarget} color="#6aa6e6" label="Calls made" loading={loadingEmpty} value={num(data?.total ?? 0, 0)} />
-        <StatCard icon={LuCircleCheck} color="var(--up)" label="Won" loading={loadingEmpty} value={num(data?.won ?? 0, 0)} valueClass="text-up" />
-        <StatCard icon={LuCircleX} color="var(--down)" label="Lost" loading={loadingEmpty} value={num(data?.lost ?? 0, 0)} valueClass="text-down" />
-        <StatCard icon={LuClock} color="#9aa4af" label="Awaiting settle" loading={loadingEmpty} value={num(data?.pending ?? 0, 0)} />
+        <StatCard
+          icon={isForecast ? LuSparkles : LuTarget}
+          color="#6aa6e6"
+          label={isForecast ? 'Forecasts made' : 'Picks made'}
+          loading={loadingEmpty}
+          value={num(active?.total ?? 0, 0)}
+        />
+        <StatCard icon={LuCircleCheck} color="var(--up)" label="Won" loading={loadingEmpty} value={num(active?.won ?? 0, 0)} valueClass="text-up" />
+        <StatCard icon={LuCircleX} color="var(--down)" label="Lost" loading={loadingEmpty} value={num(active?.lost ?? 0, 0)} valueClass="text-down" />
+        <StatCard icon={LuClock} color="#9aa4af" label="Awaiting settle" loading={loadingEmpty} value={num(active?.pending ?? 0, 0)} />
       </div>
 
       {/* ── Feed header ──────────────────────────────────────────────────── */}
       <div className="mb-3 flex items-center gap-2">
-        <h2 className="text-[13px] font-semibold text-text-1">Recent calls</h2>
-        {data && data.total > 0 && (
-          <span className="rounded-full bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">{data.total}</span>
+        <h2 className="text-[13px] font-semibold text-text-1">{isForecast ? 'Recent forecasts' : 'Recent picks'}</h2>
+        {active && active.total > 0 && (
+          <span className="rounded-full bg-bg-3 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-text-2">{active.total}</span>
         )}
         <button
           onClick={() => void q.refetch()}
@@ -168,10 +179,10 @@ export function KellyTrackRecordPanel() {
             <div className="px-4 py-12 text-center text-[13px] text-text-2">
               I couldn&rsquo;t load the track record just now. Give it a moment and refresh.
             </div>
-          ) : calls.length === 0 ? (
-            <EmptyState />
+          ) : activeCalls.length === 0 ? (
+            <EmptyState tab={tab} />
           ) : (
-            calls.map((c) => <CallRow key={c.id} call={c} now={now} />)
+            activeCalls.map((c) => <CallRow key={c.id} call={c} now={now} />)
           )}
         </div>
       </div>
@@ -190,6 +201,43 @@ export function KellyTrackRecordPanel() {
 }
 
 /* ------------------------------- pieces ---------------------------------- */
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: IconType;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium transition-all duration-200 ${
+        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-2'
+      }`}
+    >
+      <Icon size={12} className={active ? 'text-accent' : undefined} />
+      {label}
+      {count != null && count > 0 && (
+        <span
+          className={`rounded-full px-1.5 py-px font-mono text-[9.5px] tabular-nums ${
+            active ? 'bg-white/10 text-text-2' : 'bg-bg-3 text-text-3'
+          }`}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
 
 function StatCard({
   icon: Icon,
@@ -211,7 +259,7 @@ function StatCard({
       <div className="flex items-center gap-2">
         <span
           aria-hidden
-          className="inline-flex h-[22px] w-[22px] flex-none items-center justify-center rounded-md"
+          className="inline-flex h-5.5 w-5.5 flex-none items-center justify-center rounded-md"
           style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
         >
           <Icon size={13} />
@@ -239,16 +287,7 @@ function CallRow({ call, now }: { call: TrackRecordCall; now: number }) {
     <div className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3.5">
       <div className="min-w-0">
         <p className="truncate font-mono text-[13px] text-text-1">{call.summary}</p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[10.5px] tabular-nums text-text-3">
-          <span
-            className={`rounded-sm px-1 py-px text-[9.5px] font-medium tracking-wide uppercase ${
-              call.role === 'read' ? 'bg-(--accent-soft) text-accent' : 'bg-white/5 text-text-2'
-            }`}
-          >
-            {call.role === 'read' ? 'Forecast' : 'Pick'}
-          </span>
-          {ago(call.createdAt, now)}
-        </p>
+        <p className="mt-0.5 text-[10.5px] tabular-nums text-text-3">{ago(call.createdAt, now)}</p>
       </div>
       <div className="flex items-center gap-1.5 sm:gap-2">
         <OutcomePill outcome={call.outcome} />
@@ -316,7 +355,8 @@ function FeedSkeleton() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ tab }: { tab: Tab }) {
+  const isForecast = tab === 'forecast';
   return (
     <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
       <div className="relative h-16 w-16">
@@ -327,10 +367,11 @@ function EmptyState() {
         />
         <Image src={MASCOT_SRC.thinking} alt="" width={64} height={64} className="relative h-full w-full object-contain" />
       </div>
-      <p className="text-[13px] text-text-1">No calls on the record yet.</p>
+      <p className="text-[13px] text-text-1">{isForecast ? 'No forecasts on the record yet.' : 'No picks on the record yet.'}</p>
       <p className="max-w-sm text-[12px] leading-relaxed text-text-2">
-        Ask Kelly to analyze BTC and set up a bet. Every call it makes gets signed and logged here, so the track record
-        builds itself as you trade.
+        {isForecast
+          ? 'Ask Kelly for a read on BTC. Every directional call it makes gets signed and logged here, so the record builds itself as you chat.'
+          : 'Ask Kelly to set up a bet. Every pick it makes gets signed and logged here, so the record builds itself as you trade.'}
       </p>
       <Link
         href="/v2/copilot"

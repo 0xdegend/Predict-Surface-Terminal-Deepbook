@@ -50,6 +50,7 @@ import { deriveLearnedProfile, learnedLessonNotes, claimLessonSlot } from '@/lib
 import { parseStylePrefs, type StylePrefs } from '@/lib/copilot/style-prefs';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useKellyChatHistory } from '@/lib/hooks/use-kelly-chat-history';
+import { useKellyChatSeal } from '@/lib/hooks/use-kelly-chat-seal';
 import { ChatHistoryPanel } from './chat-history-panel';
 import type { StoredMessage } from '@/lib/walrus/chat-history';
 import { styleNoteForBet, styleNoteForRange, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
@@ -302,7 +303,8 @@ export function V2CopilotScreen({
   const memoryAuth = useKellyMemoryAuth();
   // Durable, per-wallet chat history (localStorage now + Walrus archive when signed in).
   // Dark unless NEXT_PUBLIC_KELLY_HISTORY is set. See use-kelly-chat-history.
-  const chatHistory = useKellyChatHistory({ owner: acct.owner ?? null, signedIn: memoryAuth.signedIn });
+  const chatSeal = useKellyChatSeal();
+  const chatHistory = useKellyChatHistory({ owner: acct.owner ?? null, signedIn: memoryAuth.signedIn, seal: chatSeal });
   const { persist: persistChat, newChat: newChatSession, enabled: historyEnabled } = chatHistory;
   const [historyOpen, setHistoryOpen] = useState(false);
   // The Season-2 board, for "how am I doing on the leaderboard / what should I

@@ -50,10 +50,11 @@ export function ChatHistoryPanel({
   /** Reopen a past chat in the live thread to keep talking. Omit to keep it read-only. */
   onContinue?: (convo: StoredConversation) => void;
 }) {
-  const { refreshList, loadConversation, conversations, listLoading } = history;
+  const { refreshList, loadConversation, conversations, listLoading, sealOn } = history;
   const now = useNow(60_000);
   const [viewing, setViewing] = useState<StoredConversation | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   // The panel is mounted only while open (the parent gates it), so a fresh mount
   // starts on the list and refetches once.
@@ -63,9 +64,11 @@ export function ChatHistoryPanel({
 
   async function openConversation(id: string) {
     setLoadingId(id);
+    setLoadError(false);
     const convo = await loadConversation(id);
     setLoadingId(null);
     if (convo) setViewing(convo);
+    else setLoadError(true); // a private chat whose unlock was declined / errored, or a read miss
   }
 
   return (
@@ -121,26 +124,43 @@ export function ChatHistoryPanel({
             ) : conversations.length === 0 ? (
               <Empty />
             ) : (
-              <ul className="divide-y divide-line">
-                {conversations.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      onClick={() => void openConversation(c.id)}
-                      disabled={loadingId != null}
-                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 disabled:opacity-60"
-                    >
-                      <LuMessageSquare size={15} className="flex-none text-text-3" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] text-text-1">{c.preview}</span>
-                        <span className="mt-0.5 block text-[10.5px] tabular-nums text-text-3">
-                          {ago(c.updatedAt, now)} · {c.count} messages
+              <>
+                {sealOn && (
+                  <p className="flex items-center gap-1.5 border-b border-line px-4 py-2 text-[11px] leading-relaxed text-text-3">
+                    <LuLock size={11} className="flex-none text-accent" /> Your chats are end-to-end encrypted. Only your
+                    wallet can open them.
+                  </p>
+                )}
+                {loadError && (
+                  <p className="border-b border-line bg-down/5 px-4 py-2 text-[11.5px] leading-relaxed text-down">
+                    Could not open that chat. If it is private, approve the signature and try again.
+                  </p>
+                )}
+                <ul className="divide-y divide-line">
+                  {conversations.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        onClick={() => void openConversation(c.id)}
+                        disabled={loadingId != null}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 disabled:opacity-60"
+                      >
+                        {c.enc ? (
+                          <LuLock size={14} className="flex-none text-accent" />
+                        ) : (
+                          <LuMessageSquare size={15} className="flex-none text-text-3" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] text-text-1">{c.enc ? 'Private chat' : c.preview}</span>
+                          <span className="mt-0.5 block text-[10.5px] tabular-nums text-text-3">
+                            {ago(c.updatedAt, now)} · {c.count} messages
+                          </span>
                         </span>
-                      </span>
-                      {loadingId === c.id && <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line border-t-accent" />}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        {loadingId === c.id && <span className="h-3.5 w-3.5 flex-none animate-spin rounded-full border-2 border-line border-t-accent" />}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         )}
