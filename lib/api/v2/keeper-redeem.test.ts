@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { redeemKey, openMarketsIn, openRootsByMarket } from './onchain';
+import { redeemKey, openMarketsIn, openRootsByMarket, foldOpenPositions } from './onchain';
+import { createClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import type { V2OrderEvent } from './types';
 
 /**
@@ -72,6 +73,45 @@ describe('openRootsByMarket', () => {
       redeem('A', 100, 2000), // A closed; only B is still open
     ]);
     expect(byMarket.get('0xmarketA')).toEqual(new Set(['B']));
+  });
+});
+
+describe('foldOpenPositions + closed-roots guard (flicker fix)', () => {
+  const marketA = '0xmarketA';
+
+  it('a failed redeem scan does not resurrect a root the guard saw closed', () => {
+    const guard = createClosedRootsGuard();
+
+    // Poll 1: the keeper's closing redeem IS read → A folds to closed, guard records it.
+    const closed = foldOpenPositions([mint('A', marketA, 100), redeem('A', 100, 2000)], guard);
+    expect(closed).toEqual([]);
+
+    // Poll 2: the per-market redeem scan 429s, so the redeem is MISSING and A nets open
+    // again. Without the guard this is the flicker — A comes back as a claimable card:
+    const resurrected = foldOpenPositions([mint('A', marketA, 100)]);
+    expect(resurrected).toHaveLength(1);
+
+    // With the guard, the known-closed root is suppressed, so the paid position stays gone.
+    const suppressed = foldOpenPositions([mint('A', marketA, 100)], guard);
+    expect(suppressed).toEqual([]);
+  });
+
+  it('never suppresses a genuinely open position (only confirmed closes are remembered)', () => {
+    const guard = createClosedRootsGuard();
+    // A is fully closed (recorded); B is still open the whole time.
+    foldOpenPositions([mint('A', marketA, 100), redeem('A', 100, 2000), mint('B', marketA, 50)], guard);
+    const open = foldOpenPositions([mint('A', marketA, 100), mint('B', marketA, 50)], guard);
+    expect(open.map((p) => p.position_root_id)).toEqual(['B']); // A suppressed, B kept
+  });
+
+  it('does not record a partially-closed root as closed (it is still open)', () => {
+    const guard = createClosedRootsGuard();
+    // Partial close: remaining > 0, so the guard must NOT mark it closed.
+    foldOpenPositions([mint('A', marketA, 100), redeem('A', 40, 2000)], guard);
+    // Later the partial redeem is missed by the scan → A is fully open again, and since it
+    // was never confirmed closed, it correctly shows as open (not suppressed).
+    const open = foldOpenPositions([mint('A', marketA, 100)], guard);
+    expect(open.map((p) => p.position_root_id)).toEqual(['A']);
   });
 });
 

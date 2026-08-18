@@ -22,6 +22,7 @@ import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
+import type { ClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import type {
   V2Market,
   PythObservation,
@@ -573,8 +574,12 @@ export async function onchainAccountOrders(
  * proportionally-scaled cost basis. Fully-closed roots are dropped; settled/closed
  * history comes from the order log itself (getAccountOrders).
  */
-export async function onchainAccountPositions(accountId: string, opts?: GetOptions): Promise<V2Position[]> {
-  return foldOpenPositions(await onchainAccountOrders(accountId, 500, opts));
+export async function onchainAccountPositions(
+  accountId: string,
+  opts?: GetOptions,
+  guard?: ClosedRootsGuard,
+): Promise<V2Position[]> {
+  return foldOpenPositions(await onchainAccountOrders(accountId, 500, opts), guard);
 }
 
 /**
@@ -584,13 +589,25 @@ export async function onchainAccountPositions(accountId: string, opts?: GetOptio
  * loses a real account the moment a high-frequency bot buries it in the global
  * stream, whereas the sender filter always returns exactly this owner's trades.
  */
-export async function onchainOwnerPositions(owner: string, opts?: GetOptions): Promise<V2Position[]> {
-  return foldOpenPositions(await onchainOwnerOrders(owner, 300, opts));
+export async function onchainOwnerPositions(
+  owner: string,
+  opts?: GetOptions,
+  guard?: ClosedRootsGuard,
+): Promise<V2Position[]> {
+  return foldOpenPositions(await onchainOwnerOrders(owner, 300, opts), guard);
 }
 
-/** Net-open per `position_root_id` (Σ minted − Σ closed) → the still-open positions
- *  (fully-closed roots dropped). Shared by the account-id and owner reads above. */
-function foldOpenPositions(orders: V2OrderEvent[]): V2Position[] {
+/**
+ * Net-open per `position_root_id` (Σ minted − Σ closed) → the still-open positions
+ * (fully-closed roots dropped). Shared by the account-id and owner reads above.
+ *
+ * `guard` (optional, client-only) makes the fold flicker-proof against a redeem scan
+ * that momentarily fails to see the keeper's closing redeem (see closed-roots-guard.ts):
+ *  - a root that nets fully closed (mint present, remaining <= 0) is RECORDED closed;
+ *  - a root that looks open but is already KNOWN closed is SUPPRESSED, not resurrected.
+ * Passing no guard (server / tests) keeps the original behavior exactly.
+ */
+export function foldOpenPositions(orders: V2OrderEvent[], guard?: ClosedRootsGuard): V2Position[] {
   const terms = new Map<string, V2OrderEvent>(); // the mint (position terms)
   const minted = new Map<string, bigint>();
   const mintedPremium = new Map<string, bigint>();
@@ -610,7 +627,15 @@ function foldOpenPositions(orders: V2OrderEvent[]): V2Position[] {
   for (const [root, mint] of terms) {
     const totalMinted = minted.get(root) ?? 0n;
     const remaining = totalMinted - (closed.get(root) ?? 0n);
-    if (remaining <= 0n) continue; // fully closed → not an open position
+    if (remaining <= 0n) {
+      // Fully closed → not an open position. Record the CONFIRMED close (mint present)
+      // so a later scan that fails to see this redeem can't resurrect the paid position.
+      if (totalMinted > 0n) guard?.markClosed(root);
+      continue;
+    }
+    // Looks open, but if we already saw it fully closed, this is a redeem-scan miss —
+    // suppress the resurrection instead of flashing a paid position back as claimable.
+    if (guard?.isClosed(root)) continue;
     // Cost basis of the still-open portion (proportional to what remains).
     const premium = totalMinted > 0n ? (mintedPremium.get(root)! * remaining) / totalMinted : 0n;
     positions.push({

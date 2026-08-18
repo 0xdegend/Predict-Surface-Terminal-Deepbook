@@ -48,14 +48,42 @@ export function eventRefreshTargets(e: LiveEvent): readonly (readonly unknown[])
   return keys;
 }
 
-/** Mount once (v2 shell): stream Predict events and invalidate the targeted queries. */
+/**
+ * Coalescing window for stream-driven invalidations. A keeper BATCH auto-redeem emits
+ * many order events at once (one per settled winner), each targeting the SAME
+ * accountPositions/accountOrders key — firing them all invalidates that key N times in a
+ * burst, which stacks refetches onto the poll cadence and 429s the public GraphQL proxy.
+ * That failed read is exactly what used to flash paid positions back as claimable
+ * (see [[keeper-redeem-read-gap]]). Debouncing per key collapses the burst into one
+ * refetch a beat after the last event, well under any human-perceptible delay.
+ */
+const INVALIDATE_DEBOUNCE_MS = 500;
+
+/** Mount once (v2 shell): stream Predict events and invalidate the targeted queries,
+ *  coalescing bursts so a keeper batch redeem refetches each key once, not N times. */
 export function useV2LiveEvents(): void {
   const qc = useQueryClient();
   useEffect(() => {
-    return watchPredictEvents((e) => {
-      for (const key of eventRefreshTargets(e)) {
-        void qc.invalidateQueries({ queryKey: key });
-      }
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const schedule = (key: readonly unknown[]) => {
+      const id = JSON.stringify(key);
+      const pending = timers.get(id);
+      if (pending) clearTimeout(pending);
+      timers.set(
+        id,
+        setTimeout(() => {
+          timers.delete(id);
+          void qc.invalidateQueries({ queryKey: key });
+        }, INVALIDATE_DEBOUNCE_MS),
+      );
+    };
+    const stop = watchPredictEvents((e) => {
+      for (const key of eventRefreshTargets(e)) schedule(key);
     });
+    return () => {
+      stop();
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
   }, [qc]);
 }

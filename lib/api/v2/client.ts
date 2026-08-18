@@ -31,6 +31,7 @@ import {
   onchainVaultWithdrawFills,
   onchainBuilderCodeFees,
 } from './onchain';
+import type { ClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import type {
   V2Market,
   V2MarketState,
@@ -103,14 +104,16 @@ export const getV2MarketState = (marketId: string, o?: GetOptions) =>
  *  wallet owner — positions/orders are keyed under account_id). This is the
  *  portfolio's PRIMARY source (useV2Positions); on 7-29 it is reconstructed from
  *  the order log by folding net-open per position (see lib/api/v2/onchain.ts). */
-export const getAccountPositions = (accountId: string, owner?: string, o?: GetOptions) =>
+export const getAccountPositions = (accountId: string, owner?: string, o?: GetOptions, guard?: ClosedRootsGuard) =>
   V2_IS_729_PLUS
     ? // Prefer the owner (tx-sender) read: whale-immune and complete. The account-id
       // scan only survives while the account isn't buried in the global stream, so
-      // it's a fallback for the rare caller that has no owner to hand.
+      // it's a fallback for the rare caller that has no owner to hand. `guard` (client
+      // only) keeps a paid position from flashing back when a redeem scan momentarily
+      // misses the keeper's close — see closed-roots-guard.ts.
       owner
-      ? onchainOwnerPositions(owner, o)
-      : onchainAccountPositions(accountId, o)
+      ? onchainOwnerPositions(owner, o, guard)
+      : onchainAccountPositions(accountId, o, guard)
     : beta<V2Position[]>(`/accounts/${accountId}/positions`, o);
 
 /** The account's order EVENT log (mints + redeems) — the source for trade

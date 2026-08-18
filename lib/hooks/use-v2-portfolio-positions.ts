@@ -16,6 +16,9 @@ import { useV2Positions } from './use-v2-positions';
 import { useV2Pricers } from './use-v2-pricers';
 import { useV2MarketStates } from './use-v2-market-states';
 import { getV2Markets, getAccountOrders, getPythHistory, pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { useV2ReadClient } from '@/lib/sui/grpc';
+import { readSettledOrderValues } from '@/lib/sui/v2/order-value';
+import { getClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import { predictV2Config } from '@/config/predict';
 import { toFloat } from '@/config/scale';
 import {
@@ -133,7 +136,7 @@ export function useV2PortfolioPositions(accountId?: string, owner?: string): Use
     [pythHistQ.data],
   );
 
-  const positions = useMemo(
+  const valued = useMemo(
     () =>
       normalized.map((p) => {
         // Settled? Resolve win/loss from the market's settlement price first — it's
@@ -141,10 +144,66 @@ export function useV2PortfolioPositions(accountId?: string, owner?: string): Use
         const settled = settleV2Position(p, p.marketId ? settlements[p.marketId] : null);
         if (settled.settled) return { ...settled, spark: buildV2Spark(settled, undefined, spots) };
         const pricer = p.marketId ? pricers[p.marketId] : undefined;
-        const valued = valueV2Position(settled, positionMarkPrice(settled, pricer));
-        return { ...valued, spark: buildV2Spark(valued, pricer, spots) };
+        const priced = valueV2Position(settled, positionMarkPrice(settled, pricer));
+        return { ...priced, spark: buildV2Spark(priced, pricer, spots) };
       }),
     [normalized, pricers, spots, settlements],
+  );
+
+  // AUTHORITATIVE reconciliation for settled WINNERS. A winner that still looks open here
+  // is either genuinely awaiting the keeper's payout, or already paid but the redeem read
+  // missed it (the flicker). We ask the chain the exact value of each winner's order; a 0
+  // means it's already been redeemed, so we drop it (and remember it, so the fold suppresses
+  // it on the next poll and after a reload too). See lib/sui/v2/order-value.ts.
+  const client = useV2ReadClient();
+  const guard = useMemo(() => getClosedRootsGuard(owner || accountId || ''), [owner, accountId]);
+  const winnerEntries = useMemo(
+    () =>
+      valued
+        // WINNERS only. A settled loser reads 0 whether or not it's been cleared, so we must
+        // not reconcile it here (it would drop a legitimate "Lost" row before the keeper
+        // clears it). A genuine unredeemed winner is always worth > 0, so 0 there == paid.
+        .filter((p) => p.settled && p.won === true && p.orderId != null && p.marketId)
+        .map((p) => ({
+          marketId: p.marketId as string,
+          orderId: p.orderId as bigint,
+          root: p.positionRootId ?? String(p.orderId),
+        })),
+    [valued],
+  );
+  const redeemedQ = useQuery({
+    queryKey: [
+      'v2',
+      'settled-order-value',
+      accountId ?? '',
+      winnerEntries
+        .map((e) => e.orderId.toString())
+        .sort()
+        .join(','),
+    ],
+    queryFn: async () => {
+      const values = await readSettledOrderValues(client.core, winnerEntries);
+      const redeemed = new Set<string>();
+      for (const e of winnerEntries) {
+        if (values.get(e.orderId.toString()) === 0n) {
+          redeemed.add(e.root);
+          guard.markClosed(e.root); // persist, so the fold suppresses it next time too
+        }
+      }
+      return redeemed;
+    },
+    enabled: winnerEntries.length > 0,
+    staleTime: 8_000,
+    refetchInterval: 12_000,
+  });
+  const redeemedSet = redeemedQ.data;
+
+  const positions = useMemo(
+    () =>
+      redeemedSet && redeemedSet.size > 0
+        ? valued.filter((p) => !redeemedSet.has(p.positionRootId ?? String(p.orderId)))
+        : valued,
+    [valued, redeemedSet],
   );
 
   return { positions, isLoading, marketMap };
