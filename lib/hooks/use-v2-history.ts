@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { deriveV2HistoryFromOrders } from '@/lib/portfolio/v2';
 import { mergeLegacyHistory } from '@/lib/portfolio/legacy-history';
+import { toFloat } from '@/config/scale';
 import { useV2MarketStates } from './use-v2-market-states';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 import type { PastPrediction } from '@/lib/portfolio/history';
@@ -47,11 +48,24 @@ export function useV2History(
     return m;
   }, [marketMap, marketStates]);
 
+  // Settlement price per market ($, or null while live) — lets the derivation recover a
+  // SETTLED LOSS that has no captured redeem event (keeper-cleared, invisible to the owner
+  // scan) so it still shows in history instead of vanishing. Same source the positions hook
+  // uses for its settled marks.
+  const settlements = useMemo(() => {
+    const m = new Map<string, number | null>();
+    for (const [id, st] of Object.entries(marketStates)) {
+      const sp = st?.settlement?.settlement_price;
+      m.set(id, sp != null ? toFloat(sp) : null);
+    }
+    return m;
+  }, [marketStates]);
+
   // Live 8-06 history, with the wallet's carried-over 6-24 trades merged underneath so
   // a returning trader's history is continuous (a no-op on 6-24 and for new wallets).
   const history = useMemo(
-    () => mergeLegacyHistory(owner, deriveV2HistoryFromOrders(q.data ?? [], mergedMap)),
-    [q.data, mergedMap, owner],
+    () => mergeLegacyHistory(owner, deriveV2HistoryFromOrders(q.data ?? [], mergedMap, settlements)),
+    [q.data, mergedMap, settlements, owner],
   );
   return { history, isLoading: q.isLoading };
 }

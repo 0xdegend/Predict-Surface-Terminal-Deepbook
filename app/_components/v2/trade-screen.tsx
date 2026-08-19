@@ -35,7 +35,7 @@ import { RewardBanner } from './reward/reward-banner';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
 import { V2PriceChart } from './price-chart';
 import { V2PositionsPanel } from './positions-panel';
-import { V2RailTabs } from './rail-tabs';
+import { V2OddsCollapse } from './odds-collapse';
 import { SurfaceMountV2 } from './surface/surface-mount';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
@@ -150,12 +150,13 @@ export function V2TradeScreen({
             <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
               <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
             </div>
-            {/* Odds ⇆ Analysis. Odds is the surface's own fair-probability curve;
-                Analysis is the wider-market (Clawby) read + the picked strike's
-                real-world stats. Analysis is mount-gated inside, so its data only
-                loads when a trader opens that tab. */}
+            {/* Odds ⇆ Analysis, COLLAPSED by default (V2OddsCollapse). The ticket's
+                chance slider already gives the odds; this is opt-in depth. Odds is the
+                surface's own fair-probability curve; Analysis is the wider-market
+                (Clawby) read + the picked strike's real-world stats. Both mount only
+                when the trader expands, so their data loads on demand. */}
             <div className="lg:border-t lg:border-line lg:pt-5">
-              <V2RailTabs market={selected} pricer={pricer} serverNow={serverNow} />
+              <V2OddsCollapse market={selected} pricer={pricer} serverNow={serverNow} />
             </div>
           </>
         )}

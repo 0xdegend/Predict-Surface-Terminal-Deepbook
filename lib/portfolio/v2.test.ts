@@ -328,6 +328,36 @@ describe('deriveV2HistoryFromOrders', () => {
     expect(row.cost).toBeCloseTo(2.5, 2); // half of $5 staked
     expect(row.contracts).toBeCloseTo(6.655, 3);
   });
+
+  // Settled-but-unredeemed recovery: a keeper-cleared LOSS emits no payout event the owner
+  // scan can join, so without a settlement fallback it vanishes from history entirely.
+  it('recovers a settled LOSS with no redeem event from the settlement price', () => {
+    // UP $64,364 settling BELOW the strike ⇒ a loss, no redeem event present.
+    const hist = deriveV2HistoryFromOrders([mintP3], mm, new Map([[MKT, 63000]]));
+    expect(hist).toHaveLength(1);
+    expect(hist[0].result).toBe('lost');
+    expect(hist[0].up).toBe(true);
+    expect(hist[0].payout).toBe(0);
+    expect(hist[0].pnl).toBeCloseTo(-5.0, 2); // −stake
+  });
+
+  it('does NOT synthesize a settled WIN (it shows as paying-out + lands via its real redeem)', () => {
+    // UP $64,364 settling ABOVE the strike ⇒ a win — left for the real keeper redeem.
+    const hist = deriveV2HistoryFromOrders([mintP3], mm, new Map([[MKT, 65000]]));
+    expect(hist).toHaveLength(0);
+  });
+
+  it('does NOT synthesize a position whose market is still live (no settlement)', () => {
+    const hist = deriveV2HistoryFromOrders([mintP3], mm, new Map([[MKT, null]]));
+    expect(hist).toHaveLength(0);
+  });
+
+  it('never double-counts a loss already realized via a redeem event', () => {
+    // P2 is liquidated (a real redeem row) AND its market is settled — synth must skip it.
+    const hist = deriveV2HistoryFromOrders([mintP2, liquidated], mm, new Map([[MKT, 63000]]));
+    expect(hist).toHaveLength(1);
+    expect(hist[0].result).toBe('lost');
+  });
 });
 
 /**

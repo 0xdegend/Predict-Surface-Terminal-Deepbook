@@ -1,22 +1,23 @@
 /**
- * order-value.ts — the AUTHORITATIVE "is this settled position already paid out?" read.
- *
- * The portfolio folds open positions from the order-event log, and the protocol keeper's
- * permissionless redeem of a settled winner is captured only by a rate-limited per-market
- * scan (see [[keeper-redeem-read-gap]]). When that scan momentarily 429s, an already-paid
- * winner nets open again and flashes back as a "Claim" card. The order log alone cannot
- * settle the question reliably, so for a settled winner we ask the chain directly.
+ * order-value.ts — the on-chain "what is this order worth at settlement?" read, used as the
+ * settled-LOSS backstop for the portfolio.
  *
  * `expiry_market::order_value(market, Option<Pricer>, order_id): u64` returns the DUSDC
- * (base units) an order is still worth. Verified live 2026-08-18 against the 8-06 package:
- * a FULLY-REDEEMED order returns 0; a still-open order returns a positive value. Within the
- * set we apply this to (settled WINNERS the fold is about to render as claimable), a 0 can
- * only mean "already redeemed", because an unredeemed winner is always worth more than zero
- * and losers never render as claim cards. So value == 0 ⇒ drop it.
+ * (base units) an order is worth. On a SETTLED market that is its INTRINSIC settlement
+ * payout, NOT its unredeemed balance: a LOSER reads 0, a WINNER reads its full payout
+ * whether or not the keeper has already paid it out. (Correction to a 2026-08-18 note that
+ * read "a FULLY-REDEEMED order returns 0" — that was validated against a loser; verified live
+ * 2026-08-19 that a keeper-REDEEMED win, market 0x9b12…, still reads its full 16.71 payout.)
  *
- * We pass Option::None for the Pricer: a settled market prices off its stored settlement,
- * no live Pricer needed. All the order_value calls are batched into ONE simulate, so a
- * whole portfolio of winners costs a single read.
+ * So this read canNOT tell whether a WINNER has been redeemed — a paid win is dropped by
+ * folding the keeper redeem event itself, matched by root (lib/api/v2/onchain.ts
+ * scanMarketRedeems). What value == 0 DOES tell us, for a position we already know is settled,
+ * is that it's a decided LOSS (worth nothing): there is nothing to claim, so it must not
+ * linger as an open bet — it belongs in Trade History. See [[keeper-redeem-read-gap]].
+ *
+ * We pass Option::None for the Pricer: a settled market prices off its stored settlement, no
+ * live Pricer needed. All the calls are batched into ONE simulate, so a whole portfolio of
+ * settled positions costs a single read.
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
@@ -36,9 +37,10 @@ export interface OrderValueEntry {
 }
 
 /**
- * The remaining on-chain value (DUSDC base units) of each settled order, keyed by
- * orderId.toString(). Missing from the map = we couldn't read it (fail-open: the caller
- * should NOT treat an absent entry as redeemed). A present value of 0n = fully redeemed.
+ * The intrinsic settlement value (DUSDC base units) of each settled order, keyed by
+ * orderId.toString(). Missing from the map = we couldn't read it (fail-open: the caller must
+ * NOT treat an absent entry as worthless). A present value of 0n = a settled LOSS (worth
+ * nothing); a value > 0n = a win's payout (redeemed or not — this read can't distinguish).
  */
 export async function readSettledOrderValues(
   client: SimulateCapableClient,

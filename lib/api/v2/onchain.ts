@@ -871,30 +871,44 @@ export async function onchainOwnerOrders(owner: string, maxTx = 200, opts?: GetO
   // tx), so a plain union is correct; the fold nets open/close by position, any signer.
   const union = [ownerScan.orders, ...sessionScans.map((s) => s.orders)].flat();
   // (4) KEEPER REDEEMS. The sender scan above cannot see the protocol keeper's PERMISSIONLESS
-  //     auto-redeem of settled winners (`redeem_settled_permissionless` is signed by the
-  //     keeper, not the owner or a session key, and it deposits the payout into the owner's
-  //     account). Without them an already-paid position lingers as "open" and its Redeem
-  //     aborts because it's already closed. For each market that still looks open here, scan
-  //     THAT market's own tx log (server-side affectedObject filter, immune to the global
-  //     stream's keeper-batch burial) for this account's redeems and fold them in. Redeems
-  //     dedupe by content so a self-signed redeem already present isn't counted twice.
-  const acct = acctId ?? union.find((o) => o.account_id)?.account_id;
-  if (acct) {
-    // Scan EVERY market with a still-open position for this account. This used to cap at
-    // 12, which STRANDED keeper-claimed positions past the 12th open market: they never
-    // got folded, so they piled up as fake "open" — which in turn pushed genuinely-open
-    // markets further out of range, a compounding gap (a heavy session-trader would see
-    // long-settled, already-paid wins stuck on "ready to redeem"). Each per-market scan
-    // stops as soon as that market's open roots are accounted for, so a settled market
-    // costs ~1 page (the keeper's batch redeems are the market's newest txs); the cap is
-    // now just a sanity bound on total fan-out.
-    const byMarket = openRootsByMarket(union);
-    const markets = [...byMarket.keys()].slice(0, KEEPER_SCAN_MARKET_CAP);
-    if (markets.length) {
-      const have = new Set(union.filter((o) => o.kind !== 'order_minted').map(redeemKey));
-      const extra = await Promise.all(markets.map((m) => scanMarketAccountRedeems(m, String(acct), byMarket.get(m)!, opts)));
-      for (const r of extra.flat()) if (!have.has(redeemKey(r))) union.push(r);
-    }
+  //     auto-redeem of a settled position (`redeem_settled_permissionless` is signed by the
+  //     keeper, not the owner or a session key, and it deposits any payout into the owner's
+  //     account). Without them an already-paid WIN lingers as "open" with a Claim that aborts
+  //     (it's already closed), and a cleared LOSS lingers the same way — the read gap that
+  //     order_value can't close, because on a settled market order_value returns the intrinsic
+  //     payout (a paid winner still reads > 0), not the redeemed state. For each market that
+  //     still looks open, scan THAT market's own tx log (server-side affectedObject filter,
+  //     immune to the global stream's keeper-batch burial) and fold in every redeem for one of
+  //     OUR open roots. Redeems dedupe by content so a self-signed redeem already present isn't
+  //     counted twice. Scan EVERY open market (cap is a sanity bound, not the real limit); each
+  //     per-market scan stops as soon as its open roots are accounted for, so a settled market
+  //     costs ~1 page (the keeper's batch redeems are the market's newest txs).
+  const byMarket = openRootsByMarket(union);
+  // Scan OLDEST-open-position markets FIRST. A long-settled market is where the keeper's
+  // redeem is waiting to be folded, and an old position still "open" is almost always already
+  // keeper-paid (a fake-open piling up); a brand-new position is more likely genuinely live
+  // with nothing to fold. Prioritising the old ones means a paid win like 0x9b12… (an old,
+  // SESSION-minted market that sorts AFTER the owner's markets in insertion order) is scanned
+  // within the cap instead of being sliced off the end — which is what left it stuck on
+  // "Claim". This also breaks the compounding pile-up: fold the settled backlog first and the
+  // net-open market count shrinks each poll until it clears. See [[keeper-redeem-read-gap]].
+  const oldestMintMs = new Map<string, number>();
+  for (const o of union) {
+    if (o.kind !== 'order_minted' || !o.expiry_market_id) continue;
+    const m = String(o.expiry_market_id);
+    const t = n(o.minted_at_ms ?? o.checkpoint_timestamp_ms);
+    const cur = oldestMintMs.get(m);
+    if (cur === undefined || t < cur) oldestMintMs.set(m, t);
+  }
+  const markets = [...byMarket.keys()]
+    .sort((a, b) => (oldestMintMs.get(a) ?? Infinity) - (oldestMintMs.get(b) ?? Infinity))
+    .slice(0, KEEPER_SCAN_MARKET_CAP);
+  if (markets.length) {
+    const have = new Set(union.filter((o) => o.kind !== 'order_minted').map(redeemKey));
+    // Bounded fan-out (not Promise.all): a heavy wallet + active session otherwise bursts
+    // hundreds of requests and 429s, silently dropping a market's redeem (the "still Claim" bug).
+    const extra = await mapLimit(markets, KEEPER_SCAN_CONCURRENCY, (m) => scanMarketRedeems(m, byMarket.get(m)!, opts));
+    for (const r of extra.flat()) if (!have.has(redeemKey(r))) union.push(r);
   }
   return union.sort(desc);
 }
@@ -909,9 +923,34 @@ export function redeemKey(o: V2OrderEvent): string {
 }
 
 /** Sanity bound on how many markets get a per-market keeper-redeem scan per read. Each scan
- *  is cheap (early-break, ~1 page for a settled market), so this can be generous — it just
- *  guards against a pathological account with a huge open-position count. */
-const KEEPER_SCAN_MARKET_CAP = 50;
+ *  is cheap (early-break, ~1 page for a settled market) and now runs at bounded concurrency,
+ *  so this can be generous — it just guards against a pathological open-position count. Raised
+ *  from 50: a heavy session-trader's fake-open backlog (keeper-paid positions not yet folded)
+ *  can exceed 50 net-open markets, and the OLD ones (a long-settled win like 0x9b12…) are
+ *  exactly the keeper redeems we must fold — capping at 50 stranded them past the limit. */
+const KEEPER_SCAN_MARKET_CAP = 150;
+
+/** How many per-market redeem scans run at once. The scan fans out over every open market, so
+ *  an unbounded Promise.all on a heavy wallet (many markets × up to 3 pages, ×3 with an active
+ *  session's extra sender scans) bursts hundreds of requests at the GraphQL proxy and 429s —
+ *  and a 429'd scan silently drops that market's keeper redeem, leaving a paid win stuck on
+ *  "Claim". Bounding the fan-out keeps peak in-flight small so each scan actually lands. */
+const KEEPER_SCAN_CONCURRENCY = 6;
+
+/** Run `fn` over `items` with at most `limit` in flight at once, preserving input order. A
+ *  tiny bounded-concurrency map (no dep) for the keeper-redeem fan-out. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 /** Every market with a still-open position for this account (Σ minted > Σ closed per root),
  *  each mapped to its set of still-open roots. The markets are the targets for a per-market
@@ -1008,19 +1047,22 @@ async function queryTxEventsPage(
   return { data, nextCursor: conn?.pageInfo?.startCursor ?? null, hasNextPage: Boolean(conn?.pageInfo?.hasPreviousPage) };
 }
 
-/** One market's redeem events for a given account, read via the market object's OWN tx log
- *  (GraphQL `transactions` `affectedObject`). The server-side per-market filter is immune
- *  to the global event stream's keeper-batch burial, so it recovers the keeper's
- *  permissionless auto-redeem of a settled winner (signed by the keeper, invisible to the
- *  owner/session sender scan). Newest-first, bounded — redeems are a market's last activity,
- *  right after settlement. */
-async function scanMarketAccountRedeems(
+/** One market's redeem events for a set of OPEN ROOTS, read via the market object's OWN tx log
+ *  (GraphQL `transactions` `affectedObject`). The server-side per-market filter is immune to
+ *  the global event stream's keeper-batch burial, so it recovers the keeper's permissionless
+ *  auto-redeem of a settled position (signed by the keeper, invisible to the owner/session
+ *  sender scan). Matches by ROOT, not account_id: one WALLET can hold positions under several
+ *  accounts (a fresh account per predict deployment), so a single-account filter stranded
+ *  redeems under the wallet's other accounts (verified: market 0x9b12…, redeem under account
+ *  0x00af33de, still showed "Claim"). `wantRoots` are exactly this owner's open roots in this
+ *  market — globally-unique u256s — so a redeem whose root is one of them is unambiguously
+ *  ours no matter which account (or the keeper) signed it. Newest-first, bounded — redeems are
+ *  a market's last activity, right after settlement. */
+async function scanMarketRedeems(
   marketId: string,
-  accountId: string,
   wantRoots: Set<string>,
   opts?: GetOptions,
 ): Promise<V2OrderEvent[]> {
-  const want = accountId.toLowerCase();
   const out: V2OrderEvent[] = [];
   // Stop as soon as every open root in this market has its redeem — a settled market's
   // keeper redeems are its newest txs, so this is usually satisfied on page 1. (A LIVE
@@ -1036,10 +1078,13 @@ async function scanMarketAccountRedeems(
       const struct = orderStructOf(ev.type);
       if (!struct || struct === 'OrderMinted') continue; // redeems only
       const p = ev.parsedJson ?? {};
-      if (String(p.account_id ?? '').toLowerCase() !== want) continue;
+      const root = String(p.position_root_id ?? p.order_id ?? '');
+      // Match the STABLE want-set (not `remaining`, which shrinks) so multiple partial
+      // redeems of the same root are all captured; `remaining` only drives the early-break.
+      if (!wantRoots.has(root)) continue; // one of OUR open roots in this market (any account)
       if (String(p.expiry_market_id ?? '') !== marketId) continue;
       out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
-      remaining.delete(String(p.position_root_id ?? p.order_id ?? ''));
+      remaining.delete(root);
     }
     if (remaining.size === 0) break; // every open root here is accounted for — stop early
     if (!page.hasNextPage || !page.nextCursor || page.data.length === 0) break;

@@ -150,20 +150,24 @@ export function useV2PortfolioPositions(accountId?: string, owner?: string): Use
     [normalized, pricers, spots, settlements],
   );
 
-  // AUTHORITATIVE reconciliation for settled WINNERS. A winner that still looks open here
-  // is either genuinely awaiting the keeper's payout, or already paid but the redeem read
-  // missed it (the flicker). We ask the chain the exact value of each winner's order; a 0
-  // means it's already been redeemed, so we drop it (and remember it, so the fold suppresses
-  // it on the next poll and after a reload too). See lib/sui/v2/order-value.ts.
+  // Settled-LOSS backstop. A settled position still net-open here has had its closing redeem
+  // missed by the reads above (the keeper signs the clear, and the per-market backfill can
+  // 429). We ask the chain each order's value: on a SETTLED market order_value returns the
+  // order's INTRINSIC settlement payout — a LOSER reads 0, a WINNER reads its full payout
+  // whether or not the keeper has already paid it (verified live 2026-08-19: a keeper-redeemed
+  // WIN, market 0x9b12…, still read its 16.71 payout, NOT 0). So order_value == 0 ⟺ a settled
+  // LOSS: nothing to claim, decided, belongs in Trade History — we drop it here AND remember it
+  // (guard.markClosed) so the fold suppresses it next poll and after a reload. It CANNOT detect
+  // a redeemed WINNER (that still reads > 0); a paid win is dropped by folding the keeper redeem
+  // itself, matched by root (onchainOwnerOrders → scanMarketRedeems). A genuine unredeemed
+  // winner also reads > 0, so it stays visible as "paying out". See lib/sui/v2/order-value.ts
+  // and [[keeper-redeem-read-gap]].
   const client = useV2ReadClient();
   const guard = useMemo(() => getClosedRootsGuard(owner || accountId || ''), [owner, accountId]);
-  const winnerEntries = useMemo(
+  const settledEntries = useMemo(
     () =>
       valued
-        // WINNERS only. A settled loser reads 0 whether or not it's been cleared, so we must
-        // not reconcile it here (it would drop a legitimate "Lost" row before the keeper
-        // clears it). A genuine unredeemed winner is always worth > 0, so 0 there == paid.
-        .filter((p) => p.settled && p.won === true && p.orderId != null && p.marketId)
+        .filter((p) => p.settled && p.orderId != null && p.marketId)
         .map((p) => ({
           marketId: p.marketId as string,
           orderId: p.orderId as bigint,
@@ -171,39 +175,44 @@ export function useV2PortfolioPositions(accountId?: string, owner?: string): Use
         })),
     [valued],
   );
-  const redeemedQ = useQuery({
+  const lostQ = useQuery({
     queryKey: [
       'v2',
       'settled-order-value',
       accountId ?? '',
-      winnerEntries
+      settledEntries
         .map((e) => e.orderId.toString())
         .sort()
         .join(','),
     ],
     queryFn: async () => {
-      const values = await readSettledOrderValues(client.core, winnerEntries);
-      const redeemed = new Set<string>();
-      for (const e of winnerEntries) {
+      const values = await readSettledOrderValues(client.core, settledEntries);
+      const lost = new Set<string>();
+      for (const e of settledEntries) {
         if (values.get(e.orderId.toString()) === 0n) {
-          redeemed.add(e.root);
+          lost.add(e.root); // value 0 on a settled market ⇒ a decided LOSS, not an open bet
           guard.markClosed(e.root); // persist, so the fold suppresses it next time too
         }
       }
-      return redeemed;
+      return lost;
     },
-    enabled: winnerEntries.length > 0,
-    staleTime: 8_000,
+    enabled: settledEntries.length > 0,
+    // Re-check on mount and on tab refocus (not just the 12s interval), so a position the
+    // keeper resolved while you were away clears the instant you open the screen. The live
+    // event stream also invalidates this key on a redeem (use-v2-live-events), so a settled
+    // loss drops near-instantly instead of on the next interval.
+    staleTime: 0,
+    refetchOnWindowFocus: true,
     refetchInterval: 12_000,
   });
-  const redeemedSet = redeemedQ.data;
+  const lostSet = lostQ.data;
 
   const positions = useMemo(
     () =>
-      redeemedSet && redeemedSet.size > 0
-        ? valued.filter((p) => !redeemedSet.has(p.positionRootId ?? String(p.orderId)))
+      lostSet && lostSet.size > 0
+        ? valued.filter((p) => !lostSet.has(p.positionRootId ?? String(p.orderId)))
         : valued,
-    [valued, redeemedSet],
+    [valued, lostSet],
   );
 
   return { positions, isLoading, marketMap };

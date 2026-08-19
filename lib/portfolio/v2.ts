@@ -265,6 +265,11 @@ export function v2EntryFees(orders: V2OrderEvent[]): Map<string, number> {
 export function deriveV2HistoryFromOrders(
   orders: V2OrderEvent[],
   marketMap?: Map<string, V2Market>,
+  /** marketId → settlement price (float $), or null if the market is not settled. When
+   *  provided, a SETTLED position that has no captured redeem event (mainly a LOSS the
+   *  keeper cleared with a keeper-signed tx the owner scan can't see) is synthesized into
+   *  history from its mint + settlement, so a lost bet never vanishes from the record. */
+  settlements?: Map<string, number | null>,
 ): PastPrediction[] {
   const mints = new Map<string, V2OrderEvent>();
   for (const o of orders) {
@@ -320,6 +325,63 @@ export function deriveV2HistoryFromOrders(
       entryPrice: mint?.entry_probability != null ? toFloat(mint.entry_probability) : 0,
       leverage: mint?.leverage != null ? toFloat(mint.leverage) : undefined,
     });
+  }
+
+  // Settled positions with NO captured redeem event. A settled LOSS is cleared by the
+  // protocol keeper with a keeper-signed redeem the owner scan can miss (and it pays out
+  // nothing for us to join), so without this it vanishes from history entirely — a lost bet
+  // the trader never sees again (verified: owner 0x33a8…, market 0xe69a2a96, a settled UP
+  // loss with no owner redeem). A decided loss is a completed trade and belongs here, so we
+  // synthesize it from the mint + the market's settlement price. WINS are intentionally NOT
+  // synthesized: a settled winner still shows in positions as "paying out" and lands here via
+  // its real keeper redeem, so synthesizing it would double it up. See [[keeper-redeem-read-gap]].
+  if (settlements) {
+    const redeemedRoots = new Set<string>();
+    for (const o of orders) {
+      if (/redeemed/i.test(String(o.kind ?? '')) && o.position_root_id != null) {
+        redeemedRoots.add(String(o.position_root_id));
+      }
+    }
+    for (const [root, mint] of mints) {
+      if (redeemedRoots.has(root)) continue; // already realized via a real redeem row
+      const marketId = mint.expiry_market_id ? String(mint.expiry_market_id) : '';
+      const settlement = marketId ? settlements.get(marketId) : undefined;
+      if (settlement == null) continue; // not settled (still live) or unknown → not history yet
+      const market = marketId ? marketMap?.get(marketId) : undefined;
+      const tickSize = market ? toFloat(market.tick_size) : undefined;
+      const direction = tickDirection({ lower_tick: mint.lower_tick, higher_tick: mint.higher_tick } as V2Position);
+      const priceOf = (t?: string | number) => (t != null && tickSize != null ? Number(t) * tickSize : undefined);
+      const lo = priceOf(mint.lower_tick);
+      const hi = priceOf(mint.higher_tick);
+      // Outcome at settlement, matching settleV2Position / the protocol: UP pays ABOVE the
+      // strike, DOWN pays AT/BELOW, RANGE pays INSIDE (lower, higher]. Skip if the strike
+      // can't be resolved (no market/ticks) rather than guess.
+      let won: boolean | null;
+      if (direction === 'Range') won = lo != null && hi != null ? settlement > lo && settlement <= hi : null;
+      else if (direction === 'Up') won = lo != null ? settlement > lo : null;
+      else won = hi != null ? settlement <= hi : null;
+      if (won == null || won) continue; // only LOSSES are synthesized (see note above)
+      const cost = fromQuote(n(mint.net_premium) + mintFees(mint));
+      const settledAt = market ? Number(market.expiry) : n(mint.minted_at_ms ?? mint.checkpoint_timestamp_ms);
+      rows.push({
+        key: `${marketId || 'm'}-${mint.order_id ?? root}-settled-loss`,
+        oracleId: marketId,
+        underlying: 'BTC',
+        up: direction !== 'Down',
+        strike: direction === 'Up' ? lo ?? 0 : direction === 'Down' ? hi ?? 0 : 0,
+        band: direction === 'Range' && lo != null && hi != null ? { lower: lo, higher: hi } : undefined,
+        expiry: market ? Number(market.expiry) : settledAt,
+        settledAt,
+        result: 'lost',
+        contracts: fromQuote(n(mint.quantity)),
+        cost,
+        payout: 0,
+        pnl: -cost,
+        roi: cost > 0 ? -1 : 0,
+        entryPrice: mint.entry_probability != null ? toFloat(mint.entry_probability) : 0,
+        leverage: mint.leverage != null ? toFloat(mint.leverage) : undefined,
+      });
+    }
   }
 
   return rows.sort((a, b) => b.settledAt - a.settledAt);

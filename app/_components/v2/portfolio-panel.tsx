@@ -56,6 +56,7 @@ import {
   type V2PortfolioPosition,
 } from '@/lib/portfolio/v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
+import { getClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
 import { V2PositionRow } from './position-row';
@@ -216,6 +217,15 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
     if (digest) {
       setRedeeming(null);
       if (payout != null) celebrate(payout, digest);
+      // Fully closed → remember it closed immediately, so the list drops it on the next
+      // render instead of lingering until a fold reconciles the redeem (the "I just claimed
+      // it and it's still showing" gap). Partial closes keep the remainder open, so only mark
+      // a full close. Parity with the trade-rail panel; same guard scope the fold reads.
+      if (closeQuantity >= (p.qtyBase ?? 0n)) {
+        const root = p.positionRootId ?? (p.orderId != null ? String(p.orderId) : '');
+        const scope = acct.owner || acct.accountId || '';
+        if (root && scope) getClosedRootsGuard(scope).markClosed(root);
+      }
     }
   }
 

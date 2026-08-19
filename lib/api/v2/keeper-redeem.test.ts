@@ -113,6 +113,18 @@ describe('foldOpenPositions + closed-roots guard (flicker fix)', () => {
     const open = foldOpenPositions([mint('A', marketA, 100)], guard);
     expect(open.map((p) => p.position_root_id)).toEqual(['A']);
   });
+
+  it('nets a keeper redeem to its mint by ROOT even across different account_ids (multi-account wallet)', () => {
+    // One WALLET holds positions under several predict-deployment accounts. The per-market
+    // redeem scan (scanMarketRedeems) now matches redeems by ROOT, not account_id, so a
+    // keeper redeem lands here carrying whatever account minted the position — and the fold
+    // must close it by root regardless of the account fields. (This is the property the
+    // account-agnostic scan depends on; matching by a single account_id stranded 0x9b12…'s
+    // paid win as a permanent "Claim".)
+    const mintX: V2OrderEvent = { ...mint('R', marketA, 100), account_id: '0xacctX' };
+    const keeperRedeem: V2OrderEvent = { ...redeem('R', 100, 2000), account_id: '0xacctY' };
+    expect(foldOpenPositions([mintX, keeperRedeem])).toEqual([]);
+  });
 });
 
 describe('redeemKey', () => {

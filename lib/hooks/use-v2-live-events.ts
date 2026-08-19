@@ -36,6 +36,11 @@ export function eventRefreshTargets(e: LiveEvent): readonly (readonly unknown[])
     }
     if (account) {
       keys.push(qkV2.accountOrders(account), qkV2.accountPositions(account));
+      // The authoritative settled-value reconciliation (use-v2-portfolio-positions) is keyed
+      // ['v2','settled-order-value', account, …]; a prefix invalidation re-runs it, so the
+      // keeper's auto-redeem (or clear) drops the resolved position near-instantly instead of
+      // waiting for that query's own interval. See [[keeper-redeem-read-gap]].
+      keys.push(['v2', 'settled-order-value', account]);
     }
     // The one aggregate board (a live leaderboard is meant to tick on trades).
     keys.push(['v2', 'leaderboard', 'boards']);

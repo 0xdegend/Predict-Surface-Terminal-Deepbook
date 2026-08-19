@@ -796,7 +796,10 @@ export function V2TradeTicket({
         </h2>
       )}
 
-      <div className="flex flex-col gap-2">
+      {/* One step up from gap-2: collapsing the odds panel freed vertical room, so
+          each control (countdown, mode, side, strike, stake, quote) gets a bit more
+          air between it and the next. gap-3 (12px) not gap-4 — good separation, not loose. */}
+      <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 font-mono text-[11px] tabular-nums text-text-2">
             BTC · {dateUTC(market.expiry)} ·{' '}

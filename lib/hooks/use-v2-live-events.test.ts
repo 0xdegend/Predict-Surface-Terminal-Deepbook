@@ -52,6 +52,9 @@ describe('eventRefreshTargets', () => {
     expect(flat).toContain(qkV2.marketOpenInterest('0xmkt').join('|'));
     expect(flat).toContain(qkV2.marketOrders('0xmkt').join('|'));
     expect(flat).toContain(qkV2.accountPositions('0xacct').join('|'));
+    // The settled-value reconciliation (prefix key) so a keeper auto-redeem drops the
+    // resolved position near-instantly, not on that query's interval.
+    expect(flat).toContain(['v2', 'settled-order-value', '0xacct'].join('|'));
     expect(flat).toContain(['v2', 'leaderboard', 'boards'].join('|'));
     // Only ONE market's OI is ever targeted (no other market ids leak in).
     expect(flat.filter((k) => k.includes('open-interest'))).toHaveLength(1);
