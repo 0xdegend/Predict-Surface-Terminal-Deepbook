@@ -74,6 +74,10 @@ import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
+// "Share this trade with a friend" is still being finished, so it's gated behind an env
+// flag and stays dark until we flip it on. Off (unset) = hidden. Gating `shareBase` hides
+// every entry point at once (both buttons + the share modal all branch on it).
+const SHARE_TRADE = process.env.NEXT_PUBLIC_SHARE_TRADE === '1';
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 // Compact preset label so a big-account chip ("$2,500") never overflows: 1000 → $1k,
 // 2500 → $2.5k. Sub-$1k stays exact.
@@ -148,7 +152,7 @@ export function V2TradeTicket({
   // `market` because this runs before the no-market early return below.
   const shareBase = useMemo(
     () =>
-      market
+      market && SHARE_TRADE
         ? buildRecipe({
             tenor: cadenceOf(market),
             mode,
