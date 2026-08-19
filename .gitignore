@@ -47,3 +47,7 @@ CLAUDE.md
 
 # launch film project (lives outside the repo; ignored in case it moves in)
 skew-launch-film/
+
+# skew_fee_v2 Move package — published on-chain (testnet); the frontend references it by id
+# from config/predict.ts, so its source + build output don't need to live in this repo.
+contracts/skew_fee_v2/

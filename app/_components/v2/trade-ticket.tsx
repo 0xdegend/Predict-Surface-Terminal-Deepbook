@@ -30,6 +30,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { LuShare2 } from 'react-icons/lu';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
+import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
+import { skewFeeBase } from '@/lib/sui/v2/skew-fee';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
@@ -105,6 +107,8 @@ export function V2TradeTicket({
   chart?: ReactNode;
 }) {
   const acct = usePredictAccountV2();
+  // The live on-chain Skew fee (a % of each bet, on top of the builder fee).
+  const skewFee = useSkewFeeV2();
   const now = useNow(serverNow);
   const mounted = useMounted();
   const mode = useV2TradeStore((s) => s.mode);
@@ -329,18 +333,32 @@ export function V2TradeTicket({
   // reach the wallet.
   const stakeTooSmall = stake > 0 && stakeBase < MIN_STAKE_BASE;
   const quotable = probOk && stakeBase >= MIN_STAKE_BASE;
-  const shortfall = maxCost > acct.balanceBase ? maxCost - acct.balanceBase : 0n;
-  const fundedFromAccount = estCostBase < acct.balanceBase ? estCostBase : acct.balanceBase;
+  // Skew fee — a % of the stake, charged ON TOP on the OWNER path only. A trade that will
+  // route through the instant-trading session is fee-free (the session key can't pay it),
+  // so it neither shows nor funds the fee. The routing mirrors the account hook: session
+  // iff a session can trade AND no wallet top-up is needed. See [[skew-builder-fee]].
+  const skewFeeBaseAmt = skewFee.enabled ? skewFeeBase(stakeBase, skewFee.feeBps) : 0n;
+  const baseShortfall = maxCost > acct.balanceBase ? maxCost - acct.balanceBase : 0n;
+  const willRouteSession = acct.sessionCanTrade && baseShortfall === 0n;
+  const chargesSkewFee = skewFeeBaseAmt > 0n && !willRouteSession;
+  const skewFeeDue = chargesSkewFee ? skewFeeBaseAmt : 0n;
+
+  // The account must hold the mint's cost buffer PLUS the skew fee (withdrawn just before
+  // the mint), so size the shortfall + the fundable ceiling for both.
+  const requiredBase = maxCost + skewFeeDue;
+  const shortfall = requiredBase > acct.balanceBase ? requiredBase - acct.balanceBase : 0n;
+  const fundedFromAccount =
+    estCostBase + skewFeeDue < acct.balanceBase ? estCostBase + skewFeeDue : acct.balanceBase;
   // Can the trade actually be funded? The mint auto-deposits the shortfall from
   // the wallet in the same transaction, so the real ceiling is account + wallet
-  // DUSDC. If that's below the (slippage-padded) cost the deposit would revert,
+  // DUSDC. If that's below the (slippage-padded) cost + fee the deposit would revert,
   // so we block the review up front instead of letting the user walk into a
   // guaranteed on-chain failure. Only judged once the wallet balance is known
   // (undefined while loading) so it never flashes on first paint.
   const insufficientFunds =
     quotable &&
     acct.walletDusdcBase !== undefined &&
-    maxCost > acct.balanceBase + acct.walletDusdcBase;
+    requiredBase > acct.balanceBase + acct.walletDusdcBase;
 
   // The trader's spendable DUSDC = trading account + wallet (the mint auto-deposits
   // any wallet shortfall), i.e. exactly what they can stake. Undefined until the
@@ -378,7 +396,9 @@ export function V2TradeTicket({
   // protocol fee itemizes in the cost breakdown instead. Net profit and the
   // payout multiple stay ALL-IN (stake + fee) so the money math never lies.
   const payDollars = fromQuote(stakeBase);
-  const allInDollars = fromQuote(estCostBase);
+  // All-in = stake + protocol fee + skew fee (when charged), so the multiple and net
+  // profit never overstate the trade.
+  const allInDollars = fromQuote(estCostBase + skewFeeDue);
   const winDollars = fromQuote(winBase);
   const mult = allInDollars > 0 ? winDollars / allInDollars : 0;
   const profit = winDollars - allInDollars;
@@ -437,6 +457,11 @@ export function V2TradeTicket({
         minQuantity,
         leverage: leverageScaled(lev),
         deposit: shortfall > 0n ? shortfall : undefined,
+        // The ticket sized `deposit` for cost + fee, so pass the fee explicitly (the hook
+        // then leaves funding to us). Omitted when this trade routes fee-free via a session.
+        skewFee: chargesSkewFee
+          ? { stake: stakeBase, feeBps: skewFee.feeBps, isRange: rangeMode }
+          : undefined,
       },
       { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
@@ -637,6 +662,16 @@ export function V2TradeTicket({
                     <span className="text-[11px] text-text-3">Protocol fee</span>
                     <span className="text-[11px] tabular-nums text-text-1">+${fromQuote(feeBase).toFixed(2)}</span>
                   </div>
+                  {chargesSkewFee && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-text-3">
+                        Skew fee · {(skewFee.feeBps / 100).toFixed(2)}%
+                      </span>
+                      <span className="text-[11px] tabular-nums text-text-1">
+                        +${fromQuote(skewFeeDue).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   {/* The all-in figure — reconciles the stake headline above with
                       what the wallet actually withdraws. */}
                   <div className="flex items-center justify-between">
@@ -986,6 +1021,9 @@ export function V2TradeTicket({
           { label: 'Expiry', value: `${dateUTC(market.expiry)} · ${countdown(market.expiry, now)}` },
           ...(lev > 1 ? [{ label: 'Leverage', value: fmtLev(lev) }] : []),
           ...(feeBase > 0n ? [{ label: 'Protocol fee', value: `$${fromQuote(feeBase).toFixed(2)} ${sym}` }] : []),
+          ...(chargesSkewFee
+            ? [{ label: `Skew fee · ${(skewFee.feeBps / 100).toFixed(2)}%`, value: `$${fromQuote(skewFeeDue).toFixed(2)} ${sym}` }]
+            : []),
         ]}
         cost={`$${fromQuote(stakeBase).toFixed(2)} ${sym}`}
         maxWin={`$${fromQuote(winBase).toFixed(2)} ${sym}`}

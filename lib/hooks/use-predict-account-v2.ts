@@ -57,6 +57,8 @@ import { dripSessionGas, type SessionGasResult } from '@/lib/sui/v2/session-gas'
 import { sessionGasDrip } from '@/config/session-gas';
 import { qkV2 } from '@/lib/api/v2/client';
 import { useBuilderCode, qkBuilderCode } from '@/lib/hooks/use-builder-code';
+import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
+import { skewFeeBase, isRangeTicks } from '@/lib/sui/v2/skew-fee';
 import { qkLpQueue } from '@/lib/hooks/use-lp-queue';
 import {
   buildRequestSupplyTx,
@@ -244,6 +246,11 @@ export function usePredictAccountV2() {
   // us nothing unless this account is attributed to us. We ride the attach along
   // inside the mint PTB (no second signature), and only when the slot is empty.
   const builderCode = useBuilderCode(wrapperId);
+
+  // The live Skew fee (a % of each bet, on TOP of the builder fee), read on-chain. We ride
+  // the charge along inside the OWNER mint PTB; session trades can't carry it (the session
+  // key holds no DUSDC and can only call the sessions wrappers), so they stay fee-free.
+  const skewFeeRate = useSkewFeeV2();
 
   // DUSDC still in the connected wallet (outside the trading account).
   const walletDusdcQ = useQuery({
@@ -642,6 +649,31 @@ export function usePredictAccountV2() {
     return digest;
   }
 
+  /**
+   * Attach the Skew fee to an OWNER-path budget mint and fund it. Ticket callers set their
+   * own `skewFee` (and size `deposit` for cost + fee) → returned untouched. Otherwise the
+   * automated flows get the fee auto-injected from the live on-chain rate, with the deposit
+   * topped up to fund it:
+   *   - account was short (deposit > 0): add the fee to the wallet top-up.
+   *   - account covers the cost (no deposit): pull the fee from the wallet if it has it,
+   *     else from the account's own headroom (the charge withdraws it from the balance).
+   * Session trades never reach here (routed above), so they stay fee-free by construction.
+   */
+  function withOwnerSkewFee(p: MintBudgetParams): MintBudgetParams {
+    if (!skewFeeRate.enabled || skewFeeRate.feeBps <= 0 || p.skewFee) return p;
+    const fee = skewFeeBase(p.amount, skewFeeRate.feeBps);
+    if (fee <= 0n) return p;
+    const skewFee = {
+      stake: p.amount,
+      feeBps: skewFeeRate.feeBps,
+      isRange: isRangeTicks(p.lowerTick, p.higherTick),
+    };
+    let deposit = p.deposit;
+    if (p.deposit && p.deposit > 0n) deposit = p.deposit + fee;
+    else if ((walletDusdcQ.data ?? 0n) >= fee) deposit = fee;
+    return { ...p, skewFee, deposit };
+  }
+
   return {
     owner,
     wrapperId,
@@ -733,7 +765,10 @@ export function usePredictAccountV2() {
         if (sessionCanTrade && !(p.deposit && p.deposit > 0n)) {
           return runSessionTx('mint', buildSessionMintBudgetTx({ ...p, wrapperId }), mintInvalidations, opts);
         }
-        return runOwnerMint(buildMintBudgetTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
+        // Owner path: charge the Skew fee (tickets pass their own skewFee + funding; the
+        // automated flows get it auto-injected + funded here).
+        const op = withOwnerSkewFee({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach });
+        return runOwnerMint(buildMintBudgetTx(op), opts);
       });
     },
     redeemLive: (p: Omit<RedeemParams, 'wrapperId'>, opts?: { silentSuccess?: boolean }) => {

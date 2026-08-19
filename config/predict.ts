@@ -223,6 +223,16 @@ export interface PredictV2Config {
    */
   builderCodeId: string;
   /**
+   * Our v2 `skew_fee_v2::fee_router` package + its shared `FeeConfig`. This is the
+   * Skew fee (a % of each bet) charged ON TOP of the native builder fee, on-chain,
+   * tunable from admin. BOTH empty = not deployed for this network → the app charges
+   * no Skew fee and the UI never breaks. The live fee % + treasury are read on-chain
+   * from `FeeConfig`, never hardcoded. See lib/sui/v2/skew-fee.ts. Framework-only, so
+   * unlike the v1 router it survives protocol redeploys without re-publishing.
+   */
+  skewFeeV2PackageId: string;
+  feeConfigV2Id: string;
+  /**
    * Window (ms before expiry) during which the protocol admits NO leverage above
    * 1x for normal-probability bets — `strike_exposure_config::no_leverage_window_ms`,
    * verified live on 7-29 = 3_600_000 (60 min). Every short testnet market sits
@@ -304,6 +314,8 @@ const V2_TESTNET: PredictV2Config = {
   builderCodeId:
     process.env.NEXT_PUBLIC_BUILDER_CODE_ID ||
     '0x3d916a9be41e850028b342029301e4d7ec19a1c3a843b55ec256d789cfdf2194',
+  skewFeeV2PackageId: '', // dead deployment
+  feeConfigV2Id: '',
   noLeverageWindowMs: 0, // 6-24 used a probability-only admission curve (no window)
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
@@ -387,6 +399,8 @@ const V2_TESTNET_729: PredictV2Config = {
   builderCodeId:
     process.env.NEXT_PUBLIC_BUILDER_CODE_ID ||
     '0x28808f158cbc3bdc0876dbc5dd2268e7801b21433f1daf878361fadf0b4dc76a',
+  skewFeeV2PackageId: '', // 7-29 dead; skew_fee_v2 published on the 8-06 refresh
+  feeConfigV2Id: '',
   noLeverageWindowMs: 3_600_000, // 60 min: verified live — leverage is 1x within this window of expiry
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
@@ -466,6 +480,15 @@ const V2_TESTNET_806: PredictV2Config = {
   // to no-fee. Register from the founder wallet at /v2/admin, then set the id here or via
   // NEXT_PUBLIC_BUILDER_CODE_ID. See the builder-code-every-deployment rule.
   builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID || '',
+  // skew_fee_v2 (module fee_router) — published on testnet 2026-08-19 by the deployer
+  // 0x33a8c3…; AdminCap 0x49787e25…, UpgradeCap 0xb2ef71b4…. FeeConfig defaults: 50 bps
+  // (0.50%), treasury = deployer (verified on-chain). Charged on top of the builder fee.
+  skewFeeV2PackageId:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID ||
+    '0xd3f63b410046b5fa709174f319eac07c1728bcdb192771aad89d79afc44adc71',
+  feeConfigV2Id:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID ||
+    '0xe791646b2e5761d650c0ddd3e4db656430e4d31863ccc13613c845572a6520fb',
   noLeverageWindowMs: 3_600_000, // futureMarketTemplate.noLeverageWindowMs (60 min)
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
@@ -513,6 +536,10 @@ const V2_MAINNET: PredictV2Config = {
   // owning wallet must sign `create_builder_code` itself; there is no way to
   // reassign it later) and paste the id here.
   builderCodeId: '',
+  // Must NOT inherit testnet's skew_fee_v2 — publish it on mainnet (from a multisig) and
+  // paste the ids here, or the app would charge against a testnet FeeConfig.
+  skewFeeV2PackageId: '',
+  feeConfigV2Id: '',
   // Testnet demo wallets must not leak onto a mainnet board; opt in explicitly.
   featuredWallets: [],
 };
@@ -546,6 +573,16 @@ export const v2Deployed: boolean = !!predictV2Config.packages.predict;
 /** True when our BuilderCode is registered for this network. False → mints never
  *  attach and the admin claim UI stays hidden; everything else is unaffected. */
 export const builderCodeEnabled: boolean = !!predictV2Config.builderCodeId;
+
+/** True when the v2 skew_fee router is published for this network. False → mints charge
+ *  NO Skew fee (the fee line is hidden and the admin panel stays in projection-only mode);
+ *  everything else is unaffected. */
+export const feeRouterV2Enabled: boolean =
+  !!predictV2Config.skewFeeV2PackageId && !!predictV2Config.feeConfigV2Id;
+
+/** Fully-qualified target in our `skew_fee_v2` package (module `fee_router`). */
+export const v2SkewFeeTarget = (fn: string): `${string}::fee_router::${string}` =>
+  `${predictV2Config.skewFeeV2PackageId}::fee_router::${fn}` as const;
 
 /**
  * Wallets allowed to see /v2/admin. v2 has no capability object to gate on (v1 had

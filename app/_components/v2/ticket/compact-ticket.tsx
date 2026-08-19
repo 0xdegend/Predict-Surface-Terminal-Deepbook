@@ -23,6 +23,8 @@ import { useEffect, useRef, useState } from 'react';
 import { GlassError } from '../../ui/glass-error';
 import { LuArrowLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
+import { useSkewFeeV2, type SkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
+import { skewFeeBase, isRangeTicks } from '@/lib/sui/v2/skew-fee';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { upFair, rangeFair } from '@/lib/svi/svi';
@@ -92,6 +94,26 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   return { maxLev, lev, stakeBase, quantity, win, amount, minQuantity, feeBase, estCostBase, maxCost };
 }
 
+/**
+ * Fee-aware funding for a compact-ticket mint. The Skew fee is charged on the OWNER path
+ * only (the session key can't pay it), so a trade that will route through the session is
+ * fee-free — neither shown nor funded. Mirrors the full ticket's logic.
+ */
+function skewFunding(
+  s: ReturnType<typeof sizeTrade>,
+  acct: { balanceBase: bigint; sessionCanTrade: boolean },
+  skewFee: SkewFeeV2,
+): { shortfall: bigint; skewFeeDue: bigint; chargesSkewFee: boolean } {
+  const skewFeeBaseAmt = skewFee.enabled ? skewFeeBase(s.stakeBase, skewFee.feeBps) : 0n;
+  const baseShortfall = s.maxCost > acct.balanceBase ? s.maxCost - acct.balanceBase : 0n;
+  const willRouteSession = acct.sessionCanTrade && baseShortfall === 0n;
+  const chargesSkewFee = skewFeeBaseAmt > 0n && !willRouteSession;
+  const skewFeeDue = chargesSkewFee ? skewFeeBaseAmt : 0n;
+  const requiredBase = s.maxCost + skewFeeDue;
+  const shortfall = requiredBase > acct.balanceBase ? requiredBase - acct.balanceBase : 0n;
+  return { shortfall, skewFeeDue, chargesSkewFee };
+}
+
 export function V2CompactTicket({
   market,
   input,
@@ -153,6 +175,7 @@ function BinaryBody({
   initialView?: 'glance' | 'ticket';
 }) {
   const acct = usePredictAccountV2();
+  const skewFee = useSkewFeeV2();
   const isUp = useV2TradeStore((s) => s.isUp);
   const setIsUp = useV2TradeStore((s) => s.setIsUp);
   const strikePrice = useV2TradeStore((s) => s.strikePrice);
@@ -194,7 +217,7 @@ function BinaryBody({
   const s = sizeTrade(market, entryProb, stake, leverage);
   // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
   const quotable = probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
-  const shortfall = s.maxCost > acct.balanceBase ? s.maxCost - acct.balanceBase : 0n;
+  const { shortfall, skewFeeDue, chargesSkewFee } = skewFunding(s, acct, skewFee);
 
   // Switch this market into the range builder, seeding the just-clicked strike
   // as the first edge — the user clicks one more node to complete the band.
@@ -232,6 +255,11 @@ function BinaryBody({
         minQuantity: s.minQuantity,
         leverage: leverageScaled(s.lev),
         deposit: shortfall > 0n ? shortfall : undefined,
+        // Ticket sized `deposit` for cost + fee, so pass the fee (hook leaves funding to us).
+        // Omitted when the trade routes fee-free via a session.
+        skewFee: chargesSkewFee
+          ? { stake: s.stakeBase, feeBps: skewFee.feeBps, isRange: isRangeTicks(lowerTick, higherTick) }
+          : undefined,
       },
       { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
@@ -250,6 +278,7 @@ function BinaryBody({
           market!,
           now,
           s,
+          chargesSkewFee ? { feeDue: skewFeeDue, feeBps: skewFee.feeBps } : undefined,
         ),
         staked: `$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`,
         maxWin: `$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`,
@@ -341,7 +370,7 @@ function BinaryBody({
             <V2LeverageSlider value={s.lev} max={s.maxLev} onChange={setLeverage} tone={isUp ? 'up' : 'down'} />
           )}
 
-          <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp={isUp} shortfall={shortfall} />
+          <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp={isUp} shortfall={shortfall} skewFeeDue={skewFeeDue} />
 
           {closingSoon && !expired && (
             <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
@@ -380,6 +409,7 @@ function BinaryBody({
           market,
           now,
           s,
+          chargesSkewFee ? { feeDue: skewFeeDue, feeBps: skewFee.feeBps } : undefined,
         )}
         cost={`$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`}
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
@@ -431,6 +461,7 @@ function RangeBody({
   onClose: () => void;
 }) {
   const acct = usePredictAccountV2();
+  const skewFee = useSkewFeeV2();
   const rangeLowerPrice = useV2TradeStore((s) => s.rangeLowerPrice);
   const rangeHigherPrice = useV2TradeStore((s) => s.rangeHigherPrice);
   const rangeAnchorPrice = useV2TradeStore((s) => s.rangeAnchorPrice);
@@ -471,7 +502,7 @@ function RangeBody({
   const s = sizeTrade(market, entryProb, stake, leverage);
   // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
   const quotable = bandSet && probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
-  const shortfall = s.maxCost > acct.balanceBase ? s.maxCost - acct.balanceBase : 0n;
+  const { shortfall, skewFeeDue, chargesSkewFee } = skewFunding(s, acct, skewFee);
 
   function openReview() {
     if (!quotable || acct.busy) return;
@@ -502,6 +533,11 @@ function RangeBody({
         minQuantity: s.minQuantity,
         leverage: leverageScaled(s.lev),
         deposit: shortfall > 0n ? shortfall : undefined,
+        // Ticket sized `deposit` for cost + fee, so pass the fee (hook leaves funding to us).
+        // Omitted when the trade routes fee-free via a session.
+        skewFee: chargesSkewFee
+          ? { stake: s.stakeBase, feeBps: skewFee.feeBps, isRange: isRangeTicks(lowerTick, higherTick) }
+          : undefined,
       },
       { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
@@ -520,6 +556,7 @@ function RangeBody({
           market!,
           now,
           s,
+          chargesSkewFee ? { feeDue: skewFeeDue, feeBps: skewFee.feeBps } : undefined,
         ),
         staked: `$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`,
         maxWin: `$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`,
@@ -572,7 +609,7 @@ function RangeBody({
             <V2LeverageSlider value={s.lev} max={s.maxLev} onChange={setLeverage} tone="up" />
           )}
 
-          <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp shortfall={shortfall} />
+          <QuoteCard s={s} quotable={quotable} probOk={probOk} expired={expired} isUp shortfall={shortfall} skewFeeDue={skewFeeDue} />
 
           {closingSoon && !expired && (
             <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
@@ -611,6 +648,7 @@ function RangeBody({
           market,
           now,
           s,
+          chargesSkewFee ? { feeDue: skewFeeDue, feeBps: skewFee.feeBps } : undefined,
         )}
         cost={`$${fromQuote(s.stakeBase).toFixed(2)} ${predictV2Config.quote.symbol}`}
         maxWin={`$${fromQuote(s.win).toFixed(2)} ${predictV2Config.quote.symbol}`}
@@ -656,6 +694,7 @@ function confirmRows(
   market: V2Market,
   now: number,
   s: ReturnType<typeof sizeTrade>,
+  skew?: { feeDue: bigint; feeBps: number },
 ): ConfirmRow[] {
   return [
     outcome,
@@ -664,6 +703,12 @@ function confirmRows(
     ...(s.lev > 1 ? [{ label: 'Leverage', value: fmtLev(s.lev) }] : []),
     ...(s.feeBase > 0n
       ? [{ label: 'Protocol fee', value: `$${fromQuote(s.feeBase).toFixed(2)} ${predictV2Config.quote.symbol}` }]
+      : []),
+    ...(skew
+      ? [{
+          label: `Skew fee · ${(skew.feeBps / 100).toFixed(2)}%`,
+          value: `$${fromQuote(skew.feeDue).toFixed(2)} ${predictV2Config.quote.symbol}`,
+        }]
       : []),
   ];
 }
@@ -721,6 +766,7 @@ function QuoteCard({
   expired,
   isUp,
   shortfall,
+  skewFeeDue = 0n,
 }: {
   s: ReturnType<typeof sizeTrade>;
   quotable: boolean;
@@ -728,6 +774,8 @@ function QuoteCard({
   expired: boolean;
   isUp: boolean;
   shortfall: bigint;
+  /** Skew fee charged on this trade (base units); folded into the all-in cost + fee note. */
+  skewFeeDue?: bigint;
 }) {
   const sym = predictV2Config.quote.symbol;
   const glow = quotable ? (isUp ? 'up glow-accent' : 'down glow-down') : '';
@@ -745,7 +793,7 @@ function QuoteCard({
     body = <span className="text-text-3">Minimum bet is $1 — pick a bigger amount.</span>;
   } else {
     const pay = fromQuote(s.stakeBase);
-    const allIn = fromQuote(s.estCostBase);
+    const allIn = fromQuote(s.estCostBase + skewFeeDue);
     const win = fromQuote(s.win);
     const mult = allIn > 0 ? win / allIn : 0;
     const profit = win - allIn;
@@ -775,7 +823,7 @@ function QuoteCard({
         </div>
         <span className="mt-1.5 text-[10px] text-text-3">
           net if right <span className="text-up">{signed(profit)}</span>
-          {s.feeBase > 0n && <> · fee +${fromQuote(s.feeBase).toFixed(2)}</>}
+          {s.feeBase + skewFeeDue > 0n && <> · fee +${fromQuote(s.feeBase + skewFeeDue).toFixed(2)}</>}
         </span>
         {shortfall > 0n && (
           <span className="mt-1.5 text-[9.5px] leading-tight text-text-3">

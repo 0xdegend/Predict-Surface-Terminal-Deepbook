@@ -763,6 +763,11 @@ export async function onchainBuilderCodeFees(codeId: string, limit = 200, opts?:
 export interface BuilderFeeAccrualEvent {
   ts: number;
   fee: number;
+  /** Stake (net_premium, DUSDC) on a MINT — 0 on closes. The basis for the PROJECTED Skew
+   *  fee (a % of each bet placed through Skew): summed over a window it's the trading volume
+   *  the fee would apply to. Every mint carries a builder fee (min_fee > 0), so it rides the
+   *  same fee>0 filter with no volume lost. */
+  stake: number;
 }
 
 /**
@@ -800,7 +805,10 @@ export async function onchainBuilderFeeAccrual(
       if (evCode !== want) continue;
       const fee = fromQuote(e.builder_fee ?? 0);
       const ts = e.checkpoint_timestamp_ms ?? 0;
-      if (fee > 0 && ts > 0) out.push({ ts, fee });
+      // Stake volume comes from the MINT (net_premium = the trader's bet); a close adds a
+      // builder fee but no new volume, so its stake is 0.
+      const stake = e.kind === 'order_minted' ? fromQuote(Number(e.net_premium ?? 0)) : 0;
+      if (fee > 0 && ts > 0) out.push({ ts, fee, stake });
     }
   }
   out.sort((a, b) => a.ts - b.ts);

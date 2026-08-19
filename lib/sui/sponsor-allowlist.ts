@@ -22,6 +22,11 @@ export function ownedPackages(): Set<string> {
     predictConfig.skewFeePackageId,
     predictV2Config.packages.predict,
     predictV2Config.packages.account,
+    // The v2 Skew fee: a gasless (Google) trade withdraws the fee from the account
+    // (`account::withdraw_funds`, already owned above) and hands it to
+    // `skew_fee_v2::fee_router::charge` in the same sponsored PTB, so the router package
+    // must be sponsorable or the fee call is refused before it reaches Enoki.
+    predictV2Config.skewFeeV2PackageId,
     // Delegated instant trading: a Google (gasless) user ARMS a session by bundling
     // `sessions::authorize_session` into their first sponsored trade, and ENDS it via
     // a sponsored `sessions::revoke_session`. Both ride the Enoki sponsor, so the

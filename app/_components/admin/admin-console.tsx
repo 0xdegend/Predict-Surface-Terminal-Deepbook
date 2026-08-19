@@ -7,7 +7,7 @@
  * concern. Pure chrome + gating; the panels it hosts own their own data and actions.
  */
 import { useMemo, useState } from 'react';
-import { LuCoins, LuWallet, LuUsers, LuTrophy, LuShieldCheck } from 'react-icons/lu';
+import { LuCoins, LuWallet, LuUsers, LuTrophy, LuShieldCheck, LuPercent } from 'react-icons/lu';
 import { isAdminAddress } from '@/config/predict';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
@@ -18,9 +18,10 @@ import { computeSkewUserStats } from '@/lib/leaderboard/user-stats';
 import { legacyHistoryByOwner } from '@/lib/portfolio/legacy-history';
 import { num } from '@/lib/format';
 import { BuilderCodePanel } from './builder-code-panel';
+import { SkewFeePanel } from './skew-fee-panel';
 import { UserStatsPanel } from './user-stats-panel';
 
-type Tab = 'fees' | 'users';
+type Tab = 'fees' | 'skew' | 'users';
 
 const TABS: { key: Tab; label: string; icon: typeof LuCoins; blurb: string }[] = [
   {
@@ -29,6 +30,13 @@ const TABS: { key: Tab; label: string; icon: typeof LuCoins; blurb: string }[] =
     icon: LuCoins,
     blurb:
       'The protocol pays an add-on builder fee on every open and early close made by an account attributed to Skew. It accrues on-chain until you sweep it.',
+  },
+  {
+    key: 'skew',
+    label: 'Skew fee',
+    icon: LuPercent,
+    blurb:
+      'The Skew fee — a percentage of each bet, charged on-chain on top of the builder fee. Set the live rate here and see what it earns against your real volume. Instant-trading (session) bets aren’t charged it yet.',
   },
   {
     key: 'users',
@@ -93,7 +101,7 @@ export function AdminConsole() {
         <p className="max-w-2xl text-[12px] leading-relaxed text-text-3">{active.blurb}</p>
       </div>
 
-      {tab === 'fees' ? <BuilderCodePanel /> : <UserStatsPanel />}
+      {tab === 'fees' ? <BuilderCodePanel /> : tab === 'skew' ? <SkewFeePanel /> : <UserStatsPanel />}
     </div>
   );
 }

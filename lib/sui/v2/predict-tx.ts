@@ -15,8 +15,19 @@ import { predictV2Config, v2Target, V2_IS_729_PLUS } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import { addGenerateAuth, addDeposit } from './account';
 import { addSetBuilderCode } from './builder-code';
+import { addSkewFeeCharge } from './skew-fee';
 
 const c = () => predictV2Config;
+
+/** The Skew fee to charge alongside a mint (marketId + wrapperId come from the mint params).
+ *  Omitted → no fee. See lib/sui/v2/skew-fee.ts. */
+export interface MintSkewFee {
+  /** Bet stake (net premium) the fee is a percentage of, base units. */
+  stake: bigint;
+  /** Live on-chain rate (basis points). */
+  feeBps: number;
+  isRange: boolean;
+}
 
 /** u64 max — used as a "no cap" sentinel for 7-29's added cost ceiling. */
 const U64_MAX = 18446744073709551615n;
@@ -39,6 +50,9 @@ export interface MintParams {
   deposit?: bigint;
   /** Attribute this account to our BuilderCode before minting (see below). */
   attachBuilderCode?: boolean;
+  /** Charge the Skew fee (from the account, to the treasury) in this PTB. Omit → no fee.
+   *  The account must hold `cost + fee`, so the caller's `deposit` is sized for both. */
+  skewFee?: MintSkewFee;
 }
 
 /**
@@ -55,6 +69,10 @@ export function buildMintTx(p: MintParams): Transaction {
   const tx = new Transaction();
   if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
   if (p.attachBuilderCode) addSetBuilderCode(tx, p.wrapperId);
+  // Skew fee AFTER any deposit (account funded) and BEFORE the mint (cost still present).
+  if (p.skewFee) {
+    addSkewFeeCharge(tx, { wrapperId: p.wrapperId, marketId: p.marketId, ...p.skewFee });
+  }
   const auth = addGenerateAuth(tx);
   const pricer = buildLoadPricerCall(tx, p.marketId);
   tx.moveCall({
@@ -98,6 +116,8 @@ export interface MintBudgetParams {
   deposit?: bigint;
   /** Attribute this account to our BuilderCode before minting (see buildMintTx). */
   attachBuilderCode?: boolean;
+  /** Charge the Skew fee alongside the mint (see MintParams.skewFee). */
+  skewFee?: MintSkewFee;
 }
 
 /**
@@ -112,6 +132,10 @@ export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
   const tx = new Transaction();
   if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
   if (p.attachBuilderCode) addSetBuilderCode(tx, p.wrapperId);
+  // Skew fee AFTER any deposit (account funded) and BEFORE the mint (cost still present).
+  if (p.skewFee) {
+    addSkewFeeCharge(tx, { wrapperId: p.wrapperId, marketId: p.marketId, ...p.skewFee });
+  }
   const auth = addGenerateAuth(tx);
   const pricer = buildLoadPricerCall(tx, p.marketId);
   tx.moveCall({
