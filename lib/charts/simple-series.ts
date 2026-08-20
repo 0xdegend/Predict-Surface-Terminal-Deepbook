@@ -121,6 +121,45 @@ export function hasGapBefore(points: SpotPoint[], gapS: number, edgeGuardS: numb
   return false;
 }
 
+/** A point placed on the chart's ORDINAL x-axis: `i` is its slot, not its time. */
+export interface PlacedPoint {
+  i: number;
+  t: number;
+  p: number;
+}
+
+/**
+ * Lay the drawable runs out on an ORDINAL x-axis — one slot per point, plus a single
+ * empty slot wherever the line breaks.
+ *
+ * This is the whole reason the simple chart used to fracture where the advanced one
+ * never did, and the difference was never the data — both are built from the same polls
+ * and have the same holes in them. It was the axis.
+ *
+ * The advanced chart draws through lightweight-charts, whose time scale is ORDINAL:
+ * points sit at even spacing by index, so a second we failed to sample costs no
+ * horizontal space at all. That is why it has to push an explicit whitespace point to
+ * sever a line across a real stall (see `toSeries` in [[app/_components/v2/price-chart]])
+ * — without one, nothing would look broken, because nothing leaves a gap by itself.
+ *
+ * The simple chart is hand-drawn SVG and mapped x from real elapsed time, so every
+ * unsampled second became visible dead space, and a slow round-trip — routine on a
+ * phone, measured at 2-3s even on a fast desktop connection — tore the line apart.
+ * Placing points by slot instead makes the two charts behave identically.
+ *
+ * A break still costs ONE slot, the same width lightweight-charts gives its whitespace
+ * point: enough to read as a discontinuity, not enough to hollow out the chart.
+ */
+export function layoutRuns(points: SpotPoint[]): { runs: PlacedPoint[][]; slots: number } {
+  const out: PlacedPoint[][] = [];
+  let i = 0;
+  for (const run of drawableRuns(points)) {
+    if (out.length) i += 1; // the empty slot that marks the break
+    out.push(run.map((pt) => ({ i: i++, t: pt.t, p: pt.p })));
+  }
+  return { runs: out, slots: i };
+}
+
 /**
  * Monotone cubic Hermite (Fritsch-Carlson) path — the smooth, flowing curve the full
  * chart gets from lightweight-charts' `LineType.Curved`, but monotone-preserving, so

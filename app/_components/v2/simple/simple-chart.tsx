@@ -17,7 +17,7 @@
  * the header's "above/below the line". See [[simple-mode]].
  */
 import { useMemo } from 'react';
-import { curvePath, drawableRuns, type SpotPoint } from '@/lib/charts/simple-series';
+import { curvePath, layoutRuns, type SpotPoint } from '@/lib/charts/simple-series';
 import { price } from '@/lib/format';
 
 const UP = '#4dd6b0';
@@ -35,21 +35,30 @@ export function SimpleRoundChart({
   series,
   line,
   above,
+  ready = true,
 }: {
   series: SpotPoint[];
   line: number | null;
   above: boolean;
+  /**
+   * False while the history backfill is still in flight. The chart then holds its
+   * skeleton instead of painting whatever has arrived: the seed lands seconds before
+   * the full window, so drawing early meant showing a stub that visibly rewrote itself
+   * once the real history joined on behind it. See [[lib/hooks/use-spot-series]].
+   */
+  ready?: boolean;
 }) {
   const stroke = above ? UP : DOWN;
 
   const geom = useMemo(() => {
-    if (series.length < 2) return null;
-    const runs = drawableRuns(series);
-    if (!runs.length) return null;
-    const tip = series[series.length - 1];
-    const framed = [...runs.flat(), tip]; // the live tip always stays in frame
-    let lo = Math.min(...framed.map((p) => p.p));
-    let hi = Math.max(...framed.map((p) => p.p));
+    // ORDINAL x, exactly like the advanced chart's lightweight-charts time scale: a
+    // second we never sampled costs no width, so ordinary poll latency can't tear the
+    // line. See `layoutRuns` for why this is the fix and the axis was the cause.
+    const { runs, slots } = layoutRuns(series);
+    if (!runs.length || slots < 2) return null;
+    const placed = runs.flat();
+    let lo = Math.min(...placed.map((p) => p.p));
+    let hi = Math.max(...placed.map((p) => p.p));
     if (line != null) {
       lo = Math.min(lo, line);
       hi = Math.max(hi, line);
@@ -65,24 +74,27 @@ export function SimpleRoundChart({
     lo -= pad;
     hi += pad;
     const range = hi - lo || 1;
-    const t0 = runs[0][0].t;
-    const t1 = tip.t;
-    const dt = t1 - t0 || 1;
-    const x = (t: number) => ((t - t0) / dt) * W;
+    const x = (i: number) => (i / (slots - 1)) * W;
     const y = (p: number) => PAD_Y + (1 - (p - lo) / range) * (H - 2 * PAD_Y);
-    // One path (and one area) per unbroken run — a gap draws nothing at all.
+    // One path (and one area) per unbroken run — a break draws nothing at all.
     const paths = runs.map((run) => {
-      const pts = run.map((pt) => ({ x: x(pt.t), y: y(pt.p) }));
+      const pts = run.map((pt) => ({ x: x(pt.i), y: y(pt.p) }));
       const d = curvePath(pts);
       return { d, area: `${d} L ${pts[pts.length - 1].x.toFixed(1)} ${H} L ${pts[0].x.toFixed(1)} ${H} Z` };
     });
+    // The live dot rides the last DRAWN point. Reading the raw tail instead would strand
+    // it off the line whenever the newest point was a lone sample with nothing to join.
+    const tip = placed[placed.length - 1];
     const lineY = line != null ? y(line) : null;
-    return { paths, lineY, dotX: x(t1), dotY: y(tip.p) };
+    return { paths, lineY, dotX: x(tip.i), dotY: y(tip.p) };
   }, [series, line]);
 
   return (
-    <div className="relative h-full min-h-55 w-full overflow-hidden rounded-xl bg-bg-0/40">
-      {geom ? (
+    // The floor rises on a desktop: the card's height comes from whichever of it and the
+    // ticket is taller, so on a short laptop window the ticket won that and squeezed the
+    // chart. A taller floor makes the chart the thing that sets the row height.
+    <div className="relative h-full min-h-55 w-full overflow-hidden rounded-xl bg-bg-0/40 lg:min-h-90">
+      {ready && geom ? (
         <>
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
             <defs>

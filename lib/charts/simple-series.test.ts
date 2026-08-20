@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GAP_BREAK_S, drawableRuns, hasGapBefore, toRuns, type SpotPoint } from './simple-series';
+import { GAP_BREAK_S, drawableRuns, hasGapBefore, layoutRuns, toRuns, type SpotPoint } from './simple-series';
 
 /** A run of consecutive per-second points starting at `t0`. */
 function run(t0: number, n: number, p = 70_000): SpotPoint[] {
@@ -47,6 +47,59 @@ describe('drawableRuns', () => {
     const runs = drawableRuns(pts);
     expect(runs).toHaveLength(1);
     expect(runs[0][0].t).toBe(500);
+  });
+});
+
+describe('layoutRuns (the ordinal axis)', () => {
+  it('gives every point one slot, so a slow poll costs no width', () => {
+    // The bug: these five points span 20 seconds because three round-trips were slow.
+    // On a time-proportional axis that drew as mostly empty chart with steep joins;
+    // on the ordinal axis they are simply five adjacent points, exactly as the
+    // advanced chart has always rendered them.
+    const pts: SpotPoint[] = [
+      { t: 0, p: 70_000 },
+      { t: 1, p: 70_010 },
+      { t: 6, p: 70_020 },
+      { t: 13, p: 70_030 },
+      { t: 20, p: 70_040 },
+    ];
+    const { runs, slots } = layoutRuns(pts);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].map((p) => p.i)).toEqual([0, 1, 2, 3, 4]);
+    expect(slots).toBe(5);
+  });
+
+  it('spends exactly ONE slot on a break, matching lightweight-charts whitespace', () => {
+    const pts = [...run(0, 3), ...run(100, 3)];
+    const { runs, slots } = layoutRuns(pts);
+    expect(runs).toHaveLength(2);
+    expect(runs[0].map((p) => p.i)).toEqual([0, 1, 2]);
+    // 3 is the empty break slot; the second run resumes at 4.
+    expect(runs[1].map((p) => p.i)).toEqual([4, 5, 6]);
+    expect(slots).toBe(7);
+  });
+
+  it('a two-minute stall is no wider than a one-second one — the break is a marker, not a hole', () => {
+    const short = layoutRuns([...run(0, 3), ...run(20, 3)]);
+    const long = layoutRuns([...run(0, 3), ...run(2000, 3)]);
+    expect(long.slots).toBe(short.slots);
+  });
+
+  it('keeps real time on each point, so a tooltip can still say when', () => {
+    const { runs } = layoutRuns(run(1_700_000_000, 3));
+    expect(runs[0].map((p) => p.t)).toEqual([1_700_000_000, 1_700_000_001, 1_700_000_002]);
+  });
+
+  it('drops stranded singletons rather than spending a slot on something undrawable', () => {
+    const { runs, slots } = layoutRuns([{ t: 0, p: 70_000 }, ...run(500, 3)]);
+    expect(runs).toHaveLength(1);
+    expect(runs[0][0].i).toBe(0);
+    expect(slots).toBe(3);
+  });
+
+  it('is empty for an undrawable series, so callers can bail before dividing by slots', () => {
+    expect(layoutRuns([]).slots).toBe(0);
+    expect(layoutRuns([{ t: 0, p: 1 }]).slots).toBe(0);
   });
 });
 

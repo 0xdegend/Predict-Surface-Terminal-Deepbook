@@ -7,6 +7,14 @@
  * More slides up the secondary-destinations sheet (Analytics, Quests,
  * Competitions, Docs). Hidden at lg+ where the header nav takes over.
  *
+ * The sheet also carries the phone's ONE switch, Simple ⇄ Advanced, and only on the
+ * trade routes where it applies. It replaced the Legacy ⇄ Latest toggle that used to
+ * head the sheet: a control about which PROTOCOL you're on, offered on every page,
+ * when the switch traders actually reach for is between the two trade screens. That
+ * one used to sit as a full-width bar at the top of both trade screens, where it ate
+ * the first band of a phone screen on the one view that needs its vertical space most.
+ * Legacy is still here, as a footer row, because old positions are claimed there.
+ *
  * Sibling of the chrome (not nested) so its fixed positioning anchors to the
  * viewport, not a backdrop-filter container. iOS safe-area aware.
  */
@@ -27,6 +35,7 @@ import {
   LuBookOpen,
   LuSparkles,
   LuArrowUpRight,
+  LuArchive,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -34,7 +43,7 @@ import { useMobileSheetStore } from '@/lib/store/mobile-sheet-store';
 import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-view-store';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { V2_SIMPLE_ENABLED } from '@/config/predict';
-import { DeploymentToggle } from '../deployment-toggle';
+import { TradeModeToggle } from './trade-mode-toggle';
 import { SOCIAL_ICON } from '../social-links';
 import { SOCIALS } from '@/config/socials';
 
@@ -57,6 +66,10 @@ const MORE: MoreItem[] = [
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: LuSwords, soon: true },
   // Reference, not a destination tile → full-width footer row (keeps the grid even).
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
+  // Legacy's mobile home now that the Version toggle has left this sheet. Trading there
+  // has wound down, but old positions are still claimed from its Portfolio, and that
+  // toggle was the only way in on a phone.
+  { href: '/legacy', label: 'Legacy', desc: 'Claim old positions', icon: LuArchive, footer: true },
   // Socials — off-site footer rows, one per account, from the shared list.
   ...SOCIALS.map((s): MoreItem => ({
     href: s.url,
@@ -155,11 +168,16 @@ export function V2BottomNav() {
           {/* Capped height so the sheet can never swallow the whole screen on
               small phones — it scrolls internally past that. */}
           <div className="flex max-h-[72vh] flex-col gap-1.5 overflow-y-auto scroll-quiet">
-            {/* Legacy ↔ Latest switch — the desktop header toggle's mobile home,
-                so users can move between deployments on phones too. */}
-            <span className="px-1.5 pt-1 text-[11px] font-medium text-text-3">Version</span>
-            <DeploymentToggle variant="sheet" onSelect={() => setOpen(false)} />
-            <div className="my-1 h-px bg-line" />
+            {/* Simple ⇄ Advanced — the desktop header toggle's mobile home. Only on the
+                trade routes it applies to; everywhere else the sheet opens straight into
+                the destinations, with no dead section heading. */}
+            {V2_SIMPLE_ENABLED && isTradeRoute(pathname) && (
+              <>
+                <span className="px-1.5 pt-1 text-[11px] font-medium text-text-3">Trade mode</span>
+                <TradeModeToggle variant="full" onSelect={() => setOpen(false)} />
+                <div className="my-1 h-px bg-line" />
+              </>
+            )}
             {/* Destinations in a 2-column grid — halves the sheet's height vs a
                 single stack, so it stops covering most of the screen. */}
             <div className="grid grid-cols-2 gap-2">

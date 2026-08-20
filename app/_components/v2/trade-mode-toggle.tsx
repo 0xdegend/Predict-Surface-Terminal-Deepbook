@@ -17,8 +17,8 @@
  * which pages they appear on.
  *
  * Variants: "bar" (the desktop header — the chrome wraps it to gate visibility, so this
- * sets no display breakpoints of its own) and "full" (a full-width, touch-sized bar at
- * the top of both trade screens, which is the whole switch on a phone).
+ * sets no display breakpoints of its own) and "full" (a full-width, touch-sized bar,
+ * which is what the mobile More sheet shows — the phone's only way to switch).
  *
  * Active side is read from the pathname (SSR-consistent), so no mounted guard is needed.
  * See [[simple-mode]].
@@ -85,9 +85,13 @@ const SIZES = {
 export function TradeModeToggle({
   variant = 'bar',
   className = '',
+  onSelect,
 }: {
   variant?: Variant;
   className?: string;
+  /** Fired after a real (cross-mode) switch — lets the mobile More sheet close.
+   *  Mirrors DeploymentToggle, the control this one is a sibling of. */
+  onSelect?: () => void;
 }) {
   const pathname = usePathname() ?? '';
   const router = useRouter();
@@ -97,7 +101,10 @@ export function TradeModeToggle({
 
   function choose(simple: boolean, href: string) {
     setView(simple ? 'simple' : 'advanced');
-    if (simple !== onSimple) router.push(href);
+    if (simple !== onSimple) {
+      router.push(href);
+      onSelect?.();
+    }
   }
 
   // The centre swap-circle always flips to whichever side isn't active.

@@ -14,6 +14,9 @@
  * Legacy ⇄ Latest deployment toggle used to live here on every other page — a control
  * about which PROTOCOL you're on, sitting beside pages that have nothing to do with the
  * choice. Legacy now lives in the More menu (and the mobile More sheet).
+ *
+ * Desktop only. Phones reach the same switch from the dock's More sheet, which is the
+ * mobile counterpart of this header — see [[app/_components/v2/bottom-nav]].
  */
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -112,7 +115,7 @@ const MORE_ITEMS: MenuItem[] = [
   {
     href: '/legacy',
     label: 'Legacy',
-    desc: 'The original Skew — open it to claim any old positions',
+    desc: 'The original Skew. Open it to claim any old positions',
     icon: LuArchive,
     footer: true,
   },
@@ -206,11 +209,11 @@ export function V2Chrome() {
             still reachable (More menu on desktop, the More sheet on mobile) because
             claiming old positions lives there.
 
-            Desktop only — phones get the full-width toggle at the top of the trade
-            screen itself. The wrapper is what enforces that: passing `hidden` to the
-            toggle collided with the `inline-flex` it sets on itself (same CSS property,
-            so Tailwind's emit order picked the winner, not the class list) and it stayed
-            visible on mobile. */}
+            Desktop only — phones get the same switch from the dock's More sheet, in the
+            slot that toggle used to occupy. The wrapper is what enforces "desktop only":
+            passing `hidden` to the toggle collided with the `inline-flex` it sets on
+            itself (same CSS property, so Tailwind's emit order picked the winner, not
+            the class list) and it stayed visible on mobile. */}
         {V2_SIMPLE_ENABLED && isTradeRoute(pathname) && (
           <span className="hidden lg:inline-flex">
             <TradeModeToggle />

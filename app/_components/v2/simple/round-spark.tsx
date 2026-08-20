@@ -12,7 +12,7 @@
  * asset from looking like the same picture repeated.
  */
 import { useId, useMemo } from 'react';
-import { curvePath, drawableRuns, sliceWindow, type SpotPoint } from '@/lib/charts/simple-series';
+import { curvePath, layoutRuns, sliceWindow, type SpotPoint } from '@/lib/charts/simple-series';
 
 const UP = '#4dd6b0';
 const DOWN = '#f0796b';
@@ -42,14 +42,14 @@ export function RoundSpark({
   const uid = `spark${useId().replace(/:/g, '')}`;
 
   const geom = useMemo(() => {
-    const pts = sliceWindow(series, windowS);
-    if (pts.length < 2) return null;
-    const runs = drawableRuns(pts);
-    if (!runs.length) return null;
-    const tip = pts[pts.length - 1];
-    const framed = [...runs.flat(), tip];
-    let lo = Math.min(...framed.map((p) => p.p));
-    let hi = Math.max(...framed.map((p) => p.p));
+    // Ordinal x, same as the hero chart — see `layoutRuns`. A sparkline is the WORST
+    // place for a time-proportional axis: at 300px wide, one slow poll used to eat a
+    // visible slice of the whole thumbnail.
+    const { runs, slots } = layoutRuns(sliceWindow(series, windowS));
+    if (!runs.length || slots < 2) return null;
+    const placed = runs.flat();
+    let lo = Math.min(...placed.map((p) => p.p));
+    let hi = Math.max(...placed.map((p) => p.p));
     if (line != null) {
       lo = Math.min(lo, line);
       hi = Math.max(hi, line);
@@ -64,17 +64,15 @@ export function RoundSpark({
     lo -= pad;
     hi += pad;
     const range = hi - lo || 1;
-    const t0 = runs[0][0].t;
-    const t1 = tip.t;
-    const dt = t1 - t0 || 1;
-    const x = (t: number) => ((t - t0) / dt) * W;
+    const x = (i: number) => (i / (slots - 1)) * W;
     const y = (p: number) => PAD_Y + (1 - (p - lo) / range) * (H - 2 * PAD_Y);
     const paths = runs.map((run) => {
-      const p = run.map((pt) => ({ x: x(pt.t), y: y(pt.p) }));
+      const p = run.map((pt) => ({ x: x(pt.i), y: y(pt.p) }));
       const d = curvePath(p);
       return { d, area: `${d} L ${p[p.length - 1].x.toFixed(1)} ${H} L ${p[0].x.toFixed(1)} ${H} Z` };
     });
-    return { paths, lineY: line != null ? y(line) : null, dotX: x(t1), dotY: y(tip.p) };
+    const tip = placed[placed.length - 1];
+    return { paths, lineY: line != null ? y(line) : null, dotX: x(tip.i), dotY: y(tip.p) };
   }, [series, line, windowS]);
 
   if (!geom) return <div className="skeleton h-full w-full rounded-lg opacity-30" />;

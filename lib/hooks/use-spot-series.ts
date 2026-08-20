@@ -51,7 +51,30 @@ const HEAL_EDGE_GUARD_S = 12;
  *  budget on the shared endpoint rather than on any one component. */
 let lastHealAt = 0;
 
-export function useSpotSeries(windowS = 120): SpotPoint[] {
+export interface SpotSeries {
+  points: SpotPoint[];
+  /**
+   * True once the series is worth DRAWING — not merely non-empty.
+   *
+   * The three sources land at very different speeds: the seed is ~1s and carries 15
+   * seconds of history, the full backfill is ~4-5s and carries 100. Painting on the
+   * seed meant the chart appeared as a stub, then visibly jumped when the real window
+   * arrived behind it. Holding the skeleton for those extra few seconds is the honest
+   * trade: one complete chart instead of a partial one that rewrites itself.
+   *
+   * A warm return is unaffected. Either the backfill is cached, or the app-wide tape
+   * feeder has been filling the buffer the whole time this screen was elsewhere — and a
+   * tape that already spans most of the window is a complete chart by itself, so it
+   * draws at once rather than waiting on a walk it doesn't need. The seed can't trigger
+   * that shortcut: 15 seconds is nowhere near the window, which is the point.
+   */
+  ready: boolean;
+}
+
+/** Fraction of the window the tape must already cover to draw without the backfill. */
+const WARM_SPAN_FRAC = 0.5;
+
+export function useSpotSeries(windowS = 120): SpotSeries {
   const qc = useQueryClient();
   const seed = useQuery(pythSeedQueryOptions);
   const full = useQuery(pythHistoryQueryOptions);
@@ -75,5 +98,10 @@ export function useSpotSeries(windowS = 120): SpotPoint[] {
     void qc.refetchQueries({ queryKey: pythHistoryQueryOptions.queryKey, exact: true });
   }, [series, qc]);
 
-  return series;
+  // `isFetched` (not `isSuccess`) so a FAILED backfill still releases the chart: the
+  // tape alone is a thin but honest window, and holding a skeleton forever because the
+  // event index is down would be worse than drawing what we have.
+  const span = series.length >= 2 ? series[series.length - 1].t - series[0].t : 0;
+  const ready = series.length >= 2 && (full.isFetched || span >= windowS * WARM_SPAN_FRAC);
+  return { points: series, ready };
 }

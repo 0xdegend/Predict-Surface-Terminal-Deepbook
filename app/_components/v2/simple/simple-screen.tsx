@@ -40,16 +40,18 @@ import { STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { SimpleRoundChart } from './simple-chart';
 import { RoundCards, type RoundPick } from './round-cards';
+import { MyBets } from './my-bets';
+import { ResultsTape } from './results-tape';
+import { SimpleSkeleton } from './simple-skeleton';
 import { SideButton } from './side-button';
 import { CADENCE_META, CADENCE_TABS, clock } from './cadence';
 import { sanitizeAmount } from './amount';
 import { SimpleBetDrawer, type BetIntent } from './bet-drawer';
-import { TradeModeToggle } from '../trade-mode-toggle';
 import { GlassError } from '../../ui/glass-error';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import { SessionOptInRow } from '../session/session-opt-in-row';
-import { predictV2Config, ACTIVE_NETWORK, V2_SIMPLE_ENABLED } from '@/config/predict';
+import { predictV2Config, ACTIVE_NETWORK } from '@/config/predict';
 import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 
@@ -129,7 +131,7 @@ export function SimpleScreen({
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   // The ONE price series every chart on this screen draws from (hero + every card).
-  const series = useSpotSeries(CHART_WINDOW_S);
+  const { points: series, ready: seriesReady } = useSpotSeries(CHART_WINDOW_S);
   const momentum = useMemo(() => momentumOf(series, MOMENTUM_LOOKBACK_S), [series]);
 
   // The live tick for the price card: the very same shared pyth-latest entry the nav
@@ -270,36 +272,89 @@ export function SimpleScreen({
 
   const secsLeft = active ? Math.max(0, Math.round((active.expiry - now) / 1000)) : 0;
   const px = liveSpot ?? hero.pricer?.forward ?? null;
-  const above = px != null && line != null ? px >= line : true;
-  const delta = px != null && line != null ? px - line : null;
+
+  /**
+   * ROLLOVER, not reload. A round ending used to drop the whole screen — chart, ticket,
+   * cards, tape — back to a centred "starting the next round" box for the beat it took
+   * the next market's pricer and state to land, then rebuild all of it. Every second's
+   * work was thrown away and the page visibly flashed once a minute.
+   *
+   * Now the layout stays mounted and only the hero's own values go quiet. Two pieces
+   * make that read as a smooth handover rather than a stall:
+   *
+   *   - the LINE is held. It comes back a beat later, and (by construction) a round's
+   *     line is the previous round's close, so holding it is both steady and close to
+   *     right. Display only — a bet can't be built from it, because the buttons are
+   *     gated on live quotes, which are exactly what is missing during the gap.
+   *   - the CHART never unmounts. Its series is the shared tape, which has nothing to
+   *     do with which round is on screen, so the price line simply keeps drawing.
+   */
+  const [heldLine, setHeldLine] = useState<number | null>(null);
+  if (line != null && line !== heldLine) setHeldLine(line);
+  const shownLine = line ?? heldLine;
+  const rolling = !active || !hero.ready || line == null;
+
+  const above = px != null && shownLine != null ? px >= shownLine : true;
+  const delta = px != null && shownLine != null ? px - shownLine : null;
+
+  /**
+   * First paint only. Once the screen has been live it never returns here — a rollover
+   * is handled in place (above), and falling back to a skeleton every minute is the
+   * exact flash this latch exists to prevent.
+   *
+   * Gated on the ROUND, not on the chart. The server hands over seeded pricer and market
+   * state, so the round is usually ready on the very first render and the layout paints
+   * at once; the chart's ~4-5s backfill then fills in behind its own skeleton, inside a
+   * card that is already the right size. Holding the entire page for the chart would
+   * trade an instant paint for a blank screen.
+   */
+  const [everLive, setEverLive] = useState(false);
+  if (!everLive && !rolling) setEverLive(true);
+
+  if (!everLive) {
+    if (markets.length === 0) {
+      return (
+        <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-3 py-4 sm:px-5">
+          <p className="rounded-2xl border border-(--line-soft) bg-bg-1 py-24 text-center text-[13px] text-text-3">
+            No live rounds right now — check back in a moment.
+          </p>
+        </main>
+      );
+    }
+    return <SimpleSkeleton />;
+  }
 
   const cf = confirm ? funding(confirm.quote) : null;
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 py-4 sm:px-5">
-      {/* mobile mode switch (desktop gets it in the header) */}
-      {V2_SIMPLE_ENABLED && (
-        <div className="mb-3 lg:hidden">
-          <TradeModeToggle variant="full" />
-        </div>
-      )}
+      {/* No Simple/Advanced switch here — desktop has it in the header, mobile in the
+          dock's More sheet. Kept off BOTH trade screens deliberately: leaving it on this
+          one would mean switching happens in a different place depending on which screen
+          you're standing on, and you could never get back the way you came. */}
 
       {/* title + cadence */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* Flex-wrap, not inline flow: on a phone the sentence used to break right after
-            the price and strand it at the end of a line. Wrapping by phrase keeps the
-            number with "this round?" instead — which is also why the lead-in no longer
-            shortens on mobile. It used to drop "Will Bitcoin be" on the grounds that the
-            nav names the asset, but the nav's chip is small and far away, and the phone
-            screen ended up asking "higher or lower than 72,333.12?" about nothing in
-            particular. The wrap handles the extra width. */}
-        <h1 className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[15px] font-semibold tracking-tight text-text-1 sm:text-[17px]">
-          <span>Will Bitcoin be higher or lower than</span>
-          {line != null && (
-            <>
-              <LinePill value={line} momentum={momentum} />
-              <span>this round?</span>
-            </>
+        {/* One line on a phone. The COPY is what buys that, not a smaller type ramp:
+            "Bitcoin" → "BTC", and "this round?" → "?" (the cadence tabs right below and
+            the chart card's "round closes in" already say which round this is). Measured
+            at 15px, the full sentence wants ~425px against the 366px a 390px phone gives,
+            so there was no tightening that fitted it. What can't go is the ASSET NAME —
+            without it the screen asks "higher or lower than 72,333.12?" about nothing in
+            particular, and the nav's BTC chip is small and far away.
+
+            The price keeps its phrase: pill and tail are ONE flex item, so a narrow
+            screen or a six-figure price wraps them together instead of stranding the
+            number at the end of a line. Flex-wrap stays as that safety net. */}
+        <h1 className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[14px] font-semibold tracking-tight text-text-1 sm:text-[17px]">
+          <span className="whitespace-nowrap sm:hidden">Will BTC be higher or lower than</span>
+          <span className="hidden whitespace-nowrap sm:inline">Will Bitcoin be higher or lower than</span>
+          {shownLine != null && (
+            <span className="inline-flex items-center">
+              <LinePill value={shownLine} momentum={momentum} />
+              <span className="sm:hidden">?</span>
+              <span className="ml-2 hidden sm:inline">this round?</span>
+            </span>
           )}
         </h1>
         {/* Full-width on a phone so each round length is a proper tap target. */}
@@ -319,12 +374,8 @@ export function SimpleScreen({
         </div>
       </div>
 
-      {!active || !hero.ready || line == null ? (
-        <div className="flex flex-1 items-center justify-center rounded-2xl border border-(--line-soft) bg-bg-1 py-24 text-center text-[13px] text-text-3">
-          {markets.length === 0 ? 'No live rounds right now — check back in a moment.' : 'Starting the next round…'}
-        </div>
-      ) : (
-        <>
+      {/* Everything below stays mounted through a rollover — see `rolling` above. */}
+      <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             {/* ── the chart card ───────────────────────────────────────────────── */}
             <section className="panel flex min-h-0 flex-col overflow-hidden">
@@ -353,19 +404,30 @@ export function SimpleScreen({
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <div className="eyebrow">Round closes in</div>
-                  <div className="font-mono text-[26px] font-semibold leading-none tabular-nums text-text-1 sm:text-[32px]">
-                    {clock(secsLeft)}
+                  {/* Between rounds the clock is the one thing that CAN'T be held — a
+                      frozen 0:00 reads as broken — so it dims to a placeholder instead. */}
+                  <div
+                    className={`font-mono text-[26px] font-semibold leading-none tabular-nums transition-colors duration-300 sm:text-[32px] ${
+                      rolling ? 'text-text-3' : 'text-text-1'
+                    }`}
+                  >
+                    {rolling ? '—:—' : clock(secsLeft)}
                   </div>
                   <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-text-3">
-                    <i className="h-1.5 w-1.5 rounded-full bg-up" style={{ animation: 'breathe 2.4s ease-in-out infinite' }} />
-                    live
+                    <i
+                      className={`h-1.5 w-1.5 rounded-full ${rolling ? 'bg-text-3' : 'bg-up'}`}
+                      style={{ animation: 'breathe 2.4s ease-in-out infinite' }}
+                    />
+                    {rolling ? 'next round' : 'live'}
                   </span>
                 </div>
               </div>
 
-              {/* fills the rest of the panel so there's no dead space below it */}
+              {/* Fills the rest of the panel so there's no dead space below it. NOT keyed
+                  on the round: the series is the shared tape and has nothing to do with
+                  which market is on screen, so a rollover leaves the price line alone. */}
               <div className="min-h-0 flex-1 px-3 pb-3">
-                <SimpleRoundChart series={series} line={line} above={above} />
+                <SimpleRoundChart series={series} line={shownLine} above={above} ready={seriesReady} />
               </div>
 
               {/* MOBILE: the call lives on the chart. Scrolling away from the price to
@@ -374,20 +436,20 @@ export function SimpleScreen({
               <div className="grid grid-cols-2 gap-2 px-3 pb-3 lg:hidden">
                 <SideButton
                   isUp
-                  disabled={!acct.owner || !!acct.busy || closing || !upQ?.quotable}
+                  disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !upQ?.quotable}
                   unpriceable={!!upQ && !upQ.quotable}
-                  onPick={() => lineInfo && openBet({ market: active, isUp: true, lineScaled: lineInfo.lineScaled })}
+                  onPick={() => active && lineInfo && openBet({ market: active, isUp: true, lineScaled: lineInfo.lineScaled })}
                 />
                 <SideButton
                   isUp={false}
-                  disabled={!acct.owner || !!acct.busy || closing || !dnQ?.quotable}
+                  disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !dnQ?.quotable}
                   unpriceable={!!dnQ && !dnQ.quotable}
-                  onPick={() => lineInfo && openBet({ market: active, isUp: false, lineScaled: lineInfo.lineScaled })}
+                  onPick={() => active && lineInfo && openBet({ market: active, isUp: false, lineScaled: lineInfo.lineScaled })}
                 />
               </div>
-              {closing && (
+              {(closing || rolling) && (
                 <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
-                  This round is closing — the next one opens in a moment.
+                  {rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
                 </p>
               )}
             </section>
@@ -397,13 +459,19 @@ export function SimpleScreen({
             <aside className="panel hidden flex-col gap-4 p-4 lg:flex">
               <div className="flex flex-col gap-1.5">
                 <span className="eyebrow">The line · this round</span>
-                <span className="font-mono text-[22px] font-semibold leading-none tabular-nums text-text-1">
-                  {price(line)}
+                <span
+                  className={`font-mono text-[22px] font-semibold leading-none tabular-nums transition-colors duration-300 ${
+                    rolling ? 'text-text-3' : 'text-text-1'
+                  }`}
+                >
+                  {shownLine == null ? '—' : price(shownLine)}
                 </span>
                 <span className="text-[11px] leading-snug text-text-3">
-                  {hero.lineInfo?.pinned
-                    ? 'Fixed for this round — settles above or below it.'
-                    : 'The price right now — higher or lower from here.'}
+                  {rolling
+                    ? 'Setting up the next round…'
+                    : hero.lineInfo?.pinned
+                      ? 'Fixed for this round — settles above or below it.'
+                      : 'The price right now — higher or lower from here.'}
                 </span>
               </div>
 
@@ -448,8 +516,11 @@ export function SimpleScreen({
 
               {/* What each call pays at this amount. It sits here rather than on the
                   buttons so the buttons stay one steady target — these figures move on
-                  every tick, and a control that reflows under the cursor gets misclicked. */}
-              <div className="grid grid-cols-2 gap-2 rounded-lg border border-(--line-soft) bg-bg-2/40 px-2 py-2">
+                  every tick, and a control that reflows under the cursor gets misclicked.
+                  `mt-auto` anchors this and the buttons to the bottom of the rail, so the
+                  slack from a taller chart card collects above them instead of leaving a
+                  hollow strip under the last control. */}
+              <div className="mt-auto grid grid-cols-2 gap-2 rounded-lg border border-(--line-soft) bg-bg-2/40 px-2 py-2">
                 <PayoutCell isUp q={upQ} />
                 <PayoutCell isUp={false} q={dnQ} />
               </div>
@@ -457,21 +528,27 @@ export function SimpleScreen({
               <div className="grid grid-cols-2 gap-2">
                 <SideButton
                   isUp
-                  disabled={!acct.owner || !!acct.busy || closing || !upQ?.quotable}
+                  disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !upQ?.quotable}
                   unpriceable={!!upQ && !upQ.quotable}
-                  onPick={() => lineInfo && upQ && requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })}
+                  onPick={() =>
+                    active && line != null && lineInfo && upQ &&
+                    requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })
+                  }
                 />
                 <SideButton
                   isUp={false}
-                  disabled={!acct.owner || !!acct.busy || closing || !dnQ?.quotable}
+                  disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !dnQ?.quotable}
                   unpriceable={!!dnQ && !dnQ.quotable}
-                  onPick={() => lineInfo && dnQ && requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })}
+                  onPick={() =>
+                    active && line != null && lineInfo && dnQ &&
+                    requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })
+                  }
                 />
               </div>
 
-              {closing && (
+              {(closing || rolling) && (
                 <p className="text-center text-[11.5px] text-text-3">
-                  This round is closing — the next one opens in a moment.
+                  {rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
                 </p>
               )}
 
@@ -489,6 +566,12 @@ export function SimpleScreen({
             </aside>
           </div>
 
+          {/* The loop, closed: what you have running right now, then what else is open,
+              then how the last rounds went. Self-gating — "Your bets" renders nothing
+              until there is a bet, so a first-timer still gets the quiet screen they
+              came for, and the results tape carries the page's baseline content. */}
+          <MyBets spot={px} now={now} />
+
           <RoundCards
             markets={otherRounds}
             series={series}
@@ -500,8 +583,9 @@ export function SimpleScreen({
             onPick={pickSide}
             disabled={!acct.owner || !!acct.busy}
           />
-        </>
-      )}
+
+          <ResultsTape cadence={cadence} now={now} />
+      </>
 
       <SimpleBetDrawer
         intent={betIntent}
@@ -585,7 +669,7 @@ function LinePill({ value, momentum }: { value: number; momentum: Momentum }) {
   const label = momentum === 'up' ? 'Bitcoin is rising' : momentum === 'down' ? 'Bitcoin is falling' : 'Bitcoin is flat';
   return (
     <span
-      className={`inline-flex items-center rounded-md border px-2 py-0.5 align-baseline font-mono text-[15px] font-semibold tabular-nums transition-colors sm:text-[17px] ${tone}`}
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 align-baseline font-mono text-[14px] font-semibold tabular-nums transition-colors sm:text-[17px] ${tone}`}
       title={label}
     >
       {price(value)}

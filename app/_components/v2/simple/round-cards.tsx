@@ -64,7 +64,11 @@ export function RoundCards({
         <h2 className="text-[13px] font-semibold tracking-tight text-text-1">Other rounds open now</h2>
         <span className="hidden text-[11px] text-text-3 lg:inline">Bets use the amount set above</span>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {/* Columns track the CARD COUNT, not the breakpoint. There are three cadences and
+          one of them is always the hero, so this row holds at most two — a fixed
+          three-column grid left a permanently empty slot on every wide screen, which
+          read as a card that had failed to load. */}
+      <div className={`grid gap-3 ${markets.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : markets.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
         {markets.map((m) => (
           <RoundCard
             key={m.expiry_market_id}
