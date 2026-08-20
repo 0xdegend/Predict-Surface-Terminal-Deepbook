@@ -18,10 +18,10 @@ import { gsap } from 'gsap';
 import { LuX, LuChevronRight, LuCheck } from 'react-icons/lu';
 import { useTourStore } from '@/lib/store/tour-store';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
-import { TOUR_STEPS, type TourStep } from '@/lib/tour/steps';
+import { TOURS, type TourStep } from '@/lib/tour/steps';
 
-/** Persisted once the tour is finished or skipped — bump the suffix to re-show. */
-export const TOUR_SEEN_KEY = 'skew.tour.v1';
+/** First-visit key (the orientation tour). Kept here so the launcher can import it. */
+export const TOUR_SEEN_KEY = TOURS.orientation.seenKey;
 /** Breathing room between the target edge and the spotlight cutout. */
 const PAD = 8;
 
@@ -39,14 +39,32 @@ function prefersReducedMotion() {
   );
 }
 
+/**
+ * First anchor for a selector that is actually VISIBLE (has layout boxes). Skips
+ * `display:none` copies — the desktop ticket column on a narrow screen, a closed mobile
+ * sheet, a step-gated control — so a step never spotlights a hidden element or the page
+ * corner, and un-shown steps are dropped from the stepper instead of appearing broken.
+ */
+function firstVisible(selector: string): HTMLElement | null {
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>(selector)).find(
+      (el) => el.getClientRects().length > 0,
+    ) ?? null
+  );
+}
+
 export function TourOverlay() {
   const active = useTourStore((s) => s.active);
+  const tour = useTourStore((s) => s.tour);
   const step = useTourStore((s) => s.step);
   const setStep = useTourStore((s) => s.setStep);
   const stop = useTourStore((s) => s.stop);
 
-  // Steps whose anchor is actually in the DOM, recomputed each time the tour opens.
-  const [steps, setSteps] = useState<TourStep[]>(TOUR_STEPS);
+  // The active tour definition (its step list, label, and "seen" key).
+  const def = TOURS[tour];
+
+  // Steps whose anchor is actually in the DOM, recomputed each time a tour opens.
+  const [steps, setSteps] = useState<TourStep[]>(def.steps);
   const [box, setBox] = useState<Box | null>(null);
 
   // Desktop gets the dim + moving spotlight + scroll-to-section. On phones that
@@ -60,15 +78,15 @@ export function TourOverlay() {
   const total = steps.length;
   const current = steps[Math.min(step, total - 1)];
 
-  // Persist "seen" then close. Called by Finish, Skip, Esc, and the catcher.
+  // Persist this tour's "seen" flag then close. Called by Finish, Skip, Esc, and the catcher.
   const end = useCallback(() => {
     try {
-      window.localStorage.setItem(TOUR_SEEN_KEY, 'done');
+      window.localStorage.setItem(def.seenKey, 'done');
     } catch {
       /* private mode / disabled storage — tour just won't be remembered */
     }
     stop();
-  }, [stop]);
+  }, [stop, def.seenKey]);
 
   const next = useCallback(() => {
     if (step >= total - 1) end();
@@ -79,23 +97,23 @@ export function TourOverlay() {
     if (step > 0) setStep(step - 1);
   }, [step, setStep]);
 
-  // On open: filter to mounted anchors, reset the morph flag, clamp the index.
+  // On open (or tour switch): filter to mounted anchors, reset the morph flag, clamp index.
   useEffect(() => {
     if (!active) return;
     morphedRef.current = false;
-    const present = TOUR_STEPS.filter((s) => document.querySelector(s.target));
+    const present = def.steps.filter((s) => firstVisible(s.target));
     // Syncing React state from a DOM read (which anchors are mounted) — the
     // external-system case the lint rule exempts; it just can't see the query.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSteps(present.length ? present : TOUR_STEPS);
+    setSteps(present.length ? present : def.steps);
     setStep(0);
-  }, [active, setStep]);
+  }, [active, def.steps, setStep]);
 
   // Measure the active target → the spotlight box. The nav dock is fixed, so we
   // only ever position the cutout.
   const measure = useCallback(() => {
     const cur = steps[Math.min(step, steps.length - 1)];
-    const el = cur ? (document.querySelector(cur.target) as HTMLElement | null) : null;
+    const el = cur ? firstVisible(cur.target) : null;
     if (!el) {
       setBox(null);
       return;
@@ -136,7 +154,7 @@ export function TourOverlay() {
   useEffect(() => {
     if (!active || !isDesktop) return;
     const cur = steps[Math.min(step, steps.length - 1)];
-    const el = cur ? (document.querySelector(cur.target) as HTMLElement | null) : null;
+    const el = cur ? firstVisible(cur.target) : null;
     el?.scrollIntoView({
       behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       block: 'center',
@@ -199,7 +217,7 @@ export function TourOverlay() {
           {/* Header — eyebrow + progress + close. */}
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-text-3">
-              Guided tour <span className="text-text-2">· step {step + 1} of {total}</span>
+              {def.label} <span className="text-text-2">· step {step + 1} of {total}</span>
             </span>
             <div className="flex items-center gap-1">
               {!isLast && (

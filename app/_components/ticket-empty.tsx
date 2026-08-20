@@ -16,10 +16,12 @@
  * Pure presentational; no wallet logic (the top-nav WalletBar owns connection).
  */
 import type { IconType } from 'react-icons';
-import { LuWallet, LuMousePointerClick, LuList, LuChartArea, LuBoxes } from 'react-icons/lu';
+import { LuWallet, LuMousePointerClick, LuList, LuChartArea, LuBoxes, LuGraduationCap } from 'react-icons/lu';
+import { useTourStore } from '@/lib/store/tour-store';
 
 export function TicketEmpty({ heroView }: { heroView?: 'surface' | 'chart' | null }) {
   const isChart = heroView === 'chart';
+  const startTour = useTourStore((s) => s.start);
 
   // Step 2 — how to pick a market, adapted to the active hero view. The odds
   // list lives in the rail in both views, so it's always an option.
@@ -64,6 +66,16 @@ export function TicketEmpty({ heroView }: { heroView?: 'surface' | 'chart' | nul
         <Step n={2} icon={PickIcon} title="Pick a market to trade" hint={pickHint} />
         <TipRow icon={TipIcon} title={tipTitle} hint={tipHint} />
       </div>
+
+      {/* First-timer nudge — the step-by-step "how to place a trade" walkthrough. */}
+      <button
+        type="button"
+        onClick={() => startTour('trade')}
+        className="relative mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-[12px] font-medium text-text-2 transition-colors hover:border-(--line-strong) hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      >
+        <LuGraduationCap size={14} className="text-accent" />
+        New here? See how to place a trade
+      </button>
     </div>
   );
 }

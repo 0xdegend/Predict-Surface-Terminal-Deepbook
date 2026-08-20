@@ -593,7 +593,7 @@ export function V2TradeTicket({
 
   // Risk → Reward: the answer to "what do I pay and what can I win?"
   const quoteCard = (
-    <div className={`glass-card p-3.5 ${quotable && !tooCloseToExpiry ? (tone === 'up' ? 'up glow-accent' : 'down glow-down') : ''}`}>
+    <div data-tour="quote" className={`glass-card p-3.5 ${quotable && !tooCloseToExpiry ? (tone === 'up' ? 'up glow-accent' : 'down glow-down') : ''}`}>
       {tooCloseToExpiry ? (
         <span className="text-text-2">
           About to settle. Pick another market.
@@ -719,7 +719,9 @@ export function V2TradeTicket({
 
       {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
           (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
-      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
+      <div data-tour="place">
+        <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
+      </div>
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       <p className="text-[10px] leading-relaxed text-text-3">
         {oneTapPlace

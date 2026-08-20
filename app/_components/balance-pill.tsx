@@ -114,10 +114,6 @@ function V2TotalPill() {
             <BreakdownRow label="Wallet" base={walletBase} sym={sym} />
             <span className="my-2 h-px bg-white/10" />
             <BreakdownRow label="Total" base={totalBase} sym={sym} strong />
-            <span className="mt-2 text-[10px] leading-relaxed text-text-3">
-              This is what you can bet with — a bet pulls from your wallet automatically if your
-              trading account is short.
-            </span>
           </div>,
           document.body,
         )}
