@@ -5,18 +5,28 @@
  * the per-market STATE for the nearest market of each cadence, so the round's
  * pinned line paints immediately instead of flashing at-the-money while the state
  * read lands. The client SimpleScreen takes over live. See [[simple-mode]].
+ *
+ * The route itself honours `V2_SIMPLE_ENABLED` and redirects to the full terminal when
+ * simple mode is off. Without this the flag only hid the WAY IN: every nav href and
+ * toggle checked it, but the page still rendered for anyone who typed the URL, kept a
+ * bookmark, or had 'simple' persisted in their trade-view store from a previous release
+ * — so a kill switch thrown after a bad deploy would not actually have taken the screen
+ * down. Server-side, so nothing of it ships to a client that shouldn't have it.
  */
+import { redirect } from 'next/navigation';
 import { getV2Markets, getV2Status, getV2MarketState } from '@/lib/api/v2/client';
 import { activeMarkets, groupByCadence, CADENCE_ORDER, wallClockMs } from '@/lib/markets/v2-discovery';
 import { simulateLivePricer, v2GrpcClient, type LivePricer } from '@/lib/sui/v2/pricer';
 import { SimpleScreen } from '@/app/_components/v2/simple/simple-screen';
 import { ErrorState } from '@/app/_components/ui/error-state';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, V2_SIMPLE_ENABLED } from '@/config/predict';
 import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
 
 export const dynamic = 'force-dynamic';
 
 export default async function V2SimplePage() {
+  if (!V2_SIMPLE_ENABLED) redirect('/v2');
+
   let markets: V2Market[] = [];
   let now = wallClockMs();
   let error: string | null = null;

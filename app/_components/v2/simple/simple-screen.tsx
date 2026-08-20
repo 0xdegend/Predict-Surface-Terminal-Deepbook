@@ -31,7 +31,8 @@ import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { RollingNumber } from '@/app/_components/ui/rolling-number';
 import { momentumOf, type Momentum } from '@/lib/charts/simple-series';
-import { groupByCadence, isTooCloseToExpiry, cadenceOf, CADENCE_ORDER, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry, CADENCE_ORDER, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { pickAllRounds, type HeldPicks } from '@/lib/markets/round-pick';
 import { type SideQuote } from '@/lib/sui/v2/simple-round';
 import { leverageScaled } from '@/lib/sui/v2/ticks';
 import { fromQuote } from '@/config/scale';
@@ -39,7 +40,7 @@ import { price } from '@/lib/format';
 import { STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { SimpleRoundChart } from './simple-chart';
-import { RoundCards, type RoundPick } from './round-cards';
+import { RoundCards, type HorizonRound, type RoundPick } from './round-cards';
 import { MyBets } from './my-bets';
 import { ResultsTape } from './results-tape';
 import { SimpleSkeleton } from './simple-skeleton';
@@ -66,30 +67,6 @@ const MOMENTUM_LOOKBACK_S = 30;
 const MAX_OTHER_ROUNDS = 3;
 
 type SuccessState = { headline: string; tone: 'up' | 'down'; rows: ConfirmRow[]; staked: string; maxWin: string; digest: string };
-
-/**
- * The round to SHOW for a cadence: the soonest one still running. Always that one —
- * never the one after it.
- *
- * Markets enter their rolling window several periods before expiry (a 1-minute round is
- * created ~3 minutes out), so a cadence has two or three live at once, spaced one period
- * apart. The screen used to SKIP a round that was too close to bet and take the next,
- * which put a 2:32 countdown under a "1 min" label. The soonest round is inside its own
- * period by construction — measured live: 1m soonest 0:23 of a 0:23/1:24/2:24 window, 5m
- * soonest 4:23 of 4:23/9:24/14:24 — so taking it is the whole fix.
- *
- * A round in its final seconds is still SHOWN, because its countdown is the true one;
- * the caller disables betting on it instead (`isTooCloseToExpiry`). Trading a correct
- * number for a few dead seconds is the right way round.
- *
- * NOTE the hourly series is shaped differently: the protocol keeps only ONE hourly
- * market alive and creates it ~3h ahead, so its soonest legitimately reads past an hour.
- * There is no nearer round to show instead — an empty tab would be the only alternative.
- */
-function currentRound(list: V2Market[], now: number): V2Market | null {
-  // `list` is already soonest-first; skip any that expired before the client list caught up.
-  return list.find((m) => m.expiry > now) ?? null;
-}
 
 export function SimpleScreen({
   markets: initialMarkets,
@@ -146,8 +123,23 @@ export function SimpleScreen({
   });
   const liveSpot = pythSpot(spotQ.data ?? null);
 
-  const grouped = useMemo(() => groupByCadence(markets), [markets]);
-  const active = useMemo(() => currentRound(grouped[cadence], now), [grouped, cadence, now]);
+  /**
+   * One round per tab, chosen by TIME REMAINING rather than by which series created the
+   * market — see [[lib/markets/round-pick]] for the measurements that forced this. The
+   * picks are held in state so a countdown can never jump backwards when a further-out
+   * round crosses into a band; adjusted during render (React's "you might not need an
+   * effect"), and the equality check is what stops it looping on the 1s clock.
+   */
+  const [heldPicks, setHeldPicks] = useState<HeldPicks>({});
+  const picks = useMemo(() => pickAllRounds(markets, now, heldPicks), [markets, now, heldPicks]);
+  const pickIds: HeldPicks = {
+    '1m': picks['1m']?.expiry_market_id,
+    '5m': picks['5m']?.expiry_market_id,
+    '1h': picks['1h']?.expiry_market_id,
+  };
+  if (CADENCE_ORDER.some((c) => pickIds[c] !== heldPicks[c])) setHeldPicks(pickIds);
+
+  const active = picks[cadence];
   // In its last few seconds a mint can no longer land, so the round is shown (the
   // countdown is real) but not bettable — rather than jumping to a round of the wrong
   // length just to keep the buttons alive.
@@ -159,22 +151,18 @@ export function SimpleScreen({
   });
   const { line, lineInfo, upQ, dnQ } = hero;
 
-  // The other rounds to card up: the current round of every OTHER cadence, by the same
-  // rule as the hero — so a card labelled "5 min" can't be counting down from 6:32
-  // either. That's one card per remaining cadence; the next round of a series is
-  // deliberately NOT offered, since it always outlives its own label.
-  const otherRounds = useMemo(() => {
-    const activeId = active?.expiry_market_id;
-    const out: V2Market[] = [];
-    for (const c of CADENCE_ORDER) {
-      if (c === cadence) continue;
-      const m = currentRound(grouped[c], now);
-      if (m && m.expiry_market_id !== activeId) out.push(m);
-    }
-    // Show them soonest-first — the row is a queue of what closes next, so cadence order
-    // is the wrong axis to lay it out on.
-    return out.slice(0, MAX_OTHER_ROUNDS).sort((a, b) => a.expiry - b.expiry);
-  }, [grouped, cadence, active, now]);
+  // The other tabs' rounds, carded up. The bands are disjoint, so these can never collide
+  // with the hero's pick and no de-duplication is needed. Shown soonest-first — the row is
+  // a queue of what closes next, so tab order is the wrong axis to lay it out on.
+  const otherRounds = useMemo<HorizonRound[]>(
+    () =>
+      CADENCE_ORDER.filter((c) => c !== cadence)
+        .map((c) => ({ cadence: c, market: picks[c] }))
+        .filter((r): r is HorizonRound => r.market != null)
+        .slice(0, MAX_OTHER_ROUNDS)
+        .sort((a, b) => a.market.expiry - b.market.expiry),
+    [picks, cadence],
+  );
 
   // One-time balance-aware default stake — adjusted DURING render (React's "you might
   // not need an effect"), so it never trips set-state-in-effect. Fires once the balance
@@ -217,7 +205,7 @@ export function SimpleScreen({
    */
   function pickSide(pick: RoundPick) {
     if (isDesktop) requestPlace(pick);
-    else openBet({ market: pick.market, isUp: pick.isUp, lineScaled: pick.lineScaled });
+    else openBet({ market: pick.market, cadence: pick.cadence, isUp: pick.isUp, lineScaled: pick.lineScaled });
   }
 
   /** Every bet on this screen — hero ticket, round card or drawer — funnels through here. */
@@ -294,6 +282,16 @@ export function SimpleScreen({
   const shownLine = line ?? heldLine;
   const rolling = !active || !hero.ready || line == null;
 
+  /**
+   * A cadence with NOTHING live, which is a different thing from a rollover and needs
+   * to say so. The hourly series is intermittent — a census against the live chain found
+   * it at zero live markets — and `active` is then null forever, so the hero sat on
+   * "setting up the next round" indefinitely with no next round coming. The other two
+   * cadences keep two markets alive at once, so they never reach this.
+   */
+  const cadenceEmpty = !active && markets.length > 0;
+  const emptyNote = `No ${CADENCE_META[cadence].short} rounds are open right now. Try another round length.`;
+
   const above = px != null && shownLine != null ? px >= shownLine : true;
   const delta = px != null && shownLine != null ? px - shownLine : null;
 
@@ -309,7 +307,10 @@ export function SimpleScreen({
    * trade an instant paint for a blank screen.
    */
   const [everLive, setEverLive] = useState(false);
-  if (!everLive && !rolling) setEverLive(true);
+  // `cadenceEmpty` releases the latch too: landing on a cadence with nothing live is a
+  // known answer, not a pending one, and holding the skeleton for it would be a blank
+  // screen waiting on a round that isn't coming.
+  if (!everLive && (!rolling || cadenceEmpty)) setEverLive(true);
 
   if (!everLive) {
     if (markets.length === 0) {
@@ -438,18 +439,18 @@ export function SimpleScreen({
                   isUp
                   disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !upQ?.quotable}
                   unpriceable={!!upQ && !upQ.quotable}
-                  onPick={() => active && lineInfo && openBet({ market: active, isUp: true, lineScaled: lineInfo.lineScaled })}
+                  onPick={() => active && lineInfo && openBet({ market: active, cadence, isUp: true, lineScaled: lineInfo.lineScaled })}
                 />
                 <SideButton
                   isUp={false}
                   disabled={!active || rolling || !acct.owner || !!acct.busy || closing || !dnQ?.quotable}
                   unpriceable={!!dnQ && !dnQ.quotable}
-                  onPick={() => active && lineInfo && openBet({ market: active, isUp: false, lineScaled: lineInfo.lineScaled })}
+                  onPick={() => active && lineInfo && openBet({ market: active, cadence, isUp: false, lineScaled: lineInfo.lineScaled })}
                 />
               </div>
               {(closing || rolling) && (
                 <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
-                  {rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
+                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
                 </p>
               )}
             </section>
@@ -467,11 +468,13 @@ export function SimpleScreen({
                   {shownLine == null ? '—' : price(shownLine)}
                 </span>
                 <span className="text-[11px] leading-snug text-text-3">
-                  {rolling
-                    ? 'Setting up the next round…'
-                    : hero.lineInfo?.pinned
-                      ? 'Fixed for this round — settles above or below it.'
-                      : 'The price right now — higher or lower from here.'}
+                  {cadenceEmpty
+                    ? emptyNote
+                    : rolling
+                      ? 'Setting up the next round…'
+                      : hero.lineInfo?.pinned
+                        ? 'Fixed for this round — settles above or below it.'
+                        : 'The price right now — higher or lower from here.'}
                 </span>
               </div>
 
@@ -514,13 +517,29 @@ export function SimpleScreen({
                 />
               </div>
 
+              {/* The stake, restated as RISK — the one thing the ticket never said out
+                  loud. Everything else on it is upside: two payout figures and two green
+                  and coral buttons. A beginner reads "$179.87 to win" and nowhere reads
+                  "and if you're wrong, the $100 is gone".
+                  It also happens to be the right size for the space a taller chart card
+                  opens up here, which beats padding the gap with nothing. */}
+              <div className="mt-auto flex flex-col gap-1.5 rounded-lg border border-(--line-soft) bg-bg-2/40 px-3 py-2.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="eyebrow">You risk</span>
+                  <span className="font-mono text-[15px] font-semibold tabular-nums text-text-1">
+                    ${price(stake)}
+                  </span>
+                </div>
+                <p className="text-[11px] leading-snug text-text-3">
+                  If Bitcoin ends this round on your side of the line you win. If it doesn&rsquo;t, your $
+                  {price(stake)} is gone.
+                </p>
+              </div>
+
               {/* What each call pays at this amount. It sits here rather than on the
                   buttons so the buttons stay one steady target — these figures move on
-                  every tick, and a control that reflows under the cursor gets misclicked.
-                  `mt-auto` anchors this and the buttons to the bottom of the rail, so the
-                  slack from a taller chart card collects above them instead of leaving a
-                  hollow strip under the last control. */}
-              <div className="mt-auto grid grid-cols-2 gap-2 rounded-lg border border-(--line-soft) bg-bg-2/40 px-2 py-2">
+                  every tick, and a control that reflows under the cursor gets misclicked. */}
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-(--line-soft) bg-bg-2/40 px-2 py-2">
                 <PayoutCell isUp q={upQ} />
                 <PayoutCell isUp={false} q={dnQ} />
               </div>
@@ -532,7 +551,7 @@ export function SimpleScreen({
                   unpriceable={!!upQ && !upQ.quotable}
                   onPick={() =>
                     active && line != null && lineInfo && upQ &&
-                    requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })
+                    requestPlace({ market: active, cadence, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })
                   }
                 />
                 <SideButton
@@ -541,14 +560,14 @@ export function SimpleScreen({
                   unpriceable={!!dnQ && !dnQ.quotable}
                   onPick={() =>
                     active && line != null && lineInfo && dnQ &&
-                    requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })
+                    requestPlace({ market: active, cadence, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })
                   }
                 />
               </div>
 
               {(closing || rolling) && (
                 <p className="text-center text-[11.5px] text-text-3">
-                  {rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
+                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
                 </p>
               )}
 
@@ -573,7 +592,7 @@ export function SimpleScreen({
           <MyBets spot={px} now={now} />
 
           <RoundCards
-            markets={otherRounds}
+            rounds={otherRounds}
             series={series}
             stake={stake}
             spot={px}
@@ -682,7 +701,7 @@ function LinePill({ value, momentum }: { value: number; momentum: Momentum }) {
  *  from a card is never ambiguous about which market it lands on. */
 function reviewRows(pick: RoundPick, fee?: { due: bigint; bps: number }): ConfirmRow[] {
   const rows: ConfirmRow[] = [
-    { label: 'Round', value: `${CADENCE_META[cadenceOf(pick.market)].short} · BTC` },
+    { label: 'Round', value: `${CADENCE_META[pick.cadence].short} · BTC` },
     { label: 'Your call', value: pick.isUp ? 'Closes ABOVE the line' : 'Closes BELOW the line' },
     { label: 'The line', value: price(pick.line), emphasize: true },
   ];

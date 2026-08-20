@@ -642,3 +642,15 @@ export const V2_SESSIONS_ENABLED: boolean =
  * flag so the full terminal stays the only trade experience until we turn it on.
  */
 export const V2_SIMPLE_ENABLED: boolean = process.env.NEXT_PUBLIC_SIMPLE_MODE === '1';
+
+/**
+ * The first-visit experience prompt: one modal on landing asking whether the visitor is
+ * new to prediction markets or already trades, then sending them to the matching screen.
+ *
+ * Its own flag, but hard-ANDed with `V2_SIMPLE_ENABLED` — offering a choice between two
+ * screens when one of them is switched off would send half of all new traders to a
+ * redirect. Turning simple mode off therefore turns this off with it, and there is no
+ * env combination that can put the prompt in front of a visitor it cannot serve.
+ */
+export const V2_EXPERIENCE_PROMPT_ENABLED: boolean =
+  V2_SIMPLE_ENABLED && process.env.NEXT_PUBLIC_EXPERIENCE_PROMPT === '1';

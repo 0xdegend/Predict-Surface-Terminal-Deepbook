@@ -15,7 +15,7 @@
  * trade. Cards never place anything on their own. See [[simple-mode]].
  */
 import { useRoundQuote } from '@/lib/hooks/use-round-quote';
-import { cadenceOf, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry, type V2Cadence } from '@/lib/markets/v2-discovery';
 import { CADENCE_META, clock } from './cadence';
 import { RoundSpark } from './round-spark';
 import { SideButton } from './side-button';
@@ -25,8 +25,21 @@ import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import type { SideQuote } from '@/lib/sui/v2/simple-round';
 
+/** A round together with the TAB it is being shown under. Rounds are now selected by
+ *  time remaining rather than by which series created them ([[lib/markets/round-pick]]),
+ *  so `cadenceOf(market)` is no longer the right label — a round from the 5-minute series
+ *  with 58 seconds left belongs under "1 min", and labelling it "5 MIN" would recreate
+ *  the exact mismatch the horizon rule exists to remove. */
+export interface HorizonRound {
+  cadence: V2Cadence;
+  market: V2Market;
+}
+
 export interface RoundPick {
   market: V2Market;
+  /** The tab this round was offered under — carried through to the confirm dialog so a
+   *  bet is never described by a label the trader never saw. */
+  cadence: V2Cadence;
   /** The line as a float, for display. */
   line: number;
   /** The SAME line, 1e9-scaled — what the trade is actually built against. Carried so a
@@ -37,7 +50,7 @@ export interface RoundPick {
 }
 
 export function RoundCards({
-  markets,
+  rounds,
   series,
   stake,
   spot,
@@ -47,7 +60,7 @@ export function RoundCards({
   onPick,
   disabled,
 }: {
-  markets: V2Market[];
+  rounds: HorizonRound[];
   series: SpotPoint[];
   stake: number;
   spot: number | null;
@@ -57,7 +70,7 @@ export function RoundCards({
   onPick: (pick: RoundPick) => void;
   disabled: boolean;
 }) {
-  if (!markets.length) return null;
+  if (!rounds.length) return null;
   return (
     <section className="mt-5">
       <div className="mb-3 flex items-baseline justify-between">
@@ -68,17 +81,18 @@ export function RoundCards({
           one of them is always the hero, so this row holds at most two — a fixed
           three-column grid left a permanently empty slot on every wide screen, which
           read as a card that had failed to load. */}
-      <div className={`grid gap-3 ${markets.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : markets.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
-        {markets.map((m) => (
+      <div className={`grid gap-3 ${rounds.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : rounds.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+        {rounds.map((r) => (
           <RoundCard
-            key={m.expiry_market_id}
-            market={m}
+            key={r.market.expiry_market_id}
+            market={r.market}
+            cadence={r.cadence}
             series={series}
             stake={stake}
             spot={spot}
             now={now}
-            pricerSeed={pricerSeeds[m.expiry_market_id]}
-            stateSeed={stateSeeds[m.expiry_market_id]}
+            pricerSeed={pricerSeeds[r.market.expiry_market_id]}
+            stateSeed={stateSeeds[r.market.expiry_market_id]}
             onPick={onPick}
             disabled={disabled}
           />
@@ -90,6 +104,7 @@ export function RoundCards({
 
 function RoundCard({
   market,
+  cadence,
   series,
   stake,
   spot,
@@ -100,6 +115,7 @@ function RoundCard({
   disabled,
 }: {
   market: V2Market;
+  cadence: V2Cadence;
   series: SpotPoint[];
   stake: number;
   spot: number | null;
@@ -109,7 +125,6 @@ function RoundCard({
   onPick: (pick: RoundPick) => void;
   disabled: boolean;
 }) {
-  const cadence = cadenceOf(market);
   const meta = CADENCE_META[cadence];
   const { line, lineInfo, upQ, dnQ, ready } = useRoundQuote(market, stake, { pricer: pricerSeed, state: stateSeed });
 
@@ -156,14 +171,14 @@ function RoundCard({
           size="sm"
           disabled={disabled || closed || !ready || !upQ?.quotable}
           unpriceable={!!upQ && !upQ.quotable}
-          onPick={() => line != null && lineInfo && upQ && onPick({ market, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })}
+          onPick={() => line != null && lineInfo && upQ && onPick({ market, cadence, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })}
         />
         <SideButton
           isUp={false}
           size="sm"
           disabled={disabled || closed || !ready || !dnQ?.quotable}
           unpriceable={!!dnQ && !dnQ.quotable}
-          onPick={() => line != null && lineInfo && dnQ && onPick({ market, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })}
+          onPick={() => line != null && lineInfo && dnQ && onPick({ market, cadence, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })}
         />
       </div>
 

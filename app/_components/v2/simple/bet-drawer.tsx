@@ -24,7 +24,7 @@ import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useMobileSheetStore } from '@/lib/store/mobile-sheet-store';
 import { quoteSide } from '@/lib/sui/v2/simple-round';
 import { toFloat } from '@/config/scale';
-import { cadenceOf, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry, type V2Cadence } from '@/lib/markets/v2-discovery';
 import { CADENCE_META } from './cadence';
 import { sanitizeAmount } from './amount';
 import { price } from '@/lib/format';
@@ -39,7 +39,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
  * so a second, independently-held copy drifts from the first and the sheet ends up
  * offering a bet against a different number than the chart is drawing.
  */
-export type BetIntent = { market: V2Market; isUp: boolean; lineScaled: bigint };
+export type BetIntent = { market: V2Market; cadence: V2Cadence; isUp: boolean; lineScaled: bigint };
 
 export function SimpleBetDrawer({
   intent,
@@ -115,7 +115,8 @@ export function SimpleBetDrawer({
   const canPlace = ready && connected && !busy && !closing;
   const Arrow = isUp ? LuArrowUp : LuArrowDown;
   const tone = isUp ? 'text-up' : 'text-down';
-  const cadenceLabel = market ? CADENCE_META[cadenceOf(market)].short : '';
+  // The TAB the round was offered under, not its series — see `HorizonRound`.
+  const cadenceLabel = intent ? CADENCE_META[intent.cadence].short : '';
 
   return (
     <>
@@ -209,7 +210,7 @@ export function SimpleBetDrawer({
           <button
             type="button"
             disabled={!canPlace}
-            onClick={() => market && q && intent && line != null && onPlace({ market, line, lineScaled: intent.lineScaled, quote: q, isUp })}
+            onClick={() => market && q && intent && line != null && onPlace({ market, cadence: intent.cadence, line, lineScaled: intent.lineScaled, quote: q, isUp })}
             className={`glass-side ${isUp ? 'up' : 'down'} flex w-full items-center justify-center gap-2 px-4 py-3.5 text-[15px] font-bold ${tone}`}
           >
             <Arrow size={17} />

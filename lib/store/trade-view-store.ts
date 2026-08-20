@@ -22,6 +22,19 @@ export type TradeView = 'simple' | 'advanced';
 interface TradeViewState {
   view: TradeView;
   setView: (v: TradeView) => void;
+  /**
+   * Whether this browser has answered the first-visit experience prompt.
+   *
+   * Separate from `view` because "defaulted to simple" and "told us they're a beginner"
+   * are different facts, and only the second one should stop us asking. It lives HERE
+   * rather than in the modal so the guided tour can read it too — both fire on landing
+   * at /v2, and the tour must not start underneath an unanswered dialog.
+   */
+  chosen: boolean;
+  /** Answer the prompt: remember the view AND that the question was asked. */
+  choose: (v: TradeView) => void;
+  /** Test/QA helper — re-arms the prompt for this browser. */
+  resetChoice: () => void;
 }
 
 export const useTradeViewStore = create<TradeViewState>()(
@@ -29,10 +42,17 @@ export const useTradeViewStore = create<TradeViewState>()(
     (set) => ({
       view: 'simple',
       setView: (view) => set({ view }),
+      chosen: false,
+      choose: (view) => set({ view, chosen: true }),
+      resetChoice: () => set({ chosen: false }),
     }),
     {
       name: 'skew.tradeView',
       storage: createJSONStorage(() => localStorage),
+      // Only the facts, not the actions. Traders who used the toggle before the prompt
+      // existed have a stored `view` but no `chosen`, so it falls back to the initial
+      // `false` and they get asked once — which is correct: they never were.
+      partialize: (s) => ({ view: s.view, chosen: s.chosen }) as TradeViewState,
     },
   ),
 );

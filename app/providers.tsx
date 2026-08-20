@@ -10,6 +10,7 @@ import { KellyDock } from './_components/v2/copilot/kelly-dock';
 import { RegisterEnokiWallets } from './_components/register-enoki-wallets';
 import { WalletTracker } from './_components/wallet-tracker';
 import { TourLauncher } from './_components/tour/tour-launcher';
+import { ExperienceModal } from './_components/v2/experience-modal';
 import { TourOverlay } from './_components/tour/tour-overlay';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -47,6 +48,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
             full co-pilot page and the auth popup). */}
         <KellyDock />
         <Toaster />
+        {/* First-visit fork: simple screen or full terminal. Self-gates by route, by
+            feature flag, and by whether this browser has already answered, so mounting
+            it globally is safe. It comes BEFORE the tour deliberately — both fire on
+            landing at /v2, and the tour holds until this is answered. */}
+        <ExperienceModal />
         {/* Guided tour for the Latest (v2) Trade screen. TourLauncher auto-opens
             it once per browser on first landing at /v2 (it self-gates by route);
             TourOverlay renders nothing until the tour is active, so mounting both
