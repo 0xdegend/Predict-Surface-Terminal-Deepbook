@@ -30,12 +30,15 @@ import {
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-view-store';
+import { useMounted } from '@/lib/hooks/use-mounted';
+import { V2_SIMPLE_ENABLED } from '@/config/predict';
 import { DeploymentToggle } from '../deployment-toggle';
 import { SOCIAL_ICON } from '../social-links';
 import { SOCIALS } from '@/config/socials';
 
 const PRIMARY: { href: string; label: string; icon: IconType; match: (p: string) => boolean }[] = [
-  { href: '/v2', label: 'Trade', icon: LuActivity, match: (p) => p === '/v2' },
+  { href: '/v2', label: 'Trade', icon: LuActivity, match: (p) => isTradeRoute(p) },
   { href: '/v2/portfolio', label: 'Portfolio', icon: LuWallet, match: (p) => p.startsWith('/v2/portfolio') },
   { href: '/v2/vault', label: 'Vault', icon: LuVault, match: (p) => p.startsWith('/v2/vault') },
   { href: '/v2/leaderboard', label: 'Ranks', icon: LuTrophy, match: (p) => p.startsWith('/v2/leaderboard') },
@@ -67,6 +70,11 @@ const MORE: MoreItem[] = [
 export function V2BottomNav() {
   const pathname = usePathname() ?? '';
   const [open, setOpen] = useState(false);
+  // "Trade" opens the remembered simple/advanced view (mounted-guarded; inert
+  // unless V2_SIMPLE_ENABLED).
+  const tradeView = useTradeViewStore((s) => s.view);
+  const mounted = useMounted();
+  const tradeTarget = V2_SIMPLE_ENABLED && mounted ? tradeHref(tradeView, true) : '/v2';
   // The mobile trade sheet slides up over this dock — tuck the dock away while
   // it's open so it doesn't float on top of the ticket (legacy BottomNav parity).
   const ticketSheetOpen = useV2TradeStore((s) => s.ticketSheetOpen);
@@ -246,10 +254,11 @@ export function V2BottomNav() {
           // marks the real page for assistive tech.
           const active = onPage && !open;
           const Icon = tab.icon;
+          const href = tab.label === 'Trade' && V2_SIMPLE_ENABLED ? tradeTarget : tab.href;
           return (
             <Link
-              key={tab.href}
-              href={tab.href}
+              key={tab.label}
+              href={href}
               onClick={() => setOpen(false)}
               aria-current={onPage ? 'page' : undefined}
               className={`relative z-10 flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-[10px] font-medium tracking-tight transition-colors ${

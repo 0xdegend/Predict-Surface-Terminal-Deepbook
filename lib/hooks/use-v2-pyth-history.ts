@@ -70,6 +70,51 @@ export function usePrefetchPythHistory(): void {
 }
 
 /**
+ * Cadence (ms) for the app-wide tape feeder, INCLUDING while the tab is hidden.
+ * It has to stay comfortably under the charts' 5s gap-break threshold: a stretch
+ * sampled while the trader was away then still reads as one continuous (if slightly
+ * lower-resolution) line instead of a break. Cheap to run — `/api/v2/pyth?kind=latest`
+ * is CDN-cached at s-maxage=1, so every tab in the world collapses into ~1 origin
+ * read per second no matter how many are polling.
+ */
+const TAPE_FEED_INTERVAL_MS = 2000;
+
+/**
+ * usePythTapeSpotFeed — the APP-WIDE half of the tape feed. Mount it ONCE from the
+ * persistent chrome so the rolling buffer never stops accumulating.
+ *
+ * WHY IT'S SEPARATE FROM `usePythTapeFeed`: that one also runs the seed + full history
+ * walks, which are far too expensive to hold open on every route. This one only rides
+ * the pyth-latest read the nav spot tape is already polling, so it costs no extra
+ * network — it just mirrors what lands into the tape.
+ *
+ * The two things it fixes, both of which used to punch a hole in the buffer that the
+ * chart then drew as a break:
+ *   1. Route changes — the tape used to be fed only by the trade/simple screens, so
+ *      navigating to Portfolio and back left the buffer blind for the whole detour.
+ *      The chrome outlives every /v2 route, so mounting it here closes that.
+ *   2. Tab switches — React Query pauses `refetchInterval` while the tab is hidden, so
+ *      an alt-tab blinded the buffer for as long as the trader was away. This query
+ *      opts into `refetchIntervalInBackground` to keep sampling through it.
+ *
+ * Backfilling after the fact can't substitute for either: the event index trails live
+ * by ~7s and the walk itself takes ~5s, so a hole is always visible for several seconds
+ * before it heals. Not opening one is the only fix that holds.
+ */
+export function usePythTapeSpotFeed(): void {
+  const { data } = useQuery({
+    queryKey: qkV2.pythLatest,
+    queryFn: () => getPythLatest(PID),
+    refetchInterval: TAPE_FEED_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+  });
+  // In the foreground the nav tape polls this same key ~4x/s, so `data` still changes
+  // at full resolution and this merges every one of those ticks; the interval above
+  // only carries the buffer through the background stretch.
+  useEffect(() => mergePythTape(data), [data]);
+}
+
+/**
  * Feed the rolling pyth-tape buffer ([[lib/store/pyth-tape]]) so it accumulates the
  * live price history EVEN WHILE the chart isn't mounted (the hero defaults to Surface).
  * Mount once from the always-mounted trade screen: it keeps the pyth-latest read stream-

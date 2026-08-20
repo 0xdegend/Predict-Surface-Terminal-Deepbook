@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skew · Simple mode — design sample v2</title>
+<style>
+  /* ---- Skew tokens (app/globals.css) — dark only, painted explicitly ---- */
+  :root{
+    --bg-0:#0a0b0d; --bg-1:#0e1013; --bg-2:#131619; --bg-3:#181c20;
+    --line:rgba(255,255,255,.08); --line-soft:rgba(255,255,255,.05); --line-strong:rgba(255,255,255,.12);
+    --text-1:#e6e8eb; --text-2:#8b9099; --text-3:#5a5f66;
+    --up:#4dd6b0; --down:#f0796b; --warn:#e6b450;
+    --accent:var(--up);
+    --accent-soft:rgba(77,214,176,.10); --accent-line:rgba(77,214,176,.32); --accent-glow:rgba(77,214,176,.22);
+    --down-soft:rgba(240,121,107,.12); --down-line:rgba(240,121,107,.34); --down-glow:rgba(240,121,107,.22);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono","Geist Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg-0);color:var(--text-1);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;padding:30px 22px 70px;
+    background:radial-gradient(120% 80% at 50% -10%,rgba(77,214,176,.055),transparent 55%),var(--bg-0)}
+  .tabnum{font-variant-numeric:tabular-nums}
+  .mono{font-family:var(--mono)}
+  .eyebrow{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+
+  .page-head{max-width:1240px;margin:0 auto 30px;text-align:center}
+  .page-head .kicker{display:inline-flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3);font-weight:600}
+  .page-head .kicker b{color:var(--accent);font-weight:600}
+  .page-head h1{font-size:23px;font-weight:600;letter-spacing:-.02em;margin-top:11px}
+  .page-head p{color:var(--text-2);font-size:13.5px;margin-top:9px;max-width:620px;margin-inline:auto;line-height:1.55}
+
+  .board{display:flex;gap:30px;justify-content:center;align-items:flex-start;flex-wrap:wrap;max-width:1240px;margin:0 auto}
+  .stage{display:flex;flex-direction:column;align-items:center;gap:13px}
+  .stage-label{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2);font-weight:600}
+  .stage-num{display:grid;place-items:center;width:19px;height:19px;border-radius:999px;border:1px solid var(--accent-line);color:var(--accent);font-size:10px;font-weight:700}
+
+  /* ---- shared chrome ---- */
+  .glass{background:color-mix(in srgb,var(--bg-1) 80%,transparent);border-bottom:1px solid var(--line);-webkit-backdrop-filter:blur(18px) saturate(140%);backdrop-filter:blur(18px) saturate(140%)}
+  .hdr{display:flex;align-items:center;gap:12px;padding:12px 16px}
+  .brand{display:flex;align-items:center;gap:7px;flex:none}
+  .brand .glyph{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 26%,transparent),color-mix(in srgb,var(--accent) 7%,transparent));
+    border:1px solid var(--accent-line);box-shadow:0 0 14px -5px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.14)}
+  .brand .word{font-weight:650;font-size:14px;letter-spacing:-.01em}
+
+  .seg{position:relative;display:inline-flex;border-radius:11px;padding:3px;isolation:isolate;
+    border:1px solid rgba(255,255,255,.05);
+    background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,0) 60%),color-mix(in srgb,var(--bg-1) 66%,transparent);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+  .seg button{position:relative;z-index:1;border:0;background:transparent;color:var(--text-2);font-family:var(--sans);
+    font-size:11.5px;font-weight:600;padding:5px 12px;border-radius:8px;cursor:pointer}
+  .seg button.on{color:var(--text-1)}
+  .seg .thumb{position:absolute;z-index:0;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:8px;
+    border:1px solid var(--accent-line);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 20%,transparent),color-mix(in srgb,var(--accent) 8%,transparent));
+    box-shadow:0 0 16px -6px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.10)}
+  .balpill{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:8px;
+    border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 60%),var(--bg-2);
+    font-size:12px;font-weight:600;font-family:var(--mono)}
+  .balpill .dot{width:6px;height:6px;border-radius:999px;background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+
+  /* cadence pick (1 min / 5 min / 1 hour) */
+  .cad{display:inline-flex;gap:4px;padding:3px;border-radius:10px;border:1px solid var(--line-soft);
+    background:color-mix(in srgb,var(--bg-1) 66%,transparent)}
+  .cad button{border:0;background:transparent;color:var(--text-3);font-family:var(--mono);font-size:11px;font-weight:600;
+    padding:4px 9px;border-radius:7px;cursor:pointer;letter-spacing:.02em}
+  .cad button.on{color:var(--text-1);background:var(--bg-3);box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+
+  /* ---- desktop round view ---- */
+  .deskframe{width:920px;max-width:100%;border-radius:20px;border:1px solid var(--line-strong);overflow:hidden;background:var(--bg-0);
+    box-shadow:0 34px 80px -34px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
+  .titlestrip{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(255,255,255,.015),transparent 60%),var(--bg-1)}
+  .titlestrip .ask{font-size:15px;font-weight:600;letter-spacing:-.01em}
+  .titlestrip .ask b{color:var(--text-1)}
+  .titlestrip .ask .line{font-family:var(--mono);color:var(--up)}
+  .onchain{display:inline-flex;align-items:center;gap:6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);
+    padding:4px 10px;border-radius:999px;border:1px solid var(--line)}
+  .onchain .d{width:5px;height:5px;border-radius:999px;background:var(--warn)}
+
+  .two{display:grid;grid-template-columns:1fr 340px}
+  .chartpanel{padding:18px 20px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px;min-width:0}
+  .cpr{display:flex;justify-content:space-between;align-items:flex-start}
+  .price{font-family:var(--mono);font-size:38px;font-weight:600;letter-spacing:-.02em;line-height:1.02}
+  .delta{font-size:12.5px;font-weight:600;color:var(--up);margin-top:4px}
+  .timer{text-align:right}
+  .timer .t{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:.01em;line-height:1;font-variant-numeric:tabular-nums}
+  .cdbar{height:3px;border-radius:999px;background:var(--bg-3);overflow:hidden;margin-top:8px}
+  .cdbar > i{display:block;height:100%;width:87%;border-radius:999px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 40%,transparent),var(--accent))}
+  .chartwrap{position:relative;flex:1;min-height:210px}
+  .chartwrap svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .linetag{position:absolute;left:8px;font-family:var(--mono);font-size:10.5px;color:var(--text-2);background:color-mix(in srgb,var(--bg-1) 80%,transparent);
+    padding:2px 6px;border-radius:5px;border:1px solid var(--line-soft);transform:translateY(-50%)}
+
+  .ticketpanel{padding:18px;display:flex;flex-direction:column;gap:15px}
+  .lineblock{display:flex;flex-direction:column;gap:5px}
+  .lineblock .v{font-family:var(--mono);font-size:19px;font-weight:600}
+  .crowd{display:flex;flex-direction:column;gap:6px}
+  .crowd .bar{display:flex;height:8px;border-radius:999px;overflow:hidden;background:var(--bg-3)}
+  .crowd .bar .u{background:linear-gradient(90deg,color-mix(in srgb,var(--up) 55%,transparent),var(--up))}
+  .crowd .bar .d{background:linear-gradient(90deg,var(--down),color-mix(in srgb,var(--down) 55%,transparent))}
+  .crowd .lg{display:flex;justify-content:space-between;font-size:11px;font-weight:600}
+  .crowd .lg .cu{color:var(--up)} .crowd .lg .cd{color:var(--down)}
+
+  .field{display:flex;flex-direction:column;gap:8px}
+  .amt{display:flex;gap:7px}
+  .amt .a{flex:1;text-align:center;padding:9px 4px;border-radius:10px;cursor:pointer;font-size:13px;font-weight:650;font-family:var(--mono);color:var(--text-2);
+    border:1px solid var(--line-soft);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 60%),var(--bg-2);transition:.15s}
+  .amt .a.on{color:var(--text-1);border-color:var(--accent-line);background:linear-gradient(180deg,var(--accent-soft),transparent 70%),var(--bg-2);
+    box-shadow:0 0 0 1px var(--accent-line),inset 0 1px 0 rgba(255,255,255,.05)}
+  .amt .a.edit{flex:none;width:52px;color:var(--text-3);font-family:var(--sans);font-size:11.5px}
+
+  .sides{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .side{position:relative;border-radius:15px;padding:14px 10px 13px;cursor:pointer;text-align:center;overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;gap:7px;transition:transform .14s,border-color .14s}
+  .side:active{transform:scale(.98)}
+  .side.up{border:1px solid color-mix(in srgb,var(--up) 24%,var(--line));
+    background:radial-gradient(130% 90% at 50% 0%,rgba(77,214,176,.12),transparent 52%),linear-gradient(180deg,rgba(255,255,255,.03),transparent 40%),var(--bg-1)}
+  .side.down{border:1px solid color-mix(in srgb,var(--down) 24%,var(--line));
+    background:radial-gradient(130% 90% at 50% 0%,rgba(240,121,107,.12),transparent 52%),linear-gradient(180deg,rgba(255,255,255,.03),transparent 40%),var(--bg-1)}
+  .orb{display:grid;place-items:center;width:42px;height:42px;border-radius:999px;border:1.5px solid transparent}
+  .orb.up{color:var(--up);border-color:var(--accent-line);background:radial-gradient(circle at 50% 42%,var(--accent-soft),transparent 72%);
+    box-shadow:0 0 22px -6px var(--accent-glow),inset 0 0 16px -8px var(--accent-glow)}
+  .orb.down{color:var(--down);border-color:var(--down-line);background:radial-gradient(circle at 50% 42%,var(--down-soft),transparent 72%);
+    box-shadow:0 0 22px -6px var(--down-glow),inset 0 0 16px -8px var(--down-glow)}
+  .side .lbl{font-size:14.5px;font-weight:700}
+  .side.up .lbl{color:var(--up)} .side.down .lbl{color:var(--down)}
+  .side .lbl small{display:block;font-size:10.5px;font-weight:500;color:var(--text-3);margin-top:1px}
+  .side .payout{margin-top:1px;padding-top:8px;width:100%;border-top:1px solid var(--line-soft)}
+  .side .payout .mult{font-family:var(--mono);font-size:16px;font-weight:650;color:var(--text-1)}
+  .side .payout .win{font-size:10.5px;color:var(--text-2);margin-top:1px}
+  .side .payout .win b{color:var(--text-1);font-weight:600;font-family:var(--mono)}
+  .note{font-size:11px;color:var(--text-3);line-height:1.45;text-align:center}
+
+  /* ---- mobile frame ---- */
+  .phone{width:340px;max-width:100%;border-radius:30px;overflow:hidden;position:relative;border:1px solid var(--line-strong);
+    background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 30%),var(--bg-0);
+    box-shadow:0 30px 70px -30px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.05)}
+  .screen{display:flex;flex-direction:column;min-height:660px}
+  .mbody{flex:1;display:flex;flex-direction:column;gap:13px;padding:15px 15px 16px}
+  .mtop{display:flex;justify-content:space-between;align-items:flex-start}
+  .mtop .price{font-size:28px}
+  .mtop .timer .t{font-size:24px}
+  .mchart{position:relative;height:120px;border-radius:12px;overflow:hidden;border:1px solid var(--line-soft);background:var(--bg-1)}
+  .mchart svg{position:absolute;inset:0;width:100%;height:100%}
+
+  /* confirm sheet */
+  .sheet{margin-top:auto;border-top:1px solid var(--line);padding:16px 15px 18px;display:flex;flex-direction:column;gap:12px;
+    background:linear-gradient(180deg,rgba(255,255,255,.02),transparent 30%),var(--bg-1)}
+  .grab{width:36px;height:4px;border-radius:999px;background:var(--line-strong);margin:-3px auto 2px}
+  .sheet h3{font-size:12.5px;font-weight:600;color:var(--text-2);text-align:center}
+  .cbet{display:flex;align-items:center;gap:11px;padding:12px;border-radius:13px;border:1px solid color-mix(in srgb,var(--up) 22%,var(--line));
+    background:radial-gradient(130% 100% at 0% 0%,rgba(77,214,176,.10),transparent 52%),var(--bg-2)}
+  .cbet .t{font-size:13.5px;font-weight:650}.cbet .t .u{color:var(--up)}
+  .cbet .d{font-size:11.5px;color:var(--text-2);line-height:1.35;margin-top:2px}
+  .crows{border-radius:11px;border:1px solid var(--line-soft);overflow:hidden;background:var(--bg-2)}
+  .crow{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;font-size:12px}
+  .crow+.crow{border-top:1px solid var(--line-soft)}
+  .crow .k{color:var(--text-2)}.crow .v{font-family:var(--mono);font-weight:600}
+  .crow .sub{font-size:10px;color:var(--text-3);font-weight:400;margin-left:6px}
+  .cta{width:100%;border:0;cursor:pointer;padding:13px;border-radius:12px;font-family:var(--sans);font-size:14px;font-weight:650;color:#06110d;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--up) 96%,white),var(--up));
+    box-shadow:0 0 24px -8px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.35)}
+  .cta.ghost{background:transparent;color:var(--text-2);box-shadow:none;font-weight:600;font-size:12px;padding:6px}
+  .instant{display:flex;justify-content:center;gap:6px;font-size:10.5px;color:var(--text-3)}.instant b{color:var(--warn);font-weight:600}
+
+  .legend{max-width:1000px;margin:36px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:14px 26px}
+  .legend .item{display:flex;align-items:flex-start;gap:9px;font-size:12px;color:var(--text-2);line-height:1.5}
+  .legend .item b{color:var(--text-1);font-weight:600}
+  .legend .sw{width:11px;height:11px;border-radius:3px;flex:none;margin-top:3px}
+  @media (max-width:760px){body{padding:22px 14px 50px}.legend{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+  <div class="page-head">
+    <div class="kicker"><b>skew</b> · simple mode · v2 · design sample</div>
+    <h1>One line, one decision: will BTC close above or below?</h1>
+    <p>Rebuilt from your reference. Same idea Aslan described (a little chart, a countdown, the round rolling over, the strike shown, a stake box, up or down and nothing else) but drawn in Skew's own look, not that flat style. Desktop view on the left, the same thing on a phone (mid-bet) on the right.</p>
+  </div>
+
+  <div class="board">
+
+    <!-- ============ DESKTOP ROUND VIEW ============ -->
+    <div class="stage">
+      <div class="stage-label"><span class="stage-num">1</span> The round · desktop</div>
+      <div class="deskframe">
+        <div class="glass hdr">
+          <div class="brand"><span class="glyph"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8.5 5 3l2 3 3-4.5" stroke="#4dd6b0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="word">Skew</span></div>
+          <div class="seg"><span class="thumb"></span><button class="on">Simple</button><button>Advanced</button></div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+            <div class="cad"><button class="on">1 min</button><button>5 min</button><button>1 hour</button></div>
+            <div class="balpill"><span class="dot"></span>$47.30</div>
+          </div>
+        </div>
+
+        <div class="titlestrip">
+          <div class="ask">Will <b>BTC</b> close above <span class="line">$69,423</span> this round?</div>
+          <div class="onchain"><span class="d"></span> Sui testnet · on-chain</div>
+        </div>
+
+        <div class="two">
+          <!-- chart -->
+          <div class="chartpanel">
+            <div class="cpr">
+              <div>
+                <div class="eyebrow">Last price</div>
+                <div class="price tabnum">$69,448</div>
+                <div class="delta">▲ +$24.91 above the line</div>
+              </div>
+              <div class="timer">
+                <div class="eyebrow">Round closes in</div>
+                <div class="t">00:52</div>
+              </div>
+            </div>
+            <div class="cdbar"><i></i></div>
+            <div class="chartwrap">
+              <svg viewBox="0 0 560 220" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4dd6b0" stop-opacity=".24"/><stop offset="1" stop-color="#4dd6b0" stop-opacity="0"/></linearGradient>
+                </defs>
+                <!-- faint grid -->
+                <g stroke="rgba(255,255,255,.045)" stroke-width="1">
+                  <line x1="0" y1="55" x2="560" y2="55"/><line x1="0" y1="110" x2="560" y2="110"/><line x1="0" y1="165" x2="560" y2="165"/>
+                </g>
+                <!-- strike line -->
+                <line x1="0" y1="150" x2="560" y2="150" stroke="rgba(139,144,153,.6)" stroke-width="1.2" stroke-dasharray="5 5"/>
+                <!-- price area + line (ends above the strike) -->
+                <path d="M0 160 L40 156 L80 162 L120 150 L160 154 L200 138 L240 144 L280 128 L320 116 L360 98 L400 86 L440 74 L480 64 L520 58 L560 52 L560 220 L0 220 Z" fill="url(#fill)"/>
+                <path d="M0 160 L40 156 L80 162 L120 150 L160 154 L200 138 L240 144 L280 128 L320 116 L360 98 L400 86 L440 74 L480 64 L520 58 L560 52" fill="none" stroke="#4dd6b0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="556" cy="52" r="4.5" fill="#4dd6b0"/><circle cx="556" cy="52" r="8" fill="none" stroke="#4dd6b0" stroke-opacity=".4"/>
+              </svg>
+              <span class="linetag" style="top:68.2%">LINE 69,423</span>
+            </div>
+          </div>
+
+          <!-- ticket -->
+          <div class="ticketpanel">
+            <div class="lineblock">
+              <span class="eyebrow">The line · this round</span>
+              <span class="v">$69,423.37</span>
+            </div>
+            <div class="crowd">
+              <span class="eyebrow">Where traders are leaning</span>
+              <div class="bar"><span class="u" style="width:58%"></span><span class="d" style="width:42%"></span></div>
+              <div class="lg"><span class="cu">UP 58%</span><span class="cd">42% DOWN</span></div>
+            </div>
+            <div class="field">
+              <span class="eyebrow">How much</span>
+              <div class="amt"><div class="a">$5</div><div class="a on">$10</div><div class="a">$25</div><div class="a">$50</div><div class="a edit">Custom</div></div>
+            </div>
+            <div class="sides">
+              <div class="side up">
+                <div class="orb up"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M9 14V4M9 4l-4 4M9 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="lbl">UP<small>closes above</small></div>
+                <div class="payout"><div class="mult tabnum">1.7×</div><div class="win">win <b>$17.00</b></div></div>
+              </div>
+              <div class="side down">
+                <div class="orb down"><svg width="17" height="17" viewBox="0 0 18 18" fill="none"><path d="M9 4v10M9 14l-4-4M9 14l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                <div class="lbl">DOWN<small>closes below</small></div>
+                <div class="payout"><div class="mult tabnum">2.3×</div><div class="win">win <b>$23.00</b></div></div>
+              </div>
+            </div>
+            <div class="note">Payouts include the 0.5% fee. A fresh round starts every minute. Close any bet any time.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ MOBILE (mid-bet, confirm up) ============ -->
+    <div class="stage">
+      <div class="stage-label"><span class="stage-num">2</span> Phone · confirm</div>
+      <div class="phone">
+        <div class="screen">
+          <div class="glass hdr">
+            <div class="brand"><span class="glyph"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 8.5 5 3l2 3 3-4.5" stroke="#4dd6b0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="word">Skew</span></div>
+            <div class="seg"><span class="thumb"></span><button class="on">Simple</button><button>Advanced</button></div>
+            <div class="balpill" style="margin-left:auto"><span class="dot"></span>$47.30</div>
+          </div>
+
+          <!-- dimmed round view behind the sheet -->
+          <div class="mbody" style="opacity:.3;filter:saturate(.7);pointer-events:none">
+            <div class="cad" style="align-self:flex-start"><button class="on">1 min</button><button>5 min</button><button>1 hour</button></div>
+            <div class="mtop">
+              <div><div class="eyebrow">Last price</div><div class="price tabnum">$69,448</div><div class="delta" style="font-size:11px">▲ +$24.91</div></div>
+              <div class="timer"><div class="eyebrow">Closes in</div><div class="t">00:52</div></div>
+            </div>
+            <div class="mchart">
+              <svg viewBox="0 0 320 120" preserveAspectRatio="none">
+                <defs><linearGradient id="mf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4dd6b0" stop-opacity=".22"/><stop offset="1" stop-color="#4dd6b0" stop-opacity="0"/></linearGradient></defs>
+                <line x1="0" y1="82" x2="320" y2="82" stroke="rgba(139,144,153,.55)" stroke-width="1" stroke-dasharray="4 4"/>
+                <path d="M0 88 L40 84 L80 90 L120 78 L160 66 L200 56 L240 44 L280 36 L320 30 L320 120 L0 120 Z" fill="url(#mf)"/>
+                <path d="M0 88 L40 84 L80 90 L120 78 L160 66 L200 56 L240 44 L280 36 L320 30" fill="none" stroke="#4dd6b0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+
+          <div class="sheet">
+            <span class="grab"></span>
+            <h3>Confirm your bet</h3>
+            <div class="cbet">
+              <div class="orb up" style="width:40px;height:40px"><svg width="16" height="16" viewBox="0 0 18 18" fill="none"><path d="M9 14V4M9 4l-4 4M9 4l4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div><div class="t"><span class="u">UP</span> · $10 · this round</div><div class="d">You think BTC closes above $69,423 within the next minute.</div></div>
+            </div>
+            <div class="crows">
+              <div class="crow"><span class="k">You pay</span><span class="v tabnum">$10.00</span></div>
+              <div class="crow"><span class="k">You win if right<span class="sub">after 0.5% fee</span></span><span class="v tabnum" style="color:var(--up)">$17.00</span></div>
+              <div class="crow"><span class="k" style="color:var(--text-1);font-weight:600">Your profit</span><span class="v tabnum" style="color:var(--up)">+$7.00</span></div>
+            </div>
+            <button class="cta">Place bet · $10</button>
+            <div class="instant">⚡ <b>Instant trading</b> is on — your next bet places in one tap</div>
+            <button class="cta ghost">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="item"><span class="sw" style="background:#4dd6b0"></span><span><b>UP mint, DOWN coral</b> — the app's real semantic colors, so simple mode reads as Skew, not a bolt-on.</span></div>
+    <div class="item"><span class="sw" style="background:linear-gradient(90deg,#8b9099,transparent)"></span><span><b>The line is the strike.</b> One fixed price per round (dashed on the chart); "above / below" is up / down against it. No strike picker.</span></div>
+    <div class="item"><span class="sw" style="background:#4dd6b0"></span><span><b>Two things entered, ever:</b> how much, and which way. Cadence (1 / 5 / 60 min) and the confirm are the only other taps.</span></div>
+    <div class="item"><span class="sw" style="background:#e6b450"></span><span><b>The round rolls.</b> Countdown + "new round every minute" is the loop; instant trading makes each repeat a single tap.</span></div>
+  </div>
+
+</body>
+</html>

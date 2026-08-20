@@ -26,10 +26,11 @@ import { usePrefetchPythHistory, usePythTapeFeed } from '@/lib/hooks/use-v2-pyth
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, V2_SIMPLE_ENABLED } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { V2MarketPicker } from './market-picker';
+import { TradeModeToggle } from './trade-mode-toggle';
 import { OnboardFundModal } from './onboard-fund-modal';
 import { RewardBanner } from './reward/reward-banner';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
@@ -120,6 +121,12 @@ export function V2TradeScreen({
     {/* First-run onboarding: a fresh wallet (no trading account yet) gets a single
         modal to fund + create their account in one tap. Self-contained + portaled. */}
     <OnboardFundModal />
+    {/* Mobile Simple/Advanced switch (desktop gets it in the header). */}
+    {V2_SIMPLE_ENABLED && (
+      <div className="px-4 pt-3 sm:px-5 lg:hidden">
+        <TradeModeToggle variant="full" />
+      </div>
+    )}
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}

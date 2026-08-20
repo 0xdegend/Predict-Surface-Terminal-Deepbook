@@ -31,12 +31,16 @@ import {
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
 import { DeploymentToggle } from '../deployment-toggle';
+import { TradeModeToggle } from './trade-mode-toggle';
+import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-view-store';
+import { usePythTapeSpotFeed } from '@/lib/hooks/use-v2-pyth-history';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { TourButton } from '../tour/tour-button';
 import { SocialIconLinks, SOCIAL_ICON } from '../social-links';
 import { SOCIALS } from '@/config/socials';
 import { V2SpotTape } from './spot-tape';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
-import { isAdminAddress } from '@/config/predict';
+import { isAdminAddress, V2_SIMPLE_ENABLED } from '@/config/predict';
 
 type NavItem = { href: string; label: string; exact?: boolean };
 type MenuItem = {
@@ -104,6 +108,19 @@ const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWit
 export function V2Chrome() {
   const pathname = usePathname() ?? '';
 
+  // The chrome outlives every /v2 route and keeps polling while the tab is hidden, so
+  // it's the one place that can keep the price charts' rolling history buffer unbroken
+  // across a route change or an alt-tab. Rides the spot tape's existing read — no extra
+  // network. See the hook for why backfilling afterwards can't do the same job.
+  usePythTapeSpotFeed();
+
+  // Simple/Advanced: remember the trader's last-used trade view so the Trade tab
+  // and logo reopen it (default simple). Mounted-guarded so a persisted 'advanced'
+  // can't cause an SSR href mismatch. Inert unless V2_SIMPLE_ENABLED.
+  const tradeView = useTradeViewStore((s) => s.view);
+  const mounted = useMounted();
+  const tradeTarget = V2_SIMPLE_ENABLED && mounted ? tradeHref(tradeView, true) : '/v2';
+
   // Builder fees shows only for a team wallet (config allowlist). Gating on code
   // ownership instead would hide the link from the very wallet that still needs to
   // register the first code — and would surface it to any stranger who registered
@@ -130,7 +147,7 @@ export function V2Chrome() {
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
       {/* brand + nav */}
       <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-        <Link href="/v2" className="group flex items-center gap-2" aria-label="Skew — Latest home">
+        <Link href={tradeTarget} className="group flex items-center gap-2" aria-label="Skew — Latest home">
           <Image
             src="/skew-mark.png"
             alt=""
@@ -142,9 +159,14 @@ export function V2Chrome() {
           <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:inline">Skew</span>
         </Link>
         <nav className="hidden items-center gap-1 lg:flex">
-          {PRIMARY.map((n) => (
-            <NavLink key={n.href} href={n.href} label={n.label} active={matches(pathname, n)} />
-          ))}
+          {PRIMARY.map((n) => {
+            // "Trade" opens the remembered view (simple/advanced) and stays active
+            // across both trade routes; every other tab is unchanged.
+            const isTrade = n.label === 'Trade';
+            const href = isTrade && V2_SIMPLE_ENABLED ? tradeTarget : n.href;
+            const active = isTrade ? isTradeRoute(pathname) : matches(pathname, n);
+            return <NavLink key={n.label} href={href} label={n.label} active={active} />;
+          })}
           <NavMenu fallbackLabel="Vault" items={VAULT_ITEMS} pathname={pathname} />
           <NavMenu fallbackLabel="More" items={moreItems} pathname={pathname} grid />
         </nav>
@@ -162,7 +184,13 @@ export function V2Chrome() {
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         <SocialIconLinks className="hidden lg:flex" />
         <TourButton />
-        <DeploymentToggle />
+        {/* On the trade screen the toggle swaps Simple ⇄ Advanced; elsewhere it
+            stays the Legacy ⇄ Latest deployment switch (unchanged). */}
+        {V2_SIMPLE_ENABLED && isTradeRoute(pathname) ? (
+          <TradeModeToggle className="hidden lg:inline-flex" />
+        ) : (
+          <DeploymentToggle />
+        )}
         <WalletBar />
       </div>
     </header>

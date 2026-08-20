@@ -632,3 +632,13 @@ export const v2SessionTarget = (
  */
 export const V2_SESSIONS_ENABLED: boolean =
   !!predictV2Config.packages.sessions && process.env.NEXT_PUBLIC_SESSIONS === '1';
+
+/**
+ * Simple mode ([[simple-mode]]): a stripped-down UP/DOWN "round" trade screen at
+ * `/v2/simple`, reachable via a Simple ⇄ Advanced toggle that shows only on the
+ * trade screen. Reuses the same markets / pricer / mint plumbing as the full
+ * ticket — it's a calmer front-end, not a second engine, so its trades still land
+ * on the leaderboard, portfolio, and PnL like any other. Ships DARK behind the
+ * flag so the full terminal stays the only trade experience until we turn it on.
+ */
+export const V2_SIMPLE_ENABLED: boolean = process.env.NEXT_PUBLIC_SIMPLE_MODE === '1';
