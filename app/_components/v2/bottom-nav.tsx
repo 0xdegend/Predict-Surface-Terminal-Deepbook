@@ -30,6 +30,7 @@ import {
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
+import { useMobileSheetStore } from '@/lib/store/mobile-sheet-store';
 import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-view-store';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { V2_SIMPLE_ENABLED } from '@/config/predict';
@@ -79,6 +80,10 @@ export function V2BottomNav() {
   // it's open so it doesn't float on top of the ticket (legacy BottomNav parity).
   const ticketSheetOpen = useV2TradeStore((s) => s.ticketSheetOpen);
   const closeTicketSheet = useV2TradeStore((s) => s.closeTicketSheet);
+  // Any OTHER bottom sheet (simple mode's bet drawer) raises this. Same tuck, separate
+  // signal — see [[lib/store/mobile-sheet-store]] for why it isn't the flag above.
+  const sheetOpen = useMobileSheetStore((s) => s.sheetOpen);
+  const tucked = ticketSheetOpen || sheetOpen;
 
   // Close the sheet on any navigation (a primary tab, browser back/forward, …) —
   // the nav persists across routes, so it would otherwise linger over the new
@@ -125,9 +130,9 @@ export function V2BottomNav() {
   return (
     <nav
       aria-label="Primary"
-      aria-hidden={ticketSheetOpen}
+      aria-hidden={tucked}
       className={`v2-dock pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center px-3 pb-[calc(env(safe-area-inset-bottom)+0.6rem)] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
-        ticketSheetOpen ? 'translate-y-[130%]' : 'translate-y-0'
+        tucked ? 'translate-y-[130%]' : 'translate-y-0'
       }`}
     >
       {/* Backdrop — dims the page behind the sheet; tap to dismiss. */}

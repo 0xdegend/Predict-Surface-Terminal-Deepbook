@@ -4,11 +4,16 @@
  * V2Chrome — the persistent terminal chrome for the NEW (Latest) deployment.
  *
  * A parallel of TopChrome (frozen for legacy) with nav pointing at /v2/* routes,
- * the live BTC chip, the Legacy↔Latest toggle, and the wallet. Same glass three-
+ * the live BTC chip, the Simple↔Advanced toggle, and the wallet. Same glass three-
  * zone layout AND the same nav arrangement as legacy: Trade · Portfolio ·
  * Analytics · Leaderboard inline, then a rich "Vault" dropdown and a rich "More"
- * dropdown (Quests / Competitions / Docs) whose triggers adopt the active
+ * dropdown (Quests / Competitions / Docs / Legacy) whose triggers adopt the active
  * sub-page's label. Mobile uses V2BottomNav.
+ *
+ * The header holds ONE switch, and only on the trade screen: Simple ⇄ Advanced. The
+ * Legacy ⇄ Latest deployment toggle used to live here on every other page — a control
+ * about which PROTOCOL you're on, sitting beside pages that have nothing to do with the
+ * choice. Legacy now lives in the More menu (and the mobile More sheet).
  */
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -27,10 +32,10 @@ import {
   LuArrowUpRight,
   LuBadgeCheck,
   LuGauge,
+  LuArchive,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
-import { DeploymentToggle } from '../deployment-toggle';
 import { TradeModeToggle } from './trade-mode-toggle';
 import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-view-store';
 import { usePythTapeSpotFeed } from '@/lib/hooks/use-v2-pyth-history';
@@ -101,6 +106,16 @@ const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
+  // Legacy's home now that the header toggle is gone. It has to stay reachable on
+  // desktop: trading there has wound down, but old positions are still claimed from
+  // its Portfolio, and the header was previously the only way in.
+  {
+    href: '/legacy',
+    label: 'Legacy',
+    desc: 'The original Skew — open it to claim any old positions',
+    icon: LuArchive,
+    footer: true,
+  },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
@@ -184,12 +199,22 @@ export function V2Chrome() {
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         <SocialIconLinks className="hidden lg:flex" />
         <TourButton />
-        {/* On the trade screen the toggle swaps Simple ⇄ Advanced; elsewhere it
-            stays the Legacy ⇄ Latest deployment switch (unchanged). */}
-        {V2_SIMPLE_ENABLED && isTradeRoute(pathname) ? (
-          <TradeModeToggle className="hidden lg:inline-flex" />
-        ) : (
-          <DeploymentToggle />
+        {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
+            on the trade screen. Every other page shows none — the Legacy ⇄ Latest
+            deployment switch used to sit here, which put a control about which PROTOCOL
+            you're on next to pages that have nothing to do with the choice. Legacy is
+            still reachable (More menu on desktop, the More sheet on mobile) because
+            claiming old positions lives there.
+
+            Desktop only — phones get the full-width toggle at the top of the trade
+            screen itself. The wrapper is what enforces that: passing `hidden` to the
+            toggle collided with the `inline-flex` it sets on itself (same CSS property,
+            so Tailwind's emit order picked the winner, not the class list) and it stayed
+            visible on mobile. */}
+        {V2_SIMPLE_ENABLED && isTradeRoute(pathname) && (
+          <span className="hidden lg:inline-flex">
+            <TradeModeToggle />
+          </span>
         )}
         <WalletBar />
       </div>

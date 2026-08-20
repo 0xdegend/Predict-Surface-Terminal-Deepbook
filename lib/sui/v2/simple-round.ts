@@ -49,6 +49,20 @@ export function roundLineScaled(
   return { lineScaled: snapStrikeToAdmission(fromFloat(forward), admissionTickSize), pinned: false };
 }
 
+/**
+ * Is a line still worth betting BOTH ways? True while the fair odds sit inside
+ * `margin`..`1 - margin`.
+ *
+ * Used to decide when an unpinned round's line has drifted too far to be a real
+ * two-way question. `margin` is deliberately looser than the chain's hard quotable
+ * gate (0.5%): by the time a side is literally unquotable the round has been a
+ * one-way bet for a long while, so we move the line before that, not at it.
+ */
+export function lineIsTradeable(pricer: LivePricer, lineScaled: bigint, margin = 0.05): boolean {
+  const p = fairUp(pricer, toFloat(lineScaled));
+  return p > margin && p < 1 - margin;
+}
+
 export interface SideQuote {
   isUp: boolean;
   /** Fair entry probability of this side winning (0..1). */

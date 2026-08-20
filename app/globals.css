@@ -369,6 +369,83 @@ select:focus-visible,
   opacity: 1;
 }
 
+/* The UP / DOWN call buttons — the same glass language at button scale. Translucent
+   fill, top-light, hairline, and a directional wash that BLOOMS UP FROM THE BUTTON'S
+   OWN EDGE (bottom for up, top for down), so the side reads before the label does.
+   Hover lifts and brightens the wash; press settles it back. Used by the simple-mode
+   ticket and every round card so one call button exists, not two. */
+.glass-side {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.06),
+    0 10px 24px -14px rgba(0, 0, 0, 0.9);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.12s ease;
+}
+.glass-side.up {
+  border-color: color-mix(in srgb, var(--up) 26%, var(--line));
+  background:
+    radial-gradient(125% 105% at 50% 122%, rgba(77, 214, 176, 0.24), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008) 42%),
+    color-mix(in srgb, var(--bg-1) 88%, transparent);
+}
+.glass-side.down {
+  border-color: color-mix(in srgb, var(--down) 26%, var(--line));
+  background:
+    radial-gradient(125% 105% at 50% -22%, rgba(240, 121, 107, 0.24), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008) 42%),
+    color-mix(in srgb, var(--bg-1) 88%, transparent);
+}
+.glass-side:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
+    0 14px 30px -14px rgba(0, 0, 0, 0.95);
+}
+.glass-side.up:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--up) 55%, var(--line));
+  background:
+    radial-gradient(125% 105% at 50% 122%, rgba(77, 214, 176, 0.36), transparent 64%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01) 42%),
+    color-mix(in srgb, var(--bg-1) 88%, transparent);
+}
+.glass-side.down:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--down) 55%, var(--line));
+  background:
+    radial-gradient(125% 105% at 50% -22%, rgba(240, 121, 107, 0.36), transparent 64%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.01) 42%),
+    color-mix(in srgb, var(--bg-1) 88%, transparent);
+}
+.glass-side:not(:disabled):active {
+  transform: translateY(0) scale(0.99);
+}
+.glass-side:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* No backdrop-filter (older Safari/Firefox): keep the gradients, drop the blur. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-side.up,
+  .glass-side.down {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.008) 42%),
+      var(--bg-1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glass-side:not(:disabled):hover,
+  .glass-side:not(:disabled):active {
+    transform: none;
+  }
+}
+
 /* Raised translucent sub-panel inside a glass card (metric rows, footer).
    Distinguished by its lighter fill — NOT a stark hairline. The border is a
    barely-there cool edge so tiles read as one cohesive surface, not boxes. */

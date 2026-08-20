@@ -71,11 +71,13 @@ export function usePrefetchPythHistory(): void {
 
 /**
  * Cadence (ms) for the app-wide tape feeder, INCLUDING while the tab is hidden.
- * It has to stay comfortably under the charts' 5s gap-break threshold: a stretch
- * sampled while the trader was away then still reads as one continuous (if slightly
- * lower-resolution) line instead of a break. Cheap to run — `/api/v2/pyth?kind=latest`
- * is CDN-cached at s-maxage=1, so every tab in the world collapses into ~1 origin
- * read per second no matter how many are polling.
+ * It has to stay comfortably under the charts' gap-break threshold: a stretch sampled
+ * while the trader was away then still reads as one continuous (if slightly lower-
+ * resolution) line instead of a break. Note that the interval is a floor, not the real
+ * sampling rate — a `latest` read costs p50 ~420ms and p95 ~1.7s, so the tape actually
+ * gains a point every ~3s here, which is what `GAP_BREAK_S` is sized against. Cheap to
+ * run — `/api/v2/pyth?kind=latest` is CDN-cached at s-maxage=1, so every tab in the
+ * world collapses into ~1 origin read per second no matter how many are polling.
  */
 const TAPE_FEED_INTERVAL_MS = 2000;
 

@@ -3,33 +3,47 @@
 /**
  * SimpleScreen — the calm UP/DOWN "round" trade view (`/v2/simple`).
  *
- * One live market at a time (the soonest tradeable one of the chosen cadence),
- * shown as a little price chart with the round's pinned LINE, a countdown, and
- * two big UP/DOWN buttons. The trader enters exactly two things: how much, and
- * which way. Everything else (the market, the strike/line, 1x leverage) is picked
- * for them. It reuses the SAME markets / pricer / mint plumbing as the full
- * ticket, so its trades land on the leaderboard, portfolio and PnL like any other
- * — it's a front-end, not a second engine. See [[simple-mode]].
+ * One live round in the hero (the soonest tradeable market of the chosen cadence),
+ * shown as a live price chart with the round's pinned LINE and a countdown, plus a
+ * compact ticket. The trader enters exactly two things: how much, and which way.
+ * Everything else (the market, the strike/line, 1x leverage) is picked for them.
+ *
+ * Below it, the OTHER rounds open right now are laid out as cards that can be bet
+ * directly — same amount, same confirm step, same mint. Every one of them prices
+ * through `useRoundQuote` and draws off the one shared price series, so a card and the
+ * hero ticket can never disagree, and a screen full of charts costs no extra network.
+ *
+ * It reuses the SAME markets / pricer / mint plumbing as the full ticket, so its trades
+ * land on the leaderboard, portfolio and PnL like any other — it's a front-end, not a
+ * second engine. See [[simple-mode]].
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { LuArrowUp, LuArrowDown, LuInfo } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
 import { skewFeeBase } from '@/lib/sui/v2/skew-fee';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
-import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { usePythTapeFeed } from '@/lib/hooks/use-v2-pyth-history';
+import { useSpotSeries } from '@/lib/hooks/use-spot-series';
+import { useRoundQuote } from '@/lib/hooks/use-round-quote';
 import { useNow } from '@/lib/hooks/use-now';
-import { getV2MarketState, qkV2 } from '@/lib/api/v2/client';
-import { groupByCadence, isTooCloseToExpiry, type V2Cadence } from '@/lib/markets/v2-discovery';
-import { roundLineScaled, quoteSide, type SideQuote } from '@/lib/sui/v2/simple-round';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
+import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
+import { RollingNumber } from '@/app/_components/ui/rolling-number';
+import { momentumOf, type Momentum } from '@/lib/charts/simple-series';
+import { groupByCadence, isTooCloseToExpiry, cadenceOf, CADENCE_ORDER, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { type SideQuote } from '@/lib/sui/v2/simple-round';
 import { leverageScaled } from '@/lib/sui/v2/ticks';
-import { toFloat, fromQuote } from '@/config/scale';
-import { price, pct } from '@/lib/format';
+import { fromQuote } from '@/config/scale';
+import { price } from '@/lib/format';
 import { STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { SimpleRoundChart } from './simple-chart';
+import { RoundCards, type RoundPick } from './round-cards';
+import { SideButton } from './side-button';
+import { CADENCE_META, CADENCE_TABS, clock } from './cadence';
+import { sanitizeAmount } from './amount';
+import { SimpleBetDrawer, type BetIntent } from './bet-drawer';
 import { TradeModeToggle } from '../trade-mode-toggle';
 import { GlassError } from '../../ui/glass-error';
 import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confirm-modal';
@@ -42,14 +56,38 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 const SYM = predictV2Config.quote.symbol;
 const usd = (base: bigint) => `$${fromQuote(base).toFixed(2)} ${SYM}`;
 
-const CADENCES: { id: V2Cadence; label: string }[] = [
-  { id: '1m', label: '1 min' },
-  { id: '5m', label: '5 min' },
-  { id: '1h', label: '1 hour' },
-];
-const CADENCE_SECS: Record<V2Cadence, number> = { '1m': 60, '5m': 300, '1h': 3600 };
+/** Trailing window the hero chart draws, and the lookback the momentum tint reads. */
+const CHART_WINDOW_S = 120;
+const MOMENTUM_LOOKBACK_S = 30;
+/** How many other rounds to card up. Each one costs a pricer simulate every ~5s, so
+ *  this is a load budget as much as a layout choice. */
+const MAX_OTHER_ROUNDS = 3;
 
 type SuccessState = { headline: string; tone: 'up' | 'down'; rows: ConfirmRow[]; staked: string; maxWin: string; digest: string };
+
+/**
+ * The round to SHOW for a cadence: the soonest one still running. Always that one —
+ * never the one after it.
+ *
+ * Markets enter their rolling window several periods before expiry (a 1-minute round is
+ * created ~3 minutes out), so a cadence has two or three live at once, spaced one period
+ * apart. The screen used to SKIP a round that was too close to bet and take the next,
+ * which put a 2:32 countdown under a "1 min" label. The soonest round is inside its own
+ * period by construction — measured live: 1m soonest 0:23 of a 0:23/1:24/2:24 window, 5m
+ * soonest 4:23 of 4:23/9:24/14:24 — so taking it is the whole fix.
+ *
+ * A round in its final seconds is still SHOWN, because its countdown is the true one;
+ * the caller disables betting on it instead (`isTooCloseToExpiry`). Trading a correct
+ * number for a few dead seconds is the right way round.
+ *
+ * NOTE the hourly series is shaped differently: the protocol keeps only ONE hourly
+ * market alive and creates it ~3h ahead, so its soonest legitimately reads past an hour.
+ * There is no nearer round to show instead — an empty tab would be the only alternative.
+ */
+function currentRound(list: V2Market[], now: number): V2Market | null {
+  // `list` is already soonest-first; skip any that expired before the client list caught up.
+  return list.find((m) => m.expiry > now) ?? null;
+}
 
 export function SimpleScreen({
   markets: initialMarkets,
@@ -65,9 +103,8 @@ export function SimpleScreen({
   const acct = usePredictAccountV2();
   const skewFee = useSkewFeeV2();
   // Keep the rolling pyth-tape buffer fed (and the live spot read on the checkpoint
-  // stream) for as long as this screen is mounted. The chart's history walk is a
-  // one-shot, so the tape is what keeps its right-hand side current — without it the
-  // chart draws a straight line from a frozen tail to the live tick.
+  // stream) for as long as this screen is mounted. The history walk is a one-shot, so
+  // the tape is what keeps the charts' right-hand side current.
   usePythTapeFeed();
   const instantTrade = useSessionPrefs((s) => s.instantTrade);
   const armInstant = useSessionPrefs((s) => s.armInstant);
@@ -76,60 +113,76 @@ export function SimpleScreen({
 
   const markets = useV2Markets(initialMarkets);
   const now = useNow(serverNow);
+  // Only a BEHAVIOUR switch (bet straight away vs ask for the amount first); the layout
+  // itself is CSS, so this never gates what renders.
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [cadence, setCadence] = useState<V2Cadence>('1m');
-  const [stake, setStake] = useState(STARTER_DEFAULT_STAKE);
-  const [confirm, setConfirm] = useState<{ isUp: boolean } | null>(null);
+  // The amount lives as text so the box shows exactly what was typed (see sanitizeAmount);
+  // everything downstream reads the derived number.
+  const [stakeText, setStakeText] = useState(String(STARTER_DEFAULT_STAKE));
+  const stake = Number(stakeText) || 0;
+  const [confirm, setConfirm] = useState<RoundPick | null>(null);
+  // Mobile bet drawer. `betIntent` stays populated while the sheet slides OUT, so its
+  // content doesn't vanish mid-animation; `betOpen` is what actually drives the slide.
+  const [betIntent, setBetIntent] = useState<BetIntent | null>(null);
+  const [betOpen, setBetOpen] = useState(false);
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
-  // The active round: soonest tradeable market of the chosen cadence (skip any so
-  // close to expiry a mint can't land), falling back to the soonest of that cadence.
-  const grouped = useMemo(() => groupByCadence(markets), [markets]);
-  const active = useMemo(() => {
-    const list = grouped[cadence];
-    return list.find((m) => !isTooCloseToExpiry(m, now)) ?? list[0] ?? null;
-  }, [grouped, cadence, now]);
-  const marketId = active?.expiry_market_id ?? null;
+  // The ONE price series every chart on this screen draws from (hero + every card).
+  const series = useSpotSeries(CHART_WINDOW_S);
+  const momentum = useMemo(() => momentumOf(series, MOMENTUM_LOOKBACK_S), [series]);
 
-  const pricerQ = useV2Pricer(marketId, marketId ? pricerSeeds[marketId] : undefined);
-  const pricer = pricerQ.data ?? null;
-
-  // The pinned line comes from the market's on-chain reference_tick; seed it from
-  // the server so the line paints immediately instead of flashing at-the-money.
-  const stateQ = useQuery({
-    queryKey: qkV2.marketState(marketId ?? ''),
-    queryFn: () => getV2MarketState(marketId!),
-    enabled: !!marketId,
-    initialData: marketId ? stateSeeds[marketId] : undefined,
-    refetchInterval: 8_000,
-    staleTime: 5_000,
+  // The live tick for the price card: the very same shared pyth-latest entry the nav
+  // spot tape polls at 250ms, so the card moves exactly as often as the nav does — and
+  // lands on the same number the chart's live dot is drawn at. Deliberately NO interval
+  // of its own; the nav tape drives this key from the always-mounted chrome, so this is
+  // a pure observer. The pricer can't drive the readout: it re-simulates at best once
+  // every 2.5s, which is what made the card feel frozen next to the nav.
+  const spotQ = useQuery({
+    queryKey: qkV2.pythLatest,
+    queryFn: () => getPythLatest(predictV2Config.asset.pythFeedId),
   });
-  const refTick = stateQ.data?.reference_tick ?? null;
+  const liveSpot = pythSpot(spotQ.data ?? null);
 
-  const lineInfo = useMemo(
-    () => (active && pricer ? roundLineScaled(refTick, pricer.forward, active.tick_size, active.admission_tick_size) : null),
-    [active, pricer, refTick],
-  );
-  const line = lineInfo ? toFloat(lineInfo.lineScaled) : null;
+  const grouped = useMemo(() => groupByCadence(markets), [markets]);
+  const active = useMemo(() => currentRound(grouped[cadence], now), [grouped, cadence, now]);
+  // In its last few seconds a mint can no longer land, so the round is shown (the
+  // countdown is real) but not bettable — rather than jumping to a round of the wrong
+  // length just to keep the buttons alive.
+  const closing = !!active && isTooCloseToExpiry(active, now);
 
-  const upQ = useMemo(
-    () => (active && pricer && lineInfo ? quoteSide(active, pricer, lineInfo.lineScaled, stake, true) : null),
-    [active, pricer, lineInfo, stake],
-  );
-  const dnQ = useMemo(
-    () => (active && pricer && lineInfo ? quoteSide(active, pricer, lineInfo.lineScaled, stake, false) : null),
-    [active, pricer, lineInfo, stake],
-  );
+  const hero = useRoundQuote(active, stake, {
+    pricer: active ? pricerSeeds[active.expiry_market_id] : undefined,
+    state: active ? stateSeeds[active.expiry_market_id] : undefined,
+  });
+  const { line, lineInfo, upQ, dnQ } = hero;
 
-  // One-time balance-aware default stake — adjusted DURING render (React's "you
-  // might not need an effect"; the mobile dock uses the same pattern for route
-  // changes), so it never trips set-state-in-effect. Fires once the balance loads,
-  // and only while the trader hasn't picked an amount yet.
+  // The other rounds to card up: the current round of every OTHER cadence, by the same
+  // rule as the hero — so a card labelled "5 min" can't be counting down from 6:32
+  // either. That's one card per remaining cadence; the next round of a series is
+  // deliberately NOT offered, since it always outlives its own label.
+  const otherRounds = useMemo(() => {
+    const activeId = active?.expiry_market_id;
+    const out: V2Market[] = [];
+    for (const c of CADENCE_ORDER) {
+      if (c === cadence) continue;
+      const m = currentRound(grouped[c], now);
+      if (m && m.expiry_market_id !== activeId) out.push(m);
+    }
+    // Show them soonest-first — the row is a queue of what closes next, so cadence order
+    // is the wrong axis to lay it out on.
+    return out.slice(0, MAX_OTHER_ROUNDS).sort((a, b) => a.expiry - b.expiry);
+  }, [grouped, cadence, active, now]);
+
+  // One-time balance-aware default stake — adjusted DURING render (React's "you might
+  // not need an effect"), so it never trips set-state-in-effect. Fires once the balance
+  // loads, and only while the trader hasn't picked an amount yet.
   const [autoSized, setAutoSized] = useState(false);
   if (!autoSized && acct.walletDusdcBase !== undefined) {
     setAutoSized(true);
     if (stake === STARTER_DEFAULT_STAKE) {
       const s = defaultStakeForBalance(acct.balanceBase + acct.walletDusdcBase);
-      if (s !== stake) setStake(s);
+      if (s !== stake) setStakeText(String(s));
     }
   }
 
@@ -149,33 +202,48 @@ export function SimpleScreen({
     return { shortfall, skewFeeDue, chargesSkewFee };
   }
 
-  function requestPlace(isUp: boolean) {
-    if (acct.busy || !active) return;
+  /** Open the mobile amount drawer for a call. */
+  function openBet(intent: BetIntent) {
+    setBetIntent(intent);
+    setBetOpen(true);
+  }
+
+  /**
+   * A side button was tapped. On a phone the amount isn't on screen (the ticket is
+   * desktop-only), so the drawer asks for it first; on desktop the ticket already has
+   * it, so the bet goes straight to the confirm/mint funnel.
+   */
+  function pickSide(pick: RoundPick) {
+    if (isDesktop) requestPlace(pick);
+    else openBet({ market: pick.market, isUp: pick.isUp, lineScaled: pick.lineScaled });
+  }
+
+  /** Every bet on this screen — hero ticket, round card or drawer — funnels through here. */
+  function requestPlace(pick: RoundPick) {
+    if (acct.busy) return;
     if (!acct.owner) return; // buttons show a connect hint instead
     if (!acct.wrapperExists) {
       void acct.createAccount();
       return;
     }
-    const q = isUp ? upQ : dnQ;
-    if (!q || !q.quotable) return;
-    const f = funding(q);
-    // One-tap only when a session is live AND the trade is fully account-funded
-    // (a wallet top-up would still pop up).
+    if (!pick.quote.quotable) return;
+    const f = funding(pick.quote);
+    // One-tap only when a session is live AND the trade is fully account-funded (a
+    // wallet top-up would still pop up).
     if (acct.sessionCanTrade && instantTrade && f.shortfall === 0n) {
-      void doMint(isUp);
+      void doMint(pick);
       return;
     }
-    setConfirm({ isUp });
+    setConfirm(pick);
   }
 
-  async function doMint(isUp: boolean) {
-    const q = isUp ? upQ : dnQ;
-    if (!active || !q || line == null) return;
+  async function doMint(pick: RoundPick) {
+    const { market, quote: q, isUp } = pick;
     const f = funding(q);
     const wasArming = armInstant && !acct.sessionActive;
     const digest = await acct.mintBudget(
       {
-        marketId: active.expiry_market_id,
+        marketId: market.expiry_market_id,
         lowerTick: q.ticks.lowerTick,
         higherTick: q.ticks.higherTick,
         amount: q.amount,
@@ -192,7 +260,7 @@ export function SimpleScreen({
       setSuccess({
         headline: `BTC · ${isUp ? 'UP' : 'DOWN'}`,
         tone: isUp ? 'up' : 'down',
-        rows: reviewRows(isUp, line, f.chargesSkewFee ? { due: f.skewFeeDue, bps: skewFee.feeBps } : undefined),
+        rows: reviewRows(pick, f.chargesSkewFee ? { due: f.skewFeeDue, bps: skewFee.feeBps } : undefined),
         staked: usd(q.stakeBase),
         maxWin: usd(q.winBase),
         digest,
@@ -201,15 +269,11 @@ export function SimpleScreen({
   }
 
   const secsLeft = active ? Math.max(0, Math.round((active.expiry - now) / 1000)) : 0;
-  const timer = `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}`;
-  const remainFrac = Math.max(0, Math.min(1, secsLeft / CADENCE_SECS[cadence]));
-  const px = pricer?.forward ?? null;
+  const px = liveSpot ?? hero.pricer?.forward ?? null;
   const above = px != null && line != null ? px >= line : true;
   const delta = px != null && line != null ? px - line : null;
-  const upProb = upQ?.entryProb ?? null;
 
-  const cq = confirm ? (confirm.isUp ? upQ : dnQ) : null;
-  const cf = cq ? funding(cq) : null;
+  const cf = confirm ? funding(confirm.quote) : null;
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 py-4 sm:px-5">
@@ -222,22 +286,30 @@ export function SimpleScreen({
 
       {/* title + cadence */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-[15px] font-semibold tracking-tight text-text-1 sm:text-[17px]">
-          Will Bitcoin be higher or lower{' '}
+        {/* Flex-wrap, not inline flow: on a phone the sentence used to break right after
+            the price and strand it at the end of a line. Wrapping by phrase keeps the
+            number with "this round?" instead — which is also why the lead-in no longer
+            shortens on mobile. It used to drop "Will Bitcoin be" on the grounds that the
+            nav names the asset, but the nav's chip is small and far away, and the phone
+            screen ended up asking "higher or lower than 72,333.12?" about nothing in
+            particular. The wrap handles the extra width. */}
+        <h1 className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[15px] font-semibold tracking-tight text-text-1 sm:text-[17px]">
+          <span>Will Bitcoin be higher or lower than</span>
           {line != null && (
             <>
-              than <span className="font-mono text-text-1">{price(line)}</span>
+              <LinePill value={line} momentum={momentum} />
+              <span>this round?</span>
             </>
-          )}{' '}
-          this round?
+          )}
         </h1>
-        <div className="flex shrink-0 gap-1.5 rounded-xl border border-(--line-soft) bg-bg-1 p-1">
-          {CADENCES.map((c) => (
+        {/* Full-width on a phone so each round length is a proper tap target. */}
+        <div className="flex w-full shrink-0 gap-1 rounded-xl border border-(--line-soft) bg-bg-1 p-1 sm:w-auto">
+          {CADENCE_TABS.map((c) => (
             <button
               key={c.id}
               type="button"
               onClick={() => setCadence(c.id)}
-              className={`rounded-lg px-3 py-1.5 font-mono text-[12px] font-semibold transition-colors ${
+              className={`flex-1 rounded-lg px-3 py-2 font-mono text-[12px] font-semibold transition-colors sm:flex-none sm:py-1.5 ${
                 cadence === c.id ? 'bg-bg-3 text-text-1' : 'text-text-3 hover:text-text-2'
               }`}
             >
@@ -247,133 +319,223 @@ export function SimpleScreen({
         </div>
       </div>
 
-      {!active || !pricer || line == null ? (
+      {!active || !hero.ready || line == null ? (
         <div className="flex flex-1 items-center justify-center rounded-2xl border border-(--line-soft) bg-bg-1 py-24 text-center text-[13px] text-text-3">
           {markets.length === 0 ? 'No live rounds right now — check back in a moment.' : 'Starting the next round…'}
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          {/* chart + countdown */}
-          <section className="panel flex flex-col gap-3 p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="eyebrow">Last price</div>
-                <div className="font-mono text-[32px] font-semibold leading-none tabular-nums text-text-1 sm:text-[38px]">
-                  {price(px ?? 0)}
-                </div>
-                {delta != null && (
-                  <div className={`mt-1.5 text-[12.5px] font-semibold ${above ? 'text-up' : 'text-down'}`}>
-                    {above ? '▲' : '▼'} {price(Math.abs(delta))} {above ? 'above' : 'below'} the line
-                  </div>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="eyebrow">Round closes in</div>
-                <div className="font-mono text-[28px] font-semibold leading-none tabular-nums text-text-1 sm:text-[34px]">
-                  {timer}
-                </div>
-              </div>
-            </div>
-            <div className="meter">
-              <i style={{ width: `${remainFrac * 100}%`, background: 'var(--accent)' }} />
-            </div>
-            {/* fills the rest of the panel so there's no dead space below it */}
-            <div className="min-h-0 flex-1">
-              <SimpleRoundChart line={line} above={above} />
-            </div>
-          </section>
-
-          {/* the ticket */}
-          <aside className="panel flex flex-col gap-4 p-4">
-            <div className="flex flex-col gap-1">
-              <span className="eyebrow">The line · this round</span>
-              <span className="font-mono text-[19px] font-semibold tabular-nums text-text-1">{price(line)}</span>
-              <span className="text-[11px] text-text-3">
-                {lineInfo?.pinned ? 'Fixed for this round — settles above or below it.' : 'The price right now — higher or lower from here.'}
-              </span>
-            </div>
-
-            {upProb != null && (
-              <div className="flex flex-col gap-1.5">
-                <span className="eyebrow">Market&rsquo;s read</span>
-                <div className="flex h-2 overflow-hidden rounded-full bg-bg-3">
-                  <span style={{ width: `${upProb * 100}%`, background: 'var(--up)' }} />
-                  <span style={{ width: `${(1 - upProb) * 100}%`, background: 'var(--down)' }} />
-                </div>
-                <div className="flex justify-between text-[11px] font-semibold">
-                  <span className="text-up">UP {pct(upProb, 0)}</span>
-                  <span className="text-down">{pct(1 - upProb, 0)} DOWN</span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="eyebrow">How much</span>
-                <span className="text-[11px] text-text-3">You have ${fromQuote(spendable).toFixed(2)}</span>
-              </div>
-              <div className="flex gap-1.5">
-                {presets.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setStake(p)}
-                    className={`flex-1 rounded-lg border py-2 font-mono text-[13px] font-semibold transition-colors ${
-                      stake === p
-                        ? 'border-(--accent-line) bg-(--accent-soft) text-text-1'
-                        : 'border-(--line-soft) bg-bg-2 text-text-2 hover:text-text-1'
-                    }`}
+        <>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            {/* ── the chart card ───────────────────────────────────────────────── */}
+            <section className="panel flex min-h-0 flex-col overflow-hidden">
+              <div className="flex items-start justify-between gap-4 px-4 pb-3 pt-4">
+                <div>
+                  <div className="eyebrow">Last price</div>
+                  {/* Odometer digits, same as the nav tape: the value shown is always the
+                      real current tick (no tween) — only each digit's slide animates, so a
+                      tick landing mid-slide just retargets the strips. */}
+                  <div
+                    className="font-mono text-[30px] font-semibold leading-none tabular-nums text-text-1 sm:text-[36px]"
+                    aria-label={`Last price ${price(px ?? 0)}`}
                   >
-                    ${p}
-                  </button>
-                ))}
+                    <RollingNumber text={price(px ?? 0)} />
+                  </div>
+                  {delta != null && (
+                    <div
+                      className={`mt-2 flex items-center gap-1 text-[12.5px] font-semibold tabular-nums ${above ? 'text-up' : 'text-down'}`}
+                      aria-label={`${price(Math.abs(delta))} ${above ? 'above' : 'below'} the line`}
+                    >
+                      <span aria-hidden="true">{above ? '▲' : '▼'}</span>
+                      <RollingNumber text={price(Math.abs(delta))} />
+                      <span aria-hidden="true">{above ? 'above' : 'below'} the line</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="eyebrow">Round closes in</div>
+                  <div className="font-mono text-[26px] font-semibold leading-none tabular-nums text-text-1 sm:text-[32px]">
+                    {clock(secsLeft)}
+                  </div>
+                  <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-wider text-text-3">
+                    <i className="h-1.5 w-1.5 rounded-full bg-up" style={{ animation: 'breathe 2.4s ease-in-out infinite' }} />
+                    live
+                  </span>
+                </div>
               </div>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={1}
-                value={stake}
-                onChange={(e) => setStake(Math.max(0, Number(e.target.value) || 0))}
-                aria-label="Custom amount"
-                className="w-full rounded-lg border border-(--line-soft) bg-bg-2 px-3 py-2 text-center font-mono text-[14px] text-text-1 outline-none focus:border-(--line-strong)"
-              />
-            </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <SideButton isUp q={upQ} onPick={() => requestPlace(true)} disabled={!acct.owner || !!acct.busy} />
-              <SideButton isUp={false} q={dnQ} onPick={() => requestPlace(false)} disabled={!acct.owner || !!acct.busy} />
-            </div>
+              {/* fills the rest of the panel so there's no dead space below it */}
+              <div className="min-h-0 flex-1 px-3 pb-3">
+                <SimpleRoundChart series={series} line={line} above={above} />
+              </div>
 
-            {!acct.owner ? (
-              <p className="text-center text-[11.5px] text-text-3">Connect your wallet (top right) to place a bet.</p>
-            ) : !acct.wrapperExists ? (
-              <p className="text-center text-[11.5px] text-text-3">
-                {acct.busy === 'create' ? 'Setting up your free trading account…' : 'Your first tap sets up a free trading account, then tap again to bet.'}
-              </p>
-            ) : (
-              <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-text-3">
-                <LuInfo size={12} /> Payouts are after the {skewFee.enabled ? `${(skewFee.feeBps / 100).toFixed(2)}% ` : ''}fee. A fresh round starts every {CADENCES.find((c) => c.id === cadence)?.label}.
-              </p>
-            )}
+              {/* MOBILE: the call lives on the chart. Scrolling away from the price to
+                  reach a ticket is the wrong way round on a phone — tapping here opens
+                  the amount drawer instead. Desktop keeps the ticket in the rail. */}
+              <div className="grid grid-cols-2 gap-2 px-3 pb-3 lg:hidden">
+                <SideButton
+                  isUp
+                  disabled={!acct.owner || !!acct.busy || closing || !upQ?.quotable}
+                  unpriceable={!!upQ && !upQ.quotable}
+                  onPick={() => lineInfo && openBet({ market: active, isUp: true, lineScaled: lineInfo.lineScaled })}
+                />
+                <SideButton
+                  isUp={false}
+                  disabled={!acct.owner || !!acct.busy || closing || !dnQ?.quotable}
+                  unpriceable={!!dnQ && !dnQ.quotable}
+                  onPick={() => lineInfo && openBet({ market: active, isUp: false, lineScaled: lineInfo.lineScaled })}
+                />
+              </div>
+              {closing && (
+                <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
+                  This round is closing — the next one opens in a moment.
+                </p>
+              )}
+            </section>
 
-            {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
-          </aside>
-        </div>
+            {/* ── the ticket (desktop) — on mobile the chart's buttons + the bet
+                   drawer do this job, and two ways to bet on one screen is noise ── */}
+            <aside className="panel hidden flex-col gap-4 p-4 lg:flex">
+              <div className="flex flex-col gap-1.5">
+                <span className="eyebrow">The line · this round</span>
+                <span className="font-mono text-[22px] font-semibold leading-none tabular-nums text-text-1">
+                  {price(line)}
+                </span>
+                <span className="text-[11px] leading-snug text-text-3">
+                  {hero.lineInfo?.pinned
+                    ? 'Fixed for this round — settles above or below it.'
+                    : 'The price right now — higher or lower from here.'}
+                </span>
+              </div>
+
+              <hr className="border-(--line-soft)" />
+
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="eyebrow">Bet amount</span>
+                  <span className="text-[11px] text-text-3">
+                    Wallet balance <span className="font-mono tabular-nums">${price(fromQuote(spendable))}</span>
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  {presets.map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setStakeText(String(p))}
+                      className={`flex-1 rounded-lg border py-2 font-mono text-[12.5px] font-semibold transition-colors ${
+                        stake === p
+                          ? 'border-(--accent-line) bg-(--accent-soft) text-text-1'
+                          : 'border-(--line-soft) bg-bg-2 text-text-2 hover:text-text-1'
+                      }`}
+                    >
+                      ${p}
+                    </button>
+                  ))}
+                </div>
+                {/* `text` + decimal inputMode, not `number`: it drops the native spinners
+                    outright (no per-engine CSS) and lets the value be normalised as typed,
+                    while phones still get the numeric keypad. */}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={stakeText}
+                  onChange={(e) => setStakeText(sanitizeAmount(e.target.value))}
+                  placeholder="0"
+                  aria-label="Custom amount"
+                  className="w-full rounded-lg border border-(--line-soft) bg-bg-2 px-3 py-2 text-center font-mono text-[14px] text-text-1 outline-none focus:border-(--line-strong)"
+                />
+              </div>
+
+              {/* What each call pays at this amount. It sits here rather than on the
+                  buttons so the buttons stay one steady target — these figures move on
+                  every tick, and a control that reflows under the cursor gets misclicked. */}
+              <div className="grid grid-cols-2 gap-2 rounded-lg border border-(--line-soft) bg-bg-2/40 px-2 py-2">
+                <PayoutCell isUp q={upQ} />
+                <PayoutCell isUp={false} q={dnQ} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <SideButton
+                  isUp
+                  disabled={!acct.owner || !!acct.busy || closing || !upQ?.quotable}
+                  unpriceable={!!upQ && !upQ.quotable}
+                  onPick={() => lineInfo && upQ && requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: upQ, isUp: true })}
+                />
+                <SideButton
+                  isUp={false}
+                  disabled={!acct.owner || !!acct.busy || closing || !dnQ?.quotable}
+                  unpriceable={!!dnQ && !dnQ.quotable}
+                  onPick={() => lineInfo && dnQ && requestPlace({ market: active, line, lineScaled: lineInfo.lineScaled, quote: dnQ, isUp: false })}
+                />
+              </div>
+
+              {closing && (
+                <p className="text-center text-[11.5px] text-text-3">
+                  This round is closing — the next one opens in a moment.
+                </p>
+              )}
+
+              {!acct.owner ? (
+                <p className="text-center text-[11.5px] text-text-3">Connect your wallet (top right) to place a bet.</p>
+              ) : !acct.wrapperExists ? (
+                <p className="text-center text-[11.5px] text-text-3">
+                  {acct.busy === 'create'
+                    ? 'Setting up your free trading account…'
+                    : 'Your first tap sets up a free trading account, then tap again to bet.'}
+                </p>
+              ) : null}
+
+              {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
+            </aside>
+          </div>
+
+          <RoundCards
+            markets={otherRounds}
+            series={series}
+            stake={stake}
+            spot={px}
+            now={now}
+            pricerSeeds={pricerSeeds}
+            stateSeeds={stateSeeds}
+            onPick={pickSide}
+            disabled={!acct.owner || !!acct.busy}
+          />
+        </>
       )}
 
+      <SimpleBetDrawer
+        intent={betIntent}
+        open={betOpen}
+        onClose={() => setBetOpen(false)}
+        stakeText={stakeText}
+        setStakeText={setStakeText}
+        presets={presets}
+        spendable={spendable}
+        now={now}
+        pricerSeeds={pricerSeeds}
+        busy={!!acct.busy}
+        connected={!!acct.owner}
+        needsAccount={!!acct.owner && !acct.wrapperExists}
+        // Close FIRST, then hand off — so the review modal is never stacked on the sheet.
+        onPlace={(pick) => {
+          setBetOpen(false);
+          requestPlace(pick);
+        }}
+      />
+
       {/* confirm */}
-      {cq && line != null && (
+      {confirm && (
         <MintConfirmModal
-          open={!!confirm}
+          open
           onClose={() => setConfirm(null)}
-          onConfirm={() => confirm && doMint(confirm.isUp)}
+          onConfirm={() => doMint(confirm)}
           busy={acct.busy === 'mint'}
-          headline={`BTC · ${confirm?.isUp ? 'UP' : 'DOWN'}`}
-          tone={confirm?.isUp ? 'up' : 'down'}
-          rows={reviewRows(!!confirm?.isUp, line, cf?.chargesSkewFee ? { due: cf.skewFeeDue, bps: skewFee.feeBps } : undefined)}
-          cost={usd(cq.stakeBase)}
-          maxWin={usd(cq.winBase)}
-          confirmLabel={`Bet ${confirm?.isUp ? 'UP' : 'DOWN'} · ${usd(cq.stakeBase)}`}
+          headline={`BTC · ${confirm.isUp ? 'UP' : 'DOWN'}`}
+          tone={confirm.isUp ? 'up' : 'down'}
+          rows={reviewRows(confirm, cf?.chargesSkewFee ? { due: cf.skewFeeDue, bps: skewFee.feeBps } : undefined)}
+          cost={usd(confirm.quote.stakeBase)}
+          maxWin={usd(confirm.quote.winBase)}
+          confirmLabel={`Bet ${confirm.isUp ? 'UP' : 'DOWN'} · ${usd(confirm.quote.stakeBase)}`}
           subtitle={
             acct.sessionCanTrade
               ? 'Instant trading is on — this places with no wallet pop-up.'
@@ -403,61 +565,57 @@ export function SimpleScreen({
   );
 }
 
-/** The confirm/success summary rows for a round bet. */
-function reviewRows(isUp: boolean, line: number, fee?: { due: bigint; bps: number }): ConfirmRow[] {
+/**
+ * The line in the headline question, highlighted as a chip and tinted by which way BTC
+ * is MOVING — mint while it's climbing, coral while it's falling.
+ *
+ * NO caret. The number is the round's LOCKED line: it doesn't move, and an arrow sitting
+ * on it read as though it did. Colour can carry a direction the value doesn't have —
+ * an arrow can't — so the tint stays and the caret goes. Screen readers get the
+ * direction from the label instead, since colour alone isn't a signal. `flat` stays
+ * neutral, which is what keeps a quiet tape from strobing red/green (see `momentumOf`).
+ */
+function LinePill({ value, momentum }: { value: number; momentum: Momentum }) {
+  const tone =
+    momentum === 'up'
+      ? 'border-up/35 bg-up/10 text-up'
+      : momentum === 'down'
+        ? 'border-down/35 bg-down/10 text-down'
+        : 'border-(--line-soft) bg-bg-2 text-text-1';
+  const label = momentum === 'up' ? 'Bitcoin is rising' : momentum === 'down' ? 'Bitcoin is falling' : 'Bitcoin is flat';
+  return (
+    <span
+      className={`inline-flex items-center rounded-md border px-2 py-0.5 align-baseline font-mono text-[15px] font-semibold tabular-nums transition-colors sm:text-[17px] ${tone}`}
+      title={label}
+    >
+      {price(value)}
+      <span className="sr-only"> ({label})</span>
+    </span>
+  );
+}
+
+/** The confirm/success summary rows for a round bet. Names the ROUND, so a bet placed
+ *  from a card is never ambiguous about which market it lands on. */
+function reviewRows(pick: RoundPick, fee?: { due: bigint; bps: number }): ConfirmRow[] {
   const rows: ConfirmRow[] = [
-    { label: 'Your call', value: isUp ? 'Closes ABOVE the line' : 'Closes BELOW the line' },
-    { label: 'The line', value: price(line), emphasize: true },
+    { label: 'Round', value: `${CADENCE_META[cadenceOf(pick.market)].short} · BTC` },
+    { label: 'Your call', value: pick.isUp ? 'Closes ABOVE the line' : 'Closes BELOW the line' },
+    { label: 'The line', value: price(pick.line), emphasize: true },
   ];
   if (fee) rows.push({ label: `Skew fee (${(fee.bps / 100).toFixed(2)}%)`, value: usd(fee.due) });
   return rows;
 }
 
-function SideButton({
-  isUp,
-  q,
-  onPick,
-  disabled,
-}: {
-  isUp: boolean;
-  q: SideQuote | null;
-  onPick: () => void;
-  disabled: boolean;
-}) {
-  const off = disabled || !q || !q.quotable;
-  const tone = isUp ? 'up' : 'down';
-  const Arrow = isUp ? LuArrowUp : LuArrowDown;
+/** What one call pays at the current amount — the win, not the multiplier. */
+function PayoutCell({ isUp, q }: { isUp: boolean; q: SideQuote | null }) {
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      disabled={off}
-      className={`group relative flex flex-col items-center gap-2 overflow-hidden rounded-2xl border p-4 text-center transition-transform active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45 ${
-        isUp ? 'border-up/25 hover:border-up/45' : 'border-down/25 hover:border-down/45'
-      }`}
-      style={{
-        background: `radial-gradient(130% 90% at 50% 0%, ${isUp ? 'rgba(77,214,176,0.12)' : 'rgba(240,121,107,0.12)'}, transparent 55%), var(--bg-1)`,
-      }}
-    >
-      <span className={`dir-orb ${tone}`}>
-        <Arrow size={20} />
+    <span className="flex flex-col items-center gap-0.5">
+      <span className={`text-[9.5px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}>
+        {isUp ? 'Up' : 'Down'} wins
       </span>
-      <span className="flex flex-col gap-0.5">
-        <span className={`text-[15px] font-bold ${isUp ? 'text-up' : 'text-down'}`}>{isUp ? 'UP' : 'DOWN'}</span>
-        <span className="text-[10.5px] text-text-3">{isUp ? 'closes above' : 'closes below'}</span>
+      <span className="font-mono text-[13.5px] font-semibold tabular-nums text-text-1">
+        {q && q.quotable ? `$${price(fromQuote(q.winBase))}` : '—'}
       </span>
-      <span className="mt-1 w-full border-t border-(--line-soft) pt-2.5">
-        {q && q.quotable ? (
-          <>
-            <span className="block font-mono text-[16px] font-semibold tabular-nums text-text-1">{q.multiplier.toFixed(2)}×</span>
-            <span className="block text-[10.5px] text-text-2">
-              win <b className="font-mono text-text-1">{usd(q.winBase)}</b>
-            </span>
-          </>
-        ) : (
-          <span className="block text-[10.5px] text-text-3">too one-sided to price</span>
-        )}
-      </span>
-    </button>
+    </span>
   );
 }
