@@ -17,7 +17,7 @@
  * Pure functions (no React) — work from Server Components, queryFns, and scripts.
  */
 import { Transaction } from '@mysten/sui/transactions';
-import { SuiGrpcClient } from '@mysten/sui/grpc';
+import { grpcRead, activeGrpcUrl } from '@/lib/sui/grpc-core';
 import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
@@ -360,11 +360,15 @@ const fieldsOf = (node: unknown): Record<string, unknown> => {
  * no `.fields`, so the same navigation reads either shape.
  */
 export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservation | null> {
-  const res = await grpc().core.getObjects({
-    objectIds: [predictV2Config.asset.pythFeedId],
-    include: { json: true },
-    signal: opts?.signal,
-  });
+  const res = await grpcRead(
+    (client, signal) =>
+      client.core.getObjects({
+        objectIds: [predictV2Config.asset.pythFeedId],
+        include: { json: true },
+        signal,
+      }),
+    { signal: opts?.signal },
+  );
   // getObjects returns a per-object union (Object | Error). A missing/deleted feed
   // becomes null here (same as an empty content before); a transport failure still
   // throws out of getObjects, exactly like the old all-endpoints-failed path.
@@ -388,25 +392,23 @@ export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservat
 /* --------------------- gRPC view getters (market state) ------------------- */
 
 /**
- * The gRPC endpoint for the reads in this file.
+ * gRPC reads here go through the SHARED failover reader ([[lib/sui/grpc]]), not a client
+ * of their own.
  *
- * SAME ENDPOINT AS THE REST OF THE APP. This used to carry its own hardcoded default
- * (`rpc-testnet.suiscan.xyz`), left over from 2026-07-31 when the public testnet fullnode
- * stalled and repointing here was the fix ([[testnet-grpc-fullnode-stall]]). On 2026-08-21
- * it happened in the opposite direction: suiscan started returning Gateway Timeout after
- * 60s while the public fullnode answered the identical read in 621ms. Because only this
- * file pointed at suiscan, the app half-broke — the chart, market list and odds (which
- * read through `predictV2Config.grpcUrl`) stayed live, while the nav price tape
- * (`onchainPythLatest`) and every strike on the positions rail (`onchainMarketState`)
- * went blank. Two sources of truth for one endpoint meant there was no single place to
- * repoint, and no obvious symptom pointing at the RPC layer.
+ * This file used to build its own client against a hardcoded `rpc-testnet.suiscan.xyz`,
+ * left over from 2026-07-31 when the public testnet fullnode stalled and repointing was
+ * the fix. On 2026-08-21 it happened in the opposite direction: suiscan returned Gateway
+ * Timeout after 60s while the fullnode answered the identical read in 621ms. Because only
+ * this file pointed at suiscan — and because it bypassed the failover layer that already
+ * existed — the app half-broke. The chart, market list and odds stayed live, while the
+ * nav price tape (`onchainPythLatest`) and every strike on the positions rail
+ * (`onchainMarketState`) went blank, with no error and no timeout to react to.
  *
- * The env var still overrides, which is how you repoint in an incident without a deploy.
+ * Both of those reads now get a 5s budget and an automatic retry on the next endpoint,
+ * on the SERVER as well as in the browser — the failing route that day
+ * (`/api/v2/pyth`) was server-side, where the browser-only health monitor never reached.
  */
-const GRPC_URL = process.env.NEXT_PUBLIC_SUI_GRPC_URL || predictV2Config.grpcUrl;
 const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
-let _grpc: SuiGrpcClient | null = null;
-const grpc = (): SuiGrpcClient => (_grpc ??= new SuiGrpcClient({ network: 'testnet', baseUrl: GRPC_URL }));
 
 interface SimResult {
   $kind?: string;
@@ -417,16 +419,21 @@ interface SimResult {
 /** Run a read-only PTB and return [command][returnValue] BCS bytes. */
 async function inspectReturns(tx: Transaction): Promise<Uint8Array[][]> {
   tx.setSender(ZERO);
-  const res = (await grpc().simulateTransaction({
-    transaction: tx,
-    include: { commandResults: true },
-    checksEnabled: false,
-  })) as SimResult;
+  const res = (await grpcRead((client, signal) =>
+    client.simulateTransaction({
+      transaction: tx,
+      include: { commandResults: true },
+      checksEnabled: false,
+      signal,
+    }),
+  )) as SimResult;
   if (res.$kind === 'FailedTransaction') {
     throw new PredictApiError(
       `inspect failed: ${JSON.stringify(res.FailedTransaction?.status?.error ?? {}).slice(0, 120)}`,
       0,
-      GRPC_URL,
+      // Whichever endpoint actually served this read, so an error names the node it came
+      // from rather than a constant that may no longer be the one in use.
+      activeGrpcUrl(),
     );
   }
   return (res.commandResults ?? []).map((c) => (c.returnValues ?? []).map((r) => new Uint8Array(r.bcs)));
