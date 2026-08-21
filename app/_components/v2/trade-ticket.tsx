@@ -40,7 +40,7 @@ import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, defaultBand, type SviFloat } from '@/lib/svi/svi';
 import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
-import { dateUTC, countdown, pct, signed, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
+import { dateUTC, countdown, pct, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { isClosingSoon, isTooCloseToExpiry, cadenceOf } from '@/lib/markets/v2-discovery';
@@ -393,15 +393,14 @@ export function V2TradeTicket({
   // Risk → reward (the money answer): what you pay now vs. the max win.
   // "You pay" headlines the STAKE the user picked ($10 stays $10 — user
   // feedback: the fee-inflated figure read as "I'm betting 10.40"); the
-  // protocol fee itemizes in the cost breakdown instead. Net profit and the
-  // payout multiple stay ALL-IN (stake + fee) so the money math never lies.
+  // protocol fee itemizes in the cost breakdown instead. The payout multiple
+  // stays ALL-IN (stake + fee) so the money math never lies.
   const payDollars = fromQuote(stakeBase);
-  // All-in = stake + protocol fee + skew fee (when charged), so the multiple and net
-  // profit never overstate the trade.
+  // All-in = stake + protocol fee + skew fee (when charged), so the multiple never
+  // overstates the trade.
   const allInDollars = fromQuote(estCostBase + skewFeeDue);
   const winDollars = fromQuote(winBase);
   const mult = allInDollars > 0 ? winDollars / allInDollars : 0;
-  const profit = winDollars - allInDollars;
 
   const outcomeRow: ConfirmRow = rangeMode
     ? { label: 'Outcome', value: 'Pays if price ends in the band' }
@@ -555,40 +554,41 @@ export function V2TradeTicket({
 
   // Continuous leverage slider (1× → the odds-scaled admission cap) — the
   // protocol admits any fractional multiple up to the cap, not just whole steps.
-  const leverageSection = (
-    <div className="flex flex-col gap-1.5">
-      {maxLev > 1 ? (
+  //
+  // HIDDEN ENTIRELY when the odds admit only 1×. A row reading "1× only at these odds" is
+  // a control that isn't a control, and on the live ladder that is most markets most of
+  // the time ([[v2-leverage-timing-model]]) — so it was permanent furniture explaining an
+  // option the trader never had. The section reappears by itself the moment a market
+  // offers 2× or more.
+  const leverageSection =
+    maxLev <= 1 ? null : (
+      <div className="flex flex-col gap-1.5">
         <V2LeverageSlider value={lev} max={maxLev} onChange={setLeverage} tone={tone} />
-      ) : (
-        <Row label="Leverage">
-          <span className="text-[10px] text-text-3">1× only at these odds</span>
-        </Row>
-      )}
-      {lev > 1 && knockoutProb != null && (
-        <Row
-          label={
-            <span className="flex items-center gap-1.5">
-              Max loss
-              <InfoTip label="max loss with leverage">
-                Most you can lose is ${payDollars.toFixed(2)}. Leverage shrinks your buffer:{' '}
-                {knockoutMoveUsd != null && knockoutMoveUsd >= 1 ? (
-                  <>
-                    at {fmtLev(lev)}, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
-                    {isUp ? 'down' : 'up'} knocks you out.
-                  </>
-                ) : knockoutMove != null ? (
-                  <>at {fmtLev(lev)}, even a tiny move in BTC {isUp ? 'down' : 'up'} knocks you out.</>
-                ) : (
-                  <>at {fmtLev(lev)}, it closes once your chance falls to about {pct(knockoutProb, 0)}.</>
-                )}
-              </InfoTip>
-            </span>
-          }
-        >
-          <span className="text-[11px] tabular-nums text-down">${payDollars.toFixed(2)}</span>
-        </Row>
-      )}
-    </div>
+        {lev > 1 && knockoutProb != null && (
+          <Row
+            label={
+              <span className="flex items-center gap-1.5">
+                Max loss
+                <InfoTip label="max loss with leverage">
+                  Most you can lose is ${payDollars.toFixed(2)}. Leverage shrinks your buffer:{' '}
+                  {knockoutMoveUsd != null && knockoutMoveUsd >= 1 ? (
+                    <>
+                      at {fmtLev(lev)}, a ~{usd(knockoutMoveUsd)} ({knockoutMovePct}) move in BTC{' '}
+                      {isUp ? 'down' : 'up'} knocks you out.
+                    </>
+                  ) : knockoutMove != null ? (
+                    <>at {fmtLev(lev)}, even a tiny move in BTC {isUp ? 'down' : 'up'} knocks you out.</>
+                  ) : (
+                    <>at {fmtLev(lev)}, it closes once your chance falls to about {pct(knockoutProb, 0)}.</>
+                  )}
+                </InfoTip>
+              </span>
+            }
+          >
+            <span className="text-[11px] tabular-nums text-down">${payDollars.toFixed(2)}</span>
+          </Row>
+        )}
+      </div>
   );
 
   // Risk → Reward: the answer to "what do I pay and what can I win?"
@@ -622,25 +622,6 @@ export function V2TradeTicket({
               </span>
             </div>
           </div>
-          <span className="mt-2 text-[10px] text-text-3">
-            net profit if right <span className="text-up">{signed(profit)}</span>
-          </span>
-
-          <div className="mt-3 flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="eyebrow">{rangeMode ? 'Band chance' : 'Implied chance'}</span>
-              <span className="text-[12px] tabular-nums text-text-2">{pct(entryProb, 1)}</span>
-            </div>
-            <div className="meter">
-              <i
-                style={{
-                  width: `${Math.min(100, Math.max(0, entryProb * 100))}%`,
-                  background: tone === 'up' ? 'var(--up)' : 'var(--down)',
-                }}
-              />
-            </div>
-          </div>
-
           <button
             type="button"
             onClick={() => setShowCostDetails((v) => !v)}
@@ -713,13 +694,15 @@ export function V2TradeTicket({
         <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
           {tooCloseToExpiry
             ? 'Too close to expiry to mint. Pick another market.'
-            : `Closing in ${countdown(market.expiry, now)}. May revert if the market settles first.`}
+            : `Closing in ${countdown(market.expiry, now)}.`}
         </div>
       )}
 
       {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
           (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
-      <div data-tour="place">
+      {/* flex column so the primary action stretches — ReviewButton is a form control and
+          shrink-wraps in a plain block, which is what left Confirm as a stub. */}
+      <div data-tour="place" className="flex flex-col">
         <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
       </div>
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}

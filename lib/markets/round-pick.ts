@@ -92,3 +92,44 @@ export function pickAllRounds(
     '1h': pickRound(markets, '1h', now, held['1h']),
   };
 }
+
+/** A round together with the band it is being offered under. */
+export interface BandRound {
+  cadence: V2Cadence;
+  market: V2Market;
+}
+
+/**
+ * Every OTHER round a trader can bet right now, beyond the one in the hero.
+ *
+ * The screen used to offer exactly one round per tab, so a trader saw three of the six
+ * or seven markets that are live at any moment. A census of the ladder on 2026-08-21:
+ *
+ *   1m[0:59]  5m[4:59 2:59 1:59]  1h[14:59 9:59]     total live = 7
+ *   1m[0:39]  5m[2:39 1:39]       1h[10:39 5:39]     total live = 6
+ *
+ * The extra rungs are real, tradeable markets; they were being hidden by the one-per-tab
+ * rule, not by anything about the protocol. This returns all of them.
+ *
+ * THE LABEL GUARANTEE SURVIVES because these still come out of `bandCandidates`: a round
+ * is only ever offered under a band whose upper bound it is inside, so a card marked
+ * "5 min" cannot show 6 minutes and a card marked "1 hour" cannot show more than an hour.
+ * That holds no matter how many are shown, which is what makes offering extras safe.
+ *
+ * Ordered SOONEST FIRST: the row is a queue of what resolves next, which is the order a
+ * trader scans it in. Band order would put a 15-minute round above a 40-second one.
+ */
+export function otherBandRounds(
+  markets: V2Market[],
+  now: number,
+  heroId: string | null | undefined,
+  max: number,
+): BandRound[] {
+  const out: BandRound[] = [];
+  for (const cadence of ['1m', '5m', '1h'] as const) {
+    for (const market of bandCandidates(markets, cadence, now)) {
+      if (market.expiry_market_id !== heroId) out.push({ cadence, market });
+    }
+  }
+  return out.sort((a, b) => a.market.expiry - b.market.expiry).slice(0, max);
+}

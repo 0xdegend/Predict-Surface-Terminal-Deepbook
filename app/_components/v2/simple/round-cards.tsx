@@ -77,11 +77,21 @@ export function RoundCards({
         <h2 className="text-[13px] font-semibold tracking-tight text-text-1">Other rounds open now</h2>
         <span className="hidden text-[11px] text-text-3 lg:inline">Bets use the amount set above</span>
       </div>
-      {/* Columns track the CARD COUNT, not the breakpoint. There are three cadences and
-          one of them is always the hero, so this row holds at most two — a fixed
-          three-column grid left a permanently empty slot on every wide screen, which
-          read as a card that had failed to load. */}
-      <div className={`grid gap-3 ${rounds.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : rounds.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+      {/* Columns track the CARD COUNT, not the breakpoint: a fixed grid leaves empty slots
+          on a wide screen when the ladder is thin, and an empty slot reads as a card that
+          failed to load. The count varies now that every open round is offered, not one
+          per tab, so this has to size itself. */}
+      <div
+        className={`grid gap-3 ${
+          rounds.length >= 4
+            ? 'sm:grid-cols-2 xl:grid-cols-4'
+            : rounds.length === 3
+              ? 'sm:grid-cols-2 xl:grid-cols-3'
+              : rounds.length === 2
+                ? 'sm:grid-cols-2'
+                : 'grid-cols-1'
+        }`}
+      >
         {rounds.map((r) => (
           <RoundCard
             key={r.market.expiry_market_id}
@@ -183,7 +193,7 @@ function RoundCard({
       </div>
 
       {closed && (
-        <p className="text-center text-[10.5px] text-text-3">This round is closing — the next one opens in a moment.</p>
+        <p className="text-center text-[10.5px] text-text-3">This round is closing. The next one opens in a moment.</p>
       )}
     </article>
   );

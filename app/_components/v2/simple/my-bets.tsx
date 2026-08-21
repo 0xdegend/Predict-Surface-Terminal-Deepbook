@@ -13,26 +13,34 @@
  * (`useV2PortfolioPositions`), so the three can never disagree and TanStack dedupes the
  * fetches down to one.
  *
- * Two deliberate omissions:
- *   - NO close/claim buttons. The keeper auto-redeems settled winners within seconds
- *     ([[keeper-redeem-read-gap]]), so the common path needs no action at all; anything
- *     that does need a decision belongs in Portfolio, one tap away. Putting a redeem
- *     dialog on the simple screen would import the whole partial-close flow it exists
- *     to avoid.
- *   - RANGE positions are filtered out. They can only be opened from the advanced
- *     screen, and a band has no answer to "am I up or down right now", which is the
- *     only question this strip is here to answer.
+ * A LIST, laid out like the advanced rail's open positions (same `glass-card` row, same
+ * direction pill, same action button on the right), so a trader who moves between the two
+ * screens reads the same shape in both places. What differs is the WORDING, and only
+ * where the simple screen has a better answer: "Winning right now" instead of a
+ * mark-to-market PnL, because on a binary that figure moves with the odds rather than
+ * with whether you are going to win, which is the one question this list exists for.
+ *
+ * CLAIMING happens here too, through the shared `useRedeemFlow` — the same dialog,
+ * celebration and bookkeeping as the rail and Portfolio, so nothing about a claim depends
+ * on which screen it was made from. Most settled wins need no action: the keeper redeems
+ * them within seconds and the row says so ([[keeper-redeem-read-gap]]). The button is for
+ * the times it is late.
+ *
+ * RANGE positions are filtered out. They can only be opened from the advanced screen, and
+ * a band has no answer to "am I up or down right now".
  */
 import Link from 'next/link';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
 import { positionWinPayout, settledClaimState, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { useRedeemFlow } from '../use-redeem-flow';
 import { price } from '@/lib/format';
 import { clock } from './cadence';
 
-/** Bets shown before deferring to Portfolio. Three keeps the strip one row on desktop. */
-const MAX_SHOWN = 3;
+/** Bets listed before deferring to Portfolio. Rows are cheap, so this can be taller than
+ *  the card layout allowed — but a wall of them would bury the round below. */
+const MAX_SHOWN = 5;
 
 export function MyBets({ spot, now }: { spot: number | null; now: number }) {
   const acct = usePredictAccountV2();
@@ -40,6 +48,7 @@ export function MyBets({ spot, now }: { spot: number | null; now: number }) {
   // only after mount so the server and first client paint agree.
   const mounted = useMounted();
   const { positions } = useV2PortfolioPositions(acct.accountId, acct.owner);
+  const redeem = useRedeemFlow();
 
   const open = positions.filter((p) => p.qty > 0 && p.direction !== 'Range');
   const shown = open.slice(0, MAX_SHOWN);
@@ -56,32 +65,42 @@ export function MyBets({ spot, now }: { spot: number | null; now: number }) {
           {open.length > MAX_SHOWN ? `View all ${open.length}` : 'Portfolio'} →
         </Link>
       </div>
-      {/* Columns track the COUNT, so one or two bets fill the row instead of leaving
-          a hole where a third card would go. */}
-      <div className={`grid gap-3 ${shown.length >= 3 ? 'sm:grid-cols-2 xl:grid-cols-3' : shown.length === 2 ? 'sm:grid-cols-2' : 'grid-cols-1'}`}>
+      <div className="flex flex-col gap-2">
         {shown.map((p) => (
-          <BetCard key={p.key} p={p} spot={spot} now={now} />
+          <BetRow key={p.key} p={p} spot={spot} now={now} busy={redeem.busy} onAct={() => redeem.open(p)} />
         ))}
       </div>
+      {redeem.overlay}
     </section>
   );
 }
 
-function BetCard({ p, spot, now }: { p: V2PortfolioPosition; spot: number | null; now: number }) {
+function BetRow({
+  p,
+  spot,
+  now,
+  busy,
+  onAct,
+}: {
+  p: V2PortfolioPosition;
+  spot: number | null;
+  now: number;
+  busy: boolean;
+  onAct: () => void;
+}) {
   const isUp = p.direction !== 'Down';
   const claim = settledClaimState(p, now);
   const win = positionWinPayout(p);
   const secsLeft = p.expiry != null ? Math.max(0, Math.round((p.expiry - now) / 1000)) : null;
 
   // "Am I winning?" answered the same way the round will be: spot against the line, in
-  // the direction bet. Deliberately not mark-to-market PnL — on a binary that figure
-  // moves with the odds, which is a different (and, here, confusing) question.
+  // the direction bet.
   const ahead = spot != null && p.strike != null ? (isUp ? spot >= p.strike : spot < p.strike) : null;
   const won = p.settled ? p.won === true : null;
 
   const status: { text: string; tone: string } = p.settled
     ? won
-      ? { text: claim === 'auto_paying' ? `Won ${price(win)} · paying out` : `Won ${price(win)}`, tone: 'text-up' }
+      ? { text: claim === 'auto_paying' ? `Won $${price(win)}, paying out` : `Won $${price(win)}`, tone: 'text-up' }
       : { text: 'Lost', tone: 'text-text-3' }
     : ahead == null
       ? { text: 'Waiting for the price…', tone: 'text-text-3' }
@@ -90,41 +109,43 @@ function BetCard({ p, spot, now }: { p: V2PortfolioPosition; spot: number | null
         : { text: 'Behind right now', tone: 'text-down' };
 
   return (
-    <article
-      className="panel relative flex flex-col gap-2.5 overflow-hidden p-3.5"
-      style={{
-        background: `radial-gradient(120% 80% at 50% -10%, ${
-          isUp ? 'rgba(77,214,176,0.07)' : 'rgba(240,121,107,0.07)'
-        }, transparent 60%), var(--bg-1)`,
-      }}
-    >
-      <header className="flex items-start justify-between gap-2">
-        <span className="flex flex-col gap-1.5">
+    <div className={`glass-card interactive flex items-center justify-between gap-3 py-2.5 pl-3.5 pr-2 ${isUp ? 'up' : 'down'}`}>
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="flex items-baseline gap-2">
           <span className={`text-[10px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}>
-            {isUp ? '↑ Up' : '↓ Down'} from
+            {isUp ? '↑ Up from' : '↓ Down from'}
           </span>
-          <span className="font-mono text-[15px] font-semibold tabular-nums leading-none text-text-1">
+          <span className="truncate font-mono text-[13px] font-semibold tabular-nums text-text-1">
             {p.strike != null ? price(p.strike) : '—'}
           </span>
         </span>
-        <span className="flex flex-col items-end gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-text-3">
-            {p.settled ? 'Finished' : 'Closes in'}
-          </span>
-          <span className="font-mono text-[15px] font-semibold tabular-nums leading-none text-text-1">
-            {p.settled || secsLeft == null ? '—' : clock(secsLeft)}
-          </span>
+        <span className="flex flex-wrap items-baseline gap-x-2 text-[11.5px]">
+          <span className={`font-semibold ${status.tone}`}>{status.text}</span>
+          {!p.settled && (
+            <span className="font-mono tabular-nums text-text-3">
+              ${price(p.cost ?? 0)} → <span className="font-semibold text-text-1">${price(win)}</span>
+              {secsLeft != null && <span className="text-text-3">{` · ${clock(secsLeft)} left`}</span>}
+            </span>
+          )}
         </span>
-      </header>
-
-      <div className="flex items-baseline justify-between gap-3 border-t border-(--line-soft) pt-2.5">
-        <span className={`text-[11.5px] font-semibold ${status.tone}`}>{status.text}</span>
-        {!p.settled && (
-          <span className="font-mono text-[11.5px] tabular-nums text-text-3">
-            ${price(p.cost ?? 0)} → <span className="font-semibold text-text-1">${price(win)}</span>
-          </span>
-        )}
       </div>
-    </article>
+      {/* The keeper settles nearly everything on its own, so most rows carry a note rather
+          than a button. An action appears when a bet is still live (close early), or when
+          the keeper is clearly late on a win or a loss. */}
+      {claim === 'auto_paying' ? (
+        <span className="shrink-0 px-2.5 py-1 text-[10.5px] text-up/80">Paying out…</span>
+      ) : claim === 'auto_clearing' ? (
+        <span className="shrink-0 px-2.5 py-1 text-[10.5px] text-text-3">Settling…</span>
+      ) : (
+        <button
+          type="button"
+          onClick={onAct}
+          disabled={busy || p.sample}
+          className="ctrl-soft shrink-0 rounded-md px-3 py-1.5 text-[11.5px] font-medium text-text-2 disabled:opacity-50"
+        >
+          {claim === 'claim_fallback' ? 'Claim' : claim === 'clear_fallback' ? 'Clear' : 'Close early'}
+        </button>
+      )}
+    </div>
   );
 }

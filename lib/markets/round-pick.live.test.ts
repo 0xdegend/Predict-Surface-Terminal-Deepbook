@@ -17,7 +17,7 @@
 import { describe, it, expect } from 'vitest';
 import { getV2Markets } from '@/lib/api/v2/client';
 import { activeMarkets, CADENCE_ORDER } from '@/lib/markets/v2-discovery';
-import { pickAllRounds, HORIZON_MS, type HeldPicks } from './round-pick';
+import { pickAllRounds, otherBandRounds, HORIZON_MS, type HeldPicks } from './round-pick';
 
 const RUN = process.env.RUN_LIVE === '1';
 const d = RUN ? describe : describe.skip;
@@ -66,6 +66,23 @@ d('round pick (live)', () => {
       // And no two tabs may offer the SAME market.
       const ids = CADENCE_ORDER.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
       expect(new Set(ids).size).toBe(ids.length);
+
+      // EVERY EXTRA CARD gets the same guarantee as a tab. This is the rule that lets us
+      // offer the whole ladder instead of one round per tab: a card is only ever labelled
+      // with a band it fits inside, so "5 min" can't show 6 minutes however many are up.
+      const extras = otherBandRounds(active, now, picks['1m']?.expiry_market_id, 99);
+      const heroIds = new Set(ids);
+      for (const r of extras) {
+        const left = r.market.expiry - now;
+        expect(left, `${r.cadence} card showed ${mmss(left)}`).toBeLessThanOrEqual(HORIZON_MS[r.cadence]);
+        expect(left, `${r.cadence} card already expired`).toBeGreaterThan(0);
+      }
+      expect(new Set(extras.map((r) => r.market.expiry_market_id)).size).toBe(extras.length);
+      expect(extras.some((r) => r.market.expiry_market_id === picks['1m']?.expiry_market_id)).toBe(false);
+      console.log(
+        `   offered: ${extras.length + (heroIds.size ? 1 : 0)} of ${active.length} live  ` +
+          extras.map((r) => `${r.cadence}:${mmss(r.market.expiry - now)}`).join(' '),
+      );
 
       if (picks['1m']) populated++;
       if (i < SAMPLES - 1) await new Promise((r) => setTimeout(r, EVERY_MS));

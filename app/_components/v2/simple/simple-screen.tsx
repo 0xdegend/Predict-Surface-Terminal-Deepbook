@@ -32,7 +32,7 @@ import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { RollingNumber } from '@/app/_components/ui/rolling-number';
 import { momentumOf, type Momentum } from '@/lib/charts/simple-series';
 import { isTooCloseToExpiry, CADENCE_ORDER, type V2Cadence } from '@/lib/markets/v2-discovery';
-import { pickAllRounds, type HeldPicks } from '@/lib/markets/round-pick';
+import { pickAllRounds, otherBandRounds, type HeldPicks } from '@/lib/markets/round-pick';
 import { type SideQuote } from '@/lib/sui/v2/simple-round';
 import { leverageScaled } from '@/lib/sui/v2/ticks';
 import { fromQuote } from '@/config/scale';
@@ -62,9 +62,10 @@ const usd = (base: bigint) => `$${fromQuote(base).toFixed(2)} ${SYM}`;
 /** Trailing window the hero chart draws, and the lookback the momentum tint reads. */
 const CHART_WINDOW_S = 120;
 const MOMENTUM_LOOKBACK_S = 30;
-/** How many other rounds to card up. Each one costs a pricer simulate every ~5s, so
- *  this is a load budget as much as a layout choice. */
-const MAX_OTHER_ROUNDS = 3;
+/** How many other rounds to card up. Each one costs a pricer simulate every ~5s, so this
+ *  is a load budget as much as a layout choice. Four fills a 2x2 on a phone and one row on
+ *  a wide screen, and the live ladder rarely holds more than five besides the hero. */
+const MAX_OTHER_ROUNDS = 4;
 
 type SuccessState = { headline: string; tone: 'up' | 'down'; rows: ConfirmRow[]; staked: string; maxWin: string; digest: string };
 
@@ -150,18 +151,20 @@ export function SimpleScreen({
     state: active ? stateSeeds[active.expiry_market_id] : undefined,
   });
   const { line, lineInfo, upQ, dnQ } = hero;
+  // Said out loud whenever the round has left its opening line behind, so the headline
+  // number changing reads as a deliberate move rather than a glitch. See
+  // `chooseRoundLine` for why a line moves at all.
+  const movedNote = lineInfo?.moved
+    ? 'Bitcoin ran past the opening line, so this round now runs from the current price.'
+    : null;
 
-  // The other tabs' rounds, carded up. The bands are disjoint, so these can never collide
-  // with the hero's pick and no de-duplication is needed. Shown soonest-first — the row is
-  // a queue of what closes next, so tab order is the wrong axis to lay it out on.
+  // Every OTHER round that is open right now, carded up soonest-first — not just one per
+  // tab, which was hiding four of the six or seven live markets. Each still comes out of
+  // its horizon band, so a card can never advertise more time than its label
+  // ([[lib/markets/round-pick]]).
   const otherRounds = useMemo<HorizonRound[]>(
-    () =>
-      CADENCE_ORDER.filter((c) => c !== cadence)
-        .map((c) => ({ cadence: c, market: picks[c] }))
-        .filter((r): r is HorizonRound => r.market != null)
-        .slice(0, MAX_OTHER_ROUNDS)
-        .sort((a, b) => a.market.expiry - b.market.expiry),
-    [picks, cadence],
+    () => otherBandRounds(markets, now, active?.expiry_market_id, MAX_OTHER_ROUNDS),
+    [markets, now, active],
   );
 
   // One-time balance-aware default stake — adjusted DURING render (React's "you might
@@ -448,9 +451,15 @@ export function SimpleScreen({
                   onPick={() => active && lineInfo && openBet({ market: active, cadence, isUp: false, lineScaled: lineInfo.lineScaled })}
                 />
               </div>
-              {(closing || rolling) && (
+              {(closing || rolling || movedNote) && (
                 <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
-                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing. The next one opens in a moment.'}
+                  {cadenceEmpty
+                    ? emptyNote
+                    : rolling
+                      ? 'Setting up the next round…'
+                      : closing
+                        ? 'This round is closing. The next one opens in a moment.'
+                        : movedNote}
                 </p>
               )}
             </section>

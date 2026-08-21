@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { roundLineScaled, quoteSide } from '@/lib/sui/v2/simple-round';
+import { roundLineScaled, quoteSide, chooseRoundLine } from '@/lib/sui/v2/simple-round';
 import { POS_INF_TICK, NEG_INF_TICK, strikeToTick } from '@/lib/sui/v2/ticks';
 import { toFloat, toQuote } from '@/config/scale';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
@@ -77,5 +77,68 @@ describe('quoteSide', () => {
   it('is not quotable below the $1 minimum stake', () => {
     const tiny = quoteSide(MARKET, pricerAt(69391.43), lineScaled, 0.5, true);
     expect(tiny.quotable).toBe(false);
+  });
+});
+
+describe('chooseRoundLine', () => {
+  const forward = 69391.43;
+  const pricer = pricerAt(forward);
+  const atm = roundLineScaled(null, forward, TICK, ADMISSION).lineScaled; // $69,391
+  const live = roundLineScaled(6938029, forward, TICK, ADMISSION).lineScaled; // $69,380.29
+  const dead = roundLineScaled(1000000, forward, TICK, ADMISSION).lineScaled; // ≈ $10,000
+
+  it('keeps a pinned line while it is still a two-way bet', () => {
+    const c = chooseRoundLine(pricer, atm, live, null);
+    expect(c.lineScaled).toBe(live);
+    expect(c.pinned).toBe(true);
+    expect(c.moved).toBe(false);
+  });
+
+  it('moves to the money when the pinned line stops being a two-way bet', () => {
+    // This is the reported bug: real time left, both sides refusing to quote.
+    expect(quoteSide(MARKET, pricer, dead, 100, true).quotable).toBe(false);
+    expect(quoteSide(MARKET, pricer, dead, 100, false).quotable).toBe(false);
+
+    const c = chooseRoundLine(pricer, atm, dead, null);
+    expect(c.lineScaled).toBe(atm);
+    expect(c.moved).toBe(true);
+    expect(c.pinned).toBe(false);
+    // ...and the round is tradeable again, both ways.
+    expect(quoteSide(MARKET, pricer, c.lineScaled, 100, true).quotable).toBe(true);
+    expect(quoteSide(MARKET, pricer, c.lineScaled, 100, false).quotable).toBe(true);
+  });
+
+  it('holds a moved line still while it stays tradeable', () => {
+    // The money drifting a few dollars must NOT walk the headline number.
+    const drifted = roundLineScaled(null, forward + 40, TICK, ADMISSION).lineScaled;
+    expect(drifted).not.toBe(atm);
+    expect(chooseRoundLine(pricerAt(forward + 40), drifted, dead, atm).lineScaled).toBe(atm);
+  });
+
+  it('re-anchors a moved line once it too is spent', () => {
+    const c = chooseRoundLine(pricer, atm, dead, dead); // held line is the far one
+    expect(c.lineScaled).toBe(atm);
+  });
+
+  it('never falls back to the pinned line once it has moved', () => {
+    // Spot returns and the original line is a fine bet again — but flipping back would
+    // bounce the headline every time it crossed the margin.
+    const c = chooseRoundLine(pricer, atm, live, atm);
+    expect(c.lineScaled).toBe(atm);
+    expect(c.pinned).toBe(false);
+    expect(c.moved).toBe(true);
+  });
+
+  it('does not call an unpinned round "moved" — it never had a line to leave', () => {
+    expect(chooseRoundLine(pricer, atm, null, null).moved).toBe(false);
+    expect(chooseRoundLine(pricer, atm, null, atm).moved).toBe(false);
+  });
+
+  it('cannot re-pick forever when the money itself is lopsided', () => {
+    // Held line IS the ATM and still fails the margin (a degenerate pricer): the
+    // `!== atmScaled` guard has to stop it, or render-time setState would loop.
+    const skewed: LivePricer = { ...pricer, svi: { ...SVI, a: 1e-9, b: 1e-9, sigma: 1e-9 } };
+    const c = chooseRoundLine(skewed, atm, null, atm);
+    expect(c.lineScaled).toBe(atm);
   });
 });

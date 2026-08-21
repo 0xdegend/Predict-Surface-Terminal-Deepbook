@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bandCandidates, pickRound, pickAllRounds, HORIZON_MS } from './round-pick';
+import { bandCandidates, pickRound, pickAllRounds, otherBandRounds, HORIZON_MS } from './round-pick';
 import { CADENCE_ORDER } from './v2-discovery';
 import type { V2Market } from '@/lib/api/v2/types';
 
@@ -109,5 +109,49 @@ describe('pickAllRounds', () => {
     const picks = pickAllRounds(all, NOW, {});
     const ids = CADENCE_ORDER.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('otherBandRounds', () => {
+  // The ladder as the live chain actually served it on 2026-08-21:
+  //   1m[0:59]  5m[4:59 2:59 1:59]  1h[14:59 9:59]
+  const ladder = [m('a', 59), m('b', 299), m('c', 179), m('d', 119), m('e', 899), m('f', 599)];
+
+  it('offers every open round, not one per tab', () => {
+    // The old rule showed 3 of these 6. This is the whole point of the change.
+    expect(otherBandRounds(ladder, NOW, null, 99)).toHaveLength(6);
+  });
+
+  it('never offers a round under a label it outlives', () => {
+    for (const r of otherBandRounds(ladder, NOW, null, 99)) {
+      expect(r.market.expiry - NOW, `${r.cadence} card`).toBeLessThanOrEqual(HORIZON_MS[r.cadence]);
+    }
+  });
+
+  it('drops the hero so it is never on screen twice', () => {
+    const ids = otherBandRounds(ladder, NOW, 'b', 99).map((r) => r.market.expiry_market_id);
+    expect(ids).not.toContain('b');
+    expect(ids).toHaveLength(5);
+  });
+
+  it('queues soonest first, so the row reads as what resolves next', () => {
+    const left = otherBandRounds(ladder, NOW, null, 99).map((r) => r.market.expiry - NOW);
+    expect(left).toEqual([...left].sort((x, y) => x - y));
+  });
+
+  it('caps at the load budget, keeping the soonest', () => {
+    const ids = otherBandRounds(ladder, NOW, null, 3).map((r) => r.market.expiry_market_id);
+    expect(ids).toEqual(['a', 'd', 'c']); // 0:59, 1:59, 2:59
+  });
+
+  it('labels by horizon, not by the series that made the round', () => {
+    // A round from the 5-minute series with 40s left is a "1 min" card. Labelling it by
+    // its series is the exact inversion the horizon rule exists to remove.
+    const [only] = otherBandRounds([m('x', 40, 5)], NOW, null, 99);
+    expect(only.cadence).toBe('1m');
+  });
+
+  it('is empty rather than reaching outside a band', () => {
+    expect(otherBandRounds([m('far', 7200)], NOW, null, 99)).toEqual([]);
   });
 });
