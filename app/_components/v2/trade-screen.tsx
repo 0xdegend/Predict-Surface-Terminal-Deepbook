@@ -30,6 +30,7 @@ import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 import { V2MarketPicker } from './market-picker';
+import { SimpleModeNotice } from './simple-mode-notice';
 import { OnboardFundModal } from './onboard-fund-modal';
 import { RewardBanner } from './reward/reward-banner';
 import { V2TicketRail, V2TradeSheet } from './trade-sheet';
@@ -122,7 +123,10 @@ export function V2TradeScreen({
     <OnboardFundModal />
     {/* No Simple/Advanced switch here: desktop has it in the header, and on mobile it
         lives in the dock's More sheet. A full-width bar pinned above the surface spent
-        the first band of a phone screen on a control you touch once a session. */}
+        the first band of a phone screen on a control you touch once a session.
+        What DOES sit here is the one-time note telling an existing trader that the
+        simple screen shipped — newcomers get the first-visit dialog instead. */}
+    <SimpleModeNotice />
     <main className="rise grid flex-1 grid-cols-1 gap-px bg-white/6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
       {/* left — hero + picker. Hero is full-bleed (no card/padding), framed only
           by the grid hairlines — mirrors legacy's edge-to-edge MarketView. */}

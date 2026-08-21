@@ -24,7 +24,8 @@
  * See [[simple-mode]].
  */
 import { usePathname, useRouter } from 'next/navigation';
-import { LuZap, LuSlidersHorizontal, LuArrowLeftRight } from 'react-icons/lu';
+import { LuArrowLeftRight } from 'react-icons/lu';
+import { TRADE_MODE_ICON, TRADE_MODE_LABEL } from './trade-mode';
 import { useTradeViewStore } from '@/lib/store/trade-view-store';
 import type { IconType } from 'react-icons';
 
@@ -41,17 +42,17 @@ const OPTIONS: {
 }[] = [
   {
     simple: true,
-    label: 'Simple',
+    label: TRADE_MODE_LABEL.simple,
     href: '/v2/simple',
-    Icon: LuZap,
+    Icon: TRADE_MODE_ICON.simple,
     note: 'easy',
     hint: 'Up or down on a timed round — pick an amount and a direction, nothing else.',
   },
   {
     simple: false,
-    label: 'Advanced',
+    label: TRADE_MODE_LABEL.advanced,
     href: '/v2',
-    Icon: LuSlidersHorizontal,
+    Icon: TRADE_MODE_ICON.advanced,
     note: 'pro',
     hint: 'The full terminal — strikes, ranges, leverage and the 3-D volatility surface.',
   },

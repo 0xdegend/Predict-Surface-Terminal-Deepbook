@@ -450,7 +450,7 @@ export function SimpleScreen({
               </div>
               {(closing || rolling) && (
                 <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
-                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
+                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing. The next one opens in a moment.'}
                 </p>
               )}
             </section>
@@ -473,8 +473,10 @@ export function SimpleScreen({
                     : rolling
                       ? 'Setting up the next round…'
                       : hero.lineInfo?.pinned
-                        ? 'Fixed for this round — settles above or below it.'
-                        : 'The price right now — higher or lower from here.'}
+                        ? 'Fixed for this round. Settles above or below it.'
+                        : hero.lineInfo?.moved
+                          ? 'Bitcoin ran past the opening line, so this round now runs from the current price.'
+                          : 'The price right now. Higher or lower from here.'}
                 </span>
               </div>
 
@@ -567,7 +569,7 @@ export function SimpleScreen({
 
               {(closing || rolling) && (
                 <p className="text-center text-[11.5px] text-text-3">
-                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing — the next one opens in a moment.'}
+                  {cadenceEmpty ? emptyNote : rolling ? 'Setting up the next round…' : 'This round is closing. The next one opens in a moment.'}
                 </p>
               )}
 

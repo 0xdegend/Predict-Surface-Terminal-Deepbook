@@ -33,7 +33,14 @@ interface TradeViewState {
   chosen: boolean;
   /** Answer the prompt: remember the view AND that the question was asked. */
   choose: (v: TradeView) => void;
-  /** Test/QA helper — re-arms the prompt for this browser. */
+  /**
+   * Whether the returning-trader "simple mode is live" note has been seen off. Lives
+   * beside `chosen` because they are two halves of one decision: a browser gets the
+   * dialog OR the note, never both, and either one answers the question for good.
+   */
+  noticeSeen: boolean;
+  seeNotice: () => void;
+  /** Test/QA helper — re-arms the prompt AND the note for this browser. */
   resetChoice: () => void;
 }
 
@@ -44,7 +51,9 @@ export const useTradeViewStore = create<TradeViewState>()(
       setView: (view) => set({ view }),
       chosen: false,
       choose: (view) => set({ view, chosen: true }),
-      resetChoice: () => set({ chosen: false }),
+      noticeSeen: false,
+      seeNotice: () => set({ noticeSeen: true }),
+      resetChoice: () => set({ chosen: false, noticeSeen: false }),
     }),
     {
       name: 'skew.tradeView',
@@ -52,7 +61,7 @@ export const useTradeViewStore = create<TradeViewState>()(
       // Only the facts, not the actions. Traders who used the toggle before the prompt
       // existed have a stored `view` but no `chosen`, so it falls back to the initial
       // `false` and they get asked once — which is correct: they never were.
-      partialize: (s) => ({ view: s.view, chosen: s.chosen }) as TradeViewState,
+      partialize: (s) => ({ view: s.view, chosen: s.chosen, noticeSeen: s.noticeSeen }) as TradeViewState,
     },
   ),
 );

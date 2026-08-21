@@ -15,7 +15,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { getV2MarketState, qkV2 } from '@/lib/api/v2/client';
-import { roundLineScaled, quoteSide, lineIsTradeable, type SideQuote } from '@/lib/sui/v2/simple-round';
+import { roundLineScaled, quoteSide, chooseRoundLine, type SideQuote, type LineChoice } from '@/lib/sui/v2/simple-round';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { toFloat, fromFloat } from '@/config/scale';
 import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
@@ -24,7 +24,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 export interface RoundQuote {
   pricer: LivePricer | null;
   /** The round's line, 1e9-scaled, plus whether it's pinned on-chain or an ATM fallback. */
-  lineInfo: { lineScaled: bigint; pinned: boolean } | null;
+  lineInfo: LineChoice | null;
   /** The line as a float — null until the pricer lands. */
   line: number | null;
   upQ: SideQuote | null;
@@ -59,46 +59,49 @@ export function useRoundQuote(
   // every rollover: the fallback below tracks spot, so an unanswered market drifts.
   const stateKnown = stateQ.data !== undefined;
 
-  // The at-the-money fallback, for rounds the chain has NOT pinned (hourly, and any
-  // market before the keeper sets its reference_tick).
+  // The at-the-money line: the fallback for rounds the chain has NOT pinned (hourly, and
+  // any market before the keeper sets its reference_tick), and where a pinned round moves
+  // to once its own line stops being a two-way bet.
   const atmScaled =
     market && pricer ? snapStrikeToAdmission(fromFloat(pricer.forward), market.admission_tick_size) : null;
+  const pinnedScaled =
+    market && pricer && refTick != null
+      ? roundLineScaled(refTick, pricer.forward, market.tick_size, market.admission_tick_size).lineScaled
+      : null;
 
   /**
-   * HOLD that fallback still. Recomputing it every pricer refresh (~2.5s) walked the
+   * HOLD any non-pinned line still. Recomputing it every pricer refresh (~2.5s) walked the
    * round's headline number continuously, which reads as the question itself changing
-   * under the trader. So it is picked ONCE per market and kept until it stops being a
-   * real two-way bet, then re-picked at the current money.
+   * under the trader. `chooseRoundLine` owns the decision; this just remembers it, so a
+   * line only moves when that function says it has been spent.
    *
-   * Render-time guarded setState (the codebase's pattern — their eslint forbids
-   * setState in an effect, and a ref mutated in render isn't pure). It converges: after
-   * a re-pick the held line IS the current ATM, so the condition goes false. The
-   * `!== atmScaled` guard is what stops a line that's lopsided but already at the money
-   * from re-picking itself forever.
+   * Render-time guarded setState (the codebase's pattern — their eslint forbids setState
+   * in an effect, and a ref mutated in render isn't pure). It converges because the
+   * chooser returns the held line unchanged once it is the current ATM.
    */
   const [held, setHeld] = useState<{ marketId: string; lineScaled: bigint } | null>(null);
-  const needsRepick =
-    marketId != null &&
-    pricer != null &&
-    atmScaled != null &&
-    refTick == null &&
-    stateKnown &&
-    (held?.marketId !== marketId ||
-      (!lineIsTradeable(pricer, held.lineScaled) && held.lineScaled !== atmScaled));
-  if (needsRepick) setHeld({ marketId, lineScaled: atmScaled });
-
   const heldScaled = held?.marketId === marketId ? held.lineScaled : null;
 
-  const lineInfo = useMemo(() => {
-    if (!market || !pricer) return null;
-    // Pinned on-chain: this is the tick the round SETTLES against, so it is the line —
-    // never substitute our own, or the question stops matching the outcome.
-    if (refTick != null) {
-      return roundLineScaled(refTick, pricer.forward, market.tick_size, market.admission_tick_size);
-    }
-    if (!stateKnown || heldScaled == null) return null; // still finding out — don't guess
-    return { lineScaled: heldScaled, pinned: false };
-  }, [market, pricer, refTick, stateKnown, heldScaled]);
+  // Don't choose before the chain has answered for this market: `refTick == null` alone
+  // conflates "no pinned line" with "haven't looked yet", and the ATM fallback tracks
+  // spot, so guessing during the gap made the line visibly walk at every rollover.
+  const choice =
+    marketId != null && pricer != null && atmScaled != null && stateKnown
+      ? chooseRoundLine(pricer, atmScaled, pinnedScaled, heldScaled)
+      : null;
+  if (choice && !choice.pinned && choice.lineScaled !== heldScaled) {
+    setHeld({ marketId: marketId!, lineScaled: choice.lineScaled });
+  }
+
+  // Rebuilt from primitives so the identity is stable across renders that didn't change
+  // the line — everything downstream (both side quotes, the drawer) memoises off it.
+  const lineScaled = choice?.lineScaled ?? null;
+  const pinned = choice?.pinned ?? false;
+  const moved = choice?.moved ?? false;
+  const lineInfo = useMemo(
+    () => (lineScaled == null ? null : { lineScaled, pinned, moved }),
+    [lineScaled, pinned, moved],
+  );
   const line = lineInfo ? toFloat(lineInfo.lineScaled) : null;
 
   const upQ = useMemo(

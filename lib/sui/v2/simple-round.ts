@@ -53,14 +53,62 @@ export function roundLineScaled(
  * Is a line still worth betting BOTH ways? True while the fair odds sit inside
  * `margin`..`1 - margin`.
  *
- * Used to decide when an unpinned round's line has drifted too far to be a real
- * two-way question. `margin` is deliberately looser than the chain's hard quotable
- * gate (0.5%): by the time a side is literally unquotable the round has been a
- * one-way bet for a long while, so we move the line before that, not at it.
+ * `margin` is deliberately looser than the chain's hard quotable gate (0.5%): by the
+ * time a side is literally unquotable the round has been a one-way bet for a long
+ * while, so we move the line before that, not at it.
  */
 export function lineIsTradeable(pricer: LivePricer, lineScaled: bigint, margin = 0.05): boolean {
   const p = fairUp(pricer, toFloat(lineScaled));
   return p > margin && p < 1 - margin;
+}
+
+export interface LineChoice {
+  lineScaled: bigint;
+  /** True while this is the round's on-chain reference tick. */
+  pinned: boolean;
+  /** True when we left a pinned line behind because it stopped being a two-way bet. */
+  moved: boolean;
+}
+
+/**
+ * Which line this round should offer right now.
+ *
+ * WHY A ROUND'S LINE CAN MOVE. The line is fixed at the round's open, so a sharp move
+ * can leave it several sigma away with most of the clock still to run: UP is then worth
+ * ~1.00 and DOWN ~0.00, and BOTH sides fail the mintable gate at the same instant. A
+ * live census found that state in 8 of 18 sampled pinned rounds, including a 1-minute
+ * round dead with 36s left and a 5-minute round dead with 96s left
+ * ([[simple-round.live.test]]). A trader who lands then has nothing to trade.
+ *
+ * Predict prices a continuous strike ladder on the SAME expiry, so the fix is to offer a
+ * strike back at the money. That is a real binary settling against its own strike, not a
+ * substitute for the round's reference — a position minted here settles correctly. The
+ * hourly tab has always worked this way (it has no reference tick), which is exactly why
+ * it never goes dead; this extends the same behaviour to the pinned tabs.
+ *
+ * TWO RULES THAT KEEP THE NUMBER STILL:
+ *
+ *   1. Moving is ONE-WAY. Once a round has moved we never fall back to the pinned line,
+ *      even if spot returns, or the headline would bounce every time it crossed the
+ *      margin.
+ *   2. A moved line is re-anchored only when it in turn stops being a two-way bet, and
+ *      only if the money has actually moved off it (`!== atmScaled`) — without that
+ *      guard a lopsided line already sitting at the money would re-pick forever.
+ */
+export function chooseRoundLine(
+  pricer: LivePricer,
+  atmScaled: bigint,
+  pinnedScaled: bigint | null,
+  heldScaled: bigint | null,
+): LineChoice {
+  if (heldScaled != null) {
+    const spent = !lineIsTradeable(pricer, heldScaled) && heldScaled !== atmScaled;
+    return { lineScaled: spent ? atmScaled : heldScaled, pinned: false, moved: pinnedScaled != null };
+  }
+  if (pinnedScaled != null && lineIsTradeable(pricer, pinnedScaled)) {
+    return { lineScaled: pinnedScaled, pinned: true, moved: false };
+  }
+  return { lineScaled: atmScaled, pinned: false, moved: pinnedScaled != null };
 }
 
 export interface SideQuote {
