@@ -13,6 +13,7 @@
  * breakpoint (no duplicated quote polling or state).
  */
 import { useEffect, useMemo } from 'react';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { LuX } from 'react-icons/lu';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useSurfaceStore } from '@/lib/store/surface-store';
@@ -49,19 +50,17 @@ export function TradeSheet({ inputs, serverNow }: { inputs: SmileInput[]; server
   const close = useSurfaceStore((s) => s.closeTicketSheet);
   const oracles = useMemo(() => inputs.map((i) => i.oracle), [inputs]);
 
-  // Esc closes; lock the page behind the sheet while it's open.
+  // The page freeze is reference counted, so overlapping overlays can't strand it.
+  useScrollLock(!isDesktop && open);
+
+  // Esc closes.
   useEffect(() => {
     if (isDesktop || !open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
     window.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [isDesktop, open, close]);
 
   if (isDesktop) return null;

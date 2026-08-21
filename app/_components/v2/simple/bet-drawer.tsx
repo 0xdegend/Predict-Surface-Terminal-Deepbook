@@ -21,6 +21,7 @@
 import { useEffect } from 'react';
 import { LuX, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { useMobileSheetStore } from '@/lib/store/mobile-sheet-store';
 import { quoteSide } from '@/lib/sui/v2/simple-round';
 import { toFloat } from '@/config/scale';
@@ -95,19 +96,17 @@ export function SimpleBetDrawer({
     return () => setSheetOpen(false);
   }, [open, setSheetOpen]);
 
-  // Esc closes; lock the page behind the sheet while it's open.
+  // The page freeze is reference counted, so overlapping overlays can't strand it.
+  useScrollLock(open);
+
+  // Esc closes.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
   const closing = !!market && isTooCloseToExpiry(market, now);

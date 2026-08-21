@@ -40,6 +40,7 @@
  * see `V2_EXPERIENCE_PROMPT_ENABLED`). See [[simple-mode]].
  */
 import { useEffect, useRef, useState } from 'react';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
@@ -104,14 +105,10 @@ export function ExperienceModal() {
 
   // Lock the page behind it and move focus in for keyboard users. No Esc listener: the
   // buttons are the only exit.
+  useScrollLock(open);
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     panelRef.current?.focus();
-    return () => {
-      document.body.style.overflow = prev;
-    };
   }, [open]);
 
   // Warm the simple route while they're still reading the question. Both answers then

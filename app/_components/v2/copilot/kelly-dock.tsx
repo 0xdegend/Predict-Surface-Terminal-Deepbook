@@ -40,6 +40,7 @@ import { recallMemories, recallMemoriesForAI, rememberFact } from '@/lib/copilot
 import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallReplyLines } from '@/lib/copilot/memory-greeting';
 import { firstVisitToday } from '@/lib/copilot/greeting-cadence';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
@@ -373,18 +374,18 @@ function KellyPanel({
     return () => cancelAnimationFrame(r);
   }, []);
 
-  // Esc closes; lock the page scroll behind the drawer while it's open.
+  // This drawer only mounts while it is open, so it holds the lock for its whole life.
+  // Reference counted: it floats above every page and often closes while a modal is
+  // still up, which is exactly the out-of-order case that used to strand the page.
+  useScrollLock(true);
+
+  // Esc closes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   // Fold today's biggest scheduled event into the greeting once the calendar

@@ -10,6 +10,7 @@
  * See [[founding-traders-reward]].
  */
 import { useEffect, useRef } from 'react';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { LuArrowUpRight, LuX } from 'react-icons/lu';
@@ -40,10 +41,9 @@ export function RewardGiftOverlay(v: RewardClaimView) {
   }, [v.onClose]);
 
   // Scroll-lock + ESC-to-close (mirrors the shared Modal), depending on `open` alone.
+  useScrollLock(open);
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCloseRef.current();
     };
@@ -51,7 +51,6 @@ export function RewardGiftOverlay(v: RewardClaimView) {
     panelRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prev;
     };
   }, [open]);
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { createPortal } from 'react-dom';
 import { MascotPeek } from './mascot-peek';
 import type { MascotMood } from '@/lib/mascot';
@@ -57,11 +58,13 @@ export function Modal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // Reference counted, so a modal opening over another overlay (or closing after one)
+  // can never leave the page frozen. See use-scroll-lock.
+  useScrollLock(open);
+
   useEffect(() => {
     if (!open) return;
     lastFocused.current = document.activeElement as HTMLElement | null;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onCloseRef.current();
     };
@@ -70,7 +73,6 @@ export function Modal({
     panelRef.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
       lastFocused.current?.focus?.();
     };
   }, [open]);
