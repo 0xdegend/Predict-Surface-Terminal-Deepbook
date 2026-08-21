@@ -534,10 +534,10 @@ export function SimpleScreen({
 
               {/* The stake, restated as RISK — the one thing the ticket never said out
                   loud. Everything else on it is upside: two payout figures and two green
-                  and coral buttons. A beginner reads "$179.87 to win" and nowhere reads
-                  "and if you're wrong, the $100 is gone".
-                  It also happens to be the right size for the space a taller chart card
-                  opens up here, which beats padding the gap with nothing. */}
+                  and coral buttons, so the amount at stake was never named as a loss.
+                  The "You risk" label and the figure carry that; the line below says what
+                  winning takes. It also happens to be the right size for the space a
+                  taller chart card opens up here, which beats padding the gap. */}
               <div className="mt-auto flex flex-col gap-1.5 rounded-lg border border-(--line-soft) bg-bg-2/40 px-3 py-2.5">
                 <div className="flex items-baseline justify-between">
                   <span className="eyebrow">You risk</span>
@@ -546,8 +546,7 @@ export function SimpleScreen({
                   </span>
                 </div>
                 <p className="text-[11px] leading-snug text-text-3">
-                  If Bitcoin ends this round on your side of the line you win. If it doesn&rsquo;t, your $
-                  {price(stake)} is gone.
+                  If Bitcoin ends this round on your side of the line you win.
                 </p>
               </div>
 
