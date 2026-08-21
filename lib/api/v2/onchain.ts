@@ -387,7 +387,23 @@ export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservat
 
 /* --------------------- gRPC view getters (market state) ------------------- */
 
-const GRPC_URL = process.env.NEXT_PUBLIC_SUI_GRPC_URL || 'https://rpc-testnet.suiscan.xyz';
+/**
+ * The gRPC endpoint for the reads in this file.
+ *
+ * SAME ENDPOINT AS THE REST OF THE APP. This used to carry its own hardcoded default
+ * (`rpc-testnet.suiscan.xyz`), left over from 2026-07-31 when the public testnet fullnode
+ * stalled and repointing here was the fix ([[testnet-grpc-fullnode-stall]]). On 2026-08-21
+ * it happened in the opposite direction: suiscan started returning Gateway Timeout after
+ * 60s while the public fullnode answered the identical read in 621ms. Because only this
+ * file pointed at suiscan, the app half-broke — the chart, market list and odds (which
+ * read through `predictV2Config.grpcUrl`) stayed live, while the nav price tape
+ * (`onchainPythLatest`) and every strike on the positions rail (`onchainMarketState`)
+ * went blank. Two sources of truth for one endpoint meant there was no single place to
+ * repoint, and no obvious symptom pointing at the RPC layer.
+ *
+ * The env var still overrides, which is how you repoint in an incident without a deploy.
+ */
+const GRPC_URL = process.env.NEXT_PUBLIC_SUI_GRPC_URL || predictV2Config.grpcUrl;
 const ZERO = '0x0000000000000000000000000000000000000000000000000000000000000000';
 let _grpc: SuiGrpcClient | null = null;
 const grpc = (): SuiGrpcClient => (_grpc ??= new SuiGrpcClient({ network: 'testnet', baseUrl: GRPC_URL }));
