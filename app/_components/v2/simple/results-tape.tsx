@@ -57,7 +57,7 @@ export function ResultsTape({ cadence, now }: { cadence: V2Cadence; now: number 
           {outcomes.map((o) => (
             <span
               key={o.marketId}
-              title={`Closed at ${price(o.settlement)} against a line of ${price(o.line)}`}
+              title={`Closed at ${price(o.settlement)} against a strike of ${price(o.line)}`}
               className={`flex h-7 min-w-7 items-center justify-center rounded-md border px-1.5 text-[11px] font-semibold leading-none ${
                 o.up ? 'border-up/30 bg-up/10 text-up' : 'border-down/30 bg-down/10 text-down'
               }`}

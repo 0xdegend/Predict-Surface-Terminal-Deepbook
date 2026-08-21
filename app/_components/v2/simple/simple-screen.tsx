@@ -159,7 +159,7 @@ export function SimpleScreen({
   // number changing reads as a deliberate move rather than a glitch. See
   // `chooseRoundLine` for why a line moves at all.
   const movedNote = lineInfo?.moved
-    ? 'Bitcoin ran past the opening line, so this round now runs from the current price.'
+    ? 'Bitcoin ran past the opening strike, so this round now runs from the current price.'
     : null;
 
   // Every OTHER round that is open right now, carded up soonest-first — not just one per
@@ -402,11 +402,11 @@ export function SimpleScreen({
                   {delta != null && (
                     <div
                       className={`mt-2 flex items-center gap-1 text-[12.5px] font-semibold tabular-nums ${above ? 'text-up' : 'text-down'}`}
-                      aria-label={`${price(Math.abs(delta))} ${above ? 'above' : 'below'} the line`}
+                      aria-label={`${price(Math.abs(delta))} ${above ? 'above' : 'below'} the strike`}
                     >
                       <span aria-hidden="true">{above ? '▲' : '▼'}</span>
                       <RollingNumber text={price(Math.abs(delta))} />
-                      <span aria-hidden="true">{above ? 'above' : 'below'} the line</span>
+                      <span aria-hidden="true">{above ? 'above' : 'below'} the strike</span>
                     </div>
                   )}
                 </div>
@@ -472,7 +472,7 @@ export function SimpleScreen({
                    drawer do this job, and two ways to bet on one screen is noise ── */}
             <aside className="panel hidden flex-col gap-4 p-4 lg:flex">
               <div className="flex flex-col gap-1.5">
-                <span className="eyebrow">The line · this round</span>
+                <span className="eyebrow">The strike · this round</span>
                 <span
                   className={`font-mono text-[22px] font-semibold leading-none tabular-nums transition-colors duration-300 ${
                     rolling ? 'text-text-3' : 'text-text-1'
@@ -488,7 +488,7 @@ export function SimpleScreen({
                       : hero.lineInfo?.pinned
                         ? 'Fixed for this round. Settles above or below it.'
                         : hero.lineInfo?.moved
-                          ? 'Bitcoin ran past the opening line, so this round now runs from the current price.'
+                          ? 'Bitcoin ran past the opening strike, so this round now runs from the current price.'
                           : 'The price right now. Higher or lower from here.'}
                 </span>
               </div>
@@ -546,7 +546,7 @@ export function SimpleScreen({
                   </span>
                 </div>
                 <p className="text-[11px] leading-snug text-text-3">
-                  If Bitcoin ends this round on your side of the line you win.
+                  If Bitcoin ends this round on your side of the strike you win.
                 </p>
               </div>
 
@@ -716,8 +716,8 @@ function LinePill({ value, momentum }: { value: number; momentum: Momentum }) {
 function reviewRows(pick: RoundPick, fee?: { due: bigint; bps: number }): ConfirmRow[] {
   const rows: ConfirmRow[] = [
     { label: 'Round', value: `${CADENCE_META[pick.cadence].short} · BTC` },
-    { label: 'Your call', value: pick.isUp ? 'Closes ABOVE the line' : 'Closes BELOW the line' },
-    { label: 'The line', value: price(pick.line), emphasize: true },
+    { label: 'Your call', value: pick.isUp ? 'Closes ABOVE the strike' : 'Closes BELOW the strike' },
+    { label: 'The strike', value: price(pick.line), emphasize: true },
   ];
   if (fee) rows.push({ label: `Skew fee (${(fee.bps / 100).toFixed(2)}%)`, value: usd(fee.due) });
   return rows;

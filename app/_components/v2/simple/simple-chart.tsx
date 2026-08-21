@@ -12,9 +12,9 @@
  *
  * It FILLS its container (no fixed height) so it never leaves dead space, stretching
  * via preserveAspectRatio="none"; strokes use vector-effect="non-scaling-stroke" so
- * they stay crisp, and the dot + "LINE" label are HTML overlays positioned by viewBox
+ * they stay crisp, and the dot + "STRIKE" label are HTML overlays positioned by viewBox
  * percentage. The `above` tint is passed in (spot vs the line) so it always agrees with
- * the header's "above/below the line". See [[simple-mode]].
+ * the header's "above/below the strike". See [[simple-mode]].
  */
 import { useMemo } from 'react';
 import { curvePath, layoutRuns, type SpotPoint } from '@/lib/charts/simple-series';
@@ -141,7 +141,7 @@ export function SimpleRoundChart({
               className="pointer-events-none absolute left-2 -translate-y-1/2 rounded border border-(--line-soft) bg-bg-1/85 px-1.5 py-0.5 font-mono text-[10.5px] text-text-2 backdrop-blur"
               style={{ top: `${(geom.lineY / H) * 100}%` }}
             >
-              LINE {price(line)}
+              STRIKE {price(line)}
             </span>
           )}
           {/* live tip — a solid dot with a breathing halo so it reads as a live ticker */}
