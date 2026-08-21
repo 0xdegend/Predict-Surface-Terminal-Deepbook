@@ -21,7 +21,8 @@ import type { IconType } from 'react-icons';
 import {
   LuBadgeCheck,
   LuShieldCheck,
-  LuTarget,
+  LuListChecks,
+  LuCompass,
   LuCircleCheck,
   LuCircleX,
   LuClock,
@@ -57,9 +58,20 @@ function ago(ms: number, now: number): string {
 
 type Tab = 'forecast' | 'pick';
 
+/**
+ * One icon per record type, defined once so the tab button and its stat card can never
+ * drift apart. Deliberately neither a sparkle nor a bullseye: a PICK is a named call that
+ * gets scored, so it reads as a checked-off list; a FORECAST is a directional read, so it
+ * reads as a compass. (The sparkle stays reserved for Kelly itself, which is what it means
+ * everywhere else in the app.)
+ */
+const TAB_ICON: Record<Tab, IconType> = { pick: LuListChecks, forecast: LuCompass };
+
 export function KellyTrackRecordPanel() {
   const now = useNow(60_000);
-  const [tab, setTab] = useState<Tab>('forecast');
+  // Picks first: a pick is a concrete bet Kelly named, which is what a trader is here
+  // to judge. A forecast is a directional read, closer to commentary.
+  const [tab, setTab] = useState<Tab>('pick');
   const q = useQuery({
     queryKey: ['kelly', 'track-record'],
     queryFn: () => fetchTrackRecord(60),
@@ -150,14 +162,14 @@ export function KellyTrackRecordPanel() {
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
       <div role="tablist" aria-label="Track record type" className="glass-inset mb-4 inline-flex gap-1 rounded-lg p-1">
-        <TabButton active={isForecast} onClick={() => setTab('forecast')} icon={LuSparkles} label="Forecasts" count={data?.forecast.total} />
-        <TabButton active={!isForecast} onClick={() => setTab('pick')} icon={LuTarget} label="Picks" count={data?.picks.total} />
+        <TabButton active={!isForecast} onClick={() => setTab('pick')} icon={TAB_ICON.pick} label="Picks" count={data?.picks.total} />
+        <TabButton active={isForecast} onClick={() => setTab('forecast')} icon={TAB_ICON.forecast} label="Forecasts" count={data?.forecast.total} />
       </div>
 
       {/* ── Stats (per tab) ──────────────────────────────────────────────── */}
       <div className="mb-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <StatCard
-          icon={isForecast ? LuSparkles : LuTarget}
+          icon={isForecast ? TAB_ICON.forecast : TAB_ICON.pick}
           color="#6aa6e6"
           label={isForecast ? 'Forecasts made' : 'Picks made'}
           loading={loadingEmpty}
