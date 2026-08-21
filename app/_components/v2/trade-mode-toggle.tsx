@@ -23,6 +23,7 @@
  * Active side is read from the pathname (SSR-consistent), so no mounted guard is needed.
  * See [[simple-mode]].
  */
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { LuArrowLeftRight } from 'react-icons/lu';
 import { TRADE_MODE_ICON, TRADE_MODE_LABEL } from './trade-mode';
@@ -99,6 +100,16 @@ export function TradeModeToggle({
   const setView = useTradeViewStore((s) => s.setView);
   const onSimple = pathname.startsWith('/v2/simple');
   const sz = SIZES[variant];
+
+  /**
+   * Warm the other mode as soon as this control is on screen. Both trade routes are
+   * `force-dynamic`, so a prefetch fetches the route's JS and its loading boundary rather
+   * than the page data — which is exactly what has to be in hand for the tap to paint
+   * immediately. Without it the first switch of a session also waits on the route chunk.
+   */
+  useEffect(() => {
+    router.prefetch(onSimple ? '/v2' : '/v2/simple');
+  }, [router, onSimple]);
 
   function choose(simple: boolean, href: string) {
     setView(simple ? 'simple' : 'advanced');
