@@ -7,13 +7,14 @@
  * the live BTC chip, the Simple↔Advanced toggle, and the wallet. Same glass three-
  * zone layout AND the same nav arrangement as legacy: Trade · Portfolio ·
  * Analytics · Leaderboard inline, then a rich "Vault" dropdown and a rich "More"
- * dropdown (Quests / Competitions / Docs / Legacy) whose triggers adopt the active
+ * dropdown (Quests / Competitions / Docs) whose triggers adopt the active
  * sub-page's label. Mobile uses V2BottomNav.
  *
  * The header holds ONE switch, and only on the trade screen: Simple ⇄ Advanced. The
  * Legacy ⇄ Latest deployment toggle used to live here on every other page — a control
  * about which PROTOCOL you're on, sitting beside pages that have nothing to do with the
- * choice. Legacy now lives in the More menu (and the mobile More sheet).
+ * choice. The Legacy deployment is no longer linked from the nav at all; /legacy
+ * still resolves for anyone holding the URL.
  *
  * Desktop only. Phones reach the same switch from the dock's More sheet, which is the
  * mobile counterpart of this header — see [[app/_components/v2/bottom-nav]].
@@ -35,7 +36,6 @@ import {
   LuArrowUpRight,
   LuBadgeCheck,
   LuGauge,
-  LuArchive,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
@@ -109,16 +109,6 @@ const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
-  // Legacy's home now that the header toggle is gone. It has to stay reachable on
-  // desktop: trading there has wound down, but old positions are still claimed from
-  // its Portfolio, and the header was previously the only way in.
-  {
-    href: '/legacy',
-    label: 'Legacy',
-    desc: 'The original Skew. Open it to claim any old positions',
-    icon: LuArchive,
-    footer: true,
-  },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
@@ -205,9 +195,7 @@ export function V2Chrome() {
         {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
             on the trade screen. Every other page shows none — the Legacy ⇄ Latest
             deployment switch used to sit here, which put a control about which PROTOCOL
-            you're on next to pages that have nothing to do with the choice. Legacy is
-            still reachable (More menu on desktop, the More sheet on mobile) because
-            claiming old positions lives there.
+            you're on next to pages that have nothing to do with the choice.
 
             Desktop only — phones get the same switch from the dock's More sheet, in the
             slot that toggle used to occupy. The wrapper is what enforces "desktop only":

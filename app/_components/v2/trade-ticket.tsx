@@ -799,7 +799,7 @@ export function V2TradeTicket({
         copy={{
           steps: [
             rangeMode ? 'Pick your price range on the odds curve' : 'Pick Up or Down and a price level',
-            'Set your stake and leverage',
+            'Set your stake',
             'Review and confirm your trade',
           ],
           tip: rangeMode

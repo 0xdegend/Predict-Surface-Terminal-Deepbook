@@ -13,7 +13,6 @@
  * when the switch traders actually reach for is between the two trade screens. That
  * one used to sit as a full-width bar at the top of both trade screens, where it ate
  * the first band of a phone screen on the one view that needs its vertical space most.
- * Legacy is still here, as a footer row, because old positions are claimed there.
  *
  * Sibling of the chrome (not nested) so its fixed positioning anchors to the
  * viewport, not a backdrop-filter container. iOS safe-area aware.
@@ -35,7 +34,6 @@ import {
   LuBookOpen,
   LuSparkles,
   LuArrowUpRight,
-  LuArchive,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -66,10 +64,6 @@ const MORE: MoreItem[] = [
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: LuSwords, soon: true },
   // Reference, not a destination tile → full-width footer row (keeps the grid even).
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
-  // Legacy's mobile home now that the Version toggle has left this sheet. Trading there
-  // has wound down, but old positions are still claimed from its Portfolio, and that
-  // toggle was the only way in on a phone.
-  { href: '/legacy', label: 'Legacy', desc: 'Claim old positions', icon: LuArchive, footer: true },
   // Socials — off-site footer rows, one per account, from the shared list.
   ...SOCIALS.map((s): MoreItem => ({
     href: s.url,

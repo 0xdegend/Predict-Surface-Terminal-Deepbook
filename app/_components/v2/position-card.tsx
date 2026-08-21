@@ -20,11 +20,9 @@ import {
   LuArrowDown,
   LuCalendarRange,
   LuLayers,
-  LuPercent,
   LuTarget,
   LuTrendingUp,
   LuClock,
-  LuDollarSign,
   LuShieldCheck,
   LuActivity,
   LuHexagon,
@@ -78,6 +76,27 @@ export function V2PositionCard({
   const claim = settledClaimState(p, now);
 
   const title = p.underlying ?? (p.marketId ? shortId(p.marketId) : 'Position');
+
+  /**
+   * The quiet line in the card footer, or null for no line at all.
+   *
+   * `claim_fallback` (settled a win, the keeper is late, so the trader can claim it
+   * themselves) deliberately returns null: the CLAIM PAYOUT button beside it already
+   * says exactly that, and the sentence was saying it a second time.
+   */
+  const note: string | null = p.sample
+    ? 'Sample position — live ones appear here once you trade.'
+    : claim === 'auto_clearing'
+      ? `Settled out of the ${isRange ? 'band' : 'money'} — this bet paid nothing, cleared automatically.`
+      : claim === 'auto_paying'
+        ? 'Settled a win — the payout lands in your account automatically, no action needed.'
+        : claim === 'claim_fallback'
+          ? null
+          : result === 'settling'
+            ? "Expired — waiting on the oracle's final settlement price."
+            : isRange
+              ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
+              : 'Probabilistic · resolved by oracle data.';
   const kindLabel = isRange ? 'Range' : 'Position';
   const condition = isRange
     ? p.band != null
@@ -215,18 +234,12 @@ export function V2PositionCard({
 
         {/* metrics — two tiers, monochrome, one faded hairline between them */}
         <div className="flex flex-col gap-3 px-1">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 @lg:grid-cols-3">
             <Metric
               icon={LuLayers}
               label="Size"
               value={fmtQuote(p.qty)}
               sub={p.leverage != null && p.leverage > 1 ? `contracts · ${p.leverage.toFixed(0)}×` : 'contracts'}
-            />
-            <Metric
-              icon={LuPercent}
-              label="Avg entry"
-              value={p.entryPrice != null ? pct(p.entryPrice, 1) : '—'}
-              sub="implied"
             />
             <Metric
               icon={LuTarget}
@@ -244,17 +257,8 @@ export function V2PositionCard({
 
           <div className="hairline-fade" />
 
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 @md:grid-cols-3 @xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 @md:grid-cols-3">
             <MiniMetric icon={LuClock} label="Entered" value={p.openedAt != null ? dateUTC(p.openedAt, false) : '—'} />
-            <MiniMetric icon={LuDollarSign} label="Cost" value={p.cost != null ? `${fmtQuote(p.cost)} ${sym}` : '—'} />
-            {/* The real max payout — notional minus the leverage floor. Leverage
-                itself rides on the Size metric above, so a leveraged position no
-                longer has to trade away its payout figure to show its multiple. */}
-            <MiniMetric
-              icon={LuShieldCheck}
-              label="Max payout"
-              value={`${fmtQuote(positionWinPayout(p))} ${sym}`}
-            />
             <MiniMetric
               icon={LuActivity}
               label="Net move"
@@ -288,24 +292,11 @@ export function V2PositionCard({
           </div>
         )}
 
-        {/* footer — quiet disclaimer + share + the one action */}
+        {/* footer — quiet disclaimer + share + the one action. `null` for the
+            keeper-late state: the CLAIM PAYOUT button already says what to do. */}
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-3 px-1">
-          <p className="font-sans text-[10px] leading-snug text-text-3">
-            {p.sample
-              ? 'Sample position — live ones appear here once you trade.'
-              : claim === 'auto_clearing'
-                ? `Settled out of the ${isRange ? 'band' : 'money'} — this bet paid nothing, cleared automatically.`
-                : claim === 'auto_paying'
-                  ? 'Settled a win — the payout lands in your account automatically, no action needed.'
-                  : claim === 'claim_fallback'
-                    ? 'Settled a win — the automatic payout is taking longer than usual, so you can claim it yourself.'
-                    : result === 'settling'
-                      ? "Expired — waiting on the oracle's final settlement price."
-                      : isRange
-                        ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
-                        : 'Probabilistic · resolved by oracle data.'}
-          </p>
-          <div className="flex items-center gap-2">
+          {note && <p className="font-sans text-[10px] leading-snug text-text-3">{note}</p>}
+          <div className="ml-auto flex items-center gap-2">
             <ShareButton onClick={() => setShareOpen(true)} />
             {result === 'settling' ? (
               <button
