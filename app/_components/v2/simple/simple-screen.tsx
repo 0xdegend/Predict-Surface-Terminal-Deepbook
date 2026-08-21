@@ -28,6 +28,7 @@ import { useSpotSeries } from '@/lib/hooks/use-spot-series';
 import { useRoundQuote } from '@/lib/hooks/use-round-quote';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { RollingNumber } from '@/app/_components/ui/rolling-number';
 import { momentumOf, type Momentum } from '@/lib/charts/simple-series';
@@ -123,6 +124,9 @@ export function SimpleScreen({
     queryFn: () => getPythLatest(predictV2Config.asset.pythFeedId),
   });
   const liveSpot = pythSpot(spotQ.data ?? null);
+  // See the note on `spot` in price-chart.tsx: the server has no live pyth read, so any
+  // value from this shared query during the hydration pass disagrees with the HTML.
+  const mounted = useMounted();
 
   /**
    * One round per tab, chosen by TIME REMAINING rather than by which series created the
@@ -262,7 +266,7 @@ export function SimpleScreen({
   }
 
   const secsLeft = active ? Math.max(0, Math.round((active.expiry - now) / 1000)) : 0;
-  const px = liveSpot ?? hero.pricer?.forward ?? null;
+  const px = (mounted ? liveSpot : null) ?? hero.pricer?.forward ?? null;
 
   /**
    * ROLLOVER, not reload. A round ending used to drop the whole screen — chart, ticket,
@@ -600,7 +604,7 @@ export function SimpleScreen({
               then how the last rounds went. Self-gating — "Your bets" renders nothing
               until there is a bet, so a first-timer still gets the quiet screen they
               came for, and the results tape carries the page's baseline content. */}
-          <MyBets spot={px} now={now} />
+          <MyBets now={now} />
 
           <RoundCards
             rounds={otherRounds}

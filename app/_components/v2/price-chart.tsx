@@ -34,6 +34,7 @@ import { PriceBandPrimitive, WinZonePrimitive, LivePulsePrimitive, BAND_LINE } f
 import { StaleFeedOverlay } from './stale-feed-overlay';
 import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { pythSeedQueryOptions, pythHistoryQueryOptions } from '@/lib/hooks/use-v2-pyth-history';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import { getPythTape } from '@/lib/store/pyth-tape';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
@@ -656,9 +657,22 @@ export function V2PriceChart({
     }
   }, [strike, isUp, bandLow, bandHigh, anchor]);
 
-  // Live spot readout top-right (raw latest, matching the nav tape) — mirrors
-  // legacy's "BTC SPOT" chart label.
-  const spot = latestQ.data ? pythSpot(latestQ.data) : (pricer?.forward ?? null);
+  /**
+   * Live spot readout top-right (raw latest, matching the nav tape) — mirrors legacy's
+   * "BTC SPOT" chart label.
+   *
+   * GATED ON `mounted` TO KEEP HYDRATION HONEST. The server has no live pyth read, so its
+   * HTML always carries the SEEDED forward. The live query is shared with the nav tape,
+   * which lives in the layout OUTSIDE this subtree and starts polling the moment the shell
+   * hydrates — so by the time this tree hydrates, the cache already holds a newer price.
+   * Preferring it here made the first client render disagree with the HTML and React threw
+   * a hydration mismatch (measured: 77,284.88 baked into the HTML vs 77,304.33 live).
+   *
+   * So: render what the server rendered, then switch to live on the very next commit. No
+   * visible change — a cold load already went seeded-forward → live on the first fetch.
+   */
+  const mounted = useMounted();
+  const spot = mounted && latestQ.data ? pythSpot(latestQ.data) : (pricer?.forward ?? null);
 
   return (
     <div className="relative h-full w-full bg-bg-0">
