@@ -531,7 +531,9 @@ export function V2TradeTicket({
           </span>
         </div>
       )}
-      <div className="flex gap-1.5">
+      {/* mt-1 so the presets read as their own row: the balance line above is pulled tight
+          to the input on purpose, which left all three stacked at one spacing. */}
+      <div className="mt-1 flex gap-1.5">
         {amountPresets.map((n) => (
           <button
             key={n}
@@ -589,7 +591,7 @@ export function V2TradeTicket({
           </Row>
         )}
       </div>
-  );
+    );
 
   // Risk → Reward: the answer to "what do I pay and what can I win?"
   const quoteCard = (
@@ -689,12 +691,13 @@ export function V2TradeTicket({
 
   const betFooter = (
     <>
-      {/* near-expiry caution — mint is blocked outright inside the cadence's final window */}
-      {(closingSoon || tooCloseToExpiry) && (
+      {/* Near-expiry caution, for the window where minting still works. Once it is too
+          close the quote card already says "About to settle. Pick another market." and the
+          button reads "Too close to expiry", so a third copy of the same sentence in red
+          was just repeating them. */}
+      {closingSoon && !tooCloseToExpiry && (
         <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
-          {tooCloseToExpiry
-            ? 'Too close to expiry to mint. Pick another market.'
-            : `Closing in ${countdown(market.expiry, now)}.`}
+          {`Closing in ${countdown(market.expiry, now)}.`}
         </div>
       )}
 
@@ -760,8 +763,13 @@ export function V2TradeTicket({
       ) : null
     ) : null;
 
+  // The bet step breathes wider than the pick step. It now carries four things (recap,
+  // amount, quote, confirm) where it used to carry seven, and at the pick step's spacing
+  // that trimmed set read as one dense block rather than four decisions.
+  const bodyGap = !rangeMode && step === 2 ? 'gap-5' : 'gap-4';
+
   return (
-    <div className="flex flex-col gap-4 font-mono text-[12px] tabular-nums">
+    <div className={`flex flex-col ${bodyGap} font-mono text-[12px] tabular-nums`}>
       <SharedTradeBanner />
       {grantCta}
       {/* Instant trading is on but its session key is low on gas → say so and offer a
@@ -947,39 +955,25 @@ export function V2TradeTicket({
               </>
             ) : (
               <>
-                {/* Entry recap — direction (tap the chip to flip UP/DOWN) and the chosen
-                    strike (read-only; change it on step 1 via the back arrow up top). */}
-                <div className="glass-inset flex flex-col gap-2.5 rounded-lg p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={`shrink-0 text-[11px] font-semibold uppercase tracking-wider ${isUp ? 'text-up' : 'text-down'}`}
-                      >
-                        {isUp ? '▲ UP' : '▼ DOWN'}
-                      </span>
-                      <span className="truncate text-[11px] text-text-3">
-                        settles {isUp ? 'above' : 'at or below'}
-                      </span>
+                {/* Entry recap: the two things step 1 decided, and nothing else.
+                    It used to spell out the rule ("UP settles above") and carry a chip
+                    for flipping side — three ideas stacked on a step whose only job is
+                    the amount. Both the side and the strike are changed the same way now,
+                    with "Back to strike" at the top, so this is purely a read-back.
+                    Deliberately the same two-column eyebrow shape as the quote card
+                    directly beneath it, so the bet step reads as one pair of facts. */}
+                <div className="glass-inset grid grid-cols-2 gap-3 rounded-lg p-3.5">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <span className="eyebrow">Your pick</span>
+                    <span className={`text-[15px] font-semibold leading-none ${isUp ? 'text-up' : 'text-down'}`}>
+                      {isUp ? '▲ Up' : '▼ Down'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsUp(!isUp)}
-                      aria-label={`Switch to ${isUp ? 'DOWN' : 'UP'}`}
-                      className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium uppercase tracking-wider transition-colors ${
-                        isUp
-                          ? 'border-down/30 text-down/70 hover:border-down/50 hover:text-down'
-                          : 'border-up/30 text-up/70 hover:border-up/50 hover:text-up'
-                      }`}
-                    >
-                      {isUp ? '▼ DOWN' : '▲ UP'}
-                    </button>
                   </div>
-                  {/* Strike is read-only here — it was set with the slider on step 1.
-                      Go back to change it (the arrow above), so the level can't be
-                      accidentally nudged at the bet step. */}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] uppercase tracking-wider text-text-3">Strike</span>
-                    <span className="font-mono text-[13px] tabular-nums text-text-1">{usd(strike)}</span>
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <span className="eyebrow">Strike</span>
+                    <span className="font-mono text-[15px] font-semibold leading-none tabular-nums text-text-1">
+                      {usd(strike)}
+                    </span>
                   </div>
                 </div>
 
