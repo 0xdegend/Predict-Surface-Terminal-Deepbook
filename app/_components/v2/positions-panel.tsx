@@ -99,7 +99,7 @@ export function V2PositionsPanel({ liveOnly = false }: { liveOnly?: boolean }) {
       ) : isLoading ? (
         <span className="text-text-3">loading…</span>
       ) : open.length === 0 ? (
-        <span className="text-text-2">No open positions yet — pick a market above and place your first bet.</span>
+        <span className="text-text-2">No open positions yet. Place one from the active markets above.</span>
       ) : (
         <>
           {shown.map((p) => (

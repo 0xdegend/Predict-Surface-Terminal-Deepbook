@@ -406,14 +406,13 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
             icon={LuLayers}
             color={HUE.teal}
             title="No open positions yet"
-            description="Pick a market and mint an UP / DOWN contract — your live bets and their PnL land here."
+            description="Place a bet on a live market and it will show up here with its PnL."
             action={
               <Link
                 href="/v2"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-(--accent-line) bg-(--accent-soft) px-3.5 py-2 text-[12px] font-medium text-up transition-colors hover:bg-up/15"
               >
                 Open the markets
-                <LuArrowRight size={14} />
               </Link>
             }
           />

@@ -732,7 +732,7 @@ export function V2TradeTicket({
           "Review" one row above it. */}
       {oneTapPlace && (
         <p className="text-[10px] leading-relaxed text-text-3">
-          One-tap places your bet instantly, no review. Final cost is capped on-chain.
+          Places instantly, no review. Cost still capped on-chain.
         </p>
       )}
       {shareBase && (
