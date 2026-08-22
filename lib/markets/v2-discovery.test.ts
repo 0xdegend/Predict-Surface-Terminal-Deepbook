@@ -161,19 +161,30 @@ describe('isClosingSoon / isTooCloseToExpiry (cadence-keyed, not tenor-fraction)
     max_expiry_allocation: '250000000000',
   });
 
-  it('1m market: closing-soon/too-close fire in the last ~15s/4s, not ~3min', () => {
+  it('1m market: closing-soon/too-close fire in the last ~10s/4s, not ~3min', () => {
     const expiry = oneMin.expiry;
     expect(isClosingSoon(oneMin, expiry - 20_000)).toBe(false);
-    expect(isClosingSoon(oneMin, expiry - 10_000)).toBe(true);
-    expect(isTooCloseToExpiry(oneMin, expiry - 10_000)).toBe(false);
+    expect(isClosingSoon(oneMin, expiry - 8_000)).toBe(true);
+    expect(isTooCloseToExpiry(oneMin, expiry - 8_000)).toBe(false);
     expect(isTooCloseToExpiry(oneMin, expiry - 2_000)).toBe(true);
   });
 
-  it('5m and 1h markets use their own, larger windows', () => {
-    expect(isClosingSoon(fiveMin, fiveMin.expiry - 45_000)).toBe(false);
-    expect(isClosingSoon(fiveMin, fiveMin.expiry - 20_000)).toBe(true);
-    expect(isClosingSoon(hourly, hourly.expiry - 150_000)).toBe(false);
-    expect(isClosingSoon(hourly, hourly.expiry - 60_000)).toBe(true);
+  it('every cadence shares ONE 10s caution window — an hourly used to warn for 2 minutes', () => {
+    for (const m of [oneMin, fiveMin, hourly]) {
+      expect(isClosingSoon(m, m.expiry - 20_000), m.expiry_market_id).toBe(false);
+      expect(isClosingSoon(m, m.expiry - 8_000), m.expiry_market_id).toBe(true);
+    }
+  });
+
+  it('leaves the caution visibly alive before minting blocks', () => {
+    // The banner renders on `closingSoon && !tooCloseToExpiry`. That gap is its whole
+    // life, so it must be more than a rounding error on every cadence.
+    for (const m of [oneMin, fiveMin, hourly]) {
+      const visible = [8, 7, 6].filter(
+        (s) => isClosingSoon(m, m.expiry - s * 1000) && !isTooCloseToExpiry(m, m.expiry - s * 1000),
+      );
+      expect(visible.length, m.expiry_market_id).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it('is false well before expiry', () => {

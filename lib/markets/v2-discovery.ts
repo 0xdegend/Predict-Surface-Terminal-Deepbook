@@ -120,10 +120,24 @@ export function usableMaxLeverageX(m: V2Market, now: number): number {
  * time).
  */
 const EXPIRY_THRESHOLDS: Record<V2Cadence, { closingSoonSecs: number; tooCloseSecs: number }> = {
-  '1m': { closingSoonSecs: 15, tooCloseSecs: 4 },
-  '5m': { closingSoonSecs: 30, tooCloseSecs: 5 },
-  '1h': { closingSoonSecs: 120, tooCloseSecs: 5 },
+  '1m': { closingSoonSecs: 10, tooCloseSecs: 4 },
+  '5m': { closingSoonSecs: 10, tooCloseSecs: 5 },
+  '1h': { closingSoonSecs: 10, tooCloseSecs: 5 },
 };
+
+/*
+ * WHY 10s AND NOT 5s. The caution renders only while `closingSoon && !tooCloseToExpiry`,
+ * so its visible life is the gap BETWEEN the two numbers. At 5s that gap is one second on
+ * 1m and zero on 5m/1h (their block also sits at 5s), i.e. the warning would quietly stop
+ * existing on two of three cadences. 10s leaves a 5-6s window that ends exactly when
+ * minting blocks, so the countdown reads 10s down to 5s and then hands over to
+ * "Too close to expiry".
+ *
+ * The old per-cadence spread was the real complaint: an hourly market warned for a full
+ * TWO MINUTES, which reads as alarm rather than information. Urgency is about the seconds
+ * left to act, and that is the same regardless of how long the round ran, so all three
+ * cadences now share one window.
+ */
 
 /** True once the market is inside its cadence's "closing soon" caution window. */
 export function isClosingSoon(m: V2Market, now: number): boolean {
