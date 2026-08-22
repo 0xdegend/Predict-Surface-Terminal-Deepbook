@@ -59,6 +59,33 @@ const V2_ABORTS: Record<string, string> = {
   'plp:11': 'That market hasn’t settled yet.',
 };
 
+/** The VM-underflow wording, named so `isPositionGoneMessage` can match it exactly. */
+export const ALREADY_CLAIMED_MESSAGE =
+  'This position looks already settled or claimed. Refresh your positions and try again.';
+
+/**
+ * Aborts that mean THE POSITION IS GONE: the chain has less open than we tried to close,
+ * or nothing at all. On this deployment that is almost always the protocol keeper having
+ * already auto-redeemed a settled winner (see [[keeper-redeem-read-gap]]) while our
+ * per-market event scan kept missing the closing redeem.
+ *
+ * This is the strongest possible evidence a position is closed — stronger than any read,
+ * because the chain refused the close itself — so callers can retire the row for good
+ * instead of letting it resurface every poll.
+ */
+const POSITION_GONE_KEYS = ['strike_exposure:0', 'predict_account:1', 'predict_account:2'] as const;
+
+/** Exact messages (not patterns) that mean the position no longer has what we tried to close. */
+export const POSITION_GONE_MESSAGES: ReadonlySet<string> = new Set<string>([
+  ...POSITION_GONE_KEYS.map((k) => V2_ABORTS[k]),
+  ALREADY_CLAIMED_MESSAGE,
+]);
+
+/** True when a failed action's message means "there is nothing left here to close". */
+export function isPositionGoneMessage(msg: string | null | undefined): boolean {
+  return !!msg && POSITION_GONE_MESSAGES.has(msg);
+}
+
 export function humanizeV2Error(raw: unknown): string {
   const msg = raw instanceof Error ? raw.message : String(raw ?? '');
   if (/MoveAbort|abort code/i.test(msg)) {
@@ -73,7 +100,7 @@ export function humanizeV2Error(raw: unknown): string {
   // position that's already settled or claimed underflows the market's payout liability.
   // Don't leak the raw VM string; point the user at the fix.
   if (/MovePrimitiveRuntimeError|RuntimeError/i.test(msg)) {
-    return 'This position looks already settled or claimed. Refresh your positions and try again.';
+    return ALREADY_CLAIMED_MESSAGE;
   }
   // Non-abort (wallet / session / network) — defer to the shared decoder.
   return humanizeWalletError(raw);

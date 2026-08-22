@@ -139,17 +139,22 @@ export function V2PayoutSlider({
 
   return (
     <div className="select-none">
-      {/* readout — CHANCE it hits + exact strike with a ±1-tick nudge */}
-      <div className="mb-2.5 flex items-end justify-between gap-2">
-        <div>
-          <div className="eyebrow text-text-3">Chance it hits</div>
-          <div className="mt-0.5 font-mono text-[20px] font-semibold leading-none text-text-1">
+      {/* readout — chance + exact strike with a ±1-tick nudge, on ONE row.
+          BUDGET: the desktop rail is 340px, so ~308px of usable width. "Chance it hits"
+          plus "Strike" plus the stepper measured ~360px and wrapped, which is what this
+          row was meant to stop. Shortened to "Chance" (parallel with "Strike" beside it)
+          and the input to w-20; that lands near 288px and holds one line. No `flex-wrap`
+          on purpose — wrapping is the failure this layout exists to avoid. */}
+      <div className="mb-3 flex items-center justify-between gap-x-3">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="eyebrow shrink-0 text-text-3">Chance</span>
+          <span className="font-mono text-[20px] font-semibold leading-none text-text-1">
             {chancePct}
             <span className="text-[13px] font-normal text-text-3">%</span>
-          </div>
+          </span>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="eyebrow text-text-3">Strike</div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="eyebrow text-text-3">Strike</span>
           <div className="glass-inset inline-flex items-center gap-0.5 rounded-lg p-0.5">
             <button onClick={() => nudge(-1)} aria-label="Lower strike" className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2">
               −
@@ -168,7 +173,7 @@ export function V2PayoutSlider({
               onChange={(e) => setDraft(e.target.value)}
               onBlur={commitDraft}
               onKeyDown={onInputKey}
-              className="w-24 rounded bg-transparent text-center font-mono text-[12px] text-text-1 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50"
+              className="w-20 rounded bg-transparent text-center font-mono text-[12px] text-text-1 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50"
             />
             <button onClick={() => nudge(1)} aria-label="Raise strike" className="ctrl-soft flex h-6 w-6 items-center justify-center rounded-md text-text-2">
               +
@@ -178,7 +183,7 @@ export function V2PayoutSlider({
       </div>
 
       {/* presets — one-tap safe / even / longshot picks */}
-      <div className="mb-2.5 grid grid-cols-3 gap-1.5">
+      <div className="mb-3 grid grid-cols-3 gap-1.5">
         {PRESETS.map((p) => {
           const active = Math.abs(dirFair - p.dir) <= PRESET_SNAP;
           return (
@@ -229,11 +234,8 @@ export function V2PayoutSlider({
         />
       </div>
 
-      {/* end labels — the tradeoff the axis represents, no number needed */}
-      <div className="mt-1.5 flex items-center justify-between text-[10px] text-text-3">
-        <span>More likely</span>
-        <span>Bigger payout</span>
-      </div>
+      {/* No end labels. "More likely" / "Bigger payout" restated the Safe and Bold presets
+          sitting directly above, and those line up with the ends they name. */}
     </div>
   );
 }

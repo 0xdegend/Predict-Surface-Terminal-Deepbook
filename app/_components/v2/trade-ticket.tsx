@@ -791,7 +791,12 @@ export function V2TradeTicket({
   // Range stacks more controls in one screen than the binary pick step does (explainer,
   // two price inputs, the ladder, stake, quote) with no StepBar to break them up, so at
   // the shared 12px they read as one column of boxes. 16px separates them into decisions.
-  const controlGap = rangeMode || oneStep ? 'gap-4' : 'gap-3';
+  // 20px between controls on the ONE-SCREEN layouts (range, and binary on desktop).
+  // Both have shed several rows now — the explainers, the end labels, the near-expiry
+  // banner — so the remaining controls can afford the air, and each one reads as its own
+  // decision rather than another box in a stack. The mobile two-step binary stays at 12px:
+  // it is height-constrained and the StepBar already does the separating.
+  const controlGap = rangeMode || oneStep ? 'gap-5' : 'gap-3';
 
   return (
     <div className={`flex flex-col ${bodyGap} font-mono text-[12px] tabular-nums`}>

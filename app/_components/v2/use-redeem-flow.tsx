@@ -27,7 +27,7 @@ import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { V2RedeemModal } from './redeem-modal';
 import { useClaimCelebration } from './use-claim-celebration';
 import { winningClaimPayout, type V2PortfolioPosition } from '@/lib/portfolio/v2';
-import { getClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
+import { retireRootIfDone } from '@/lib/portfolio/retire-root';
 
 export function useRedeemFlow() {
   const acct = usePredictAccountV2();
@@ -44,14 +44,24 @@ export function useRedeemFlow() {
     const digest = p.settled
       ? await acct.redeemSettled(args, payout != null ? { silentSuccess: true } : undefined)
       : await acct.redeemLive(args);
-    if (!digest) return;
+
+    // Retires the row on a landed full close OR on a chain refusal ("nothing left to
+    // close" = the keeper already paid this settled winner). `lastError()` not
+    // `acct.error`: React state is stale inside this awaiting closure. See retire-root.
+    const retired = retireRootIfDone(
+      { digest, fullClose: closeQuantity >= (p.qtyBase ?? 0n), lastError: acct.lastError() },
+      p.positionRootId ?? (p.orderId != null ? String(p.orderId) : ''),
+      acct.owner || acct.accountId || '',
+    );
+    if (!digest) {
+      if (retired) {
+        setRedeeming(null);
+        acct.clearError();
+      }
+      return;
+    }
     setRedeeming(null);
     if (payout != null) celebrate(payout, digest);
-    if (closeQuantity >= (p.qtyBase ?? 0n)) {
-      const root = p.positionRootId ?? (p.orderId != null ? String(p.orderId) : '');
-      const scope = acct.owner || acct.accountId || '';
-      if (root && scope) getClosedRootsGuard(scope).markClosed(root);
-    }
   }
 
   return {

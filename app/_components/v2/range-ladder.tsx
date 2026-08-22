@@ -239,7 +239,7 @@ export function RangeLadder({
   const activeEdge = drag ?? focus;
 
   return (
-    <div className="flex select-none flex-col gap-2">
+    <div className="flex select-none flex-col gap-2.5">
       {/* live LOW / HIGH inputs (bound both ways), with Reset beside the values it
           resets — it used to share a row with an explainer that has since been cut. */}
       <div className="flex items-center gap-2">

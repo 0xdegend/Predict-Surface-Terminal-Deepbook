@@ -56,7 +56,7 @@ import {
   type V2PortfolioPosition,
 } from '@/lib/portfolio/v2';
 import { useV2PortfolioPositions } from '@/lib/hooks/use-v2-portfolio-positions';
-import { getClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
+import { retireRootIfDone } from '@/lib/portfolio/retire-root';
 import { useV2History } from '@/lib/hooks/use-v2-history';
 import { V2PositionCard } from './position-card';
 import { V2PositionRow } from './position-row';
@@ -214,18 +214,22 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       : await acct.redeemLive(args);
     // Keep the dialog open on failure (error surfaces in the panel); close it once
     // the tx lands so the refreshed position list takes over.
+    // Retire the row when it is finished — either the close landed and took everything,
+    // or the chain REFUSED because nothing is left (the keeper already paid this settled
+    // winner and our event scan keeps missing its redeem). See retire-root.
+    const retired = retireRootIfDone(
+      { digest, fullClose: closeQuantity >= (p.qtyBase ?? 0n), lastError: acct.lastError() },
+      p.positionRootId ?? (p.orderId != null ? String(p.orderId) : ''),
+      acct.owner || acct.accountId || '',
+    );
     if (digest) {
       setRedeeming(null);
       if (payout != null) celebrate(payout, digest);
-      // Fully closed → remember it closed immediately, so the list drops it on the next
-      // render instead of lingering until a fold reconciles the redeem (the "I just claimed
-      // it and it's still showing" gap). Partial closes keep the remainder open, so only mark
-      // a full close. Parity with the trade-rail panel; same guard scope the fold reads.
-      if (closeQuantity >= (p.qtyBase ?? 0n)) {
-        const root = p.positionRootId ?? (p.orderId != null ? String(p.orderId) : '');
-        const scope = acct.owner || acct.accountId || '';
-        if (root && scope) getClosedRootsGuard(scope).markClosed(root);
-      }
+    } else if (retired) {
+      // Nothing left to claim: close the dialog and drop the dead error rather than
+      // leaving a claim on screen that can never succeed.
+      setRedeeming(null);
+      acct.clearError();
     }
   }
 

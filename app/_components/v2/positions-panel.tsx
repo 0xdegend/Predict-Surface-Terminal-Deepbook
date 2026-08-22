@@ -24,7 +24,7 @@ import { quote as fmtQuote, price, signed } from '@/lib/format';
 import { V2RedeemModal } from './redeem-modal';
 import { useClaimCelebration } from './use-claim-celebration';
 import { winningClaimPayout, positionWinPayout, settledClaimState, type V2PortfolioPosition } from '@/lib/portfolio/v2';
-import { getClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
+import { retireRootIfDone } from '@/lib/portfolio/retire-root';
 
 /** Max position cards shown in the rail before deferring to Portfolio. */
 const MAX_SHOWN = 3;
@@ -67,15 +67,19 @@ export function V2PositionsPanel({ liveOnly = false }: { liveOnly?: boolean }) {
     if (digest) {
       setRedeeming(null);
       if (payout != null) celebrate(payout, digest);
-      // Fully closed → remember it as closed immediately, so the rail drops it on the next
-      // render instead of lingering until a fold poll reconciles the redeem (the "I just
-      // claimed it and it's still showing" gap). Partial closes keep the remainder open, so
-      // only mark a full close. Same guard scope the positions fold reads.
-      if (closeQuantity >= (p.qtyBase ?? 0n)) {
-        const root = p.positionRootId ?? (p.orderId != null ? String(p.orderId) : '');
-        const scope = acct.owner || acct.accountId || '';
-        if (root && scope) getClosedRootsGuard(scope).markClosed(root);
-      }
+    }
+    // Same rule as the portfolio: a landed full close OR a chain refusal ("nothing left
+    // to close") retires the row for good. See retire-root.
+    if (
+      retireRootIfDone(
+        { digest, fullClose: closeQuantity >= (p.qtyBase ?? 0n), lastError: acct.lastError() },
+        p.positionRootId ?? (p.orderId != null ? String(p.orderId) : ''),
+        acct.owner || acct.accountId || '',
+      ) &&
+      !digest
+    ) {
+      setRedeeming(null);
+      acct.clearError();
     }
   }
 

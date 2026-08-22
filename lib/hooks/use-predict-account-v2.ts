@@ -117,6 +117,10 @@ export function usePredictAccountV2() {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Mirror of `error` for callers that need it straight after an awaited action. React
+  // state is stale inside the closure that awaited, so `acct.error` there is the PREVIOUS
+  // value; this ref is written on the same tick as setError.
+  const errorRef = useRef<string | null>(null);
   // Synchronous re-entrancy lock for user-initiated trade actions. `busy` is React
   // state, so it is not visible to a second click fired in the same tick, and the
   // first trade of an instant session does a lot of async setup (generate the session
@@ -358,6 +362,7 @@ export function usePredictAccountV2() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (gasless && (isSessionExpired(e) || /popup|window closed|Failed to open/i.test(msg))) {
+        errorRef.current = SESSION_EXPIRED_MESSAGE;
         setError(SESSION_EXPIRED_MESSAGE);
         return null;
       }
@@ -365,6 +370,7 @@ export function usePredictAccountV2() {
       // `acct.error` as a GlassError right where the action happened. No toast here:
       // it would double the same message on top of that inline banner. Flows without
       // an inline surface (cash-out / session-gas / admin) render acct.error too.
+      errorRef.current = humanizeV2Error(e);
       setError(humanizeV2Error(e));
       return null;
     } finally {
@@ -456,6 +462,7 @@ export function usePredictAccountV2() {
         : humanizeV2Error(e);
       // Inline-only (see runTx): the ticket shows acct.error as a GlassError, so a
       // toast here would be the same message twice.
+      errorRef.current = friendly;
       setError(friendly);
       return null;
     } finally {
@@ -688,7 +695,13 @@ export function usePredictAccountV2() {
     busy,
     error,
     /** Clear the last action error — lets a caller dismiss the error banner. */
-    clearError: () => setError(null),
+    clearError: () => {
+      errorRef.current = null;
+      setError(null);
+    },
+    /** The last action error, readable IMMEDIATELY after an awaited call (unlike
+     *  `error`, which is React state and stale in the awaiting closure). */
+    lastError: () => errorRef.current,
     /** True for gasless Enoki (Google) accounts — they sign with no wallet
      *  pop-up, so callers can show honest, wallet-aware copy. */
     gasless,
