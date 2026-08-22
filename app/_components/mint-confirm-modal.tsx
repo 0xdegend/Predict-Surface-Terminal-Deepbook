@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, type ReactNode } from 'react';
-import { LuInfo } from 'react-icons/lu';
 import { Modal } from '@/app/_components/ui/modal';
 
 export type ConfirmRow = { label: string; value: string; emphasize?: boolean };
@@ -128,16 +127,12 @@ export function MintConfirmModal({
             <span className="text-[14px] font-semibold text-text-1">{cost}</span>
           </div>
           <div className={`flex flex-1 flex-col gap-0.5 rounded-lg border px-3 py-2 ${tone === 'up' ? 'border-up/30 bg-up/5' : 'border-down/30 bg-down/5'}`}>
-            <span className="text-[10px] uppercase tracking-wider text-text-3">Max win</span>
+            {/* Reads "You win" to match the ticket's quote card; the `maxWin` prop keeps
+                its name because that is what the number IS (the full payout). */}
+            <span className="text-[10px] uppercase tracking-wider text-text-3">You win</span>
             <span className={`text-[14px] font-semibold ${toneText}`}>{maxWin}</span>
           </div>
         </div>
-
-        <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-text-3">
-          <LuInfo size={12} className="mt-0.5 flex-none" />
-          The chain confirms the final price when you mint — it can still revert if the market moves
-          or expires first.
-        </p>
       </div>
 
       {/* Optional opt-in (e.g. faster trades) — outside the mono wrapper so it reads

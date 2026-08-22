@@ -625,8 +625,7 @@ export function V2TradeTicket({
         </span>
       ) : !probOk ? (
         <span className="text-text-2">
-          {rangeMode ? 'Band' : 'Strike'} too far from spot to trade. Pick a level nearer{' '}
-          {usd(pricer.forward)} (prices near 0% or 100% can’t be quoted).
+          Move the {rangeMode ? 'band' : 'strike'} nearer {usd(pricer.forward)} to get a price.
         </span>
       ) : (
         <div className="flex flex-col">
@@ -949,8 +948,8 @@ export function V2TradeTicket({
 
                 {!probOk && !tooCloseToExpiry && (
                   <p className="text-[12px] leading-relaxed text-text-2">
-                    That strike is too far from spot to price. Move it nearer{' '}
-                    <span className="text-text-1">{usd(pricer.forward)}</span> to continue.
+                    Move nearer <span className="text-text-1">{usd(pricer.forward)}</span> to get a
+                    price.
                   </p>
                 )}
 
@@ -1011,7 +1010,10 @@ export function V2TradeTicket({
         headline={headline}
         tone={tone}
         rows={[
-          outcomeRow,
+          /* `outcomeRow` used to lead here ("Pays if price ends in the band"). The headline
+             already says RANGE or UP, and the level row directly below carries the actual
+             numbers, so it was the third telling. Still shown on the SUCCESS modal, where
+             the headline is the only other context. */
           levelRow,
           { label: 'Expiry', value: `${dateUTC(market.expiry)} · ${countdown(market.expiry, now)}` },
           ...(lev > 1 ? [{ label: 'Leverage', value: fmtLev(lev) }] : []),
@@ -1032,7 +1034,11 @@ export function V2TradeTicket({
               ? 'Low on gas, so this one needs a wallet approval.'
               : acct.gasless
                 ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
-                : 'Review your position, then approve it in your wallet'
+                : // No subtitle on the plain path: the title says "Confirm your trade" and
+                  // the button says "Mint", so a line telling you to review and approve was
+                  // narrating the dialog you are looking at. The variants ABOVE stay because
+                  // each one tells you something not otherwise on screen.
+                  ''
         }
         extra={<SessionOptInRow />}
       />
