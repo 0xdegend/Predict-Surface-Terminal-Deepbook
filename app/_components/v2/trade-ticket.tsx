@@ -714,15 +714,10 @@ export function V2TradeTicket({
 
   const betFooter = (
     <>
-      {/* Near-expiry caution, for the window where minting still works. Once it is too
-          close the quote card already says "About to settle. Pick another market." and the
-          button reads "Too close to expiry", so a third copy of the same sentence in red
-          was just repeating them. */}
-      {closingSoon && !tooCloseToExpiry && (
-        <div className="rounded border border-down/40 bg-down/10 p-2 text-[11px] leading-relaxed text-down">
-          {`Closing in ${countdown(market.expiry, now)}.`}
-        </div>
-      )}
+      {/* No "Closing in Ns." banner here. The countdown at the TOP of the ticket already
+          turns red on the same `closingSoon` flag, so this was the same number, in the same
+          colour, twice on one screen. Past the block the quote card says "About to settle"
+          and the button reads "Too close to expiry", which covers the urgent end. */}
 
       {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
           (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
