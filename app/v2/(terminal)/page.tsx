@@ -4,6 +4,11 @@
  * Server fetches the live active markets + simulates a pricer for the nearest
  * market in each cadence (instant first paint); the client V2TradeScreen takes
  * over live (picker ↔ ticket ↔ odds via the shared store, per-market Pricer).
+ *
+ * Phones never get here on a cold landing: `middleware.ts` sends them to simple mode
+ * first. That check CANNOT live in this file — the route has a `loading.tsx`, so Next
+ * flushes the shell (and a 200) before this function finishes, and a redirect from here
+ * would land after the paint it exists to avoid.
  */
 import { getV2Markets, getV2Status } from '@/lib/api/v2/client';
 import { activeMarkets, groupByCadence, CADENCE_ORDER, wallClockMs } from '@/lib/markets/v2-discovery';

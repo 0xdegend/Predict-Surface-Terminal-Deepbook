@@ -13,11 +13,29 @@
  * Client-only. Nav hrefs read it behind a mounted guard (the server always
  * renders the default) so a persisted 'advanced' can't cause an SSR href
  * mismatch. See [[simple-mode]].
+ *
+ * Every write is MIRRORED INTO A COOKIE. The server decides where a phone lands (see
+ * `shouldLandOnSimple`) and cannot read localStorage, so the cookie is how an explicit
+ * "I want Advanced" reaches it. Writing it here, in the one place the view changes, is
+ * what keeps the two from drifting.
  */
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { TRADE_VIEW_COOKIE, type TradeView } from './trade-view';
 
-export type TradeView = 'simple' | 'advanced';
+export * from './trade-view';
+
+const ONE_YEAR = 60 * 60 * 24 * 365;
+
+/** Mirror the view where the server can see it. Best-effort: a browser that refuses
+ *  cookies just keeps the client-side behaviour it has always had. */
+function mirrorToCookie(view: TradeView) {
+  try {
+    document.cookie = `${TRADE_VIEW_COOKIE}=${view}; path=/; max-age=${ONE_YEAR}; samesite=lax`;
+  } catch {
+    /* no document (SSR) or storage blocked — the store is still the client's truth */
+  }
+}
 
 interface TradeViewState {
   view: TradeView;
@@ -48,9 +66,15 @@ export const useTradeViewStore = create<TradeViewState>()(
   persist(
     (set) => ({
       view: 'simple',
-      setView: (view) => set({ view }),
+      setView: (view) => {
+        mirrorToCookie(view);
+        set({ view });
+      },
       chosen: false,
-      choose: (view) => set({ view, chosen: true }),
+      choose: (view) => {
+        mirrorToCookie(view);
+        set({ view, chosen: true });
+      },
       noticeSeen: false,
       seeNotice: () => set({ noticeSeen: true }),
       resetChoice: () => set({ chosen: false, noticeSeen: false }),
@@ -62,16 +86,12 @@ export const useTradeViewStore = create<TradeViewState>()(
       // existed have a stored `view` but no `chosen`, so it falls back to the initial
       // `false` and they get asked once — which is correct: they never were.
       partialize: (s) => ({ view: s.view, chosen: s.chosen, noticeSeen: s.noticeSeen }) as TradeViewState,
+      // Self-heal: browsers that chose a view BEFORE the cookie existed only have it in
+      // localStorage, so publish it once on rehydrate. Without this a phone carrying an
+      // old 'advanced' would be sent to simple on every cold load.
+      onRehydrateStorage: () => (state) => {
+        if (state) mirrorToCookie(state.view);
+      },
     },
   ),
 );
-
-/** The Trade-tab href for a remembered view, honoring the feature flag. */
-export function tradeHref(view: TradeView, simpleEnabled: boolean): string {
-  return simpleEnabled && view === 'simple' ? '/v2/simple' : '/v2';
-}
-
-/** True when a pathname is either trade screen (advanced `/v2` or `/v2/simple`). */
-export function isTradeRoute(pathname: string): boolean {
-  return pathname === '/v2' || pathname.startsWith('/v2/simple');
-}

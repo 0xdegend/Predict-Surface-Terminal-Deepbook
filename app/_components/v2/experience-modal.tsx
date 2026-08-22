@@ -47,6 +47,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { LuArrowRight } from 'react-icons/lu';
 import { TRADE_MODE_ICON, TRADE_MODE_LABEL } from './trade-mode';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useTradeViewStore, tradeHref, type TradeView } from '@/lib/store/trade-view-store';
 import { visitorKind } from '@/lib/store/visitor';
 import { MASCOT_SRC } from '@/lib/mascot';
@@ -85,6 +86,11 @@ export function ExperienceModal() {
   const mounted = useMounted();
   const chosen = useTradeViewStore((s) => s.chosen);
   const choose = useTradeViewStore((s) => s.choose);
+  // Phones are never asked: the server already lands them on simple mode, and a phone
+  // that reaches /v2 only got here by CHOOSING Advanced — asking "which experience?"
+  // on top of the one they just picked is a question with no right answer. Matches the
+  // app's mobile breakpoint (below lg the nav becomes the bottom dock).
+  const phone = useMediaQuery('(max-width: 1023px)');
   const panelRef = useRef<HTMLDivElement>(null);
   // Decided once per browser and frozen (see `visitorKind`); read behind `mounted` so
   // the server, which has no storage, never disagrees with the first client render.
@@ -100,6 +106,7 @@ export function ExperienceModal() {
   const open =
     V2_EXPERIENCE_PROMPT_ENABLED &&
     mounted &&
+    !phone &&
     !arrived &&
     (pending != null || (newcomer && !chosen && pathname === LANDING));
 
