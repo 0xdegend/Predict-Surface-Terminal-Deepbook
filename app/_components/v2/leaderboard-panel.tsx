@@ -132,9 +132,14 @@ export function V2LeaderboardPanel() {
             <LuTrophy size={18} className="text-accent" />
             Leaderboard
           </h1>
+          {/* Says how the ranking is actually earned, because "starts everyone fresh"
+              answered a question nobody was asking. Matches lib/points/score.ts: every
+              mint scores on volume, profit adds on top, and the performance term is
+              FLOORED AT ZERO, so a losing trade contributes nothing and never subtracts. */}
           <p className="mt-1 text-[12px] text-text-3">
-            The new deployment starts everyone fresh · ranked by {showPoints ? 'Points' : 'Volume'} ·{' '}
-            {predictV2Config.network}
+            {showPoints
+              ? 'Every trade earns Points, win or lose. Winners just earn more.'
+              : 'Ranked by how much you have traded, win or lose.'}
           </p>
         </div>
         <Link

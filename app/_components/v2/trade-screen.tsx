@@ -319,7 +319,7 @@ function Hero({
           Market / settles-in / forward aren't repeated here: the countdown is in
           the ticket beside it, the forward on the surface + nav tape. */}
       <div className="pointer-events-auto absolute left-3 top-3 z-20">
-        <div className="segmented" role="tablist" aria-label="Market view">
+        <div data-tour="view" className="segmented" role="tablist" aria-label="Market view">
           <span
             aria-hidden
             className="segmented-thumb"

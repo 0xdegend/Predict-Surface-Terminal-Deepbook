@@ -838,7 +838,7 @@ export function V2TradeTicket({
         </div>
 
         {/* Binary (up/down) vs vertical-range mode. */}
-        <div className="flex gap-1.5">
+        <div data-tour="mode" className="flex gap-1.5">
           {(['binary', 'range'] as const).map((m) => (
             <button
               key={m}
@@ -911,7 +911,7 @@ export function V2TradeTicket({
                 {/* Live price of this market (mobile sheet only) — read the movement
                     before betting. Strike/win-zone overlays track the slider live. */}
                 {chart}
-                <div className="flex gap-2">
+                <div data-tour="side" className="flex gap-2">
                   <DirectionToggle active={isUp} tone="up" onClick={() => setIsUp(true)}>
                     UP
                   </DirectionToggle>

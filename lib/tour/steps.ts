@@ -93,19 +93,29 @@ const ORIENTATION_STEPS: TourStep[] = ORIENTATION_BASE.filter(
 
 // Action-oriented, in the order a first-timer actually does it. Opens on the two
 // ALWAYS-visible sections (the live view + the market list) so the tour is never a lone
-// step, then zooms into the ticket detail — which only exists on wide screens (the ticket
+// step, then zooms into the ticket detail, which only exists on wide screens (the ticket
 // is a bottom sheet on narrow ones) and once a market is loaded. The overlay resolves each
 // anchor to the first VISIBLE match and drops the rest, so on a narrow screen this tour
-// gracefully shows just Find + Pick, and fills out to Place-it on desktop. "Set up your bet"
-// covers the side/level/amount controls in one step (the ticket's own StepBar already walks
-// those, and their anchors move between the binary/range layouts).
+// gracefully shows just Find + Pick, and fills out to Place-it on desktop.
+//
+// The three decisions a beginner has to make each get their own step rather than being
+// bundled: which VIEW to read the market in (surface or chart), which KIND of bet to make
+// (up/down or a range), and which SIDE to take. Bundling them was faster to write and
+// worse to follow, because a step that names three controls spotlights none of them.
 const TRADE_STEPS: TourStep[] = [
   {
     id: 'trade-find',
     target: '[data-tour="surface"]',
     title: 'Find a market',
     short: 'Find',
-    body: 'This is your live view of the markets — a 3-D map, a chart, or a simple list. Look for one that interests you; the odds and prices update in real time.',
+    body: 'This is your live view of the markets. Look for one that interests you; the odds and prices update in real time.',
+  },
+  {
+    id: 'trade-view',
+    target: '[data-tour="view"]',
+    title: 'Surface or chart',
+    short: 'View',
+    body: 'Two ways to read the same markets. Surface is a 3-D map of every trade on offer at once, good for spotting where the market expects a move. Chart is the plain price line, good for reading what BTC is doing right now. Switch any time; it changes nothing about your trade.',
   },
   {
     id: 'trade-pick',
@@ -115,11 +125,25 @@ const TRADE_STEPS: TourStep[] = [
     body: 'Tap a market here (or a point on the live map) and it loads into your ticket, ready to trade.',
   },
   {
+    id: 'trade-mode',
+    target: '[data-tour="mode"]',
+    title: 'Up / Down or Range',
+    short: 'Type',
+    body: 'Two kinds of bet. Up / Down is a straight call on direction: you win if BTC ends above (or below) your level. Range pays if BTC finishes inside a band you choose, so it wins when the price stays put rather than when it moves your way. Ranges pay more the tighter the band.',
+  },
+  {
+    id: 'trade-side',
+    target: '[data-tour="side"]',
+    title: 'Pick your side',
+    short: 'Side',
+    body: 'UP if you think BTC finishes above your level, DOWN if below. The odds and the payout update the moment you switch, so you can try both before committing.',
+  },
+  {
     id: 'trade-setup',
     target: '[data-tour="ticket"]',
-    title: 'Set up your bet',
+    title: 'Set your level and amount',
     short: 'Set up',
-    body: 'In your ticket, say which way you think BTC goes — UP if it rises, DOWN if it falls (or switch to a range) — set your level, and type how much to bet. Start small while you learn.',
+    body: 'Choose the price level you are betting against, then type how much to put in. A level further from the current price is less likely to land, so it pays more. Start small while you learn.',
   },
   {
     id: 'trade-quote',
@@ -133,7 +157,7 @@ const TRADE_STEPS: TourStep[] = [
     target: '[data-tour="place"]',
     title: 'Place it',
     short: 'Place',
-    body: 'Hit the button, preview the exact cost, and confirm. That is your trade — you can watch it live and close it any time from your portfolio.',
+    body: 'Hit the button, preview the exact cost, and confirm. That is your trade; you can watch it live and close it any time from your portfolio.',
   },
 ];
 
