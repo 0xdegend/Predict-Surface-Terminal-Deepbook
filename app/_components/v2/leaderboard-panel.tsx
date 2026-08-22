@@ -28,6 +28,7 @@ import {
   LuArrowRight,
   LuLayers,
   LuSprout,
+  LuLock,
 } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { num, compact } from '@/lib/format';
@@ -205,6 +206,9 @@ export function V2LeaderboardPanel() {
           <>
             <SortTab label="Points" active={sort === 'points'} onClick={() => selectSort('points')} />
             <SortTab label="Volume" active={sort === 'volume'} onClick={() => selectSort('volume')} />
+            {/* Not a ranking yet: shown so traders know it's coming, disabled so it can't
+                be selected. No preview board behind it — there is nothing to preview. */}
+            <SortTab label="Social XP" locked />
           </>
         ) : (
           <span className="px-1 text-[11px] font-medium text-text-2">Ranked by volume</span>
@@ -760,14 +764,34 @@ function PagerArrow({
   );
 }
 
-function SortTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function SortTab({
+  label,
+  active = false,
+  onClick,
+  locked = false,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  /** A ranking that isn't live yet: padlocked and genuinely disabled, so it reads as
+   *  "coming" rather than as a tab that ignores you. */
+  locked?: boolean;
+}) {
   return (
     <button
-      onClick={onClick}
-      className={`rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-tight transition-colors ${
-        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-2 hover:bg-white/4 hover:text-text-1'
+      onClick={locked ? undefined : onClick}
+      disabled={locked}
+      title={locked ? `${label} is coming soon` : undefined}
+      aria-label={locked ? `${label} (coming soon)` : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium tracking-tight transition-colors ${
+        locked
+          ? 'cursor-not-allowed text-text-3 opacity-60'
+          : active
+            ? 'bg-(--accent-soft) text-text-1'
+            : 'text-text-2 hover:bg-white/4 hover:text-text-1'
       }`}
     >
+      {locked && <LuLock size={10} className="flex-none" aria-hidden />}
       {label}
     </button>
   );
