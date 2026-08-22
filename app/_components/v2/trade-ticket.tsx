@@ -35,7 +35,6 @@ import { skewFeeBase } from '@/lib/sui/v2/skew-fee';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
-import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, defaultBand, type SviFloat } from '@/lib/svi/svi';
@@ -62,6 +61,20 @@ import { SharedTradeBanner } from './share/shared-trade-banner';
 import { TradeShareModal } from './share/trade-share-modal';
 import { buildRecipe } from '@/lib/share/trade-link';
 import { StepBar } from '@/app/_components/ticket/step-bar';
+
+/**
+ * TRIAL, DESKTOP ONLY: collapse the binary flow to ONE screen, the way range mode already
+ * works, so a trader sets side, level and amount without navigating between steps.
+ *
+ * The mobile sheet KEEPS the two-step flow. It has a fraction of the height, and it also
+ * carries the price chart at the top that the desktop rail does not, so one screen there
+ * would be a long scroll through the exact controls the steps exist to separate.
+ *
+ * Flip to `false` to restore the guided two-step flow everywhere (StepBar → "Set Amount"
+ * → recap). Kept as a switch rather than a delete so the two can be compared; once a call
+ * is made, the losing branch should be removed rather than left to rot.
+ */
+const BINARY_ONE_STEP_DESKTOP = true;
 import { GlassError } from '@/app/_components/ui/glass-error';
 import { DirectionToggle } from '@/app/_components/ticket/direction-toggle';
 import { GlassCta } from '@/app/_components/ticket/glass-cta';
@@ -132,9 +145,6 @@ export function V2TradeTicket({
   const armInstant = useSessionPrefs((s) => s.armInstant);
   const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
   const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
-  // Which hero the trader is looking at, so the ticket title can tell them how to load
-  // a market: click the 3-D surface, or use the ticket itself when the chart is showing.
-  const heroView = useSurfaceStore((s) => s.heroView);
 
   // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
   // gas SUI). One tap drips a starter grant from the app treasury — the SAME
@@ -173,6 +183,8 @@ export function V2TradeTicket({
   // Two-step guided flow (legacy parity): 1 = side & level, 2 = bet (+ review
   // modal). An external pick (surface / market card) jumps straight to step 2.
   const [step, setStep] = useState<1 | 2>(1);
+  /** One-screen binary ticket: desktop rail only, never the mobile sheet. */
+  const oneStep = BINARY_ONE_STEP_DESKTOP && !mobile;
   // Stake as a raw editing buffer so the field can be empty / mid-edit (a
   // number-typed input coerces "" → 0, which makes a fresh digit read as "02").
   // The parsed number lives in the store for the sizing math. `null` = "not
@@ -203,7 +215,7 @@ export function V2TradeTicket({
   const [appliedPick, setAppliedPick] = useState(pickSeq);
   if (pickSeq !== appliedPick) {
     setAppliedPick(pickSeq);
-    if (mode === 'binary' && !mobile) setStep(2);
+    if (mode === 'binary' && !mobile && !BINARY_ONE_STEP_DESKTOP) setStep(2);
   }
 
   // One-time: right-size the default bet to what the wallet holds, once the
@@ -390,11 +402,12 @@ export function V2TradeTicket({
   // insufficient-funds case there's nothing here that must never be hidden.
   const detailsOpen = showCostDetails;
 
-  // Risk → reward (the money answer): what you pay now vs. the max win.
-  // "You pay" headlines the STAKE the user picked ($10 stays $10 — user
-  // feedback: the fee-inflated figure read as "I'm betting 10.40"); the
-  // protocol fee itemizes in the cost breakdown instead. The payout multiple
-  // stays ALL-IN (stake + fee) so the money math never lies.
+  // The STAKE the user picked ($10 stays $10 — user feedback: the fee-inflated figure
+  // read as "I'm betting 10.40"); the protocol fee itemizes in the cost breakdown
+  // instead. The payout multiple stays ALL-IN (stake + fee) so the money math never lies.
+  //
+  // No longer headlines the quote card (that restated the Bet amount box) — it now backs
+  // the leverage liquidation warning, where "most you can lose" is the whole point.
   const payDollars = fromQuote(stakeBase);
   // All-in = stake + protocol fee + skew fee (when charged), so the multiple never
   // overstates the trade.
@@ -411,7 +424,17 @@ export function V2TradeTicket({
 
   // Live step for the first-timer guide (legacy parity): binary tracks the real
   // step (3 = reviewing in the modal); range advances once a band exists.
-  const guideStep: 1 | 2 | 3 = rangeMode ? (bandSet ? 2 : 1) : confirmOpen ? 3 : step;
+  const guideStep: 1 | 2 | 3 = rangeMode
+    ? bandSet
+      ? 2
+      : 1
+    : confirmOpen
+      ? 3
+      : oneStep
+        ? stake > 0
+          ? 2
+          : 1
+        : step;
 
   function applyBet(v: string) {
     // digits + a single optional decimal; empty allowed
@@ -607,22 +630,23 @@ export function V2TradeTicket({
         </span>
       ) : (
         <div className="flex flex-col">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">You pay</span>
-              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                <span className="text-[22px] leading-none text-text-1">${payDollars.toFixed(2)}</span>
-                <span className="text-[11px] leading-none text-text-3">{sym}</span>
-              </span>
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="eyebrow">You win</span>
-              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+          {/* "You pay" used to sit beside this. It printed `payDollars`, which IS the
+              stake from the Bet amount box a row above (fees itemize under Cost details,
+              deliberately), so it restated a number the trader had just typed.
+              With the card down to one column, the payout takes the left and the multiple
+              is pushed to the right edge: two different questions ("how much do I get",
+              "how good is that") stop competing for the same spot. */}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="eyebrow">You win</span>
+            <span className="flex items-baseline justify-between gap-3">
+              <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                 <span className="text-[22px] leading-none text-up">${winDollars.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 <span className="text-[11px] leading-none text-text-3">{sym}</span>
-                <span className="rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">{fmtMult(mult)}</span>
               </span>
-            </div>
+              <span className="shrink-0 rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">
+                {fmtMult(mult)}
+              </span>
+            </span>
           </div>
           <button
             type="button"
@@ -709,11 +733,14 @@ export function V2TradeTicket({
         <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
       </div>
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
-      <p className="text-[10px] leading-relaxed text-text-3">
-        {oneTapPlace
-          ? 'One-tap places your bet instantly, no review. Final cost is capped on-chain.'
-          : 'You’ll preview the exact cost before approving.'}
-      </p>
+      {/* Only the one-tap caution survives: it warns there is NO review step, which the
+          button does not say. The review-flow twin just restated a button labelled
+          "Review" one row above it. */}
+      {oneTapPlace && (
+        <p className="text-[10px] leading-relaxed text-text-3">
+          One-tap places your bet instantly, no review. Final cost is capped on-chain.
+        </p>
+      )}
       {shareBase && (
         <button
           type="button"
@@ -766,7 +793,11 @@ export function V2TradeTicket({
   // The bet step breathes wider than the pick step. It now carries four things (recap,
   // amount, quote, confirm) where it used to carry seven, and at the pick step's spacing
   // that trimmed set read as one dense block rather than four decisions.
-  const bodyGap = !rangeMode && step === 2 ? 'gap-5' : 'gap-4';
+  const bodyGap = !rangeMode && !oneStep && step === 2 ? 'gap-5' : 'gap-4';
+  // Range stacks more controls in one screen than the binary pick step does (explainer,
+  // two price inputs, the ladder, stake, quote) with no StepBar to break them up, so at
+  // the shared 12px they read as one column of boxes. 16px separates them into decisions.
+  const controlGap = rangeMode || oneStep ? 'gap-4' : 'gap-3';
 
   return (
     <div className={`flex flex-col ${bodyGap} font-mono text-[12px] tabular-nums`}>
@@ -777,7 +808,7 @@ export function V2TradeTicket({
       <SessionGasWarning />
       {/* Back to step 1 to change the strike (read-only on the bet step). Sits at
           the very top, above the guide, so it's the first thing on the bet step. */}
-      {!rangeMode && step === 2 && (
+      {!rangeMode && !oneStep && step === 2 && (
         <button
           type="button"
           onClick={() => setStep(1)}
@@ -808,26 +839,10 @@ export function V2TradeTicket({
         }}
       />
 
-      {/* Ticket title — sits UNDER the guide so "How it works" leads. The hint is dynamic
-          by hero (surface → click surface; chart → use the ticket) and forced to a single
-          line (truncates) so it never wraps into a second row. Desktop rail only; the
-          mobile sheet has its own header. */}
-      {!mobile && (
-        <h2 className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-text-2">
-          <span aria-hidden className="h-3 w-px shrink-0 bg-accent/70" />
-          <span className="min-w-0 truncate">
-            Trade ticket · {heroView === 'chart' ? 'pick a side' : 'click surface'}
-          </span>
-          <span className="ml-auto shrink-0 normal-case">
-            <SessionPill />
-          </span>
-        </h2>
-      )}
-
       {/* One step up from gap-2: collapsing the odds panel freed vertical room, so
           each control (countdown, mode, side, strike, stake, quote) gets a bit more
-          air between it and the next. gap-3 (12px) not gap-4 — good separation, not loose. */}
-      <div className="flex flex-col gap-3">
+          air between it and the next. See `controlGap` for why range goes wider. */}
+      <div className={`flex flex-col ${controlGap}`}>
         <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 font-mono text-[11px] tabular-nums text-text-2">
             BTC · {dateUTC(market.expiry)} ·{' '}
@@ -835,6 +850,13 @@ export function V2TradeTicket({
               {tooCloseToExpiry ? 'expired' : `${countdown(market.expiry, now)} left`}
             </span>
           </span>
+          {/* SessionPill's home now the ticket title is gone. This row was already
+              justify-between with nothing on the right, so the pill costs no height. */}
+          {!mobile && (
+            <span className="shrink-0">
+              <SessionPill />
+            </span>
+          )}
         </div>
 
         {/* Binary (up/down) vs vertical-range mode. */}
@@ -868,24 +890,16 @@ export function V2TradeTicket({
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 text-[12px] leading-relaxed text-text-2">
-                  Win if <span className="text-text-1">BTC</span> settles{' '}
-                  <span className="text-up">inside your band</span> at expiry.
-                </p>
-                <button
-                  type="button"
-                  onClick={resetToDefault}
-                  className="ctrl-soft shrink-0 rounded-md px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-text-3 transition-colors hover:text-text-1"
-                >
-                  Reset
-                </button>
-              </div>
+              {/* The "Win if BTC ends inside your band." explainer used to lead here,
+                  with Reset beside it. Binary no longer narrates itself either: the RANGE
+                  tab is lit directly above and the picker below is visibly a band. Reset
+                  moved into the ladder, onto the row with the values it resets. */}
 
               {/* Horizontal range picker — live LOW/HIGH inputs on top, a filled
                   price strip you drag/tap below. Snaps to real admission strikes;
                   the Odds tab keeps the full curve. */}
               <RangeLadder
+                onReset={resetToDefault}
                 forward={pricer.forward}
                 svi={svi}
                 admStep={admStep}
@@ -904,9 +918,9 @@ export function V2TradeTicket({
           )
         ) : (
           <>
-            <StepBar step={step} onStep={setStep} />
+            {!oneStep && <StepBar step={step} onStep={setStep} />}
 
-            {step === 1 ? (
+            {oneStep || step === 1 ? (
               <>
                 {/* Live price of this market (mobile sheet only) — read the movement
                     before betting. Strike/win-zone overlays track the slider live. */}
@@ -919,15 +933,6 @@ export function V2TradeTicket({
                     DOWN
                   </DirectionToggle>
                 </div>
-
-                {/* Plain-language explainer so a first-time visitor understands the bet. */}
-                <p className="text-[12px] leading-relaxed text-text-2">
-                  Win if <span className="text-text-1">BTC</span> settles{' '}
-                  <span className={isUp ? 'text-up' : 'text-down'}>
-                    {isUp ? 'above' : 'at or below'} {usd(strike)}
-                  </span>{' '}
-                  at expiry.
-                </p>
 
                 {/* Strike as a PAYOUT slider — bounded to the quotable band, centered on
                     today's price; the exact strike + a ±1-tick nudge live on the slider. */}
@@ -949,9 +954,20 @@ export function V2TradeTicket({
                   </p>
                 )}
 
-                <GlassCta onClick={() => setStep(2)} disabled={tooCloseToExpiry || !probOk}>
-                  {tooCloseToExpiry ? 'Market expired' : 'Set Amount'}
-                </GlassCta>
+                {/* One-step: the amount and quote follow straight on, so there is nothing
+                    to advance TO. The two-step flow still needs its hand-off CTA. */}
+                {oneStep ? (
+                  <>
+                    {betSection}
+                    {leverageSection}
+                    {quoteCard}
+                    {betFooter}
+                  </>
+                ) : (
+                  <GlassCta onClick={() => setStep(2)} disabled={tooCloseToExpiry || !probOk}>
+                    {tooCloseToExpiry ? 'Market expired' : 'Set Amount'}
+                  </GlassCta>
+                )}
               </>
             ) : (
               <>

@@ -61,7 +61,10 @@ function BoundField({
   };
   return (
     <label className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wider text-text-3">{label}</span>
+      {/* Kept for screen readers, hidden from the layout: two number boxes sitting left
+          and right above a band picker describe themselves, and the eyebrow row cost a
+          line of height to say so. */}
+      <span className="sr-only">{label}</span>
       <div className="ctrl-soft flex items-center gap-1 rounded-md px-2 py-1.5 focus-within:border-white/20">
         <span className="text-[10px] text-text-3">$</span>
         <input
@@ -98,11 +101,14 @@ export function RangeLadder({
   higher,
   onChange,
   disabled,
+  onReset,
 }: {
   forward: number;
   svi: SviFloat;
   admStep: number;
   admissionTickSize: bigint;
+  /** Optional Reset, rendered beside the LOW/HIGH fields. */
+  onReset?: () => void;
   lower: number;
   higher: number;
   onChange: (lo: number, hi: number) => void;
@@ -234,10 +240,20 @@ export function RangeLadder({
 
   return (
     <div className="flex select-none flex-col gap-2">
-      {/* live LOW / HIGH inputs (bound both ways) */}
-      <div className="flex items-end gap-2">
+      {/* live LOW / HIGH inputs (bound both ways), with Reset beside the values it
+          resets — it used to share a row with an explainer that has since been cut. */}
+      <div className="flex items-center gap-2">
         <BoundField label="Low" value={lower} onCommit={(n) => applyEdge('lower', n)} disabled={disabled} />
         <BoundField label="High" value={higher} onCommit={(n) => applyEdge('higher', n)} disabled={disabled} />
+        {onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="ctrl-soft shrink-0 rounded-md px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-text-3 transition-colors hover:text-text-1"
+          >
+            Reset
+          </button>
+        )}
       </div>
 
       {/* the price strip */}
@@ -327,8 +343,10 @@ export function RangeLadder({
         )}
       </div>
 
-      <div className="flex items-center justify-between font-mono text-[10px] tabular-nums text-text-3">
-        <span>drag or tap the handles</span>
+      {/* "drag or tap the handles" used to sit on the left. The handles carry grip marks
+          and are the only interactive thing in the strip, so the instruction was only ever
+          news once and cost a row forever. */}
+      <div className="flex items-center justify-end font-mono text-[10px] tabular-nums text-text-3">
         <span className="text-up">≈ {pct(chance, 0)} chance in band</span>
       </div>
     </div>
