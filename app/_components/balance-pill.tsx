@@ -33,6 +33,11 @@ const useIsoLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : use
 const PILL_CLASS =
   'hidden h-full items-center gap-1.5 px-3 font-mono text-[11px] tabular-nums text-text-1 transition-colors hover:bg-white/[0.04] md:inline-flex';
 
+/** The unit label. Stands down until 2xl so the balance keeps its place in a tight top
+ *  bar: the figure is what a trader reads, the app is single-quote-asset, and both the
+ *  aria-label and the hover breakdown still name it. */
+const SYM_CLASS = 'hidden text-text-3 2xl:inline';
+
 export function BalancePill() {
   const pathname = usePathname();
   const isV2 = pathname?.startsWith('/v2') ?? false;
@@ -96,7 +101,7 @@ function V2TotalPill() {
         className={PILL_CLASS}
       >
         <span className="text-text-1">{ready ? fmtQuote(fromQuote(totalBase)) : '…'}</span>
-        <span className="text-text-3">{sym}</span>
+        <span className={SYM_CLASS}>{sym}</span>
       </Link>
 
       {open &&
@@ -173,7 +178,7 @@ function WalletOnlyPill() {
       className={PILL_CLASS}
     >
       <span className="text-text-1">{data === undefined ? '…' : fmtQuote(fromQuote(data))}</span>
-      <span className="text-text-3">{sym}</span>
+      <span className={SYM_CLASS}>{sym}</span>
     </Link>
   );
 }

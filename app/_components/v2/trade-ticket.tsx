@@ -843,9 +843,16 @@ export function V2TradeTicket({
           air between it and the next. See `controlGap` for why range goes wider. */}
       <div className={`flex flex-col ${controlGap}`}>
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 font-mono text-[11px] tabular-nums text-text-2">
-            BTC · {dateUTC(market.expiry)} ·{' '}
-            <span className={closingSoon || tooCloseToExpiry ? 'text-down' : 'text-text-3'}>
+          {/* Two parts so this row can never become two lines: the date TRUNCATES under
+              pressure, the countdown never does (it is the live number, and it sits at the
+              end where a plain truncate would have eaten it first). The " UTC" suffix is
+              dropped here to buy the room back — the full expiry with its zone is still in
+              the cost-details rows. */}
+          <span className="flex min-w-0 items-baseline gap-1 font-mono text-[11px] tabular-nums text-text-2">
+            <span className="truncate">BTC · {dateUTC(market.expiry, false)} ·</span>
+            <span
+              className={`shrink-0 ${closingSoon || tooCloseToExpiry ? 'text-down' : 'text-text-3'}`}
+            >
               {tooCloseToExpiry ? 'expired' : `${countdown(market.expiry, now)} left`}
             </span>
           </span>

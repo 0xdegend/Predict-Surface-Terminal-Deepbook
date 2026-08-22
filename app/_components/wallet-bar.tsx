@@ -111,7 +111,14 @@ export function WalletBar() {
             aria-label="Account menu"
           >
             <WalletGlyph wallet={conn.wallet} />
-            <span className="hidden whitespace-nowrap md:inline">{shortId(conn.account.address)}</span>
+            {/* The address is the widest thing in this cluster and the least urgent: the
+                glyph already says which wallet, and the full address is one click away in
+                the menu. Shown at md (the top nav is still hidden there, so the bar is
+                empty), stood down through lg/xl where the nav competes for the same row,
+                back at 2xl. */}
+            <span className="hidden whitespace-nowrap md:inline lg:hidden 2xl:inline">
+              {shortId(conn.account.address)}
+            </span>
             <LuChevronDown
               size={13}
               className={`text-text-3 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -321,7 +328,7 @@ function NetworkBadge({
         }`}
       >
         {icon}
-        {network}
+        <span className="hidden 2xl:inline">{network}</span>
       </span>
     );
   }

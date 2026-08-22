@@ -151,8 +151,13 @@ export function V2Chrome() {
       ]
     : [...MORE_ITEMS, ...SOCIAL_ITEMS];
 
+  // TRACKS: `auto minmax(0,1fr) auto` everywhere except 2xl. The symmetric
+  // `1fr auto 1fr` (which centres the price chip) sizes both side tracks to HALF the bar
+  // regardless of what is in them — so once the nav grew past half, the left zone ran
+  // under the chip and pushed the wallet off the right edge. Now the middle track is the
+  // one that gives, and true centring only kicks in at 2xl, where it all fits with room.
   return (
-    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
+    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-3 sm:px-5 2xl:gap-4 min-[1600px]:grid-cols-[1fr_auto_1fr]">
       {/* brand + nav */}
       <div className="flex shrink-0 items-center gap-3 sm:gap-5">
         <Link href={tradeTarget} className="group flex items-center gap-2" aria-label="Skew — Latest home">
@@ -164,7 +169,9 @@ export function V2Chrome() {
             priority
             className="h-5.5 w-5.5 transition-transform group-hover:scale-105"
           />
-          <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:inline">Skew</span>
+          <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:inline lg:hidden xl:inline">
+            Skew
+          </span>
         </Link>
         <nav className="hidden items-center gap-1 lg:flex">
           {PRIMARY.map((n) => {
@@ -180,17 +187,21 @@ export function V2Chrome() {
         </nav>
       </div>
 
-      {/* live chip — the always-on BTC price, shown on every breakpoint (it fills
-          the otherwise-empty middle of the mobile bar, and Pyth spot stays live
-          even while markets are paused). */}
-      <div data-tour="chip" className="flex min-w-0 justify-center">
+      {/* Live BTC price. On phones it fills the otherwise-empty middle of the bar, and
+          Pyth spot stays live even while markets are paused. It stands down for the full
+          nav on lg laptops (1024-1279), where the bar is at its tightest and every trade
+          screen already shows spot in the chart, the surface and the ticket, and comes
+          back at xl. `overflow-hidden` is the backstop: if the bar is ever squeezed past
+          what these rules allow, the price clips instead of shoving the wallet offscreen. */}
+      <div data-tour="chip" className="flex min-w-0 justify-center overflow-hidden lg:hidden xl:flex">
         <V2SpotTape />
       </div>
 
-      {/* socials + toggle + wallet. Socials are desktop-only (hidden lg:flex) so
-          the tight mobile bar stays clear — phones reach them via the More sheet. */}
+      {/* socials + toggle + wallet. The social icons are the lowest-value thing in the
+          bar and the only one duplicated elsewhere (they are rows in the More menu, and
+          the mobile More sheet), so they are the first to go: 2xl only. */}
       <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-        <SocialIconLinks className="hidden lg:flex" />
+        <SocialIconLinks className="hidden 2xl:flex" />
         <TourButton />
         {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
             on the trade screen. Every other page shows none — the Legacy ⇄ Latest
@@ -221,7 +232,7 @@ export function V2Chrome() {
  * transparent at rest, so selecting an item never shifts the row by a pixel.
  */
 function navItemClass(active: boolean): string {
-  return `rounded-md border px-3 py-1.5 text-[13px] font-medium tracking-tight transition-colors duration-200 ${
+  return `rounded-md border px-2.5 py-1.5 text-[13px] font-medium tracking-tight transition-colors duration-200 2xl:px-3 ${
     active
       ? 'border-(--accent-line) bg-(--accent-soft) text-text-1'
       : 'border-transparent text-text-2 hover:bg-white/[0.035] hover:text-text-1'
