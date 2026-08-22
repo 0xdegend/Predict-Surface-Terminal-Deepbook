@@ -11,8 +11,8 @@
  * only swaps front-end complexity within Latest, so every other page is untouched.
  *
  * It wears the SAME control language as that toggle, though — a recessed frosted track,
- * two segments that carry an icon, a label and a small lowercase note, accent glass on
- * the live side, and a centre swap-circle floating over the seam. Two controls that do
+ * two segments that carry an icon and a label, accent glass on the live side, and a
+ * centre swap-circle floating over the seam. Two controls that do
  * the same KIND of job should look like siblings; the only thing separating them is
  * which pages they appear on.
  *
@@ -37,8 +37,6 @@ const OPTIONS: {
   label: string;
   href: string;
   Icon: IconType;
-  /** The small lowercase line under the label — who the mode is for, in one word. */
-  note: string;
   hint: string;
 }[] = [
   {
@@ -46,7 +44,6 @@ const OPTIONS: {
     label: TRADE_MODE_LABEL.simple,
     href: '/v2/simple',
     Icon: TRADE_MODE_ICON.simple,
-    note: 'easy',
     hint: 'Up or down on a timed round — pick an amount and a direction, nothing else.',
   },
   {
@@ -54,7 +51,6 @@ const OPTIONS: {
     label: TRADE_MODE_LABEL.advanced,
     href: '/v2',
     Icon: TRADE_MODE_ICON.advanced,
-    note: 'pro',
     hint: 'The full terminal — strikes, ranges, leverage and the 3-D volatility surface.',
   },
 ];
@@ -66,7 +62,6 @@ const SIZES = {
     track: 'inline-flex h-9 shrink-0 rounded-full',
     icon: 14,
     label: 'text-[11px]',
-    note: 'text-[8px]',
     padL: 'pl-3 pr-6',
     padR: 'pl-6 pr-3',
     circle: 'h-7 w-7',
@@ -76,7 +71,6 @@ const SIZES = {
     track: 'flex h-12 w-full rounded-2xl',
     icon: 16,
     label: 'text-[13px]',
-    note: 'text-[9px]',
     padL: 'pl-4 pr-9',
     padR: 'pl-9 pr-4',
     circle: 'h-9 w-9',
@@ -165,21 +159,12 @@ export function TradeModeToggle({
               size={sz.icon}
               className={`shrink-0 transition-colors ${isActive ? 'text-accent' : 'text-text-3 group-hover:text-text-2'}`}
             />
-            <span className="flex flex-col gap-px leading-none">
-              <span
-                className={`font-mono ${sz.label} tracking-tight transition-colors ${
-                  isActive ? 'text-text-1' : 'text-text-2 group-hover:text-text-1'
-                }`}
-              >
-                {opt.label}
-              </span>
-              <span
-                className={`inline-flex items-center font-medium lowercase leading-none tracking-[0.14em] ${sz.note} ${
-                  isActive ? 'text-accent' : 'text-text-3'
-                }`}
-              >
-                {opt.note}
-              </span>
+            <span
+              className={`font-mono ${sz.label} leading-none tracking-tight transition-colors ${
+                isActive ? 'text-text-1' : 'text-text-2 group-hover:text-text-1'
+              }`}
+            >
+              {opt.label}
             </span>
           </button>
         );
