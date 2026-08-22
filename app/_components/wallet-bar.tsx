@@ -196,24 +196,20 @@ function ConnectedMenu({
 }) {
   return (
     <div className="flex flex-col gap-1.5 p-1">
-      {/* identity */}
-      <div className="flex items-center gap-2.5 px-1.5 pt-1">
-        <WalletGlyph wallet={wallet} size={26} />
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-[12px] font-medium text-text-1">{wallet.name}</span>
-          <span className="text-[10px] text-text-3">
-            Connected · {network}
-          </span>
-        </div>
-      </div>
-
-      {/* address */}
+      {/* Identity folded INTO the address row. The 26px wallet glyph and the
+          "Connected · testnet" line both restated the nav bar the menu hangs off:
+          the trigger carries the same glyph, the network badge sits one segment
+          away, and an open account menu means you are connected. That was two rows
+          of chrome before the first useful control. */}
       <button
         onClick={onCopy}
         className="glass-inset group flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:border-line-strong"
       >
-        <span className="font-mono text-[11px] tabular-nums text-text-2 group-hover:text-text-1">
-          {shortId(address, 10, 8)}
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="font-mono text-[11px] tabular-nums text-text-2 group-hover:text-text-1">
+            {shortId(address, 10, 8)}
+          </span>
+          <span className="truncate text-[10px] text-text-3">{wallet.name}</span>
         </span>
         {copied ? (
           <span className="flex items-center gap-1 text-[10px] text-up">
