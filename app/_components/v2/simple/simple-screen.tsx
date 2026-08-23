@@ -17,7 +17,7 @@
  * land on the leaderboard, portfolio and PnL like any other — it's a front-end, not a
  * second engine. See [[simple-mode]].
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
@@ -251,18 +251,21 @@ export function SimpleScreen({
       },
       { silentSuccess: true, startSession: wasArming ? { duration: sessionDuration } : undefined },
     );
+    // Win or lose the review closes, and the page's one error banner does the talking.
+    // That banner is deliberately the ONLY place a failure is reported on this screen: a
+    // message inside the dialog AND another one behind it is two things to read and two to
+    // dismiss, which on a phone is most of the screen.
     setConfirm(null);
-    if (digest) {
-      if (wasArming) setArmInstant(false);
-      setSuccess({
-        headline: `BTC · ${isUp ? 'UP' : 'DOWN'}`,
-        tone: isUp ? 'up' : 'down',
-        rows: reviewRows(pick, f.chargesSkewFee ? { due: f.skewFeeDue, bps: skewFee.feeBps } : undefined),
-        staked: usd(q.stakeBase),
-        maxWin: usd(q.winBase),
-        digest,
-      });
-    }
+    if (!digest) return;
+    if (wasArming) setArmInstant(false);
+    setSuccess({
+      headline: `BTC · ${isUp ? 'UP' : 'DOWN'}`,
+      tone: isUp ? 'up' : 'down',
+      rows: reviewRows(pick, f.chargesSkewFee ? { due: f.skewFeeDue, bps: skewFee.feeBps } : undefined),
+      staked: usd(q.stakeBase),
+      maxWin: usd(q.winBase),
+      digest,
+    });
   }
 
   const secsLeft = active ? Math.max(0, Math.round((active.expiry - now) / 1000)) : 0;
@@ -595,9 +598,16 @@ export function SimpleScreen({
                 </p>
               ) : null}
 
-              {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
             </aside>
           </div>
+
+          {/* Why the last action failed. It sits HERE, below the whole row, rather than
+              inside the ticket: the ticket is `lg:flex` only, so on a phone — the screen
+              this page is the default landing for — a failed mint or a failed account
+              setup had nowhere to appear at all. One banner under the row reads as the
+              foot of the ticket on desktop and as the foot of the chart on a phone, which
+              is where the buttons are in both cases. */}
+          <MintError message={acct.error} onDismiss={acct.clearError} />
 
           {/* The loop, closed: what you have running right now, then what else is open,
               then how the last rounds went. Self-gating — "Your bets" renders nothing
@@ -708,6 +718,28 @@ function LinePill({ value, momentum }: { value: number; momentum: Momentum }) {
       {price(value)}
       <span className="sr-only"> ({label})</span>
     </span>
+  );
+}
+
+/**
+ * The last action's failure, and it makes sure it is READ. Bets on this screen can be
+ * placed from three places (the chart's buttons, a round card further down, the amount
+ * drawer), and a one-tap bet skips the review dialog entirely — so the trader can easily
+ * be looking at a different part of the page by the time this appears. `block: 'nearest'`
+ * is the whole trick: it does nothing when the banner is already on screen, and scrolls
+ * the minimum when it is not.
+ */
+function MintError({ message, onDismiss }: { message: string | null; onDismiss: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!message) return;
+    ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [message]);
+  if (!message) return null;
+  return (
+    <div ref={ref}>
+      <GlassError message={message} onDismiss={onDismiss} />
+    </div>
   );
 }
 
