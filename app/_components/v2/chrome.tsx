@@ -151,15 +151,28 @@ export function V2Chrome() {
       ]
     : [...MORE_ITEMS, ...SOCIAL_ITEMS];
 
-  // TRACKS: `auto minmax(0,1fr) auto` everywhere except 2xl. The symmetric
-  // `1fr auto 1fr` (which centres the price chip) sizes both side tracks to HALF the bar
-  // regardless of what is in them — so once the nav grew past half, the left zone ran
-  // under the chip and pushed the wallet off the right edge. Now the middle track is the
-  // one that gives, and true centring only kicks in at 2xl, where it all fits with room.
+  // TRACKS: the two side zones are `minmax(max-content,1fr)`, the price chip in the
+  // middle is `auto`. That one line does what two hand-picked breakpoints could not.
+  //
+  // Plain `1fr auto 1fr` centres the chip perfectly but sizes both side tracks to HALF
+  // the bar no matter what is in them, so once the nav grew past half it ran under the
+  // chip and shoved the wallet off the right edge. The fallback, `auto minmax(0,1fr) auto`,
+  // is safe but centres the chip inside the LEFTOVER space rather than the bar — and the
+  // left zone (brand + six nav items) outweighs the right by ~350px, which parked the
+  // price 173px right of centre on every screen under 1600.
+  //
+  // `minmax(max-content,1fr)` is both: the 1fr splits the free space evenly, so the chip
+  // sits dead centre, while the max-content floor lets a side zone refuse to shrink under
+  // its own content. Grid then freezes that track at its content width and gives the rest
+  // to the other side. So it centres exactly as soon as there is room to, and degrades to
+  // the safe asymmetric layout below that, with no magic number to re-tune the next time a
+  // nav item is added or dropped. Measured: dead centre at every width from 1280 up, except
+  // 1280-1320 on the three routes whose More trigger carries a long label, where the left
+  // zone genuinely wants more than half the bar and the price sits ~25px right of centre.
   return (
-    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-3 sm:px-5 2xl:gap-4 min-[1600px]:grid-cols-[1fr_auto_1fr]">
+    <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)] items-center gap-2 border-b px-3 sm:gap-3 sm:px-5 2xl:gap-4">
       {/* brand + nav */}
-      <div className="flex shrink-0 items-center gap-3 sm:gap-5">
+      <div className="col-start-1 flex shrink-0 items-center gap-3 sm:gap-5">
         <Link href={tradeTarget} className="group flex items-center gap-2" aria-label="Skew — Latest home">
           <Image
             src="/skew-mark.png"
@@ -169,7 +182,24 @@ export function V2Chrome() {
             priority
             className="h-5.5 w-5.5 transition-transform group-hover:scale-105"
           />
-          <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:inline lg:hidden xl:inline">
+          {/* The wordmark is the left zone's swing weight: with it the zone needs 542px,
+              without it 496px. It already stands down through the lg band where the bar is
+              tightest; holding it down to 1470 is what lets the price sit dead centre on
+              the mid-size screens too, instead of being shunted up against the nav. 1470
+              rather than something tighter because the More trigger relabels itself to the
+              page you are on, and the longest of those ("Kelly's Record") runs ~50px wider
+              than the word "More" — so the zone's real width depends on the route. 1470
+              clears even that label with ~20px to spare, so adding a nav item does not
+              quietly knock the price off centre again. The mark itself never leaves, so
+              the brand is always in the corner.
+
+              Written as two disjoint ranges (640-1023, then 1470+) rather than the more
+              obvious `sm:inline lg:hidden min-[1470px]:inline`. That version competes two
+              media rules for one property and lets Tailwind's emit order pick the winner —
+              which put the arbitrary `min-[…]` BEFORE `lg`, so `lg:hidden` won and the
+              wordmark never came back at all. Disjoint ranges only ever beat the unprefixed
+              `hidden`, never each other. */}
+          <span className="hidden text-[15px] font-semibold tracking-tight text-text-1 sm:max-lg:inline min-[1470px]:inline">
             Skew
           </span>
         </Link>
@@ -187,20 +217,26 @@ export function V2Chrome() {
         </nav>
       </div>
 
-      {/* Live BTC price. On phones it fills the otherwise-empty middle of the bar, and
+      {/* Live BTC price. Each of the three zones names its own column (col-start-1/2/3)
+          because this chip is display:none in the lg band — and an absent grid item means
+          the wallet auto-places into column 2, stranding an empty 1fr column 3 that shoved
+          it ~250px in from the right edge. Naming the columns keeps every zone where it
+          belongs no matter which ones are on screen.
+
+          On phones the chip fills the otherwise-empty middle of the bar, and
           Pyth spot stays live even while markets are paused. It stands down for the full
           nav on lg laptops (1024-1279), where the bar is at its tightest and every trade
           screen already shows spot in the chart, the surface and the ticket, and comes
           back at xl. `overflow-hidden` is the backstop: if the bar is ever squeezed past
           what these rules allow, the price clips instead of shoving the wallet offscreen. */}
-      <div data-tour="chip" className="flex min-w-0 justify-center overflow-hidden lg:hidden xl:flex">
+      <div data-tour="chip" className="col-start-2 flex min-w-0 justify-center overflow-hidden lg:hidden xl:flex">
         <V2SpotTape />
       </div>
 
       {/* socials + toggle + wallet. The social icons are the lowest-value thing in the
           bar and the only one duplicated elsewhere (they are rows in the More menu, and
           the mobile More sheet), so they are the first to go: 2xl only. */}
-      <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
+      <div className="col-start-3 flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         <SocialIconLinks className="hidden 2xl:flex" />
         <TourButton />
         {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
