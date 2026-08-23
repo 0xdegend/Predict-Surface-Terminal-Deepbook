@@ -35,7 +35,7 @@ export function ProbabilityConsensus({
   expiryMs: number | null;
   onBet: () => void;
 }) {
-  const { mode } = useVocab();
+  const { mode, pro } = useVocab();
   // Live 1s wall-clock (shared interval) so the "by 45 sec" horizon ticks down
   // smoothly. Called before the early return to keep hook order stable. Seed 0 is
   // never shown (this card only renders client-side, once consensus data loads).
@@ -50,8 +50,10 @@ export function ProbabilityConsensus({
   return (
     <section>
       <div className="mb-3 mt-1 flex items-center gap-2.5">
-        <h2 className="text-[14px] font-semibold text-text-1">Probability consensus</h2>
-        <span className="rounded bg-(--accent-soft) px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-inset ring-(--accent-line)">flagship</span>
+        <h2 className="text-[14px] font-semibold text-text-1">{pro ? 'Probability consensus' : 'Is this bet priced right?'}</h2>
+        {pro && (
+          <span className="rounded bg-(--accent-soft) px-2 py-0.5 text-[10px] uppercase tracking-wide text-accent ring-1 ring-inset ring-(--accent-line)">flagship</span>
+        )}
         <span className="h-px flex-1 bg-gradient-to-r from-line to-transparent" />
       </div>
 
@@ -64,7 +66,31 @@ export function ProbabilityConsensus({
           by {timeLabel}
         </div>
 
-        <div className="relative mb-1 mt-6">
+        {/* PLAIN reads the three sources as ONE answer. The three-bar chart with an
+            agreement band is a real read for a desk, but to a newcomer it is three
+            near-identical bars and a dashed line that needs explaining — and the panel
+            already computes the sentence that says what it means. So Plain gets that
+            sentence plus a single bar (our surface, the number the bet is priced off),
+            and Pro keeps the full comparison. */}
+        {!pro && (
+          <div className="mt-4">
+            <div className="flex items-center gap-3">
+              <span className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] ring-1 ring-inset ring-white/5">
+                <span
+                  className="absolute inset-y-0 left-0 overflow-hidden rounded-full"
+                  style={{ width: `${(consensus.sources[0]?.prob ?? 0) * 100}%`, background: SRC_COLOR.surface, opacity: 0.85 }}
+                >
+                  <span className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/30 to-transparent" />
+                </span>
+              </span>
+              <span className="w-12 text-right font-mono text-[15px] tabular-nums text-text-1">
+                {Math.round((consensus.sources[0]?.prob ?? 0) * 100)}%
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className={`relative mb-1 mt-6 ${pro ? '' : 'hidden'}`}>
           {/* Agreement zone — where the reads land. */}
           <div
             className="pointer-events-none absolute inset-y-0 rounded border-x border-dashed border-(--accent-line) bg-(--accent-soft)"
@@ -99,7 +125,7 @@ export function ProbabilityConsensus({
           <p className="min-w-[240px] flex-1 text-[12.5px] leading-relaxed text-text-1">{consensus.synthesis}</p>
           <div className="flex items-center gap-2.5">
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] ring-1 ring-inset ${
+              className={`${pro ? 'inline-flex' : 'hidden'} items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] ring-1 ring-inset ${
                 consensus.agreement === 'tight' ? 'bg-(--accent-soft) text-accent ring-(--accent-line)' : 'bg-down/10 text-down ring-down/30'
               }`}
             >

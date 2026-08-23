@@ -48,6 +48,38 @@ describe('contractGreeks — delta', () => {
   });
 });
 
+describe('contractGreeks — vega (sensitivity to implied vol)', () => {
+  it('an out-of-the-money bet GAINS on higher vol, one already in the money loses', () => {
+    // More movement priced in = more chance of reaching a strike above, and more chance
+    // of losing one you are already through.
+    const otm = contractGreeks({ spec: binUp(70_000), forward: FORWARD, svi: SVI, expiryMs: EXPIRY, now: NOW });
+    const itm = contractGreeks({ spec: binUp(60_000), forward: FORWARD, svi: SVI, expiryMs: EXPIRY, now: NOW });
+    expect(otm.vegaPerVolPoint).toBeGreaterThan(0);
+    expect(itm.vegaPerVolPoint).toBeLessThan(0);
+  });
+
+  it('a band around the money LOSES on higher vol — more movement, less chance of pinning', () => {
+    const around = contractGreeks({
+      spec: { kind: 'range', lower: 62_000, higher: 66_000 },
+      forward: FORWARD,
+      svi: SVI,
+      expiryMs: EXPIRY,
+      now: NOW,
+    });
+    expect(around.vegaPerVolPoint).toBeLessThan(0);
+  });
+
+  it('is a per-POINT sensitivity, so it stays a small probability change', () => {
+    const g = contractGreeks({ spec: binUp(66_000), forward: FORWARD, svi: SVI, expiryMs: EXPIRY, now: NOW });
+    expect(Math.abs(g.vegaPerVolPoint)).toBeLessThan(0.25);
+  });
+
+  it('is zero once there is no time left (no vol to be sensitive to)', () => {
+    const done = contractGreeks({ spec: binUp(65_000), forward: FORWARD, svi: SVI, expiryMs: NOW - 1, now: NOW });
+    expect(done.vegaPerVolPoint).toBe(0);
+  });
+});
+
 describe('contractGreeks — theta (time decay)', () => {
   it('an out-of-the-money binary bleeds toward $0 (theta < 0)', () => {
     const otmUp = contractGreeks({ spec: binUp(66_000), forward: FORWARD, svi: SVI, expiryMs: EXPIRY, now: NOW });

@@ -17,6 +17,11 @@
  * The math (all fair-value, no spread — §6.1, this is the visualization spine):
  *   • delta  = ∂chance/∂F      (probability per $1 of forward), central-difference
  *   • gamma  = ∂delta/∂F
+ *   • vega   = ∂chance/∂σ per VOL POINT, modelled by scaling the whole smile's vol by
+ *              the ratio (σ_atm + 1pt)/σ_atm — i.e. every strike's vol moves together,
+ *              an additive point at the money and proportionally less in the wings. A
+ *              real vol shock reshapes the smile; this is the parallel-shift version,
+ *              which is the honest one to draw from a single surface snapshot.
  *   • theta  = ∂chance/∂t per HOUR, holding annualized vol constant — modelled by
  *              shrinking the remaining total variance in proportion to the time
  *              left (w = σ²·T, hold σ, decay T). Signed: an out-of-the-money bet
@@ -34,6 +39,8 @@ import { normalCdf } from '@/lib/svi/normal';
 import { logMoneyness, totalVarianceAtK, timeToExpiryYears, MS_PER_YEAR, type SviFloat } from '@/lib/svi/svi';
 
 const ONE_HOUR_YEARS = 3_600_000 / MS_PER_YEAR;
+/** One implied-vol "point" = 1% annualized, the unit a desk quotes vol changes in. */
+const VOL_POINT = 0.01;
 
 /** A binary (up/down at a strike) or a vertical range (band) contract. */
 export type ContractSpec =
@@ -57,6 +64,10 @@ export interface ContractGreeks {
   delta: number;
   /** ∂delta/∂F (probability per dollar²). */
   gamma: number;
+  /** ∂chance/∂σ for a +1 implied-vol POINT, in probability (signed). Positive for an
+   *  out-of-the-money bet (more vol, more chance of getting there), negative for one
+   *  already in the money (more vol, more chance of losing it again). */
+  vegaPerVolPoint: number;
   /** ∂chance/∂t per HOUR, holding annualized vol (probability points/hr, signed).
    *  For a sub-hour market this is the AVERAGE rate over the remaining life, so it
    *  never extrapolates past expiry. */
@@ -132,7 +143,14 @@ export function contractGreeks({ spec, forward, svi, expiryMs, now }: GreeksInpu
     thetaPerHour = (later - fair) / (dt / ONE_HOUR_YEARS);
   }
 
-  return { fair, delta, gamma, thetaPerHour, tYears: T };
+  // Vega: scale the remaining variance by ((σ+1pt)/σ)², which is exactly a +1 point
+  // parallel shift AT THE MONEY (w = σ²·T), and reprice through the same closure.
+  const wAtm = totalVarianceAtK(0, svi);
+  const sigmaAtm = T > 0 ? Math.sqrt(Math.max(0, wAtm) / T) : 0;
+  const ratio = sigmaAtm > 0 ? (sigmaAtm + VOL_POINT) / sigmaAtm : 1;
+  const vegaPerVolPoint = sigmaAtm > 0 ? fairAt(forward, ratio * ratio) - fair : 0;
+
+  return { fair, delta, gamma, thetaPerHour, vegaPerVolPoint, tYears: T };
 }
 
 /** A reusable repricer for the caller (chart marker readout): the contract's fair

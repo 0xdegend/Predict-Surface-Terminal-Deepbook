@@ -1,8 +1,13 @@
 'use client';
 
 /**
- * ExpectedMoveBand — the surface's ±1σ expected range to the front expiry, with a
+ * ExpectedMoveBand — the surface's ±1σ expected range to the SELECTED expiry, with a
  * marker for where the price sits now. "About 2 in 3 of the time it lands in here."
+ *
+ * It used to read the FRONT expiry no matter which one the page was on, which put a
+ * "±0.02%, $76,957 to $76,991" band above a ladder priced to a different clock — and
+ * disagreed with the share card, which was already computing it off the selection. It
+ * now follows the ladder, and names the horizon it is talking about.
  */
 import Link from 'next/link';
 import { LuSparkles } from 'react-icons/lu';
@@ -14,10 +19,13 @@ import type { ExpectedMove, AssetConfig } from '@/lib/insights';
 export function ExpectedMoveBand({
   em,
   spot,
+  horizon,
   onShare,
 }: {
   em: ExpectedMove | null;
   spot: number | null;
+  /** The selected expiry in words ("4 min"), so the card names its own horizon. */
+  horizon?: string | null;
   asset: AssetConfig;
   onShare?: () => void;
 }) {
@@ -29,8 +37,14 @@ export function ExpectedMoveBand({
   return (
     <div className="glass rounded-lg p-4">
       <div className="flex items-start justify-between gap-2">
+        {/* No "1σ" in the Pro label: this row is `uppercase`, which renders σ as Σ. The
+            sigma still appears in the footnote below, which is not transformed. */}
         <div className="text-[10.5px] uppercase tracking-wider text-text-3">
-          <Term plain="Expected range by next expiry (about 2 in 3 chance)" pro="1σ expected move · front expiry" />
+          {horizon ? (
+            <Term plain={`Expected range in ${horizon} (about 2 in 3 chance)`} pro={`Expected move · ${horizon}`} />
+          ) : (
+            <Term plain="Expected range by expiry (about 2 in 3 chance)" pro="Expected move" />
+          )}
         </div>
         {onShare && <ShareXButton onClick={onShare} label="Share the expected range" />}
       </div>

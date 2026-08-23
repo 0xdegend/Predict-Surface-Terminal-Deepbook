@@ -23,7 +23,7 @@ import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react
 import { num, signed, pct, timeLeftWords } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
 import { contractGreeks, scenarioCurve, repricer, settlesInMoney, defaultSpan, type ContractSpec, type ScenarioPoint } from '@/lib/insights';
-import { Term } from './vocab';
+import { ProOnly, Term } from './vocab';
 import type { SviFloat } from '@/lib/svi/svi';
 
 /** Every dollar figure is per this stake, at 1× — honest + leverage-agnostic. */
@@ -89,6 +89,17 @@ export function GreeksScenario({
     const sitUsd = sitWin ? profit : -STAKE;
     const thetaUsdHr = (STAKE * g.thetaPerHour) / fair0;
 
+    // Pro tiles. Vega: chance points per +1 implied-vol point, and what that is worth
+    // on the mark. Gamma: how much delta itself moves per $100 of spot, quoted in
+    // chance points so it sits in the same unit as everything else on the panel.
+    // At the money a binary's vega is ~0 by construction (a symmetric bet neither gains
+    // nor loses from more movement), so snap the last wisp to zero — "-0.0 pts" reads as
+    // a broken number rather than a true one.
+    const snapZero = (x: number, eps: number) => (Math.abs(x) < eps ? 0 : x);
+    const vegaPts = snapZero(g.vegaPerVolPoint * 100, 0.05);
+    const vegaUsd = snapZero((STAKE * g.vegaPerVolPoint) / fair0, 0.5);
+    const gammaPts = snapZero(g.gamma * 100 * 100, 0.005);
+
     return {
       tooFar: false as const,
       spec,
@@ -98,6 +109,9 @@ export function GreeksScenario({
       price,
       scenario,
       greeks: g,
+      vegaPts,
+      vegaUsd,
+      gammaPts,
       moveChancePts,
       moveUsd,
       sitWin,
@@ -136,7 +150,7 @@ export function GreeksScenario({
     );
   }
 
-  const { fair0, maxWin, profit, price, scenario, greeks, moveChancePts, moveUsd, sitWin, sitUsd, thetaUsdHr, Fmin, Fmax } = model;
+  const { fair0, maxWin, profit, price, scenario, greeks, moveChancePts, moveUsd, sitWin, sitUsd, thetaUsdHr, vegaPts, vegaUsd, gammaPts, Fmin, Fmax } = model;
   const tone = isUp ? 'up' : 'down';
   const accent = isUp ? 'var(--up)' : 'var(--down)';
 
@@ -188,12 +202,28 @@ export function GreeksScenario({
         <div className="mt-3.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <Tile label={<Term plain="Chance now" pro="Fair chance" />}>
             <span className="tabular-nums text-text-1">{pct(fair0, 0)}</span>
-            <span className="ml-1.5 text-[11px] text-text-3">{maxWin.toFixed(2)}× payout</span>
+            {/* maxWin is DOLLARS back on a $STAKE bet, so the multiple is maxWin/STAKE.
+                Printing maxWin itself here read "200.02× payout" on an even-money bet,
+                while the ladder called the same strike 1.95×. */}
+            <span className="ml-1.5 text-[11px] text-text-3">{(maxWin / STAKE).toFixed(2)}× payout</span>
           </Tile>
           <Tile label={<Term plain="If BTC +$100" pro="Delta · per +$100" />}>
             <span className={`tabular-nums ${moveChancePts >= 0 ? 'text-up' : 'text-down'}`}>{signed(moveChancePts, 1)} pts</span>
             <span className="ml-1.5 text-[11px] text-text-3">mark {sUsd(moveUsd)}</span>
           </Tile>
+          <ProOnly>
+            {/* Gamma has always been computed and never shown, and vega is new. Both are
+                per-$100 staked like every other figure here. Gamma is quoted per $100 of
+                spot move because per-dollar-squared is unreadable at BTC's scale. */}
+            <Tile label="Vega · per +1 vol pt">
+              <span className={`tabular-nums ${vegaPts >= 0 ? 'text-up' : 'text-down'}`}>{signed(vegaPts, 1)} pts</span>
+              <span className="ml-1.5 text-[11px] text-text-3">mark {sUsd(vegaUsd)}</span>
+            </Tile>
+            <Tile label="Gamma · per $100">
+              <span className="tabular-nums text-text-2">{signed(gammaPts, 2)} pts</span>
+              <span className="ml-1.5 text-[11px] text-text-3">delta change</span>
+            </Tile>
+          </ProOnly>
           <Tile label={<Term plain="If it sits still" pro="Theta · time decay" />}>
             <span className={`tabular-nums ${sitUsd >= 0 ? 'text-up' : 'text-down'}`}>{sitWin ? `wins ${sUsd(sitUsd)}` : `−$${STAKE}`}</span>
             <span className="ml-1.5 text-[11px] text-text-3">

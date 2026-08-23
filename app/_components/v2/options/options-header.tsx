@@ -12,7 +12,8 @@ import { useNow } from '@/lib/hooks/use-now';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { num, signed } from '@/lib/format';
-import { VocabToggle } from './vocab';
+import { VocabToggle, useVocab } from './vocab';
+import { expiryLabel } from '@/lib/insights';
 import type { PythObservation } from '@/lib/api/v2/types';
 import type { MarketIntel } from '@/lib/insights';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
@@ -31,6 +32,7 @@ function countdown(ms: number): string {
 
 export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketIntel; insights: BtcInsights | null; serverNow: number }) {
   const now = useNow(serverNow);
+  const { pro } = useVocab();
   const mounted = useMounted();
   const qc = useQueryClient();
   // Read the live spot imperatively from the tape cache, but only after mount so
@@ -64,11 +66,14 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
         ) : (
           <PillSkel className="w-13" />
         )}
-        {intel.arb ? (
-          <Pill tone={intel.arb === 'watch' ? 'down' : 'up'} label={intel.arb === 'watch' ? 'Mispricing' : 'Arb-free'} />
-        ) : (
-          <PillSkel className="w-17.5" />
-        )}
+        {/* Pro only: "Arb-free" is a verdict about the surface's internal consistency —
+            real information to a desk, noise to someone deciding their first bet. */}
+        {pro &&
+          (intel.arb ? (
+            <Pill tone={intel.arb === 'watch' ? 'down' : 'up'} label={intel.arb === 'watch' ? 'Mispricing' : 'Arb-free'} />
+          ) : (
+            <PillSkel className="w-17.5" />
+          ))}
         {intel.bias ? (
           <Pill
             tone={intel.bias.pick === 'down' ? 'down' : intel.bias.pick === 'up' ? 'up' : 'neutral'}
@@ -77,14 +82,20 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
         ) : (
           <PillSkel className="w-23" />
         )}
-        {mounted && insights?.sentiment ? (
-          <Pill tone={insights.sentiment.value > 55 ? 'up' : insights.sentiment.value < 45 ? 'down' : 'neutral'} label={`${insights.sentiment.label} ${insights.sentiment.value}`} />
-        ) : (
-          <PillSkel className="w-17" />
-        )}
+        {/* Pro only: a 0-100 sentiment score needs its own legend to mean anything. */}
+        {pro &&
+          (mounted && insights?.sentiment ? (
+            <Pill tone={insights.sentiment.value > 55 ? 'up' : insights.sentiment.value < 45 ? 'down' : 'neutral'} label={`${insights.sentiment.label} ${insights.sentiment.value}`} />
+          ) : (
+            <PillSkel className="w-17" />
+          ))}
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        {/* Pro: the one number a desk reads first, which the page never showed anywhere —
+            at-the-money implied vol on the front expiry, and how the term structure
+            slopes from there to the back. */}
+        {pro && <AtmIvReadout intel={intel} now={now} />}
         {intel.nextExpiryMs != null && (
           <span className="font-mono text-[12px] text-text-2">
             next expiry <span className="inline-block min-w-13 text-right tabular-nums text-text-1">{countdown(intel.nextExpiryMs - now)}</span>
@@ -93,6 +104,33 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
         <VocabToggle />
       </div>
     </header>
+  );
+}
+
+/**
+ * ATM implied vol on the front expiry, plus the term-structure slope to the back one.
+ * Slope is back − front in vol points: positive means the market is pricing MORE
+ * movement further out (the normal shape), negative means the front is bid — the stress
+ * signature worth seeing before anything else.
+ */
+function AtmIvReadout({ intel, now }: { intel: MarketIntel; now: number }) {
+  const rows = intel.expiries;
+  if (rows.length === 0) return null;
+  const front = rows[0];
+  const back = rows.length > 1 ? rows[rows.length - 1] : null;
+  const slope = back ? (back.iv - front.iv) * 100 : null;
+  return (
+    <span className="font-mono text-[12px] text-text-2" title="At-the-money implied vol, front expiry → back expiry">
+      ATM IV <span className="tabular-nums text-text-1">{(front.iv * 100).toFixed(1)}%</span>
+      {back && (
+        <>
+          {' → '}
+          <span className="tabular-nums text-text-1">{(back.iv * 100).toFixed(1)}%</span>
+          <span className="text-text-3"> {expiryLabel(back.expiryMs, now)}</span>{' '}
+          <span className={`tabular-nums ${slope! >= 0 ? 'text-up' : 'text-down'}`}>{signed(slope!, 1)}</span>
+        </>
+      )}
+    </span>
   );
 }
 

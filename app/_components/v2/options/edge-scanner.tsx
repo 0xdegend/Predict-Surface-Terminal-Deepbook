@@ -16,7 +16,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { LuTrendingUp, LuTrendingDown, LuArrowUpDown, LuArrowUp, LuArrowDown } from 'react-icons/lu';
 import { num, signed } from '@/lib/format';
-import { scanEdges, type EdgeCandidate, type EdgeScanMarket } from '@/lib/insights';
+import { expiryLabelShort as expiryLabel, scanEdges, type EdgeCandidate, type EdgeScanMarket } from '@/lib/insights';
 import { Term } from './vocab';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
@@ -25,14 +25,6 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 const SHOW = 12;
 
 type SortKey = 'edge' | 'ev' | 'payout' | 'chance' | 'expiry';
-
-/** Compact time-to-expiry: "1m" / "5m" / "2h". */
-function expiryLabel(ms: number, now: number): string {
-  const m = Math.max(0, Math.round((ms - now) / 60_000));
-  if (m < 60) return `${m}m`;
-  if (m < 1440) return `${Math.round(m / 60)}h`;
-  return `${Math.round(m / 1440)}d`;
-}
 
 export function OptionsEdgeScanner({
   markets,
