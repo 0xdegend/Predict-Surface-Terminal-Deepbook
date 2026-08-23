@@ -278,7 +278,13 @@ export function V2OptionsScreen({
 
   const page = (
     <VocabProvider>
-      <div className="mx-auto max-w-7xl px-4 pb-16 pt-4">
+      {/* `w-full` is load-bearing, not decoration. This page is a column-flex item with
+          auto side margins, which makes it fit-content sized — and fit-content's floor is
+          MIN-CONTENT. Pro's ladder is `min-w-[860px]` inside a scroll container, so on a
+          768px screen the page sized itself to 926px and the whole document scrolled
+          sideways. Pinning the width to 100% (still capped by max-w-7xl) puts the scroll
+          back where it belongs: inside the table. Matches every other v2 page. */}
+      <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-4">
         <OptionsHeader intel={intel} insights={liveInsights} serverNow={serverNow} />
 
         {/* One line of orientation, Plain only. The page otherwise opens on four regime

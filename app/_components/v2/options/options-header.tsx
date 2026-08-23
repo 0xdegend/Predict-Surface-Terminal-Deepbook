@@ -44,9 +44,17 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
 
   return (
     <header className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line pb-3">
-      <div className="flex items-center gap-2">
+      {/* On a phone the title owns the whole first row and takes the Plain/Pro toggle
+          with it: the toggle is the one control that changes what the page IS, so it
+          should not end up alone on a third line of chrome under the price and the
+          pills. From sm up the title shrinks back and the toggle rejoins the right
+          cluster where it has always lived. */}
+      <div className="flex w-full items-center gap-2 sm:w-auto">
         <span className="grid h-6 w-6 place-items-center rounded-full bg-linear-to-br from-[#f7931a] to-[#ffb64d] text-[12px] font-bold text-black">₿</span>
         <span className="text-[15px] font-semibold text-text-1">{intel.asset.label} Options</span>
+        <span className="ml-auto sm:hidden">
+          <VocabToggle />
+        </span>
       </div>
 
       {/* Live price + 24h change: widths reserved so the row holds its shape while
@@ -96,12 +104,16 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
             at-the-money implied vol on the front expiry, and how the term structure
             slopes from there to the back. */}
         {pro && <AtmIvReadout intel={intel} now={now} />}
+        {/* The expiry pills right below the hero carry the same countdown on a phone, so
+            this line stands down there rather than pushing the row taller. */}
         {intel.nextExpiryMs != null && (
-          <span className="font-mono text-[12px] text-text-2">
+          <span className="hidden font-mono text-[12px] text-text-2 sm:inline">
             next expiry <span className="inline-block min-w-13 text-right tabular-nums text-text-1">{countdown(intel.nextExpiryMs - now)}</span>
           </span>
         )}
-        <VocabToggle />
+        <span className="hidden sm:block">
+          <VocabToggle />
+        </span>
       </div>
     </header>
   );

@@ -119,14 +119,29 @@ export function ProbabilityLadder({
 
   return (
     <div className="glass overflow-x-auto rounded-lg p-4">
-      <table className={`w-full border-collapse ${pro ? 'min-w-[860px]' : 'min-w-[420px]'}`}>
+      {/* Plain is FLUID: four columns fit a phone, and a min-width would have made a
+          first-timer scroll sideways to reach the Bet button. Pro keeps its floor and
+          scrolls inside this card — a nine-column desk table cannot fit a phone, and
+          shrinking it into one would just make every number unreadable. */}
+      <table className={`w-full border-collapse ${pro ? 'min-w-[860px]' : ''}`}>
         <thead>
           <tr className="text-[10.5px] uppercase tracking-wide text-text-3">
             <SortTh k="strike" sort={sort} onClick={toggle} pro={pro} className="text-left">
               Strike
             </SortTh>
             <SortTh k="chance" sort={sort} onClick={toggle} pro={pro}>
-              <Term plain="Chance above" pro="P(above)" />
+              {/* "Chance above" is the honest header, but it is also the widest cell in a
+                  four-column table on a 390px phone — enough to push the Bet button off
+                  the edge. The short form only appears where the long one does not fit;
+                  the intro line above the ladder already says what the chance is of. */}
+              {pro ? (
+                'P(above)'
+              ) : (
+                <>
+                  <span className="sm:hidden">Chance</span>
+                  <span className="hidden sm:inline">Chance above</span>
+                </>
+              )}
             </SortTh>
             {pro && (
               <>
@@ -177,7 +192,7 @@ export function ProbabilityLadder({
 }
 
 function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <th className={`border-b border-line px-3.5 pb-2.5 text-right font-medium ${className}`}>{children}</th>;
+  return <th className={`border-b border-line px-2 pb-2.5 text-right font-medium sm:px-3.5 ${className}`}>{children}</th>;
 }
 
 /** A header cell that sorts in Pro and is plain text in Plain (nothing to sort when the
@@ -200,7 +215,7 @@ function SortTh({
   if (!pro) return <Th className={className}>{children}</Th>;
   const on = sort.key === k;
   return (
-    <th className={`border-b border-line px-3.5 pb-2.5 text-right font-medium ${className}`}>
+    <th className={`border-b border-line px-2 pb-2.5 text-right font-medium sm:px-3.5 ${className}`}>
       <button
         type="button"
         onClick={() => onClick(k)}
@@ -234,13 +249,17 @@ function Row({
       onClick={onHighlight}
       className={`group cursor-pointer border-b border-line/60 font-mono text-[13px] transition hover:bg-white/2.5 ${r.isAtm ? 'bg-(--accent-soft)' : ''}`}
     >
-      <td className={`px-3.5 py-2.5 text-left tabular-nums ${r.isAtm ? 'font-semibold text-accent' : 'text-text-1'}`}>
+      <td className={`px-2 py-2.5 text-left tabular-nums sm:px-3.5 ${r.isAtm ? 'font-semibold text-accent' : 'text-text-1'}`}>
         ${num(r.strike, 0)}
-        {r.isAtm && <span className="ml-2 rounded border border-(--accent-line) px-1.5 py-px font-sans text-[9.5px] tracking-wide text-accent">AT PRICE</span>}
+        {r.isAtm && (
+          <span className="ml-1.5 whitespace-nowrap rounded border border-(--accent-line) px-1.5 py-px font-sans text-[9.5px] tracking-wide text-accent sm:ml-2">
+            AT PRICE
+          </span>
+        )}
       </td>
-      <td className="px-3.5 py-2.5 text-right tabular-nums">
+      <td className="px-2 py-2.5 text-right tabular-nums sm:px-3.5">
         <span className="inline-flex items-center justify-end gap-2">
-          <span className="h-1.5 w-16 overflow-hidden rounded border border-line bg-bg-3">
+          <span className="hidden h-1.5 w-16 overflow-hidden rounded border border-line bg-bg-3 sm:block">
             <span className="block h-full bg-accent/70" style={{ width: `${r.chanceAbove * 100}%` }} />
           </span>
           {(r.chanceAbove * 100).toFixed(0)}%
@@ -248,31 +267,34 @@ function Row({
       </td>
       {pro && (
         <>
-          <td className={`px-3.5 py-2.5 text-right tabular-nums ${r.movePct >= 0 ? 'text-up' : 'text-down'}`}>{signed(r.movePct, 2)}%</td>
-          <td className="px-3.5 py-2.5 text-right tabular-nums text-text-2">{(r.iv * 100).toFixed(1)}%</td>
-          <td className="px-3.5 py-2.5 text-right tabular-nums text-text-2">{r.hit != null ? `${(r.hit * 100).toFixed(0)}%` : '—'}</td>
+          <td className={`px-2 py-2.5 text-right tabular-nums sm:px-3.5 ${r.movePct >= 0 ? 'text-up' : 'text-down'}`}>{signed(r.movePct, 2)}%</td>
+          <td className="px-2 py-2.5 text-right tabular-nums text-text-2 sm:px-3.5">{(r.iv * 100).toFixed(1)}%</td>
+          <td className="px-2 py-2.5 text-right tabular-nums text-text-2 sm:px-3.5">{r.hit != null ? `${(r.hit * 100).toFixed(0)}%` : '—'}</td>
           <td
-            className={`px-3.5 py-2.5 text-right tabular-nums ${
+            className={`px-2 py-2.5 text-right tabular-nums sm:px-3.5 ${
               r.edgePts == null ? 'text-text-3' : r.edgePts > 0 ? 'text-up' : 'text-text-2'
             }`}
           >
             {r.edgePts != null ? `${signed(r.edgePts, 1)}` : '—'}
           </td>
           <td
-            className={`px-3.5 py-2.5 text-right tabular-nums ${r.evPct == null ? 'text-text-3' : r.evPct > 0 ? 'text-up' : 'text-down'}`}
+            className={`px-2 py-2.5 text-right tabular-nums sm:px-3.5 ${r.evPct == null ? 'text-text-3' : r.evPct > 0 ? 'text-up' : 'text-down'}`}
           >
             {r.evPct != null ? `${signed(r.evPct, 1)}%` : '—'}
           </td>
         </>
       )}
-      <td className="px-3.5 py-2.5 text-right tabular-nums">{r.payoutUp.toFixed(2)}×</td>
-      <td className="px-3.5 py-2.5 text-right">
+      <td className="px-2 py-2.5 text-right tabular-nums sm:px-3.5">{r.payoutUp.toFixed(2)}×</td>
+      <td className="px-2 py-2.5 text-right sm:px-3.5">
         <span className="inline-flex items-center justify-end gap-1.5">
+          {/* Hover-only, so on a touch screen it is invisible AND unreachable — but it
+              still took ~26px of the row, which was the last thing pushing the Bet button
+              past the edge of a 390px phone. Desktop keeps it. */}
           {onShare && (
             <ShareXButton
               onClick={onShare}
               label="Share these odds"
-              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className="hidden opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 sm:inline-flex"
             />
           )}
           <button
@@ -281,7 +303,7 @@ function Row({
               e.stopPropagation();
               onBet();
             }}
-            className="rounded-md bg-(--accent-soft) px-3 py-1 font-sans text-[12px] font-medium text-accent ring-1 ring-inset ring-(--accent-line) transition hover:bg-accent/20"
+            className="rounded-md bg-(--accent-soft) px-2.5 py-1 font-sans text-[12px] font-medium text-accent ring-1 ring-inset ring-(--accent-line) transition hover:bg-accent/20 sm:px-3"
           >
             Bet ↑
           </button>
