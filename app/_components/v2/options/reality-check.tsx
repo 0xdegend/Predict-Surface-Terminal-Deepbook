@@ -2,15 +2,31 @@
 
 /**
  * RealityCheck — what the surface is pricing vs what the market has actually done.
- * Implied 1-hour move (from the ATM IV) against the realized 1-hour move (from the
- * recent 1-minute tape), plus a plain verdict. Hidden until candles load.
+ * Implied move against realized move over the SAME horizon, plus a plain verdict.
+ * Hidden until candles load.
+ *
+ * HORIZON-MATCHED, not hardcoded. This used to compare a 1-HOUR implied move to a
+ * 1-hour realized move no matter which expiry the page was on, which was already a
+ * little loose against a 1-minute market and becomes plainly wrong the day 1-day and
+ * 1-week markets ship: a week-long bet judged against the last hour of tape answers a
+ * question nobody asked. The window now comes from the selected expiry's tenor band
+ * (lib/insights/tenor), so both sides of the comparison always describe the same
+ * stretch of time and the panel is correct for tenors that do not exist yet.
+ *
+ * WHY THIS SURVIVED THE PRO TRIM. It was on the cut list as a duplicate of the edge
+ * scanner's per-strike implied-vs-realized column. It is not, for one reason: the
+ * scanner only lists rows that clear its edge bar, and now that the bar is fee-aware
+ * it is legitimately empty much of the time. Cutting this would have meant that
+ * whenever nothing has an edge, the page says nothing at all about how the surface is
+ * priced against reality — which is exactly the moment that fact is worth stating.
+ * The scanner finds trades; this one states the regime.
  */
 import type { ReactNode } from 'react';
-import { realizedTenorSigma, atmIv } from '@/lib/insights';
+import { realizedTenorSigma, atmIv, realizedWindowMins, tenorBand, TENOR_LABEL } from '@/lib/insights';
 import { Term } from './vocab';
 import type { SviFloat } from '@/lib/svi/svi';
 
-const YEAR_HOURS = 8760;
+const MINUTES_PER_YEAR = 525_600;
 
 export function RealityCheck({
   pricer,
@@ -24,13 +40,18 @@ export function RealityCheck({
   closes: number[] | null | undefined;
 }) {
   if (!pricer || expiryMs == null) return null;
-  const realizedHour = realizedTenorSigma(closes, 60);
-  if (realizedHour == null) return null;
 
-  const impliedPct = atmIv(pricer, expiryMs, now) * Math.sqrt(1 / YEAR_HOURS) * 100;
-  const realizedPct = realizedHour * 100;
+  // Both sides measured over the horizon this expiry actually spans.
+  const band = tenorBand(expiryMs, now);
+  const windowMins = realizedWindowMins(band);
+  const realized = realizedTenorSigma(closes, windowMins);
+  if (realized == null) return null;
+
+  const impliedPct = atmIv(pricer, expiryMs, now) * Math.sqrt(windowMins / MINUTES_PER_YEAR) * 100;
+  const realizedPct = realized * 100;
   const gap = impliedPct - realizedPct;
   const calmer = gap > 0.02;
+  const over = TENOR_LABEL[band];
 
   return (
     <div className="glass rounded-lg p-4">
@@ -41,10 +62,12 @@ export function RealityCheck({
         </span>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <Stat label={<Term plain="Priced move / hour" pro="Implied 1h move" />} value={`${impliedPct.toFixed(2)}%`} />
-        <Stat label={<Term plain="Actual move / hour" pro="Realized 1h move" />} value={`${realizedPct.toFixed(2)}%`} tone="up" />
+        <Stat label={<Term plain="Priced move" pro="Implied move" />} value={`${impliedPct.toFixed(2)}%`} />
+        <Stat label={<Term plain="Actual move" pro="Realized move" />} value={`${realizedPct.toFixed(2)}%`} tone="up" />
         <Stat label="Gap" value={`${gap >= 0 ? '+' : ''}${gap.toFixed(2)}%`} tone={calmer ? 'down' : 'up'} />
       </div>
+      {/* Name the window, so nobody has to guess what "the move" is measured over. */}
+      <p className="mt-2 text-center text-[10.5px] uppercase tracking-wide text-text-3">over {over}</p>
       <p className="glass-accent mt-3 rounded-md px-3 py-2.5 text-[12.5px] leading-relaxed text-text-1">
         {calmer ? (
           <>

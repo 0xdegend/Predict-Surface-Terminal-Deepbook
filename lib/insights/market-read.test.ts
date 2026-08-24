@@ -24,7 +24,7 @@ function strike(over: Partial<StrikeAnalysis> = {}): StrikeAnalysis {
     requiredMoveUsd: 90,
     sigmaMove: 0.5,
     realizedVolPct: 40,
-    empirical: { prob: 0.38, samples: 1800, horizonBars: 4 },
+    empirical: { prob: 0.38, samples: 1800, horizonBars: 4, independentWindows: 500 },
     implied: 0.42,
     edgePts: 4,
     ...over,

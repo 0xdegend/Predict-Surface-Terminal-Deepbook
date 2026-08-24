@@ -14,6 +14,7 @@ export * from './context';
 export * from './assets';
 export * from './expected-move';
 export * from './expiry-choice';
+export * from './tenor';
 export * from './engine';
 export * from './market-read';
 export * from './strike-analysis';

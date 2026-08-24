@@ -69,11 +69,15 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
       {/* Regime pills — each slot reserves its space with a placeholder until its
           datum arrives, so the cluster doesn't pop in and reflow the row. */}
       <div className="flex flex-wrap items-center gap-1.5">
-        {intel.vol ? (
-          <Pill tone={intel.vol === 'elevated' ? 'down' : intel.vol === 'calm' ? 'up' : 'neutral'} label={VOL_LABEL[intel.vol]} />
-        ) : (
-          <PillSkel className="w-13" />
-        )}
+        {/* Pro only. "Calm" / "Jumpy" with no legend is a word a newcomer cannot act
+            on, and the Surface read headline right below already says the same thing in
+            a sentence. A desk reads the regime at a glance, so it stays in Pro. */}
+        {pro &&
+          (intel.vol ? (
+            <Pill tone={intel.vol === 'elevated' ? 'down' : intel.vol === 'calm' ? 'up' : 'neutral'} label={VOL_LABEL[intel.vol]} />
+          ) : (
+            <PillSkel className="w-13" />
+          ))}
         {/* Pro only: "Arb-free" is a verdict about the surface's internal consistency —
             real information to a desk, noise to someone deciding their first bet. */}
         {pro &&
@@ -90,13 +94,11 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
         ) : (
           <PillSkel className="w-23" />
         )}
-        {/* Pro only: a 0-100 sentiment score needs its own legend to mean anything. */}
-        {pro &&
-          (mounted && insights?.sentiment ? (
-            <Pill tone={insights.sentiment.value > 55 ? 'up' : insights.sentiment.value < 45 ? 'down' : 'neutral'} label={`${insights.sentiment.label} ${insights.sentiment.value}`} />
-          ) : (
-            <PillSkel className="w-17" />
-          ))}
+        {/* The 0-100 sentiment score used to sit here, Pro only. It was the least
+            desk-relevant number in the header — a score that needs its own legend to
+            mean anything, in the row a trader reads fastest — and it is already
+            carried twice over: in the Surface read's sentiment line and in the
+            Positioning deck. The header now holds only figures that price a bet. */}
       </div>
 
       <div className="ml-auto flex items-center gap-3">

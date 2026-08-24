@@ -38,7 +38,7 @@ describe('scanEdges', () => {
     // Sorted by edge, descending.
     for (let i = 1; i < out.length; i++) expect(out[i - 1].edgePts).toBeGreaterThanOrEqual(out[i].edgePts);
     for (const c of out) {
-      expect(c.edgePts).toBeGreaterThanOrEqual(2); // default minEdgePts
+      expect(c.netEdgePts).toBeGreaterThanOrEqual(1); // default minNetEdgePts
       expect(c.empirical).toBeGreaterThan(c.implied); // it's the VALUE side
       expect(c.implied).toBeGreaterThanOrEqual(0.04);
       expect(c.implied).toBeLessThanOrEqual(0.96);
@@ -50,16 +50,38 @@ describe('scanEdges', () => {
     }
   });
 
-  it('honors the minEdgePts filter', () => {
-    const strict = scanEdges({ markets: [mkt()], closes, now: NOW, minEdgePts: 15 });
-    for (const c of strict) expect(c.edgePts).toBeGreaterThanOrEqual(15);
+  it('honors the minNetEdgePts filter', () => {
+    const strict = scanEdges({ markets: [mkt()], closes, now: NOW, minNetEdgePts: 15 });
+    for (const c of strict) expect(c.netEdgePts).toBeGreaterThanOrEqual(15);
     // A higher bar never returns MORE than a lower one.
-    const loose = scanEdges({ markets: [mkt()], closes, now: NOW, minEdgePts: 2 });
+    const loose = scanEdges({ markets: [mkt()], closes, now: NOW, minNetEdgePts: 2 });
     expect(strict.length).toBeLessThanOrEqual(loose.length);
   });
 
+  it('drops the rows the fee eats, and keeps ranking by what is left', () => {
+    // The same market, priced with and without the live fee. Every row that
+    // survives the fee must clear the bar on its NET edge, and the board must be
+    // ordered by that rather than by the raw disagreement with the surface.
+    const free = scanEdges({ markets: [mkt()], closes, now: NOW, minNetEdgePts: 0 });
+    const charged = scanEdges({
+      markets: [mkt({ feeRates: { notional: 0.02, stake: 0.005 } })],
+      closes,
+      now: NOW,
+      minNetEdgePts: 0,
+    });
+    expect(charged.length).toBeLessThanOrEqual(free.length);
+    for (const c of charged) {
+      expect(c.netEdgePts).toBeLessThan(c.edgePts); // the fee always costs something
+      expect(c.netPayout).toBeLessThan(c.payout);
+      expect(c.evPct).toBeGreaterThan(0); // and a listed row is still +EV after it
+    }
+    for (let i = 1; i < charged.length; i++) {
+      expect(charged[i - 1].netEdgePts).toBeGreaterThanOrEqual(charged[i].netEdgePts);
+    }
+  });
+
   it('caps the pool at the limit', () => {
-    const out = scanEdges({ markets: [mkt()], closes, now: NOW, minEdgePts: 0, limit: 3 });
+    const out = scanEdges({ markets: [mkt()], closes, now: NOW, minNetEdgePts: 0, limit: 3 });
     expect(out.length).toBeLessThanOrEqual(3);
   });
 
@@ -73,7 +95,7 @@ describe('scanEdges', () => {
       markets: [mkt({ marketId: 'a', expiryMs: NOW + 60_000 }), mkt({ marketId: 'b', expiryMs: NOW + 2 * 3_600_000 })],
       closes,
       now: NOW,
-      minEdgePts: 0,
+      minNetEdgePts: 0,
     });
     const ids = new Set(out.map((c) => c.marketId));
     expect(ids.size).toBeGreaterThan(1);

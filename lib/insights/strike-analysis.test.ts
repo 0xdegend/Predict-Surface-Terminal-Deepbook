@@ -35,6 +35,29 @@ describe('empiricalHitRate', () => {
     expect(empiricalHitRate(walk(200), 150, 0, true)).toBeNull();
   });
 
+  it('refuses a horizon the tape cannot cover independently, even with a big sample count', () => {
+    // The 1-day trap. A 2000-bar (~33h) tape against a 1440-bar (1-day) horizon
+    // leaves 560 OVERLAPPING windows — plenty by raw count, but only ONE
+    // non-overlapping day. Reporting a rate off that would be a single
+    // observation wearing a sample size of 560.
+    const tape = walk(2000);
+    expect(tape.length - 1440).toBeGreaterThan(120); // clears the raw-count gate
+    expect(empiricalHitRate(tape, 1440, 0, true)).toBeNull(); // and is still refused
+  });
+
+  it('reports how many independent windows back the rate', () => {
+    const r = empiricalHitRate(walk(2000), 60, 0, true)!; // an hourly market
+    expect(r.independentWindows).toBe(33);
+    expect(r.samples).toBeGreaterThan(r.independentWindows);
+  });
+
+  it('still admits every cadence that is live today', () => {
+    const tape = walk(2000);
+    for (const horizonBars of [1, 5, 60]) {
+      expect(empiricalHitRate(tape, horizonBars, 0, true)).not.toBeNull();
+    }
+  });
+
   it('is ~50/50 at the money on a driftless walk', () => {
     const r = empiricalHitRate(walk(2000), 5, 0, true);
     expect(r).not.toBeNull();

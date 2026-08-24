@@ -8,11 +8,23 @@
  * "±0.02%, $76,957 to $76,991" band above a ladder priced to a different clock — and
  * disagreed with the share card, which was already computing it off the selection. It
  * now follows the ladder, and names the horizon it is talking about.
+ *
+ * AND IT IS NOW BETTABLE. This card was the one place on the page that drew a picture
+ * of a product we sell — "it lands in here about 2 in 3 of the time" is a range bet,
+ * described precisely and then left as a diagram. `rangeBet` carries the same band
+ * snapped to the admission grid with its real quoted chance, so the button places
+ * exactly the shape the bar is showing.
+ *
+ * ONE CTA, on purpose. This card used to also carry an "Ask Kelly for a range" link,
+ * which sent the trader to the copilot to have Kelly derive a range off this exact
+ * expected move — the band this card has already computed, snapped and priced. Once
+ * "Bet range" existed the two read as duplicates in a small card, and the link was the
+ * slow path to the answer already on screen. Kelly keeps her nav entry, her dock and
+ * her own page, and the Trade screen still bridges to her; this card sells the band it
+ * is drawing. Removing the button was the fix, not removing the bet.
  */
-import Link from 'next/link';
-import { LuMessageSquare } from 'react-icons/lu';
 import { num } from '@/lib/format';
-import { Term } from './vocab';
+import { Term, useVocab } from './vocab';
 import { ShareXButton } from '../share/share-x-button';
 import type { ExpectedMove, AssetConfig } from '@/lib/insights';
 
@@ -20,6 +32,8 @@ export function ExpectedMoveBand({
   em,
   spot,
   horizon,
+  rangeBet,
+  onBetRange,
   onShare,
 }: {
   em: ExpectedMove | null;
@@ -27,8 +41,12 @@ export function ExpectedMoveBand({
   /** The selected expiry in words ("4 min"), so the card names its own horizon. */
   horizon?: string | null;
   asset: AssetConfig;
+  /** The band as a quotable range bet. Null when it is not currently mintable. */
+  rangeBet?: { lower: number; higher: number; chance: number; netPayout: number } | null;
+  onBetRange?: () => void;
   onShare?: () => void;
 }) {
+  const { pro } = useVocab();
   if (!em) return null;
   const pct = (em.sigma * 100).toFixed(2);
   // Marker position within [low, high], clamped so a big move still renders.
@@ -46,7 +64,8 @@ export function ExpectedMoveBand({
             <Term plain="Expected range by expiry (about 2 in 3 chance)" pro="Expected move" />
           )}
         </div>
-        {onShare && <ShareXButton onClick={onShare} label="Share the expected range" />}
+        {/* Pro chrome. In Plain this was one of three share buttons above the fold. */}
+        {onShare && pro && <ShareXButton onClick={onShare} label="Share the expected range" />}
       </div>
       <div className="relative mb-2 mt-7 h-3">
         {/* Frosted glass track: translucent accent fill, a center-weighted glow
@@ -68,20 +87,30 @@ export function ExpectedMoveBand({
         <span>${num(em.lowPrice, 0)}</span>
         <span>${num(em.highPrice, 0)}</span>
       </div>
-      <div className="mt-2.5 flex items-center justify-between gap-2">
-        <div className="text-[12px] text-text-2">
-          <Term plain={`A move of about ±${pct}% either way`} pro={`±${pct}% · 1σ`} />
-        </div>
-        {/* Bridge to Kelly: she recommends a range bet off this exact expected move,
-            so the read here turns straight into a tradeable band. */}
-        <Link
-          href="/v2/copilot?ask=Recommend%20a%20range"
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--accent-line) bg-(--accent-soft) px-2.5 py-1 text-[10.5px] font-medium text-accent transition-colors hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-        >
-          <LuMessageSquare size={11} />
-          Ask Kelly for a range
-        </Link>
+      <div className="mt-2.5 text-[12px] text-text-2">
+        <Term plain={`A move of about ±${pct}% either way`} pro={`±${pct}% · 1σ`} />
       </div>
+
+      {/* Place the band itself. The chance and payout are the SNAPPED band's real
+          quote, not the 1σ convention in the caption above, so the button never
+          promises odds the ticket then disagrees with. */}
+      {rangeBet && onBetRange && (
+        <button
+          type="button"
+          onClick={onBetRange}
+          className="glass-divider-top mt-3 flex w-full flex-wrap items-center justify-between gap-2 pt-3 text-left transition-colors hover:text-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+        >
+          <span className="text-[12px] text-text-2">
+            <Term plain="Bet it lands in this range" pro="Bet the band" />
+            <span className="ml-1.5 font-mono tabular-nums text-text-3">
+              {(rangeBet.chance * 100).toFixed(0)}% · {rangeBet.netPayout.toFixed(2)}×
+            </span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-(--accent-soft) px-3 py-1 text-[12px] font-medium text-accent ring-1 ring-inset ring-(--accent-line) transition hover:bg-accent/20">
+            Bet range
+          </span>
+        </button>
+      )}
     </div>
   );
 }

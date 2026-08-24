@@ -15,6 +15,7 @@
 import { upFair, type SviFloat } from '@/lib/svi/svi';
 import { strikeForUpFair, payoutMultiple } from '@/lib/sui/v2/invert';
 import { toFloat } from '@/config/scale';
+import { netPayoutMultiple, NO_FEES, type FeeRates } from './v2-fees';
 
 export interface LadderRung {
   /** Admission-snapped strike ($), guaranteed mintable. */
@@ -25,6 +26,16 @@ export interface LadderRung {
   movePct: number;
   /** Payout multiple for an UP bet that reaches this strike (1 / chance-above). */
   payoutUp: number;
+  /**
+   * The same payout AFTER the trade fee and our own fee — what the trader actually
+   * collects per dollar committed. Equals `payoutUp` when no rates are supplied.
+   *
+   * Both are kept, rather than replacing one with the other, because they answer
+   * different questions: `payoutUp` is the surface's price (and must stay equal to
+   * `1 / chanceAbove` or the ladder would contradict the surface), while this is the
+   * money. The UI quotes this one.
+   */
+  netPayoutUp: number;
   /** The rung nearest the forward (today's price). */
   isAtm: boolean;
 }
@@ -43,6 +54,8 @@ export function buildLadder(
   pricer: { forward: number; svi: SviFloat },
   admissionTickSize: string | bigint,
   targets: number[] = DEFAULT_TARGETS,
+  /** Fees in force. Omitted → net equals gross, so existing callers are unchanged. */
+  rates: FeeRates = NO_FEES,
 ): LadderRung[] {
   const { forward, svi } = pricer;
   if (!(forward > 0)) return [];
@@ -59,6 +72,7 @@ export function buildLadder(
       chanceAbove,
       movePct: ((strike - forward) / forward) * 100,
       payoutUp: payoutMultiple(chanceAbove),
+      netPayoutUp: netPayoutMultiple(chanceAbove, rates),
       isAtm: false,
     });
   }
@@ -78,4 +92,34 @@ export function buildLadder(
     rungs[atm].isAtm = true;
   }
   return rungs;
+}
+
+/** One side of a rung: the chance it wins, and what it pays gross and net. */
+export interface LadderSide {
+  /** Chance this side finishes in the money (0..1). */
+  chance: number;
+  /** Payout multiple at the fair price (1 / chance). */
+  payout: number;
+  /** Payout after fees — what the trader actually collects per dollar committed. */
+  netPayout: number;
+}
+
+/**
+ * Read a rung from either direction.
+ *
+ * A binary at strike K has two sides and the ladder only ever showed one, so half of
+ * every market was unreachable from the page's flagship table. They are exact mirrors
+ * — `chanceBelow = 1 − chanceAbove` — so no new pricing is needed, only the arithmetic
+ * to say it. Kept here rather than in the component so the two directions can never
+ * drift apart, and so the fee is applied to the side actually being quoted (it is
+ * charged on notional, so the down side of a longshot carries a different haircut than
+ * the up side).
+ */
+export function ladderSide(r: LadderRung, isUp: boolean, rates: FeeRates = NO_FEES): LadderSide {
+  const chance = isUp ? r.chanceAbove : 1 - r.chanceAbove;
+  return {
+    chance,
+    payout: payoutMultiple(chance),
+    netPayout: netPayoutMultiple(chance, rates),
+  };
 }

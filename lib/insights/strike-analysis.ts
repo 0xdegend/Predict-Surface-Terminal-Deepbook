@@ -23,6 +23,31 @@ const BARS_PER_YEAR = 525_600;
 /** Below this the empirical rate is noise, so we return none rather than a number. */
 const MIN_SAMPLES = 120;
 
+/**
+ * Below this many NON-OVERLAPPING windows the rate is one regime wearing a large
+ * sample count, so we return none rather than a number.
+ *
+ * WHY THIS EXISTS, and why it looks inert. `samples` counts overlapping windows —
+ * every bar starts one — which is fine when the horizon is short relative to the tape
+ * and badly misleading when it is not. The tape is 2000 one-minute bars (~33h), so:
+ *
+ *   1m market  (h=1)     2000 independent windows
+ *   5m market  (h=5)      400
+ *   1h market  (h=60)      33
+ *   1d market  (h=1440)     1   ← 560 "samples", all of them the same day
+ *   1w market  (h=10080)    0   ← already caught by the MIN_SAMPLES test
+ *
+ * So the day 1-day markets ship, `empiricalHitRate` would report a confident-looking
+ * "62% of the time" computed from a single non-overlapping observation, and the edge
+ * scanner would rank real money against it. The 1-week case is already safe by
+ * accident (the horizon exceeds the tape); the 1-day case is the trap.
+ *
+ * Every cadence live today clears 8 with room to spare, so this changes nothing now.
+ * It is here so that the new tenors arrive as "not enough history" instead of as
+ * fiction. See [[lib/insights/tenor]] for the rest of the 1d/1w readiness.
+ */
+const MIN_INDEPENDENT_WINDOWS = 8;
+
 export interface StrikeAnalysis {
   /** Signed move from spot to strike, in percent (+ = strike is above spot). */
   requiredMovePct: number;
@@ -33,7 +58,7 @@ export interface StrikeAnalysis {
   /** Annualized realized vol from the 1-minute tape, in percent. */
   realizedVolPct: number;
   /** Share of recent same-length windows that finished on the winning side. */
-  empirical: { prob: number; samples: number; horizonBars: number } | null;
+  empirical: { prob: number; samples: number; horizonBars: number; independentWindows: number } | null;
   /** The surface's fair probability for this strike, 0-1 (passed in). */
   implied: number | null;
   /** implied − empirical, in probability POINTS. + = surface asks more than
@@ -78,16 +103,23 @@ export function realizedVol(closes: number[]): number {
  * Windows overlap (every bar starts one), which maximizes sample count at the
  * cost of independence — fine for a base rate, and why `samples` is surfaced so
  * the number can be weighed.
+ *
+ * Two gates, because `samples` alone cannot tell the difference between "a lot of
+ * evidence" and "one day, counted 560 times": the raw count must clear MIN_SAMPLES,
+ * AND the tape must hold at least MIN_INDEPENDENT_WINDOWS non-overlapping horizons.
+ * The second is what keeps a 1-day market honest (see the constant).
  */
 export function empiricalHitRate(
   closes: number[],
   horizonBars: number,
   requiredRet: number,
   isUp: boolean,
-): { prob: number; samples: number } | null {
+): { prob: number; samples: number; independentWindows: number } | null {
   const h = Math.max(1, Math.round(horizonBars));
   const n = closes.length;
   if (n - h < MIN_SAMPLES) return null;
+  const independentWindows = Math.floor(n / h);
+  if (independentWindows < MIN_INDEPENDENT_WINDOWS) return null;
 
   let hits = 0;
   let samples = 0;
@@ -100,7 +132,7 @@ export function empiricalHitRate(
     samples++;
   }
   if (samples < MIN_SAMPLES) return null;
-  return { prob: hits / samples, samples };
+  return { prob: hits / samples, samples, independentWindows };
 }
 
 export function analyzeStrike({

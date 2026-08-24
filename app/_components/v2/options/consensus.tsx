@@ -1,12 +1,16 @@
 'use client';
 
 /**
- * ProbabilityConsensus — the page's flagship visual. Three independent, horizon-
- * matched reads of the SELECTED bet (our surface · a recent-vol model · how often it
- * actually happened) plotted on one 0–100% scale, with the shaded band showing where
- * they agree. When they cluster the bet is priced right; when they split, that gap is
- * the read. Every number is real (the engine's `buildConsensus`) — no crowd market is
- * mixed in, because Polymarket's BTC markets are longer-dated than ours.
+ * ProbabilityConsensus — the page's flagship visual. Up to FOUR independent, horizon-
+ * matched reads of the SELECTED bet (our surface · what traders actually paid on our
+ * book · a recent-vol model · how often it actually happened) plotted on one 0–100%
+ * scale, with the shaded band showing where they agree. When they cluster the bet is
+ * priced right; when they split, that gap is the read.
+ *
+ * Every number is real (the engine's `buildConsensus`). No OUTSIDE crowd market is
+ * mixed in, because Polymarket's BTC books are longer-dated than ours — but our own
+ * book is a crowd at exactly our horizon, and it is now the second read. A strike
+ * nobody has traded simply shows three; the panel never fills the gap with a model.
  */
 import { num, timeLeftWords } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
@@ -15,6 +19,9 @@ import type { Consensus } from '@/lib/insights';
 
 const SRC_COLOR: Record<string, string> = {
   surface: 'var(--accent)',
+  // The other PRICE read, so it borrows the up tone rather than a grey: the eye
+  // should catch a gap between what we quote and what people paid.
+  crowd: 'var(--up)',
   recentVol: 'var(--text-2)',
   history: 'var(--text-1)',
 };

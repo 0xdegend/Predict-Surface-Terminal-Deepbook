@@ -13,8 +13,14 @@
  * The diagram plots two lines over a profit/loss field: the smooth MARK-NOW curve
  * (what the bet is worth if you exit now, holding the smile) and the stepped
  * AT-EXPIRY payoff (the final all-or-nothing outcome). The gap between them is the
- * time value. Every dollar figure is framed per $100 staked, before leverage —
- * honest and leverage-agnostic (the ticket owns the real sizing + knockout math).
+ * time value.
+ *
+ * EVERY DOLLAR FIGURE IS PER $100 COMMITTED, AFTER FEES, at 1×. That framing is what
+ * makes the diagram honest: the protocol fee is charged on notional, so it is already
+ * spent the moment the bet is placed, and a chart drawn off the gross payout would
+ * show the position opening at break-even when it actually opens down by the fee. The
+ * mark curve now starts below zero by exactly what it cost to get in, which is the
+ * true picture. See lib/markets/v2-fees; the ticket owns the real sizing.
  *
  * Reads the same selected strike/side the Probability consensus does, so the whole
  * lower page speaks about one bet at a time.
@@ -22,11 +28,13 @@
 import { useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { num, signed, pct, timeLeftWords } from '@/lib/format';
 import { useNow } from '@/lib/hooks/use-now';
-import { contractGreeks, scenarioCurve, repricer, settlesInMoney, defaultSpan, type ContractSpec, type ScenarioPoint } from '@/lib/insights';
-import { ProOnly, Term } from './vocab';
+import { contractGreeks, scenarioCurve, repricer, settlesInMoney, defaultSpan, tenorBand, vegaMeaningful, type ContractSpec, type ScenarioPoint } from '@/lib/insights';
+import { feeRatesFor, netPayoutMultiple } from '@/lib/markets/v2-fees';
+import { Term } from './vocab';
+import type { V2Market } from '@/lib/api/v2/types';
 import type { SviFloat } from '@/lib/svi/svi';
 
-/** Every dollar figure is per this stake, at 1× — honest + leverage-agnostic. */
+/** Every dollar figure is per this much COMMITTED (stake + fees), at 1×. */
 const STAKE = 100;
 /** Keep the loss zone legible when a longshot's win dwarfs it: cap the chart's
  *  upside at 9× the stake (the win chip still shows the true figure). */
@@ -40,6 +48,8 @@ export function GreeksScenario({
   isUp,
   expiryMs,
   now,
+  market,
+  skewFeeBps = 0,
   onBet,
 }: {
   pricer: { forward: number; svi: SviFloat } | null | undefined;
@@ -47,6 +57,10 @@ export function GreeksScenario({
   isUp: boolean;
   expiryMs: number | null;
   now: number;
+  /** The market being priced — carries `base_fee`, the notional-basis trade fee. */
+  market?: Pick<V2Market, 'base_fee'> | null;
+  /** Our own fee rate, from the on-chain FeeConfig. 0 when the router is off. */
+  skewFeeBps?: number;
   onBet: () => void;
 }) {
   // Live 1s clock for the countdown only (kept off the heavy recompute below).
@@ -62,6 +76,8 @@ export function GreeksScenario({
   // Coarse clock so theta/scenario don't churn on every 1s price tick.
   const coarseNow = Math.floor(now / 10_000) * 10_000;
 
+  const rates = useMemo(() => feeRatesFor(market, skewFeeBps), [market, skewFeeBps]);
+
   const model = useMemo(() => {
     if (!ready || !svi || strike == null || expiryMs == null) return null;
     const spec: ContractSpec = { kind: 'binary', strike, isUp };
@@ -71,7 +87,11 @@ export function GreeksScenario({
     // the tiles still read fine, the diagram doesn't, so gate the chart out.
     if (fair0 < 0.02 || fair0 > 0.98) return { tooFar: true as const, fair0 };
 
-    const maxWin = STAKE / fair0;
+    // How much notional $STAKE buys once the fees are paid. Every dollar figure below
+    // is `STAKE * netMult * <probability>`, which used to be `STAKE * <prob> / fair0`
+    // — the same shape with the fee left out.
+    const netMult = netPayoutMultiple(fair0, rates);
+    const maxWin = STAKE * netMult;
     const profit = maxWin - STAKE;
     const price = repricer({ spec, svi });
 
@@ -82,28 +102,34 @@ export function GreeksScenario({
     // "If BTC moves $100" — a forward difference (exact for that move, no unit trap).
     const up100 = price(forward + 100);
     const moveChancePts = (up100 - fair0) * 100;
-    const moveUsd = (STAKE * (up100 - fair0)) / fair0;
+    const moveUsd = STAKE * netMult * (up100 - fair0);
 
     // "If it sits still" — the outcome the mark drifts to, holding this price.
     const sitWin = settlesInMoney(spec, forward);
     const sitUsd = sitWin ? profit : -STAKE;
-    const thetaUsdHr = (STAKE * g.thetaPerHour) / fair0;
+    const thetaUsdHr = STAKE * netMult * g.thetaPerHour;
 
-    // Pro tiles. Vega: chance points per +1 implied-vol point, and what that is worth
-    // on the mark. Gamma: how much delta itself moves per $100 of spot, quoted in
-    // chance points so it sits in the same unit as everything else on the panel.
-    // At the money a binary's vega is ~0 by construction (a symmetric bet neither gains
-    // nor loses from more movement), so snap the last wisp to zero — "-0.0 pts" reads as
-    // a broken number rather than a true one.
+    // Vega: chance points per +1 implied-vol point, and what that is worth on the
+    // mark. At the money a binary's vega is ~0 by construction (a symmetric bet
+    // neither gains nor loses from more movement), so snap the last wisp to zero —
+    // "-0.0 pts" reads as a broken number rather than a true one. On the minute-scale
+    // markets it is ~0 everywhere worth trading, which is why the tile only appears
+    // from an hour out (see `vegaMeaningful`).
+    //
+    // Gamma is GONE. It was quoted as chance points of delta change per $100 of spot,
+    // which is a second derivative of a binary at a tenor where the first derivative
+    // is already moving faster than anyone can act on. Nobody was going to trade off
+    // it, and it cost a tile next to figures that do decide a bet.
     const snapZero = (x: number, eps: number) => (Math.abs(x) < eps ? 0 : x);
     const vegaPts = snapZero(g.vegaPerVolPoint * 100, 0.05);
-    const vegaUsd = snapZero((STAKE * g.vegaPerVolPoint) / fair0, 0.5);
-    const gammaPts = snapZero(g.gamma * 100 * 100, 0.005);
+    const vegaUsd = snapZero(STAKE * netMult * g.vegaPerVolPoint, 0.5);
+    const showVega = vegaMeaningful(tenorBand(expiryMs, coarseNow));
 
     return {
       tooFar: false as const,
       spec,
       fair0,
+      netMult,
       maxWin,
       profit,
       price,
@@ -111,7 +137,7 @@ export function GreeksScenario({
       greeks: g,
       vegaPts,
       vegaUsd,
-      gammaPts,
+      showVega,
       moveChancePts,
       moveUsd,
       sitWin,
@@ -120,7 +146,7 @@ export function GreeksScenario({
       Fmin: scenario[0].forward,
       Fmax: scenario[scenario.length - 1].forward,
     };
-  }, [ready, svi, forward, strike, isUp, expiryMs, coarseNow]);
+  }, [ready, svi, forward, strike, isUp, expiryMs, coarseNow, rates]);
 
   if (!ready || strike == null || expiryMs == null || !model) return null;
 
@@ -150,12 +176,12 @@ export function GreeksScenario({
     );
   }
 
-  const { fair0, maxWin, profit, price, scenario, greeks, moveChancePts, moveUsd, sitWin, sitUsd, thetaUsdHr, vegaPts, vegaUsd, gammaPts, Fmin, Fmax } = model;
+  const { fair0, netMult, maxWin, profit, price, scenario, greeks, moveChancePts, moveUsd, sitWin, sitUsd, thetaUsdHr, vegaPts, vegaUsd, showVega, Fmin, Fmax } = model;
   const tone = isUp ? 'up' : 'down';
   const accent = isUp ? 'var(--up)' : 'var(--down)';
 
   const scrubF = scrub ?? forward;
-  const scrubMark = (STAKE * price(scrubF)) / fair0;
+  const scrubMark = STAKE * netMult * price(scrubF);
   const scrubPnl = scrubMark - STAKE;
   const scrubWin = settlesInMoney(model.spec, scrubF);
   const scrubMovePct = (scrubF / forward - 1) * 100;
@@ -204,26 +230,20 @@ export function GreeksScenario({
             <span className="tabular-nums text-text-1">{pct(fair0, 0)}</span>
             {/* maxWin is DOLLARS back on a $STAKE bet, so the multiple is maxWin/STAKE.
                 Printing maxWin itself here read "200.02× payout" on an even-money bet,
-                while the ladder called the same strike 1.95×. */}
+                while the ladder called the same strike 1.95×. Both are now net of
+                fees, so this and the ladder quote the same figure. */}
             <span className="ml-1.5 text-[11px] text-text-3">{(maxWin / STAKE).toFixed(2)}× payout</span>
           </Tile>
           <Tile label={<Term plain="If BTC +$100" pro="Delta · per +$100" />}>
             <span className={`tabular-nums ${moveChancePts >= 0 ? 'text-up' : 'text-down'}`}>{signed(moveChancePts, 1)} pts</span>
             <span className="ml-1.5 text-[11px] text-text-3">mark {sUsd(moveUsd)}</span>
           </Tile>
-          <ProOnly>
-            {/* Gamma has always been computed and never shown, and vega is new. Both are
-                per-$100 staked like every other figure here. Gamma is quoted per $100 of
-                spot move because per-dollar-squared is unreadable at BTC's scale. */}
+          {showVega && (
             <Tile label="Vega · per +1 vol pt">
               <span className={`tabular-nums ${vegaPts >= 0 ? 'text-up' : 'text-down'}`}>{signed(vegaPts, 1)} pts</span>
               <span className="ml-1.5 text-[11px] text-text-3">mark {sUsd(vegaUsd)}</span>
             </Tile>
-            <Tile label="Gamma · per $100">
-              <span className="tabular-nums text-text-2">{signed(gammaPts, 2)} pts</span>
-              <span className="ml-1.5 text-[11px] text-text-3">delta change</span>
-            </Tile>
-          </ProOnly>
+          )}
           <Tile label={<Term plain="If it sits still" pro="Theta · time decay" />}>
             <span className={`tabular-nums ${sitUsd >= 0 ? 'text-up' : 'text-down'}`}>{sitWin ? `wins ${sUsd(sitUsd)}` : `−$${STAKE}`}</span>
             <span className="ml-1.5 text-[11px] text-text-3">
@@ -236,7 +256,7 @@ export function GreeksScenario({
         <PayoffChart
           svgRef={svgRef}
           scenario={scenario}
-          fair0={fair0}
+          netMult={netMult}
           profit={profit}
           strike={strike}
           forward={forward}
@@ -288,9 +308,9 @@ export function GreeksScenario({
         </div>
 
         <p className="mt-3 text-[11px] leading-relaxed text-text-3">
-          Per $100 staked, before leverage. <span className="text-text-2">Mark</span> is the value if you exit now;{' '}
-          <span className="text-text-2">at expiry</span> is the final all-or-nothing payoff. Holds today&apos;s surface — a
-          real move reshapes it.
+          Per $100 committed, after fees. <span className="text-text-2">Mark</span> is the value if you exit now;{' '}
+          <span className="text-text-2">at expiry</span> is the final all-or-nothing payoff. The curve starts below zero
+          because the fee is paid on the way in. Holds today&apos;s surface, and a real move reshapes it.
         </p>
       </div>
     </>
@@ -320,7 +340,7 @@ const PLOT_H = H - PAD_T - PAD_B;
 const PayoffChart = ({
   svgRef,
   scenario,
-  fair0,
+  netMult,
   profit,
   strike,
   forward,
@@ -331,7 +351,8 @@ const PayoffChart = ({
 }: {
   svgRef: RefObject<SVGSVGElement | null>;
   scenario: ScenarioPoint[];
-  fair0: number;
+  /** Notional bought per dollar committed — turns a probability into money. */
+  netMult: number;
   profit: number;
   strike: number;
   forward: number;
@@ -353,7 +374,7 @@ const PayoffChart = ({
     const y = PAD_T + ((yTop - v) / (yTop - yBot)) * PLOT_H;
     return Math.min(H - PAD_B, Math.max(PAD_T, y)); // clip clamped longshots to the frame
   };
-  const mPnl = (p: ScenarioPoint) => (STAKE * p.mark) / fair0 - STAKE;
+  const mPnl = (p: ScenarioPoint) => STAKE * netMult * p.mark - STAKE;
   const ePnl = (p: ScenarioPoint) => (p.expiry ? profit : -STAKE);
 
   const markPts = scenario.map((p) => `${X(p.forward).toFixed(1)},${Y(mPnl(p)).toFixed(1)}`).join(' ');

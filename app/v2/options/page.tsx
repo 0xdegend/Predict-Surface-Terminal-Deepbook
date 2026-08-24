@@ -6,7 +6,8 @@
  */
 import type { Metadata } from 'next';
 import { getV2Markets, getV2Status } from '@/lib/api/v2/client';
-import { activeMarkets, groupByCadence, CADENCE_ORDER, wallClockMs } from '@/lib/markets/v2-discovery';
+import { activeMarkets, wallClockMs } from '@/lib/markets/v2-discovery';
+import { pickAcrossTenors } from '@/lib/insights';
 import { simulateLivePricer, v2GrpcClient, type LivePricer } from '@/lib/sui/v2/pricer';
 import { V2OptionsScreen } from '@/app/_components/v2/options/options-screen';
 import { ErrorState } from '@/app/_components/ui/error-state';
@@ -44,10 +45,16 @@ export default async function V2OptionsPage() {
     );
   }
 
-  // Seed the nearest 2 markets per cadence (≥2 expiries → a real surface) so the
+  // Seed the nearest 2 markets per TENOR BAND (≥2 expiries → a real surface) so the
   // surface + ladder paint instantly; the client refreshes per-market live.
-  const grouped = groupByCadence(markets);
-  const seedTargets = CADENCE_ORDER.flatMap((c) => grouped[c].slice(0, 2)) as V2Market[];
+  //
+  // Banded by time left rather than by cadence on purpose. Seeding by cadence worked
+  // only because the three cadences happened to be the three horizons — the day 1d
+  // and 1w markets ship they both classify as '1h' (the classifier's `> 40min`
+  // branch), so a whole horizon would go unseeded and the surface would open flat at
+  // the long end. `pickAcrossTenors` reads `expiry − now`, so new tenors seed
+  // correctly with no change here. See lib/insights/tenor.
+  const seedTargets = pickAcrossTenors(markets, (m) => m.expiry, now, 2);
   const client = v2GrpcClient();
   const seedResults = await Promise.allSettled(seedTargets.map((m) => simulateLivePricer(client, m.expiry_market_id)));
   const pricerSeeds: Record<string, LivePricer> = {};

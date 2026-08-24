@@ -22,8 +22,10 @@ import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
 import { useBtcInsights, type BtcInsights } from '@/lib/hooks/use-btc-insights';
+import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
 import { useBtcPositioning, type Positioning } from '@/lib/hooks/use-btc-positioning';
 import { useMounted } from '@/lib/hooks/use-mounted';
+import { useMarketBook } from '@/lib/hooks/use-market-book';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2CopilotTicketModal } from '../copilot/copilot-ticket-modal';
@@ -35,16 +37,22 @@ import { SkewTerm } from './skew-term';
 import { PositioningFlow } from './positioning-flow';
 import { ProbabilityConsensus } from './consensus';
 import { OptionsEdgeScanner } from './edge-scanner';
+import { OurBook } from './our-book';
 import { GreeksScenario } from './greeks-scenario';
 import { StrategyBuilder } from './strategy-builder';
 import { PlainOnly, VocabProvider, useVocab } from './vocab';
-import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, defaultExpiryId, expectedMove, expiryLabel, type Consensus, type EngineCandidate, type MarketExpiry, type MarketIntel, type MarketRead } from '@/lib/insights';
+import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, defaultExpiryId, expectedMove, expiryLabel, outsideContext, tenorBand, type Consensus, type EngineCandidate, type MarketExpiry, type MarketIntel, type MarketRead } from '@/lib/insights';
+import { paidProbAt, type MarketBook } from '@/lib/analytics/market-book';
 import { timeLeftWords } from '@/lib/format';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { OptionsShareModal } from './options-share-modal';
 import { ShareXButton } from '../share/share-x-button';
 import type { OptionsShareCard } from '@/lib/share/options-share';
-import type { LadderRung } from '@/lib/markets/v2-ladder';
+import { ladderSide, type LadderRung } from '@/lib/markets/v2-ladder';
+import { feeRatesFor, netPayoutMultiple } from '@/lib/markets/v2-fees';
+import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
+import { rangeFair } from '@/lib/svi/svi';
+import { toFloat, fromFloat } from '@/config/scale';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
 import type { V2Market, PythObservation } from '@/lib/api/v2/types';
@@ -66,7 +74,7 @@ type DeckTab = 'bet' | 'scan' | 'context' | 'build';
 const DECK_TABS: { key: DeckTab; label: string; hint: string; pro?: boolean }[] = [
   { key: 'bet', label: 'This bet', hint: 'The odds and payoff for the strike you’ve picked.' },
   { key: 'scan', label: 'Scan', hint: 'Where the surface is cheap versus recent history, across every expiry.', pro: true },
-  { key: 'context', label: 'Context', hint: 'Positioning and flow, the skew term structure, and a reality check.', pro: true },
+  { key: 'context', label: 'Context', hint: 'Our own book on this expiry, the skew term structure, and a reality check.', pro: true },
   { key: 'build', label: 'Build', hint: 'Combine several legs into one payoff, then place them together.', pro: true },
 ];
 
@@ -88,8 +96,14 @@ export function V2OptionsScreen({
   const setStrikePrice = useV2TradeStore((s) => s.setStrikePrice);
   const markPicked = useV2TradeStore((s) => s.markPicked);
   const openTicketSheet = useV2TradeStore((s) => s.openTicketSheet);
+  const setRangeBand = useV2TradeStore((s) => s.setRangeBand);
   const storeStrike = useV2TradeStore((s) => s.strikePrice);
   const storeIsUp = useV2TradeStore((s) => s.isUp);
+
+  // Our own fee rate, straight off the on-chain FeeConfig, so every payout and EV on
+  // this page is quoted against what the trader is actually charged. 0 when the
+  // router is not published for this network.
+  const { feeBps: skewFeeBps } = useSkewFeeV2();
 
   // Clawby-backed reads, gated on the live flag (zero credits behind the gate).
   const { data: insights, loading: insightsLoading } = useBtcInsights({ enabled: OPTIONS_LIVE });
@@ -206,6 +220,11 @@ export function V2OptionsScreen({
     openTicketSheet();
   }
 
+  // OUR OWN standing interest on the selected market. Feeds both the consensus (as
+  // the "what traders paid" read) and the Context tab's book panel, so it is read
+  // once here rather than per-panel.
+  const { book, isLoading: bookLoading } = useMarketBook(selected);
+
   const ladderPricer = selectedPricer ?? (selected ? pricers[selected.expiry_market_id] : undefined);
   // The expected range belongs to the expiry the page is ON, not the one that happens to
   // settle next. Falls back to the engine's front-expiry read only while the selected
@@ -214,6 +233,41 @@ export function V2OptionsScreen({
     () => (ladderPricer ? expectedMove({ forward: ladderPricer.forward, svi: ladderPricer.svi }) : null),
     [ladderPricer],
   );
+
+  /**
+   * The expected-range band as a REAL, quotable range bet.
+   *
+   * The card has always drawn "about 2 in 3 chance it lands in here" and offered no
+   * way to bet it — the one shape on the page whose picture and whose product were
+   * the same thing, with nothing joining them. The band edges are snapped to the
+   * market's admission grid first, so the chance quoted on the button is the chance
+   * the ticket will price, and the chance comes from `rangeFair` on the live smile
+   * rather than the 1σ convention the caption uses (the two are close but not equal,
+   * and the button has to be exact).
+   *
+   * Null when the snapped band collapses or falls outside the quotable band, which is
+   * the same gate the ticket applies.
+   */
+  const rangeBet = useMemo(() => {
+    const em = selectedEm ?? intel.expectedMove;
+    if (!em || !selected || !ladderPricer) return null;
+    const tick = BigInt(selected.admission_tick_size);
+    const lower = toFloat(snapStrikeToAdmission(fromFloat(em.lowPrice), tick));
+    const higher = toFloat(snapStrikeToAdmission(fromFloat(em.highPrice), tick));
+    if (!(lower > 0) || !(lower < higher)) return null;
+    const chance = rangeFair(lower, higher, ladderPricer.forward, ladderPricer.svi);
+    if (!(chance > 0.005 && chance < 0.995)) return null;
+    return { lower, higher, chance, netPayout: netPayoutMultiple(chance, feeRatesFor(selected, skewFeeBps)) };
+  }, [selectedEm, intel.expectedMove, selected, ladderPricer, skewFeeBps]);
+
+  function betRange() {
+    if (!selected || !rangeBet) return;
+    selectMarket(selected.expiry_market_id);
+    setMode('range');
+    setRangeBand(rangeBet.lower, rangeBet.higher);
+    markPicked();
+    openTicketSheet();
+  }
 
   // The consensus tracks the picked strike (default: the ATM up bet on the front market).
   const consensusStrike = storeStrike ?? ladderPricer?.forward ?? null;
@@ -229,8 +283,16 @@ export function V2OptionsScreen({
       now: pulseNow,
     });
     if (!a) return null;
-    return buildConsensus({ isUp: consensusIsUp, surfaceProb: a.implied, sigmaMove: a.sigmaMove, empiricalProb: a.empirical?.prob ?? null });
-  }, [ladderPricer, selected, consensusStrike, consensusIsUp, liveCloses, pulseNow]);
+    return buildConsensus({
+      isUp: consensusIsUp,
+      surfaceProb: a.implied,
+      sigmaMove: a.sigmaMove,
+      empiricalProb: a.empirical?.prob ?? null,
+      // The fourth read: the price people actually took on this exact strike + side.
+      // Null at a strike nobody has traded, and the panel simply shows three.
+      paidProb: paidProbAt(book, consensusStrike, consensusIsUp)?.prob ?? null,
+    });
+  }, [ladderPricer, selected, consensusStrike, consensusIsUp, liveCloses, pulseNow, book]);
 
   // Share-to-X: the Options page's shareable snapshots, built from the SAME live
   // data the widgets show. Each opens the card dialog (an ad for the page).
@@ -259,16 +321,18 @@ export function V2OptionsScreen({
       horizon: timeLeftWords(selected.expiry - pulseNow),
     });
   };
-  const shareOdds = (r: LadderRung) => {
+  const shareOdds = (r: LadderRung, isUp: boolean) => {
     if (!selected) return;
+    // Quote the side the ladder was actually showing, not always the up side.
+    const side = ladderSide(r, isUp, feeRatesFor(selected, skewFeeBps));
     setShareCard({
       kind: 'bold_odds',
       asset: intel.asset.short,
       strike: r.strike,
-      chancePct: r.chanceAbove * 100,
-      payoutX: r.payoutUp,
+      chancePct: side.chance * 100,
+      payoutX: side.netPayout,
       horizon: timeLeftWords(selected.expiry - pulseNow),
-      isUp: true,
+      isUp,
     });
   };
 
@@ -306,15 +370,29 @@ export function V2OptionsScreen({
               spot={intel.spot}
               horizon={selected ? expiryLabel(selected.expiry, pulseNow) : null}
               asset={intel.asset}
+              rangeBet={rangeBet}
+              onBetRange={betRange}
               onShare={shareExpectedRange}
             />
           </div>
-          <div className="h-[44vh] min-h-80 overflow-hidden rounded-lg border border-line bg-bg-1">
-            {canSurface ? (
-              <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
-            ) : (
-              <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
-            )}
+          <div className="flex flex-col gap-2">
+            <div className="h-[44vh] min-h-80 overflow-hidden rounded-lg border border-line bg-bg-1">
+              {canSurface ? (
+                <SurfaceMountV2 inputs={surfaceInputs} markets={markets} serverNow={serverNow} />
+              ) : (
+                <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
+              )}
+            </div>
+            {/* The surface was never the problem — the SILENCE around it was. Clicking a
+                ladder row already calls `highlight()`, which lights that strike here, and
+                nothing on the page said so. A first-timer read the 3-D shape as decoration
+                they could not act on, when it is in fact the picture of the very thing
+                they are about to bet on. One line, Plain only: Pro knows what a surface is. */}
+            <PlainOnly>
+              <p className="text-[11.5px] leading-relaxed text-text-3">
+                Every price and every expiry at once, priced live. Pick a row below and it lights up here.
+              </p>
+            </PlainOnly>
           </div>
         </div>
 
@@ -325,7 +403,15 @@ export function V2OptionsScreen({
 
         {/* The flagship ladder. */}
         <div className="mt-2">
-          <ProbabilityLadder market={selected} pricer={ladderPricer} closes={liveCloses} now={pulseNow} onHighlight={highlight} onBet={bet} onShareOdds={shareOdds} />
+          <ProbabilityLadder
+            market={selected}
+            pricer={ladderPricer}
+            now={pulseNow}
+            skewFeeBps={skewFeeBps}
+            onHighlight={highlight}
+            onBet={bet}
+            onShareOdds={shareOdds}
+          />
         </div>
 
         {/* Analytics deck. Lives in its own component so it can read the Plain/Pro
@@ -341,6 +427,9 @@ export function V2OptionsScreen({
           ladderPricer={ladderPricer}
           closes={liveCloses}
           now={pulseNow}
+          skewFeeBps={skewFeeBps}
+          book={book}
+          bookLoading={bookLoading}
           consensus={consensus}
           consensusStrike={consensusStrike}
           consensusIsUp={consensusIsUp}
@@ -383,6 +472,9 @@ function AnalyticsDeck({
   ladderPricer,
   closes,
   now,
+  skewFeeBps,
+  book,
+  bookLoading,
   consensus,
   consensusStrike,
   consensusIsUp,
@@ -399,6 +491,9 @@ function AnalyticsDeck({
   ladderPricer: LivePricer | null | undefined;
   closes: number[] | null | undefined;
   now: number;
+  skewFeeBps: number;
+  book: MarketBook;
+  bookLoading: boolean;
   consensus: Consensus | null;
   consensusStrike: number | null;
   consensusIsUp: boolean;
@@ -420,6 +515,9 @@ function AnalyticsDeck({
 
   const pricerPair = ladderPricer ? { forward: ladderPricer.forward, svi: ladderPricer.svi } : null;
   const betPicked = () => consensusStrike != null && onBet(consensusStrike, consensusIsUp);
+  // How much the wider (days-to-weeks) options market has to say about the horizon on
+  // screen. Reads time-left, so 1d/1w markets promote it on their own. See lib/insights/tenor.
+  const outsideRelevance = selected ? outsideContext(tenorBand(selected.expiry, now)) : 'unrelated';
 
   return (
     <div className="mt-5">
@@ -442,27 +540,63 @@ function AnalyticsDeck({
               expiryMs={selected?.expiry ?? null}
               onBet={betPicked}
             />
-            {/* Payoff & decay — how the picked bet behaves if BTC moves or time passes. */}
-            <GreeksScenario
-              pricer={pricerPair}
-              strike={consensusStrike}
-              isUp={consensusIsUp}
-              expiryMs={selected?.expiry ?? null}
-              now={now}
-              onBet={betPicked}
-            />
+            {/* Payoff & decay — how the picked bet behaves if BTC moves or time passes.
+                PRO ONLY. Under the plain labels this is delta and theta with a
+                scrubbable mark-vs-expiry diagram, which is a desk instrument however
+                it is worded: "If BTC +$100 → +2.3 pts, mark +$12" asks a newcomer to
+                read a greek. It was also the third place Plain showed the same
+                probability (ladder row, consensus bar, "Chance now" tile). Plain keeps
+                the consensus verdict; Pro keeps the instrument. */}
+            {pro && (
+              <GreeksScenario
+                pricer={pricerPair}
+                strike={consensusStrike}
+                isUp={consensusIsUp}
+                expiryMs={selected?.expiry ?? null}
+                now={now}
+                market={selected}
+                skewFeeBps={skewFeeBps}
+                onBet={betPicked}
+              />
+            )}
           </div>
         )}
 
         {active === 'scan' && (
           /* Edge scanner — the cross-expiry value screener. */
-          <OptionsEdgeScanner markets={markets} pricers={pricers} closes={closes} now={now} onHighlight={onHighlightAt} onBet={onBetAt} />
+          <OptionsEdgeScanner
+            markets={markets}
+            pricers={pricers}
+            closes={closes}
+            now={now}
+            skewFeeBps={skewFeeBps}
+            onHighlight={onHighlightAt}
+            onBet={onBetAt}
+          />
         )}
 
         {active === 'context' && (
           <div className="flex flex-col gap-4">
-            {/* Positioning & flow — the "why behind the odds" (Clawby PRO). */}
-            <PositioningFlow positioning={positioning} insights={insights} intel={intel} />
+            {/* OUR book, first. This section used to open on Deribit's pin and a day of
+                ETF flow — real numbers about a different market on a different clock —
+                while the feed that describes THIS expiry went unread. */}
+            <section>
+              <div className="mb-3 mt-1 flex items-center gap-2.5">
+                <h2 className="text-[14px] font-semibold text-text-1">Our book</h2>
+                <span className="text-[10.5px] uppercase tracking-wide text-text-3">where the money is on this expiry</span>
+                <span className="h-px flex-1 bg-linear-to-r from-line to-transparent" />
+              </div>
+              <OurBook book={book} forward={pricerPair?.forward ?? null} isLoading={bookLoading} onPick={onBet} />
+            </section>
+
+            {/* The wider options market, weighted by whether it shares our horizon.
+                A monthly Deribit pin is a real input to a 1-week bet and says nothing
+                about the next five minutes, so below the hour it is hidden rather than
+                shown next to our odds as though the two were comparable. */}
+            {outsideRelevance !== 'unrelated' && (
+              <PositioningFlow positioning={positioning} insights={insights} intel={intel} relevance={outsideRelevance} />
+            )}
+
             {/* Term structure + reality check. */}
             <div className="grid gap-3 lg:grid-cols-2">
               <SkewTerm expiries={intel.expiries} arb={intel.arb} now={now} pricers={pricers} spot={intel.spot} />
@@ -481,6 +615,7 @@ function AnalyticsDeck({
 }
 
 function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; loading?: boolean; onShare?: () => void }) {
+  const { pro } = useVocab();
   // While the read is still loading, hold the card's footprint with a skeleton that
   // matches the final layout, so the real lines swap IN PLACE instead of the card
   // popping in short and then resizing as the content lands (the "shrink then
@@ -488,23 +623,31 @@ function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; l
   // collapses to nothing as before.
   if (!read) return loading ? <MarketReadSkeleton /> : null;
   return (
-    // Same min height as the skeleton (below), so the real read swaps IN PLACE when it
-    // lands instead of the card growing and shoving the expected-move card + surface
-    // down — the "loads short then snaps taller" jank. The read is reliably a headline
-    // plus three sentence lines (~this tall), so the floor rarely leaves dead space.
-    <div className="glass min-h-60 rounded-lg p-4">
+    // Same min height as the skeleton (below) IN PRO, so the real read swaps in place
+    // instead of the card growing and shoving the expected-move card + surface down —
+    // the "loads short then snaps taller" jank. Plain has no supporting lines to hold
+    // room for, so it sizes to its headline rather than reserving three lines of air.
+    <div className={`glass rounded-lg p-4 ${pro ? 'min-h-60' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="text-[10.5px] uppercase tracking-wider text-text-3">Surface read</div>
-        {onShare && <ShareXButton onClick={onShare} label="Share the market read" />}
+        {/* Share is Pro chrome. In Plain it was one of three share buttons stacked
+            above the fold, each competing with the single action the page wants. */}
+        {onShare && pro && <ShareXButton onClick={onShare} label="Share the market read" />}
       </div>
       <p className="mt-2 text-[13.5px] font-medium leading-snug text-text-1">{read.headline}</p>
-      <ul className="mt-2 space-y-1.5">
-        {read.lines.map((l, i) => (
-          <li key={i} className={`text-[12.5px] leading-relaxed ${l.tone === 'up' ? 'text-up' : l.tone === 'down' ? 'text-down' : 'text-text-2'}`}>
-            {l.text}
-          </li>
-        ))}
-      </ul>
+      {/* The three supporting sentences are Pro only. In Plain they sat in a stack of
+          THREE prose blocks (this, the orientation line, the expected-range caption)
+          that a newcomer had to read past before reaching anything clickable. The
+          headline already carries the read; the detail is for someone who wants it. */}
+      {pro && (
+        <ul className="mt-2 space-y-1.5">
+          {read.lines.map((l, i) => (
+            <li key={i} className={`text-[12.5px] leading-relaxed ${l.tone === 'up' ? 'text-up' : l.tone === 'down' ? 'text-down' : 'text-text-2'}`}>
+              {l.text}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

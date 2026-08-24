@@ -1,23 +1,32 @@
 /**
- * lib/insights/consensus.ts — three independent, horizon-matched reads of the SAME
+ * lib/insights/consensus.ts — four independent, horizon-matched reads of the SAME
  * bet, on one scale.
  *
  *   1. Our surface       — the SVI implied probability (upFair / dnFair).
- *   2. Recent-vol model  — a normal-model probability fed by REALIZED vol: "the odds
+ *   2. What traders paid — the premium-weighted entry probability on OUR book at this
+ *                          exact strike and side. Not a model: the price people took.
+ *   3. Recent-vol model  — a normal-model probability fed by REALIZED vol: "the odds
  *                          if BTC keeps moving like it has lately".
- *   3. Happened lately   — the raw empirical hit-rate over the recent 1-minute tape.
+ *   4. Happened lately   — the raw empirical hit-rate over the recent 1-minute tape.
  *
  * They share the strike and the horizon, so they're genuinely comparable — unlike a
- * longer-dated crowd market, which is exactly why Polymarket is deliberately NOT a
- * source (its BTC markets are weekly/monthly, not our minutes-to-hours). When the
- * three cluster, the bet is priced about right; when they split, the gap is the read.
+ * longer-dated crowd market, which is why Polymarket is deliberately NOT a source (its
+ * BTC markets are weekly/monthly, not our minutes-to-hours). That exclusion used to
+ * leave the panel with no crowd read at all, and it did not have to: our own book IS a
+ * crowd, quoted at our own horizon by construction. Source 2 closes that hole, and it
+ * is the only one of the four that is not derived from the same price tape as the
+ * others — which is exactly what makes a consensus worth taking.
  *
- * PURE + tested. Built so a future genuinely-comparable source can drop straight in.
+ * When the reads cluster, the bet is priced about right; when they split, the gap is
+ * the read.
+ *
+ * PURE + tested. Sources are omitted, never faked: a strike nobody has traded simply
+ * has no crowd read.
  */
 import { normalCdf } from '@/lib/svi/normal';
 
 export interface ConsensusSource {
-  key: 'surface' | 'recentVol' | 'history';
+  key: 'surface' | 'crowd' | 'recentVol' | 'history';
   /** Pro label. */
   label: string;
   /** Plain label. */
@@ -54,12 +63,19 @@ export function buildConsensus(input: {
   surfaceProb: number | null;
   sigmaMove: number | null;
   empiricalProb: number | null;
+  /** Premium-weighted entry probability paid on our own book at this strike + side. */
+  paidProb?: number | null;
 }): Consensus | null {
-  const { isUp, surfaceProb, sigmaMove, empiricalProb } = input;
+  const { isUp, surfaceProb, sigmaMove, empiricalProb, paidProb } = input;
 
   const sources: ConsensusSource[] = [];
   if (surfaceProb != null && Number.isFinite(surfaceProb)) {
     sources.push({ key: 'surface', label: 'SVI implied', plainLabel: 'Our surface', prob: clamp01(surfaceProb) });
+  }
+  // Second, so it sits next to the other PRICE read. The screen renders sources[0] as
+  // its single Plain bar, so the surface has to keep index 0.
+  if (paidProb != null && Number.isFinite(paidProb)) {
+    sources.push({ key: 'crowd', label: 'Paid on our book', plainLabel: 'What traders paid', prob: clamp01(paidProb) });
   }
   if (sigmaMove != null && Number.isFinite(sigmaMove)) {
     sources.push({ key: 'recentVol', label: 'Realized-vol model', plainLabel: 'If it moves like lately', prob: clamp01(recentVolProb(sigmaMove, isUp)) });

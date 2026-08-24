@@ -1,12 +1,28 @@
 'use client';
 
 /**
- * PositioningFlow — the "why behind the odds": max-pain + put/call by expiry, spot
- * ETF net flow, crowd long/short + funding, and 24h liquidations, with a plain
- * verdict on top and a cross-market line tying the options market's pin to our
- * surface's own read. Every figure is real (Clawby PRO); nothing is invented — in
- * particular there is no Deribit IV bar, because no IV feed exists, so the
- * cross-market read leads with max-pain gravity + OI dominance instead.
+ * PositioningFlow — the WIDER options market: max-pain + put/call by expiry, spot ETF
+ * net flow, crowd long/short + funding, and 24h liquidations. Every figure is real
+ * (Clawby PRO); nothing is invented — in particular there is no Deribit IV bar,
+ * because no IV feed exists.
+ *
+ * IT NO LONGER CLAIMS TO PRICE OUR MARKETS. Every figure here moves on a scale of days
+ * to weeks: a max-pain pin for a monthly expiry, a day of ETF flow, a 24h liquidation
+ * total. The page's own markets settle in minutes. The panel used to sit at the top of
+ * the Context tab at full weight and close with a sentence that put Deribit's monthly
+ * pin and our five-minute distribution in the same breath, which invited a reader to
+ * treat one as evidence about the other. It was the most misleading line on the page.
+ *
+ * So `relevance` (from `outsideContext`, driven by time to expiry) now decides how this
+ * is framed, and the screen hides it outright on the short tenors:
+ *
+ *   'primary'  — 1d / 1w markets. Same horizon, so it reads as a real input.
+ *   'backdrop' — hourly. Shown, labelled as backdrop, cross-market line suppressed.
+ *
+ * The cross-market sentence only survives at 'primary', where the two horizons
+ * genuinely are comparable. Our own book has taken over the top of the tab (see
+ * `OurBook`), which is what should have been answering "the why behind the odds" all
+ * along.
  *
  * Hidden entirely until the positioning payload is available.
  */
@@ -22,7 +38,18 @@ const shortDate = (d: string) => {
   return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : d;
 };
 
-export function PositioningFlow({ positioning, insights, intel }: { positioning: Positioning | null; insights: BtcInsights | null; intel: MarketIntel }) {
+export function PositioningFlow({
+  positioning,
+  insights,
+  intel,
+  relevance = 'primary',
+}: {
+  positioning: Positioning | null;
+  insights: BtcInsights | null;
+  intel: MarketIntel;
+  /** How much this horizon has to say about the market on screen. */
+  relevance?: 'primary' | 'backdrop';
+}) {
   if (!positioning || !positioning.available) return null;
 
   const fundingPct = insights?.funding.binancePct ?? insights?.funding.avgPct ?? null;
@@ -33,16 +60,20 @@ export function PositioningFlow({ positioning, insights, intel }: { positioning:
   const pin = positioning.maxPain[0]?.maxPainPrice ?? null;
   const share = positioning.options?.deribitSharePct ?? null;
   const upChance = intel.expiries[0]?.upChance ?? null;
+  // Only where the horizons actually match. At 'backdrop' this sentence would be
+  // comparing a monthly pin to a distribution measured in minutes.
   const cross =
-    pin != null && upChance != null
+    relevance === 'primary' && pin != null && upChance != null
       ? `The options market is pinned near $${compact(pin)}${share != null ? `, and Deribit carries about ${share.toFixed(0)}% of all BTC options` : ''}. Our live surface puts the chance BTC finishes above the price at ${(upChance * 100).toFixed(0)}%.`
       : null;
 
   return (
     <section>
       <div className="mb-3 mt-1 flex items-center gap-2.5">
-        <h2 className="text-[14px] font-semibold text-text-1">Positioning &amp; flow</h2>
-        <span className="text-[10.5px] uppercase tracking-wide text-text-3">the why behind the odds · Clawby PRO</span>
+        <h2 className="text-[14px] font-semibold text-text-1">The wider market</h2>
+        <span className="text-[10.5px] uppercase tracking-wide text-text-3">
+          {relevance === 'primary' ? 'same horizon as this expiry · Clawby PRO' : 'days-to-weeks backdrop, not this expiry · Clawby PRO'}
+        </span>
         <span className="h-px flex-1 bg-gradient-to-r from-line to-transparent" />
       </div>
 
