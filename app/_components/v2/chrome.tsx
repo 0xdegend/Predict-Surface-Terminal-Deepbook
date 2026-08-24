@@ -44,8 +44,7 @@ import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-vi
 import { usePythTapeSpotFeed } from '@/lib/hooks/use-v2-pyth-history';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { TourButton } from '../tour/tour-button';
-import { SocialIconLinks, SOCIAL_ICON } from '../social-links';
-import { SOCIALS } from '@/config/socials';
+import { SocialIconLinks } from '../social-links';
 import { V2SpotTape } from './spot-tape';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
 import { isAdminAddress, V2_SIMPLE_ENABLED } from '@/config/predict';
@@ -62,16 +61,6 @@ type MenuItem = {
   /** An off-site link (e.g. a social account) — opens in a new tab, never route-active. */
   external?: boolean;
 };
-
-/** "Follow @handle" rows for the More menu, one per social, from the shared list. */
-const SOCIAL_ITEMS: MenuItem[] = SOCIALS.map((s) => ({
-  href: s.url,
-  label: `Follow on ${s.label}`,
-  desc: s.handle,
-  icon: SOCIAL_ICON[s.id],
-  footer: true,
-  external: true,
-}));
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
@@ -134,7 +123,10 @@ export function V2Chrome() {
   // register the first code — and would surface it to any stranger who registered
   // a code of their own. The page and the chain gate it again regardless.
   const account = useCurrentAccount();
-  // Socials sit at the very bottom of the menu (below Docs / any Admin row).
+  // No socials in here. They are back as an icon in the bar itself (below), and a link
+  // that is one click away in the corner does not also need a labelled row inside a menu
+  // of destinations. The mobile More sheet still carries the row, because the phone has
+  // no bar to put an icon in.
   const moreItems: MenuItem[] = isAdminAddress(account?.address)
     ? [
         ...MORE_ITEMS,
@@ -147,9 +139,8 @@ export function V2Chrome() {
           // leaves an odd hole. Matches the "any Admin row" note above.
           footer: true,
         },
-        ...SOCIAL_ITEMS,
       ]
-    : [...MORE_ITEMS, ...SOCIAL_ITEMS];
+    : MORE_ITEMS;
 
   // TRACKS: the two side zones are `minmax(max-content,1fr)`, the price chip in the
   // middle is `auto`. That one line does what two hand-picked breakpoints could not.
@@ -233,11 +224,13 @@ export function V2Chrome() {
         <V2SpotTape />
       </div>
 
-      {/* socials + toggle + wallet. The social icons are the lowest-value thing in the
-          bar and the only one duplicated elsewhere (they are rows in the More menu, and
-          the mobile More sheet), so they are the first to go: 2xl only. */}
+      {/* socials + toggle + wallet. The social icons used to stand down to 2xl because the
+          bar was tight; the track rework freed enough room to bring them back at xl, where
+          the right zone measures 102px of slack against a ~40px icon. They stay OUT of the
+          lg band (1024-1279): that is the tightest the bar ever gets — 12px of slack with
+          the price chip already stood down — and 40px more would overflow it. */}
       <div className="col-start-3 flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
-        <SocialIconLinks className="hidden 2xl:flex" />
+        <SocialIconLinks className="hidden xl:flex" />
         <TourButton />
         {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
             on the trade screen. Every other page shows none — the Legacy ⇄ Latest
