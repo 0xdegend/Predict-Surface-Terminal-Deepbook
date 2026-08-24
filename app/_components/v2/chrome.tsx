@@ -31,7 +31,7 @@ import {
   LuSwords,
   LuBookOpen,
   LuKeyRound,
-  LuSparkles,
+  LuMessageSquare,
   LuChartCandlestick,
   LuArrowUpRight,
   LuBadgeCheck,
@@ -88,7 +88,7 @@ const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
 
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: LuSparkles },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: LuMessageSquare },
   ...(AUTOPILOT
     ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: LuGauge } as MenuItem]
     : []),

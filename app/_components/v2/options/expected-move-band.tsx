@@ -10,7 +10,7 @@
  * now follows the ladder, and names the horizon it is talking about.
  */
 import Link from 'next/link';
-import { LuSparkles } from 'react-icons/lu';
+import { LuMessageSquare } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { Term } from './vocab';
 import { ShareXButton } from '../share/share-x-button';
@@ -78,7 +78,7 @@ export function ExpectedMoveBand({
           href="/v2/copilot?ask=Recommend%20a%20range"
           className="inline-flex shrink-0 items-center gap-1 rounded-full border border-(--accent-line) bg-(--accent-soft) px-2.5 py-1 text-[10.5px] font-medium text-accent transition-colors hover:bg-up/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <LuSparkles size={11} />
+          <LuMessageSquare size={11} />
           Ask Kelly for a range
         </Link>
       </div>

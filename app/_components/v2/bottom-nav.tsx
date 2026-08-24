@@ -32,7 +32,7 @@ import {
   LuTarget,
   LuSwords,
   LuBookOpen,
-  LuSparkles,
+  LuMessageSquare,
   LuArrowUpRight,
   LuBadgeCheck,
   LuGauge,
@@ -65,7 +65,7 @@ const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
 const MORE: MoreItem[] = [
   // Descs kept short so each tile is a single line on mobile (uniform height).
   { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: LuSparkles },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: LuMessageSquare },
   ...(AUTOPILOT ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Trades your rules', icon: LuGauge } as MoreItem] : []),
   ...(KELLY_RECEIPTS
     ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed', icon: LuBadgeCheck } as MoreItem]

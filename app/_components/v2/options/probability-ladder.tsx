@@ -291,11 +291,16 @@ function Row({
               still took ~26px of the row, which was the last thing pushing the Bet button
               past the edge of a 390px phone. Desktop keeps it. */}
           {onShare && (
-            <ShareXButton
-              onClick={onShare}
-              label="Share these odds"
-              className="hidden opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 sm:inline-flex"
-            />
+            // The hide + hover-reveal live on a WRAPPER, not on the button. Passing
+            // `hidden … sm:inline-flex` into the button set `display` twice on one element
+            // (the button sets its own `grid`), so Tailwind's emit order decided the winner
+            // rather than the class list: at sm+ the button resolved to inline-flex, where
+            // `place-items-center` centres nothing horizontally (justify-items is a no-op in
+            // flex), and the icon sat against the left edge of its box. The wrapper owns
+            // visibility, the button owns its own layout, and neither can clobber the other.
+            <span className="hidden opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 sm:inline-flex">
+              <ShareXButton onClick={onShare} label="Share these odds" />
+            </span>
           )}
           <button
             type="button"

@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { LuBoxes, LuChartArea, LuGift, LuPause, LuSparkles } from 'react-icons/lu';
+import { LuBoxes, LuChartArea, LuGift, LuMessageSquare, LuPause } from 'react-icons/lu';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
 import { useSurfaceStore } from '@/lib/store/surface-store';
 import { useV2Markets } from '@/lib/hooks/use-v2-markets';
@@ -422,7 +422,7 @@ function PausedTicket() {
               href="/v2/copilot"
               className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[11px] text-text-2 transition-colors hover:border-accent/40 hover:text-text-1"
             >
-              <LuSparkles size={12} />
+              <LuMessageSquare size={12} />
               Ask Kelly about BTC
             </Link>
           </div>
