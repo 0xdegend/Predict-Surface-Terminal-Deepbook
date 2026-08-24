@@ -724,31 +724,20 @@ export function V2TradeTicket({
     </div>
   );
 
-  /**
-   * The primary action. On the mobile sheet it PINS to the bottom of the scroll area
-   * rather than sitting at the end of the stack.
-   *
-   * Trimming rows buys height once; the sheet grows again the next time a control is
-   * added, and the button is the one thing that must never be off-screen. `-mx-4` cancels
-   * the sheet's own `px-4` so the bar spans edge to edge, and it carries a hairline + a
-   * blurred fill so the controls scrolling underneath stay legible without bleeding
-   * through. Desktop is a plain block, exactly as before.
-   */
-  const actionRow = (
-    <div
-      data-tour="place"
-      className={
-        mobile
-          ? 'sticky bottom-0 z-20 -mx-4 flex flex-col border-t border-white/10 bg-bg-1/92 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2.5 backdrop-blur-md'
-          : 'flex flex-col'
-      }
-    >
-      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
-    </div>
-  );
-
-  const footerNotes = (
+  const betFooter = (
     <>
+      {/* No "Closing in Ns." banner here. The countdown at the TOP of the ticket already
+          turns red on the same `closingSoon` flag, so this was the same number, in the same
+          colour, twice on one screen. Past the block the quote card says "About to settle"
+          and the button reads "Too close to expiry", which covers the urgent end. */}
+
+      {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
+          (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
+      {/* flex column so the primary action stretches — ReviewButton is a form control and
+          shrink-wraps in a plain block, which is what left Confirm as a stub. */}
+      <div data-tour="place" className="flex flex-col">
+        <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
+      </div>
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       {/* Only the one-tap caution survives: it warns there is NO review step, which the
           button does not say. The review-flow twin just restated a button labelled
@@ -766,31 +755,6 @@ export function V2TradeTicket({
         >
           <LuShare2 size={12} /> Share this trade with a friend
         </button>
-      )}
-    </>
-  );
-
-  const betFooter = (
-    <>
-      {/* No "Closing in Ns." banner here. The countdown at the TOP of the ticket already
-          turns red on the same `closingSoon` flag, so this was the same number, in the same
-          colour, twice on one screen. Past the block the quote card says "About to settle"
-          and the button reads "Too close to expiry", which covers the urgent end. */}
-
-      {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
-          (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
-      {/* Order flips on mobile: the notes sit ABOVE the pinned bar, because a sticky
-          element with siblings after it in flow would paint over them at full scroll. */}
-      {mobile ? (
-        <>
-          {footerNotes}
-          {actionRow}
-        </>
-      ) : (
-        <>
-          {actionRow}
-          {footerNotes}
-        </>
       )}
     </>
   );

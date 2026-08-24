@@ -108,9 +108,7 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
             <LuX size={18} />
           </button>
         </div>
-        {/* pb clears the PINNED action bar (sticky, ~62px incl. its own safe-area pad), so
-              the last control can still scroll clear of it instead of ending up behind it. */}
-          <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-20 pt-1">
+        <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
           {/* Mobile: the chart renders inside binary step 1 (read-only — taps scroll
               the sheet), only mounted while the sheet is open + a market is picked.
               Its strike/win-zone overlays track the payout slider live. */}
