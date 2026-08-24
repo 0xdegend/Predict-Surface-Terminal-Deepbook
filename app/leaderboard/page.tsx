@@ -5,7 +5,7 @@ import { LeaderboardPanel } from '../_components/leaderboard/leaderboard-panel';
 export const metadata: Metadata = {
   title: 'Leaderboard',
   description:
-    'The Skew leaderboard — DeepBook Predict traders ranked live by points and volume from the public event stream.',
+    'The Skew leaderboard: DeepBook Predict traders ranked live by points and volume from the public event stream.',
 };
 
 // The leaderboard is computed client-side from the public event stream (no

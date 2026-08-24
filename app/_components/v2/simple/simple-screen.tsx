@@ -667,9 +667,9 @@ export function SimpleScreen({
           confirmLabel={`Bet ${confirm.isUp ? 'UP' : 'DOWN'} · ${usd(confirm.quote.stakeBase)}`}
           subtitle={
             acct.sessionCanTrade
-              ? 'Instant trading is on — this places with no wallet pop-up.'
+              ? 'Instant trading is on. This places with no wallet pop-up.'
               : acct.gasless
-                ? 'Signed in with Google — places instantly, no wallet pop-up.'
+                ? 'Signed in with Google, so this places instantly with no wallet pop-up.'
                 : 'Review your bet, then approve it in your wallet.'
           }
           extra={<SessionOptInRow />}

@@ -212,7 +212,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
             <div className="flex flex-col">
               <span className="text-[13px] text-text-1">Add crash protection</span>
               <span className="font-sans text-[11px] text-text-3">
-                {hedgeOn ? 'Part of your deposit buys protection against a crash' : 'Optional — add to the pool without it'}
+                {hedgeOn ? 'Part of your deposit buys protection against a crash' : 'Optional, add to the pool without it'}
               </span>
             </div>
           </div>
@@ -359,7 +359,7 @@ function ActionButton({
     insufficient: 'Not enough DUSDC in your wallet',
     'supply-zero': 'Lower the protection budget',
     pricing: 'Getting the price…',
-    unquotable: 'Couldn’t price the protection — try again',
+    unquotable: 'Couldn’t price the protection. Try again',
     'budget-too-small': 'Increase your amount or the protection %',
     ready: readyLabel,
   };

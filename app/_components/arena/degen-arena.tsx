@@ -93,7 +93,7 @@ function RulesPanel() {
       icon: LuUserPlus,
       hue: '#6aa6e6',
       title: 'Found or join a faction',
-      body: 'Top traders apply to found a faction. Everyone else joins one — your trading then counts toward its total.',
+      body: 'Top traders apply to found a faction. Everyone else joins one, and your trading then counts toward its total.',
     },
     {
       icon: LuUsers,

@@ -120,7 +120,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
           label="Coverage"
           value={coverageDisplay}
           sub="worst-case payout"
-          info="Pool value ÷ the most it could owe if every open bet won at once. A conservative floor — real payouts net the premiums already in the pool, so true coverage is higher."
+          info="Pool value ÷ the most it could owe if every open bet won at once. A conservative floor, because real payouts net the premiums already in the pool, so true coverage is higher."
         />
         <Fig label="Total shares" value={fmtQuote(snapshot.totalShares)} base={snapshot.totalShares} sub="PLP outstanding" />
         <Fig label="Withdrawable now" value={fmtQuote(snapshot.idle)} base={snapshot.idle} sub={`${sym} idle`} />
@@ -257,7 +257,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
             />
             <Stat
               label="Covered from idle?"
-              value={stressed.breachesIdle ? 'Partly — rest waits' : 'Fully'}
+              value={stressed.breachesIdle ? 'Partly, rest waits' : 'Fully'}
               tone={stressed.breachesIdle ? 'down' : 'up'}
               tip="Whether the payout fits inside the idle cash on hand. If it doesn't, the shortfall is covered as markets settle rather than instantly."
             />

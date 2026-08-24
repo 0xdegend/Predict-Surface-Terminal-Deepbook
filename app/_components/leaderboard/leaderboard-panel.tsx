@@ -75,7 +75,7 @@ export function LeaderboardPanel() {
       <ErrorState
         title="Failed to load leaderboard"
         message={error}
-        note="Usually a transient network hiccup — the public server is reachable."
+        note="Usually a transient network hiccup. The public server is reachable."
       />
     );
   }

@@ -101,7 +101,7 @@ export function useV2Leaderboard(): UseV2Leaderboard {
           transient = true;
         }
       }
-      if (transient) throw new Error('featured-wallet resolution incomplete — retrying');
+      if (transient) throw new Error('featured-wallet resolution incomplete, retrying');
       return ids;
     },
     enabled: !IS_729 && featured.length > 0,

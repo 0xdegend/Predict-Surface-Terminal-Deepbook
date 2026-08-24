@@ -64,7 +64,7 @@ export function V2PositionRow({
   const title = p.underlying ?? 'BTC';
   const condition =
     isRange && p.band
-      ? `${price(p.band.lower)} — ${price(p.band.higher)}`
+      ? `${price(p.band.lower)} to ${price(p.band.higher)}`
       : p.strike != null
         ? `${title} ${up ? '≥' : '≤'} ${price(p.strike)}`
         : title;
@@ -208,7 +208,7 @@ function ActionButton({
     return (
       <button
         disabled
-        title="The oracle hasn't settled this market yet — the payout follows once it does."
+        title="The oracle hasn't settled this market yet. The payout follows once it does."
         className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-3 opacity-70"
       >
         Awaiting <LuClock size={12} />
@@ -236,7 +236,7 @@ function ActionButton({
       <button
         onClick={onClick}
         disabled={busy}
-        title="The automatic clear is late — clear this settled position yourself"
+        title="The automatic clear is late. Clear this settled position yourself"
         className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-text-2 transition-all hover:border-line-strong hover:text-text-1 disabled:opacity-50"
       >
         Clear <LuCircleX size={12} />
@@ -248,7 +248,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={busy}
-      title={isFallbackClaim ? 'The auto-payout is late — claim it yourself' : undefined}
+      title={isFallbackClaim ? 'The auto-payout is late. Claim it yourself' : undefined}
       className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[10px] font-semibold uppercase tracking-wider transition-all disabled:opacity-50 ${
         isFallbackClaim
           ? 'border-up/50 bg-up/10 text-up hover:bg-up/20'

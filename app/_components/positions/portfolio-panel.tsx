@@ -243,7 +243,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
           icon={LuCoins}
           color={HUE.amber}
           label="Trading account balance"
-          info="Money in your trading account that isn’t tied up in open bets — free to place new bets or withdraw back to your wallet anytime."
+          info="Money in your trading account that isn’t tied up in open bets, free to place new bets or withdraw back to your wallet anytime."
           value={s ? fmtQuote(fromQuote(s.trading_balance)) : '…'}
           action={
             acct.tradingBalanceBase > 0n ? (
@@ -278,7 +278,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
       {/* Ready to redeem (settled) — ALWAYS visible; it's claimable money and
           should never sit behind a tab. */}
       {redeemable.length > 0 && (
-        <Section title="Ready to redeem" hint="settled — claim your payout">
+        <Section title="Ready to redeem" hint="settled, claim your payout">
           <Grid>
             {redeemable.map((p) => (
               <PositionCard

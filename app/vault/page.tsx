@@ -11,7 +11,7 @@ import { ErrorState } from '../_components/ui/error-state';
 export const metadata: Metadata = {
   title: 'Vault',
   description:
-    'Add funds to the Skew pool and earn a share of the trading fees — with optional one-click crash protection. Take your money out any time.',
+    'Add funds to the Skew pool and earn a share of the trading fees, with optional one-click crash protection. Take your money out any time.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +48,7 @@ export default async function VaultRoute() {
         <ErrorState
           title="Failed to load markets"
           message={error}
-          note="Usually a transient network hiccup — the server is reachable."
+          note="Usually a transient network hiccup. The server is reachable."
         />
       ) : (
         <main className="flex-1">

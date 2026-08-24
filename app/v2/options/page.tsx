@@ -16,7 +16,7 @@ import type { V2Market } from '@/lib/api/v2/types';
 
 export const metadata: Metadata = {
   title: 'BTC Options',
-  description: 'The clearest read on Bitcoin options — live volatility surface, probability ladder, expected move, and reality check.',
+  description: 'The clearest read on Bitcoin options: the live volatility surface, probability ladder, expected move, and reality check.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ export default async function V2OptionsPage() {
         title="Couldn’t reach the Predict server"
         message={error}
         detail={predictV2Config.serverUrl}
-        note="Usually a transient network hiccup — retry in a moment."
+        note="Usually a transient network hiccup. Retry in a moment."
       />
     );
   }

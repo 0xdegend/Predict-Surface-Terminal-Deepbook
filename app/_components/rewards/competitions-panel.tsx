@@ -110,7 +110,7 @@ export function CompetitionsPanel({ questsHref = "/quests" }: { questsHref?: str
       <RewardsHeader
         icon={LuSwords}
         title="Competitions"
-        blurb="Seasonal trading races where the best traders compete head-to-head. Climb the ranks over the season window and the top finishers split a DUSDC prize pool — funded by the community's trading fees."
+        blurb="Seasonal trading races where the best traders compete head-to-head. Climb the ranks over the season window and the top finishers split a DUSDC prize pool, funded by the community's trading fees."
       />
 
       {/* Season hero */}

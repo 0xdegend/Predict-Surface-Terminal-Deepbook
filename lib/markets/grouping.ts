@@ -66,13 +66,13 @@ export const HORIZONS: HorizonDef[] = [
     id: 'closing',
     maxMs: 15 * MIN,
     label: 'Closing soon',
-    blurb: 'Resolves in minutes — a quick call on where BTC lands next.',
+    blurb: 'Resolves in minutes, a quick call on where BTC lands next.',
   },
   {
     id: 'hour',
     maxMs: HOUR,
     label: 'Within the hour',
-    blurb: 'Settles before the hour is out — a little room for the move.',
+    blurb: 'Settles before the hour is out, a little room for the move.',
   },
   {
     id: 'hours',

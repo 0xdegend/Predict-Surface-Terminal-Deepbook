@@ -85,7 +85,7 @@ describe('co-pilot — positioning answers', () => {
   });
 
   it('degrades gracefully without positioning data', () => {
-    expect(respondToIntent({ kind: 'positioning' }, ctx({ positioning: null })).text.join(' ')).toMatch(/give it a moment/);
+    expect(respondToIntent({ kind: 'positioning' }, ctx({ positioning: null })).text.join(' ')).toMatch(/Give it a moment/);
     // Analyze still works, just without the enrichment.
     const a = respondToIntent({ kind: 'analyze' }, ctx({ positioning: null })).text.join(' ');
     expect(a).not.toMatch(/betting up/);

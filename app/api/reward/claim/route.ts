@@ -115,7 +115,7 @@ export async function POST(req: Request) {
     // 4) treasury floor.
     const treasuryAddr = signer.toSuiAddress();
     if ((await balanceOf(treasuryAddr, QUOTE)) < TREASURY_FLOOR + REWARD_BASE_UNITS) {
-      return NextResponse.json({ error: 'Reward treasury is low — try again later', code: 'treasury_empty' }, { status: 503 });
+      return NextResponse.json({ error: 'Reward treasury is low. Try again later', code: 'treasury_empty' }, { status: 503 });
     }
 
     // Drip SUI to an external wallet that's near-zero, so it can gas the deposit.

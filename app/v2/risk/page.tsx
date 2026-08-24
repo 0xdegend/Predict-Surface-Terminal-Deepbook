@@ -16,7 +16,7 @@ import type { V2Market } from '@/lib/api/v2/types';
 export const metadata: Metadata = {
   title: 'Vault Risk',
   description:
-    'How safe is the Skew liquidity pool? A live health check — how much is at work, how much you can withdraw now, how far it covers what it could owe, and a stress test for adverse settlements.',
+    'How safe is the Skew liquidity pool? A live health check: how much is at work, how much you can withdraw now, how far it covers what it could owe, and a stress test for adverse settlements.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +41,7 @@ export default async function V2RiskPage() {
         title="Couldn’t reach the Predict server"
         message={error}
         detail={predictV2Config.serverUrl}
-        note="Usually a transient network hiccup — retry in a moment."
+        note="Usually a transient network hiccup. Retry in a moment."
       />
     );
   }

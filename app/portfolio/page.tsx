@@ -5,7 +5,7 @@ import { PortfolioPanel } from '../_components/positions/portfolio-panel';
 export const metadata: Metadata = {
   title: 'Portfolio',
   description:
-    'Your DeepBook Predict positions on Skew — live PnL marked to the current fair value, with one-click redeem for open and settled bets.',
+    'Your DeepBook Predict positions on Skew: live PnL marked to the current fair value, with one-click redeem for open and settled bets.',
 };
 
 // Wallet-specific account view. The data is client-only (needs the connected

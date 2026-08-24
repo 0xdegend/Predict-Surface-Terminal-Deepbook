@@ -45,13 +45,13 @@ const OPTIONS: {
     id: "legacy",
     label: "Legacy",
     Icon: LuArchive,
-    hint: "The original Skew — trading has wound down; open it to claim any old positions.",
+    hint: "The original Skew. Trading has wound down; open it to claim any old positions.",
   },
   {
     id: "v2",
     label: "Latest",
     Icon: LuActivity,
-    hint: "The new Predict release — faster markets, leverage, and more. Now live.",
+    hint: "The new Predict release: faster markets, leverage, and more. Now live.",
   },
 ];
 

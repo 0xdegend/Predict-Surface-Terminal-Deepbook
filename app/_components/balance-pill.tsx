@@ -93,7 +93,7 @@ function V2TotalPill() {
         ref={anchorRef}
         href="/v2/portfolio"
         title="View portfolio"
-        aria-label={`Total balance ${ready ? fmtQuote(fromQuote(totalBase)) : ''} ${sym}, trading account plus wallet — view portfolio`}
+        aria-label={`Total balance ${ready ? fmtQuote(fromQuote(totalBase)) : ''} ${sym}, trading account plus wallet. View portfolio`}
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
@@ -174,7 +174,7 @@ function WalletOnlyPill() {
     <Link
       href="/portfolio"
       title="View portfolio"
-      aria-label={`Balance ${data === undefined ? '' : fmtQuote(fromQuote(data))} ${sym} — view portfolio`}
+      aria-label={`Balance ${data === undefined ? '' : fmtQuote(fromQuote(data))} ${sym}. View portfolio`}
       className={PILL_CLASS}
     >
       <span className="text-text-1">{data === undefined ? '…' : fmtQuote(fromQuote(data))}</span>

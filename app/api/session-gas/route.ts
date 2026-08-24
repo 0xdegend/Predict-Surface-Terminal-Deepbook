@@ -139,7 +139,7 @@ export async function POST(req: Request) {
     //    above the ceiling and already returned at step 3, so this never blocks them.
     if (await recentlyDripped(address)) {
       return NextResponse.json(
-        { error: 'Just topped up — give it a few seconds and try again', code: 'cooldown' },
+        { error: 'Just topped up. Give it a few seconds and try again', code: 'cooldown' },
         { status: 429 },
       );
     }

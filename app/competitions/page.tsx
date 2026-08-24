@@ -5,7 +5,7 @@ import { DegenArena } from '../_components/arena/degen-arena';
 export const metadata: Metadata = {
   title: 'Competitions',
   description:
-    'Degen Arena — Skew’s faction competition. Factions compete each season for a share of a DUSDC prize pool, split by faction rank and by each member’s performance.',
+    'Degen Arena: Skew’s faction competition. Factions compete each season for a share of a DUSDC prize pool, split by faction rank and by each member’s performance.',
 };
 
 // A self-contained showcase of the Degen Arena faction competition (the live

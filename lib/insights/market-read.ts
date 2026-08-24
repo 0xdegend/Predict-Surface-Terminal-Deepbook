@@ -95,7 +95,7 @@ function trendLine(ctx: MarketContext): ReadLine | null {
     if (dir === 'up') {
       fundingClause = fundingLong
         ? ' and funding is positive, so leveraged traders are leaning long'
-        : ", but funding is negative — the move isn't crowded with longs";
+        : ", but funding is negative, so the move isn't crowded with longs";
     } else {
       fundingClause = fundingLong
         ? " even though funding stays positive, so longs haven't given up yet"
@@ -131,7 +131,7 @@ function sentimentLine(ctx: MarketContext): ReadLine | null {
   if (!s) return null;
   const tone: ReadTone = s.value < 45 ? 'down' : s.value > 55 ? 'up' : 'neutral';
   const extra =
-    s.value < 25 ? ' — the crowd is very cautious' : s.value > 75 ? ' — the crowd is very optimistic' : '';
+    s.value < 25 ? ', the crowd is very cautious' : s.value > 75 ? ', the crowd is very optimistic' : '';
   return { tone, text: `Overall sentiment is in ${s.label.toLowerCase()} (${s.value}/100)${extra}.` };
 }
 
@@ -144,7 +144,7 @@ function strikeLine(
 ): ReadLine {
   const dir = isUp ? 'above' : 'below';
   const move = `${signed(strike.requiredMovePct, 2)}%`;
-  const pieces = [`This bet wins if BTC is ${dir} $${num(strikePrice, 0)} in ${timeLeftLabel} — a ${move} move`];
+  const pieces = [`This bet wins if BTC is ${dir} $${num(strikePrice, 0)} in ${timeLeftLabel}, a ${move} move`];
 
   if (strike.empirical) {
     pieces.push(`Moves like that have landed about ${(strike.empirical.prob * 100).toFixed(0)}% of the time lately`);

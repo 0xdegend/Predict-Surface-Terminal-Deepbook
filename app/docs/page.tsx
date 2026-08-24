@@ -5,7 +5,7 @@ import { DocsPanel } from '../_components/docs/docs-panel';
 export const metadata: Metadata = {
   title: 'Docs',
   description:
-    'The Skew manual — how to read the volatility surface, mint binary and range predictions, manage positions, provide liquidity, and climb the ranks on DeepBook Predict.',
+    'The Skew manual: how to read the volatility surface, mint binary and range predictions, manage positions, provide liquidity, and climb the ranks on DeepBook Predict.',
 };
 
 // Static reference content + a client scroll-spy nav; no wallet or data fetch.

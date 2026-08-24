@@ -148,7 +148,7 @@ export function StrategyBuilder({
     for (const p of fresh.plans) {
       const digest = await acct.mintBudget(p.params, { silentSuccess: true });
       if (!digest) {
-        setPlaceError(acct.error ?? 'A leg could not be placed — the remaining legs were not sent.');
+        setPlaceError(acct.error ?? 'A leg could not be placed. The remaining legs were not sent.');
         setPlacing(false);
         setProgress({ done, total: fresh.plans.length });
         return;

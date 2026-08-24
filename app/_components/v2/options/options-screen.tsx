@@ -374,7 +374,7 @@ export function V2OptionsScreen({
   };
 
   if (markets.length === 0) {
-    return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now — check back in a moment.</div>;
+    return <div className="card mx-4 my-8 px-4 py-8 text-center text-[13px] text-text-3">No live markets right now. Check back in a moment.</div>;
   }
 
   const page = (

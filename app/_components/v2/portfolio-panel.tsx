@@ -294,14 +294,14 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           icon={LuLayers}
           color={HUE.blue}
           label="Open exposure"
-          info="Money currently staked in open bets — it comes back (plus or minus the result) when they close or settle."
+          info="Money currently staked in open bets. It comes back (plus or minus the result) when they close or settle."
           value={fmtQuote(openExposure)}
         />
         <SmallStat
           icon={LuCoins}
           color={HUE.amber}
           label="Trading account balance"
-          info="Money in your trading account that isn't tied up in open bets — free to place new bets or move back to your wallet anytime."
+          info="Money in your trading account that isn't tied up in open bets, free to place new bets or move back to your wallet anytime."
           value={fmtQuote(freeBalance)}
           action={
             <div className="mt-1 flex flex-wrap items-center gap-1.5">

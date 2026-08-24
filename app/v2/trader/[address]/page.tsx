@@ -4,7 +4,7 @@ import { V2TraderProfile } from '@/app/_components/v2/trader/trader-profile';
 export const metadata: Metadata = {
   title: 'Trader',
   description:
-    'A trader’s Season-2 standing and live open positions on the new Predict release — copy any bet into your own trade ticket.',
+    'A trader’s Season-2 standing and live open positions on the new Predict release. Copy any bet into your own trade ticket.',
 };
 
 // Public trader profile (standing + live open positions). Client-only data

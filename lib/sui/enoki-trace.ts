@@ -53,5 +53,5 @@ export function installEnokiTrace(): void {
   };
 
   globalThis.fetch = traced;
-  console.log(`[enoki-trace] installed (ENOKI_DEBUG set) — logging ${ENOKI_HOST} requests`);
+  console.log(`[enoki-trace] installed (ENOKI_DEBUG set), logging ${ENOKI_HOST} requests`);
 }

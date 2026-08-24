@@ -1350,7 +1350,7 @@ function SurfaceCaption({ suppressed = false }: { suppressed?: boolean }) {
         aria-label={
           expanded
             ? "Collapse the guide"
-            : "How to read the surface — expand the guide"
+            : "Expand the guide on how to read the surface"
         }
         className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.03] sm:px-3.5 sm:py-2.5"
       >

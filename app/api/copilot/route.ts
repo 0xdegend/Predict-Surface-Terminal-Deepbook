@@ -101,7 +101,7 @@ export async function POST(req: Request): Promise<NextResponse<AiReply>> {
     : '';
   const contextBlock = formatAiContext(body?.context ?? {});
 
-  const userContent = `${transcript}Context (the only facts you may use — do not invent anything beyond these):\n${contextBlock}\n\nTrader's question: ${message}`;
+  const userContent = `${transcript}Context (the only facts you may use, do not invent anything beyond these):\n${contextBlock}\n\nTrader's question: ${message}`;
 
   try {
     bumpDailyCount(); // count the attempt (before the call) so a failing loop still caps

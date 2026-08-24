@@ -33,7 +33,7 @@ export function TopChrome({
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b px-3 sm:gap-4 sm:px-5 lg:grid-cols-[1fr_auto_1fr]">
       {/* Zone 1 — brand + screen nav. shrink-0 so the chip can never squeeze it. */}
       <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-        <Link href="/legacy" className="group flex items-center gap-2" aria-label="Skew — home">
+        <Link href="/legacy" className="group flex items-center gap-2" aria-label="Skew home">
           <Image
             src="/skew-mark.png"
             alt=""

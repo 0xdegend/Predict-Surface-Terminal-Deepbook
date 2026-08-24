@@ -22,7 +22,7 @@ import { ErrorState } from '../_components/ui/error-state';
 export const metadata: Metadata = {
   title: 'Vault Risk',
   description:
-    'How safe is the Skew pool? A live health check — how much is in use, how much you can withdraw, and a what-if simulator showing how the pool holds up if the price suddenly moves.',
+    'How safe is the Skew pool? A live health check: how much is in use, how much you can withdraw, and a what-if simulator showing how the pool holds up if the price suddenly moves.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -89,7 +89,7 @@ export default async function RiskRoute() {
         <ErrorState
           title="Failed to load vault data"
           message={error}
-          note="Usually a transient local network/DNS hiccup — the server is reachable."
+          note="Usually a transient local network/DNS hiccup. The server is reachable."
         />
       ) : data ? (
         <main className="flex-1">

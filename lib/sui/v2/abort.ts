@@ -12,21 +12,21 @@ const V2_ABORTS: Record<string, string> = {
   // expiry_market
   'expiry_market:0': 'New positions are paused on this market right now.',
   'expiry_market:1': 'A leveraged position has to be closed in full, not partially.',
-  'expiry_market:2': 'This market hasn’t settled yet — you can’t claim it as settled.',
+  'expiry_market:2': 'This market hasn’t settled yet, so you can’t claim it as settled.',
   'expiry_market:3': 'Wrong price feed for this market. Refresh and retry.',
   'expiry_market:4': 'The cost moved above your limit. Nudge slippage up or try again.',
   'expiry_market:5': 'The odds moved past your limit. Nudge slippage up or try again.',
-  'expiry_market:6': 'The price jumped sharply while you were confirming — your payout would be well below the quote. Refresh and try again.',
-  'expiry_market:7': 'The price snapshot didn’t match — refresh the quote and retry.',
+  'expiry_market:6': 'The price jumped sharply while you were confirming. Your payout would be well below the quote. Refresh and try again.',
+  'expiry_market:7': 'The price snapshot didn’t match. Refresh the quote and retry.',
   'expiry_market:8': 'The “price to beat” isn’t ready for this market yet.',
-  'expiry_market:9': 'The “price to beat” timing didn’t line up — try again shortly.',
-  'expiry_market:10': 'Can’t open and close in the same instant — wait a moment and retry.',
+  'expiry_market:9': 'The “price to beat” timing didn’t line up. Try again shortly.',
+  'expiry_market:10': 'Can’t open and close in the same instant. Wait a moment and retry.',
   // expiry_cash (per-market exposure backing)
-  'expiry_cash:0': 'This market is at capacity right now — try the next expiry, or a smaller bet.',
+  'expiry_cash:0': 'This market is at capacity right now. Try the next expiry, or a smaller bet.',
   // order (id encoding — quantities must be whole $0.01 lots)
   'order:4': 'The position size didn’t land on the protocol’s size grid. Refresh and retry.',
   // strike_exposure_config (mint admission)
-  'strike_exposure_config:0': 'This trade would open already at its knockout level — lower the leverage.',
+  'strike_exposure_config:0': 'This trade would open already at its knockout level. Lower the leverage.',
   'strike_exposure_config:1': 'The odds moved outside the tradeable 1%–99% band. Pick a level nearer the current price.',
   'strike_exposure_config:4': 'Bets need at least a $1 stake (before fees). Add a little and try again.',
   'strike_exposure_config:5': 'Leverage can’t be below 1×.',
@@ -40,7 +40,7 @@ const V2_ABORTS: Record<string, string> = {
   'strike_exposure:7': 'Market data isn’t ready for this market yet. Try again in a second.',
   // account
   'account:0': 'This account belongs to a different wallet. Reconnect the one that created it.',
-  'account:1': 'Not enough balance in your account — deposit a bit more DUSDC first.',
+  'account:1': 'Not enough balance in your account. Deposit a bit more DUSDC first.',
   'account:2': 'Couldn’t authorize with your wallet. Reconnect and retry.',
   // predict_account (per-account position registry)
   'predict_account:0': 'This position already exists.',
@@ -54,8 +54,8 @@ const V2_ABORTS: Record<string, string> = {
   'pricing:10': 'Market volatility data is briefly stale. Try again in a second.',
   // plp (vault)
   'plp:4': 'The vault isn’t bootstrapped yet.',
-  'plp:5': 'The vault price hit a safety floor — LP actions are paused for a moment.',
-  'plp:6': 'The vault price hit a safety ceiling — LP actions are paused for a moment.',
+  'plp:5': 'The vault price hit a safety floor. LP actions are paused for a moment.',
+  'plp:6': 'The vault price hit a safety ceiling. LP actions are paused for a moment.',
   'plp:11': 'That market hasn’t settled yet.',
 };
 

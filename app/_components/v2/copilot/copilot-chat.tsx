@@ -598,7 +598,7 @@ function RangeCard({ range, onPlace }: { range: RangeSuggestion; onPlace: () => 
       </div>
 
       {expired ? (
-        <p className="mt-2.5 text-[10.5px] text-text-3">This market has expired — ask me for a fresh range.</p>
+        <p className="mt-2.5 text-[10.5px] text-text-3">This market has expired. Ask me for a fresh range.</p>
       ) : (
         <button
           type="button"

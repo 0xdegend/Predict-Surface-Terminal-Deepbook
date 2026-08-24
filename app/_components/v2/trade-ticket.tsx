@@ -1040,7 +1040,7 @@ export function V2TradeTicket({
             : acct.sessionActive
               ? 'Low on gas, so this one needs a wallet approval.'
               : acct.gasless
-                ? 'Signed in with Google. Mints instantly, no wallet pop-up.'
+                ? 'Signed in with Google, so it mints instantly with no wallet pop-up.'
                 : // No subtitle on the plain path: the title says "Confirm your trade" and
                   // the button says "Mint", so a line telling you to review and approve was
                   // narrating the dialog you are looking at. The variants ABOVE stay because

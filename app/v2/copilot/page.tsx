@@ -57,7 +57,7 @@ export default async function V2CopilotPage() {
         title="Couldn’t reach the Predict server"
         message={error}
         detail={predictV2Config.serverUrl}
-        note="Usually a transient network hiccup — retry in a moment."
+        note="Usually a transient network hiccup. Retry in a moment."
       />
     );
   }

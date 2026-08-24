@@ -46,13 +46,13 @@ export class PredictApiError extends Error {
 export function humanizeApiError(err: unknown, subject = 'data'): string {
   if (err instanceof PredictApiError) {
     if (err.status >= 500)
-      return `Couldn't load ${subject} — the public data service hit a snag on its side. This is usually temporary; try again in a moment.`;
+      return `Couldn't load ${subject}. The public data service hit a snag on its side. This is usually temporary; try again in a moment.`;
     if (err.status === 404) return `No ${subject} found.`;
-    if (err.status === 429) return `Loading ${subject} too fast — pause a second, then retry.`;
+    if (err.status === 429) return `Loading ${subject} too fast. Pause a second, then retry.`;
     return `Couldn't load ${subject} (error ${err.status}).`;
   }
   if (err instanceof Error && /fetch|network|load failed|abort/i.test(err.message))
-    return `Network hiccup loading ${subject} — check your connection and retry.`;
+    return `Network hiccup loading ${subject}. Check your connection and retry.`;
   return `Couldn't load ${subject}.`;
 }
 

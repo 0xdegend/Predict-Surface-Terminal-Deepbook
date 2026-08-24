@@ -44,14 +44,14 @@ const OPTIONS: {
     label: TRADE_MODE_LABEL.simple,
     href: '/v2/simple',
     Icon: TRADE_MODE_ICON.simple,
-    hint: 'Up or down on a timed round — pick an amount and a direction, nothing else.',
+    hint: 'Up or down on a timed round. Pick an amount and a direction, nothing else.',
   },
   {
     simple: false,
     label: TRADE_MODE_LABEL.advanced,
     href: '/v2',
     Icon: TRADE_MODE_ICON.advanced,
-    hint: 'The full terminal — strikes, ranges, leverage and the 3-D volatility surface.',
+    hint: 'The full terminal: strikes, ranges, leverage and the 3-D volatility surface.',
   },
 ];
 

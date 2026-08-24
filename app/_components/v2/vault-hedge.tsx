@@ -291,7 +291,7 @@ function ActionButton({
   const label: Record<string, string> = {
     'no-market': 'No live market to protect against right now',
     pricing: 'Getting the price…',
-    unpriceable: 'Can’t price protection right now — try again shortly',
+    unpriceable: 'Can’t price protection right now. Try again shortly',
     enter: 'Enter an amount',
     'too-small': `Minimum protection is $1`,
     insufficient: 'Not enough DUSDC in your account or wallet',

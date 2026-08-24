@@ -83,7 +83,7 @@ export function getWriterKeypair(): Ed25519Keypair {
   const secret = process.env.WALRUS_WRITER_KEY;
   if (!secret) {
     throw new Error(
-      'WALRUS_WRITER_KEY is not set — required for server-side Walrus writes (see config/walrus.ts).',
+      'WALRUS_WRITER_KEY is not set. It is required for server-side Walrus writes (see config/walrus.ts).',
     );
   }
   return Ed25519Keypair.fromSecretKey(secret);

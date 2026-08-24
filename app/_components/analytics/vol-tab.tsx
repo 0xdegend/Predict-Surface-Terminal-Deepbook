@@ -34,7 +34,7 @@ export function VolTab() {
       <ErrorState
         title="Vol analytics unavailable"
         message={error}
-        note="This reads the public market + SVI data — usually a brief hiccup."
+        note="This reads the public market + SVI data. Usually a brief hiccup."
       />
     );
   }

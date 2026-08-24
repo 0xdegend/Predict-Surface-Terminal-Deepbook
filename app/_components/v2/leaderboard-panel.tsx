@@ -258,8 +258,8 @@ export function V2LeaderboardPanel() {
           ) : sorted.length === 0 ? (
             <div className="px-4 py-12 text-center text-[13px] text-text-2">
               {scope === 'skew'
-                ? 'No one has traded through Skew yet — bets placed in the app show up here.'
-                : 'No trading activity yet — be the first name on the Season-2 board.'}
+                ? 'No one has traded through Skew yet. Bets placed in the app show up here.'
+                : 'No trading activity yet. Be the first name on the Season-2 board.'}
             </div>
           ) : (
             <>
@@ -365,7 +365,7 @@ function TraderLabel({ row, isMe }: { row: V2LeaderboardRow; isMe: boolean }) {
 function StarterBadge() {
   return (
     <span
-      title="Onboarded through the Skew faucet — no trades yet"
+      title="Onboarded through the Skew faucet, no trades yet"
       className="inline-flex flex-none items-center gap-1 rounded-full border border-white/12 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-text-3"
     >
       <LuSprout size={9} className="text-text-3" />
@@ -506,8 +506,8 @@ function NotRankedHint({ scope }: { scope: Scope }) {
       />
       <LuTrophy size={14} className="flex-none text-text-3" />
       {scope === 'skew'
-        ? "You haven't bet through the Skew app this season yet — place one to land on the Skew board."
-        : "You're connected but haven't traded this season yet — mint a position to claim your spot."}
+        ? "You haven't bet through the Skew app this season yet. Place one to land on the Skew board."
+        : "You're connected but haven't traded this season yet. Mint a position to claim your spot."}
     </div>
   );
 }
@@ -535,7 +535,7 @@ function ScopeTab({
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       aria-pressed={active}
-      title={disabled ? 'Full protocol board — unlocks when the trader endpoint is live' : undefined}
+      title={disabled ? 'Full protocol board, unlocks when the trader endpoint is live' : undefined}
       className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] font-medium tracking-tight transition-colors ${
         disabled
           ? 'cursor-not-allowed text-text-3 opacity-50'

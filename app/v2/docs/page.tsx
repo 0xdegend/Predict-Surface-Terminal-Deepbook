@@ -4,7 +4,7 @@ import { DocsPanel } from '@/app/_components/docs/docs-panel';
 export const metadata: Metadata = {
   title: 'Docs',
   description:
-    'The Skew manual — how to read the live price map, place Up/Down and range bets, cash out, add to the pool, and climb the ranks on DeepBook Predict.',
+    'The Skew manual: how to read the live price map, place Up/Down and range bets, cash out, add to the pool, and climb the ranks on DeepBook Predict.',
 };
 
 // Static reference content + a client scroll-spy nav; no wallet or data fetch.

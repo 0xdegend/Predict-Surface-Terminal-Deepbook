@@ -7,7 +7,7 @@ import { V2VaultHedge } from '@/app/_components/v2/vault-hedge';
 export const metadata: Metadata = {
   title: 'Vault',
   description:
-    'Back the new Predict release and earn its trading edge — deposits and withdrawals queue and fill at each vault update.',
+    'Back the new Predict release and earn its trading edge. Deposits and withdrawals queue and fill at each vault update.',
 };
 
 export const dynamic = 'force-dynamic';

@@ -360,7 +360,7 @@ function positionLine(a: StrikeAnalysis, isUp: boolean, timeLeft: string): { tex
   const usd = Math.abs(a.requiredMoveUsd);
   // Essentially on the line — the sign of a few dollars on $65k is noise.
   if (Math.abs(a.requiredMovePct) < 0.05) {
-    return { tone: 'neutral', text: `Sitting right on your strike — close to a coin flip on where it lands in ${timeLeft}.` };
+    return { tone: 'neutral', text: `Sitting right on your strike, close to a coin flip on where it lands in ${timeLeft}.` };
   }
   // requiredMoveUsd = strike − spot. UP wins above the strike, so it's already
   // winning when the strike sits below spot (negative); mirror for DOWN.
@@ -368,7 +368,7 @@ function positionLine(a: StrikeAnalysis, isUp: boolean, timeLeft: string): { tex
   if (winningNow) {
     return {
       tone: 'up',
-      text: `Winning right now — BTC is $${num(usd, 0)} ${isUp ? 'above' : 'below'} your strike and just needs to hold for ${timeLeft}.`,
+      text: `Winning right now. BTC is $${num(usd, 0)} ${isUp ? 'above' : 'below'} your strike and just needs to hold for ${timeLeft}.`,
     };
   }
   return {

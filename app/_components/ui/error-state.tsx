@@ -66,7 +66,7 @@ export function ErrorState({
             <p className="text-[12px] leading-relaxed text-text-2">
               {offline
                 ? 'We couldn’t reach the Predict server. Check your Wi-Fi or network connection, then try again.'
-                : (note ?? 'This is usually a brief hiccup — give it another try.')}
+                : (note ?? 'This is usually a brief hiccup. Give it another try.')}
             </p>
           </div>
 

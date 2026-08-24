@@ -100,8 +100,8 @@ export function busiestStrikeReply(buckets: StrikeVolume[], opts: { scope: 'now'
     return {
       text: [
         opts.scope === 'now'
-          ? "No bets have gone through on the live market yet — it's quiet right now. Ask me to analyze it, or check back in a moment."
-          : "No bets have gone through on any open market yet — it's quiet right now. Check back in a moment.",
+          ? "No bets have gone through on the live market yet, it's quiet right now. Ask me to analyze it, or check back in a moment."
+          : "No bets have gone through on any open market yet, it's quiet right now. Check back in a moment.",
       ],
     };
   }
@@ -109,11 +109,11 @@ export function busiestStrikeReply(buckets: StrikeVolume[], opts: { scope: 'now'
   const top = ranked[0];
   const scopeWord = opts.scope === 'now' ? 'on the live market right now' : 'across all open markets';
   const text: string[] = [
-    `The busiest strike ${scopeWord} is ${strikeLabel(top)}${when(top)} — ${money(top.volume)} staked across ${top.bets} ${top.bets === 1 ? 'bet' : 'bets'}.`,
+    `The busiest strike ${scopeWord} is ${strikeLabel(top)}${when(top)}, ${money(top.volume)} staked across ${top.bets} ${top.bets === 1 ? 'bet' : 'bets'}.`,
   ];
   const rest = ranked.slice(1, 3);
   if (rest.length) {
-    text.push(`Next busiest: ${rest.map((b) => `${strikeLabel(b)}${when(b)} — ${money(b.volume)}`).join('; ')}.`);
+    text.push(`Next busiest: ${rest.map((b) => `${strikeLabel(b)}${when(b)}, ${money(b.volume)}`).join('; ')}.`);
   }
   text.push('Want the odds on any of these? Say “odds at $X”, or “analyze this strike”.');
   return { text };

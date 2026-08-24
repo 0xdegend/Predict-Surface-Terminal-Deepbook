@@ -4,7 +4,7 @@ import { V2PortfolioPanel } from '@/app/_components/v2/portfolio-panel';
 export const metadata: Metadata = {
   title: 'Portfolio',
   description:
-    'Your account and open positions on the new Predict release — live balances, PnL, and one-click claim for settled bets.',
+    'Your account and open positions on the new Predict release: live balances, PnL, and one-click claim for settled bets.',
 };
 
 // Wallet-specific account view. The data is client-only (needs the connected

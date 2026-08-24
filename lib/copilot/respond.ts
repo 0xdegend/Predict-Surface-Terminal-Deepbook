@@ -1841,19 +1841,19 @@ function vaultDepositReply(ctx: CopilotContext, amount?: number): CopilotReply {
 function positioningReply(ctx: CopilotContext): CopilotReply {
   const funding = ctx.insights?.funding.binancePct ?? ctx.insights?.funding.avgPct ?? null;
   const lines = positioningLines(ctx.positioning ?? null, funding);
-  if (lines.length === 0) return { text: ['I can’t read the positioning data right now — give it a moment and ask again.'] };
+  if (lines.length === 0) return { text: ['I can’t read the positioning data right now. Give it a moment and ask again.'] };
   return { text: ['Here’s how everyone’s positioned right now:', ...lines] };
 }
 
 function flowReply(ctx: CopilotContext): CopilotReply {
   const lines = flowLines(ctx.positioning ?? null);
-  if (lines.length === 0) return { text: ['I don’t have fresh ETF flow data right now — try again in a moment.'] };
+  if (lines.length === 0) return { text: ['I don’t have fresh ETF flow data right now. Try again in a moment.'] };
   return { text: lines };
 }
 
 function optionsMarketReply(ctx: CopilotContext): CopilotReply {
   const lines = optionsLines(ctx.positioning ?? null);
-  if (lines.length === 0) return { text: ['I can’t read the options market right now — give it a moment and ask again.'] };
+  if (lines.length === 0) return { text: ['I can’t read the options market right now. Give it a moment and ask again.'] };
   return { text: ['Here’s what the wider options market is showing:', ...lines] };
 }
 

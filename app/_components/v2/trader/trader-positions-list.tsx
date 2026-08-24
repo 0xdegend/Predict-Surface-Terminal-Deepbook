@@ -71,7 +71,7 @@ export function V2TraderPositionsList({
     return (
       <div className="glass-inset px-4 py-12 text-center">
         <p className="text-[13px] text-text-2">No open positions right now.</p>
-        <p className="mt-1 text-[12px] text-text-3">This trader has no live bets — only settled history.</p>
+        <p className="mt-1 text-[12px] text-text-3">This trader has no live bets, only settled history.</p>
       </div>
     );
   }

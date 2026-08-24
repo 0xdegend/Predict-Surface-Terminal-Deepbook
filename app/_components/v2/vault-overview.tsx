@@ -148,7 +148,7 @@ export function V2VaultOverview() {
         </div>
 
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 font-mono text-[10px] tabular-nums text-text-3">
-          <Legend dot="bg-up/80" label="Idle — free for withdrawals" value={<Money value={idle} />} />
+          <Legend dot="bg-up/80" label="Idle, free for withdrawals" value={<Money value={idle} />} />
           <Legend dot="bg-white/25" label="Backing open markets" value={<Money value={deployed} />} />
         </div>
 

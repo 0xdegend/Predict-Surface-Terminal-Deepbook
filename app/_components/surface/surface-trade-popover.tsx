@@ -279,7 +279,7 @@ function BinaryBody({
     } catch {
       setConfirmOpen(false);
       acct.setError(
-        "Couldn’t refresh the price — the market may have just moved or expired. Try again.",
+        "Couldn’t refresh the price. The market may have just moved or expired. Try again.",
       );
       return;
     }
@@ -607,7 +607,7 @@ function RangeBody({
     } catch {
       setConfirmOpen(false);
       acct.setError(
-        "Couldn’t refresh the price — the market may have just moved or expired. Try again.",
+        "Couldn’t refresh the price. The market may have just moved or expired. Try again.",
       );
       return;
     }

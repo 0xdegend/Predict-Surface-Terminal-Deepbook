@@ -78,8 +78,8 @@ const ARCHETYPES: Record<StyleArchetype['id'], StyleArchetype> = {
   favorite: { id: 'favorite', label: 'Safe bettor', blurb: 'Bets on the likely outcome for small, steady wins' },
   range: { id: 'range', label: 'In-between bettor', blurb: 'Bets the price will land between two levels' },
   highroller: { id: 'highroller', label: 'Big spender', blurb: 'Places large bets' },
-  active: { id: 'active', label: 'Frequent bettor', blurb: 'Bets a lot — many bets, often' },
-  balanced: { id: 'balanced', label: 'All-rounder', blurb: 'A balanced mix — no single habit stands out' },
+  active: { id: 'active', label: 'Frequent bettor', blurb: 'Many bets, placed often' },
+  balanced: { id: 'balanced', label: 'All-rounder', blurb: 'A balanced mix, no single habit stands out' },
 };
 
 /** Fold a trader's binary positions (+ optional range volume) into the stats the

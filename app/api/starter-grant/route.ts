@@ -141,7 +141,7 @@ export async function POST(req: Request) {
   // 4) global daily cap.
   if ((await dailyCount()) >= DAILY_CAP) {
     return NextResponse.json(
-      { error: 'Daily funding limit reached — try the faucet', code: 'rate_limited' },
+      { error: 'Daily funding limit reached. Try the faucet', code: 'rate_limited' },
       { status: 429 },
     );
   }
@@ -172,7 +172,7 @@ export async function POST(req: Request) {
     const treasuryAddr = signer.toSuiAddress();
     if ((await balanceOf(treasuryAddr, QUOTE)) < TREASURY_FLOOR + GRANT_BASE) {
       return NextResponse.json(
-        { error: 'Treasury is low — try the faucet', code: 'treasury_empty' },
+        { error: 'Treasury is low. Try the faucet', code: 'treasury_empty' },
         { status: 503 },
       );
     }

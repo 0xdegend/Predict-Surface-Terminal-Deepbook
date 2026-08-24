@@ -85,15 +85,15 @@ export function V2PositionCard({
    * says exactly that, and the sentence was saying it a second time.
    */
   const note: string | null = p.sample
-    ? 'Sample position — live ones appear here once you trade.'
+    ? 'Sample position. Live ones appear here once you trade.'
     : claim === 'auto_clearing'
-      ? `Settled out of the ${isRange ? 'band' : 'money'} — this bet paid nothing, cleared automatically.`
+      ? `Settled out of the ${isRange ? 'band' : 'money'}. This bet paid nothing, cleared automatically.`
       : claim === 'auto_paying'
-        ? 'Settled a win — the payout lands in your account automatically, no action needed.'
+        ? 'Settled a win. The payout lands in your account automatically, no action needed.'
         : claim === 'claim_fallback'
           ? null
           : result === 'settling'
-            ? "Expired — waiting on the oracle's final settlement price."
+            ? "Expired. Waiting on the oracle's final settlement price."
             : isRange
               ? `Pays ${fmtQuote(positionWinPayout(p))} ${sym} if ${title} settles in the band.`
               : 'Probabilistic · resolved by oracle data.';
@@ -129,7 +129,7 @@ export function V2PositionCard({
   };
 
   const heroTitle = isRange && p.band != null
-    ? `${price(p.band.lower)} — ${price(p.band.higher)}`
+    ? `${price(p.band.lower)} to ${price(p.band.higher)}`
     : title;
 
   return (
@@ -301,7 +301,7 @@ export function V2PositionCard({
             {result === 'settling' ? (
               <button
                 disabled
-                title="The oracle hasn't settled this market yet — the payout follows once it does."
+                title="The oracle hasn't settled this market yet. The payout follows once it does."
                 className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3 opacity-70"
               >
                 Awaiting settlement
@@ -335,9 +335,9 @@ export function V2PositionCard({
                 disabled={busy || p.sample}
                 title={
                   p.sample
-                    ? 'Sample position — nothing to redeem'
+                    ? 'Sample position, nothing to redeem'
                     : claim === 'claim_fallback'
-                      ? "The auto-payout is late — claim it yourself"
+                      ? "The auto-payout is late. Claim it yourself"
                       : undefined
                 }
                 className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${

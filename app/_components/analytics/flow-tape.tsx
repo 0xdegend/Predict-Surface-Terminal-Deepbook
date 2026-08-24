@@ -51,7 +51,7 @@ export function FlowTape() {
       <ErrorState
         title="Live flow unavailable"
         message={error}
-        note="This reads the public event stream — it's usually a brief hiccup."
+        note="This reads the public event stream. It's usually a brief hiccup."
       />
     );
   }

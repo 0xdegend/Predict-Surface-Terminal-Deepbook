@@ -155,7 +155,7 @@ export function V2Chrome() {
     <header className="glass sticky top-0 z-40 grid h-16 grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)] items-center gap-2 border-b px-3 sm:gap-3 sm:px-5 2xl:gap-4">
       {/* brand + nav */}
       <div className="col-start-1 flex shrink-0 items-center gap-3 sm:gap-5">
-        <Link href={tradeTarget} className="group flex items-center gap-2" aria-label="Skew — Latest home">
+        <Link href={tradeTarget} className="group flex items-center gap-2" aria-label="Skew Latest home">
           <Image
             src="/skew-mark.png"
             alt=""

@@ -41,7 +41,7 @@ export function MarketHeatmap() {
       <ErrorState
         title="Market grid unavailable"
         message={error}
-        note="This reads the public market + event data — usually a brief hiccup."
+        note="This reads the public market + event data. Usually a brief hiccup."
       />
     );
   }

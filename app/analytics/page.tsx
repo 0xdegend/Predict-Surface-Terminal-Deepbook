@@ -5,7 +5,7 @@ import { AnalyticsPanel } from '../_components/analytics/analytics-panel';
 export const metadata: Metadata = {
   title: 'Analytics',
   description:
-    'Skew Analytics — live order flow and UP/DOWN sentiment across DeepBook Predict, computed from the public event stream.',
+    'Skew Analytics: live order flow and UP/DOWN sentiment across DeepBook Predict, computed from the public event stream.',
 };
 
 // Analytics is computed client-side from the public event stream (no wallet),

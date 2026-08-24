@@ -4,7 +4,7 @@ import { V2Season1Archive } from '@/app/_components/v2/season1-archive';
 export const metadata: Metadata = {
   title: 'Season 1 archive',
   description:
-    'The frozen Season 1 Predict leaderboard — final standings from the first release, kept as a snapshot after the deployment was retired.',
+    'The frozen Season 1 Predict leaderboard: final standings from the first release, kept as a snapshot after the deployment was retired.',
 };
 
 // A static snapshot: no live data, but the connected-wallet highlight is client-side,

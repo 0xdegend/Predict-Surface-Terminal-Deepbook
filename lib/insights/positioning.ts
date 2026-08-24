@@ -93,5 +93,5 @@ export function positioningVerdict(p: Positioning | null, fundingPct: number | n
           : 'a mildly bearish lean'
         : 'a mixed setup';
 
-  return `${joinClauses(bits)} — ${phrase}.`;
+  return `${joinClauses(bits)}, ${phrase}.`;
 }

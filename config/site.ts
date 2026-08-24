@@ -19,10 +19,10 @@ export const siteConfig = {
   url: siteUrl,
   title: 'Skew · Trade the shape of volatility',
   description:
-    'Trade the shape of volatility on Sui. Skew is a live 3-D SVI volatility-surface terminal for DeepBook Predict — watch the surface breathe, click any strike or expiry, and mint a binary or range bet in one transaction.',
+    'Trade the shape of volatility on Sui. Skew is a live 3-D SVI volatility-surface terminal for DeepBook Predict. Watch the surface breathe, click any strike or expiry, and mint a binary or range bet in one transaction.',
   ogImage: '/skew-og-image.png',
   ogImageAlt:
-    'Skew — a live 3-D SVI volatility-surface trading terminal for DeepBook Predict on Sui.',
+    'Skew: a live 3-D SVI volatility-surface trading terminal for DeepBook Predict on Sui.',
   ogImageWidth: 1730,
   ogImageHeight: 909,
   /** Public routes worth indexing (dynamic /trader/* is excluded). */

@@ -364,7 +364,7 @@ function Fees() {
           The cost of the bet itself, set by the live market. This goes into the
           shared pool that pays out the winners.
         </Card>
-        <Card icon={LuReceipt} hue={HUE.teal} title="Skew fee — 1%">
+        <Card icon={LuReceipt} hue={HUE.teal} title="Skew fee: 1%">
           A small fee of 1% on top of your bet, charged only when you place a
           bet (never when you cash out). It supports building Skew.
         </Card>

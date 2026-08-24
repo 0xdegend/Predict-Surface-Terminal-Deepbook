@@ -127,7 +127,7 @@ async function readQueue(client: QueueCapableClient, raw: RawQueue | undefined, 
   const sum = entries.reduce((s, e) => s + e.amount, 0n);
   if (BigInt(entries.length) !== pending || sum !== escrow) {
     throw new Error(
-      `readLpQueues: ${label} queue failed reconciliation — parsed ${entries.length} entries / ${sum} base units, ` +
+      `readLpQueues: ${label} queue failed reconciliation, parsed ${entries.length} entries / ${sum} base units, ` +
         `vault reports ${pending} pending / ${escrow} escrowed`,
     );
   }

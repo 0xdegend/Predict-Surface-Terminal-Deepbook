@@ -16,7 +16,7 @@ export function crowdLine(p: Positioning): string | null {
   if (!p.crowd) return null;
   const long = Math.round(p.crowd.longPct);
   const lean = p.crowd.longPct > 55 ? 'leaning long' : p.crowd.longPct < 45 ? 'leaning short' : 'split fairly evenly';
-  return `Traders are ${lean} — ${long}% are betting up, ${Math.round(p.crowd.shortPct)}% down.`;
+  return `Traders are ${lean}, ${long}% are betting up, ${Math.round(p.crowd.shortPct)}% down.`;
 }
 
 /** What the biggest traders are doing, and whether they agree with the crowd. */
@@ -27,7 +27,7 @@ export function smartMoneyLine(p: Positioning): string | null {
   let extra = '';
   if (p.crowd) {
     const gap = t - p.crowd.longPct;
-    extra = Math.abs(gap) >= 6 ? (gap > 0 ? ' — more bullish than the wider crowd' : ' — more bearish than the wider crowd') : ' — roughly in line with the crowd';
+    extra = Math.abs(gap) >= 6 ? (gap > 0 ? ', more bullish than the wider crowd' : ', more bearish than the wider crowd') : ', roughly in line with the crowd';
   }
   return `The biggest traders ${lean} (${Math.round(t)}% long)${extra}.`;
 }
@@ -36,8 +36,8 @@ export function smartMoneyLine(p: Positioning): string | null {
 export function pressureLine(p: Positioning): string | null {
   if (!p.pressure) return null;
   const buy = Math.round(p.pressure.buyPct);
-  if (p.pressure.buyPct > 53) return `Buyers are in control right now — ${buy}% of recent volume is buying.`;
-  if (p.pressure.buyPct < 47) return `Sellers are in control right now — ${Math.round(p.pressure.sellPct)}% of recent volume is selling.`;
+  if (p.pressure.buyPct > 53) return `Buyers are in control right now, ${buy}% of recent volume is buying.`;
+  if (p.pressure.buyPct < 47) return `Sellers are in control right now, ${Math.round(p.pressure.sellPct)}% of recent volume is selling.`;
   return `Buying and selling are roughly balanced right now (${buy}% buy).`;
 }
 
@@ -47,7 +47,7 @@ export function flowLine(p: Positioning): string | null {
   const bought = p.etfFlow.netUsd >= 0;
   const top = p.etfFlow.byFund[0];
   const topClause = top ? ` (mostly ${top.ticker})` : '';
-  return `Spot ETFs ${bought ? 'bought' : 'sold'} ${usd(p.etfFlow.netUsd)} of BTC on the latest day${topClause} — ${bought ? 'institutional money coming in' : 'institutional money heading out'}.`;
+  return `Spot ETFs ${bought ? 'bought' : 'sold'} ${usd(p.etfFlow.netUsd)} of BTC on the latest day${topClause}, ${bought ? 'institutional money coming in' : 'institutional money heading out'}.`;
 }
 
 /** Where the options market is pinned + which side has more open bets. */
@@ -72,10 +72,10 @@ export function squeezeLine(p: Positioning, fundingPct: number | null): string |
   if (!p.crowd) return null;
   if (p.crowd.longPct > 62) {
     const paying = fundingPct != null && fundingPct > 0.01 ? ' and paying to hold it' : '';
-    return `A lot of traders are crowded long${paying} — if price slips, those longs can get squeezed out, adding fuel to a drop.`;
+    return `A lot of traders are crowded long${paying}. If price slips, those longs can get squeezed out, adding fuel to a drop.`;
   }
   if (p.crowd.shortPct > 62) {
-    return `A lot of traders are crowded short — a pop higher can squeeze them, adding fuel to a rally.`;
+    return `A lot of traders are crowded short. A pop higher can squeeze them, adding fuel to a rally.`;
   }
   return null;
 }

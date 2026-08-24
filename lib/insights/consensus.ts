@@ -99,11 +99,11 @@ function synthesize(sources: ConsensusSource[], mid: number, spreadPts: number, 
   const pct = Math.round(mid * 100);
   const odds = oddsPhrase(mid);
   if (agreement === 'tight') {
-    return `All ${sources.length} reads land within ${Math.round(spreadPts)} points of each other — about a ${pct}% chance (${odds}). A well-priced bet.`;
+    return `All ${sources.length} reads land within ${Math.round(spreadPts)} points of each other, about a ${pct}% chance (${odds}). A well-priced bet.`;
   }
   const hi = sources.reduce((a, b) => (a.prob >= b.prob ? a : b));
   const lo = sources.reduce((a, b) => (a.prob <= b.prob ? a : b));
-  return `The reads split by ${Math.round(spreadPts)} points — "${lo.plainLabel}" is coolest, "${hi.plainLabel}" warmest, around a ${pct}% chance (${odds}). That gap is the opportunity.`;
+  return `The reads split by ${Math.round(spreadPts)} points. "${lo.plainLabel}" is coolest, "${hi.plainLabel}" warmest, around a ${pct}% chance (${odds}). That gap is the opportunity.`;
 }
 
 function oddsPhrase(p: number): string {

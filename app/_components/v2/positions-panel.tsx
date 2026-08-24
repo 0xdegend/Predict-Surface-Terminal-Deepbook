@@ -198,7 +198,7 @@ function PositionRow({
         <button
           onClick={onClose}
           disabled={busy || p.sample}
-          title={claim === 'clear_fallback' ? 'The automatic clear is late — clear this settled position yourself' : undefined}
+          title={claim === 'clear_fallback' ? 'The automatic clear is late. Clear this settled position yourself' : undefined}
           className="shrink-0 ctrl-soft rounded-md px-2.5 py-1 text-[11px] text-text-2 disabled:opacity-50"
         >
           {claim === 'claim_fallback' ? 'Claim' : claim === 'clear_fallback' ? 'Clear' : 'Close'}

@@ -36,7 +36,7 @@ const TABS: { key: Tab; label: string; icon: typeof LuCoins; blurb: string }[] =
     label: 'Skew fee',
     icon: LuPercent,
     blurb:
-      'The Skew fee — a percentage of each bet, charged on-chain on top of the builder fee. Set the live rate here and see what it earns against your real volume. Instant-trading (session) bets aren’t charged it yet.',
+      'The Skew fee: a percentage of each bet, charged on-chain on top of the builder fee. Set the live rate here and see what it earns against your real volume. Instant-trading (session) bets aren’t charged it yet.',
   },
   {
     key: 'users',

@@ -150,15 +150,15 @@ export function RangePositionCard({
         <div className="flex items-center justify-between gap-3 px-1">
           <p className="font-sans text-[10px] leading-snug text-text-3">
             {worthless
-              ? `Settled out of the band — this bet paid nothing.`
+              ? `Settled out of the band. This bet paid nothing.`
               : settling
-                ? `Expired — waiting on the oracle's final settlement price.`
+                ? `Expired. Waiting on the oracle's final settlement price.`
                 : `Pays 1.00 ${sym} per contract if ${asset} settles in the band.`}
           </p>
           {settling ? (
             <button
               disabled
-              title="The oracle hasn't settled this market yet — redeem unlocks once it does."
+              title="The oracle hasn't settled this market yet. Redeem unlocks once it does."
               className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 whitespace-nowrap rounded-lg border border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest text-text-3 opacity-70"
             >
               Awaiting settlement
@@ -168,7 +168,7 @@ export function RangePositionCard({
             <button
               onClick={() => onRedeem(p)}
               disabled={busy}
-              title={worthless ? 'Remove this settled position — it paid nothing' : undefined}
+              title={worthless ? 'Remove this settled position, it paid nothing' : undefined}
               className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-widest transition-all disabled:opacity-50 ${
                 worthless
                   ? 'border-line text-text-3 hover:border-line-strong hover:bg-white/[0.04] hover:text-text-2'

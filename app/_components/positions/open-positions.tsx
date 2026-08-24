@@ -59,7 +59,7 @@ export function OpenPositions() {
       {positionsLoading || rangesData.loading ? (
         <span className="text-text-3">loading…</span>
       ) : total === 0 ? (
-        <span className="text-text-2">No open positions yet — pick a market above and place your first bet.</span>
+        <span className="text-text-2">No open positions yet. Pick a market above and place your first bet.</span>
       ) : (
         <>
           {shownPositions.map((p) => {

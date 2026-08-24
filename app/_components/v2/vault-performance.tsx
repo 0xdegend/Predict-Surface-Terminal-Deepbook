@@ -28,7 +28,7 @@ export function V2VaultPerformance() {
       <div className="glass-card flex flex-col gap-4 p-4">
         <Header />
         <div className="flex h-37.5 items-center justify-center rounded-lg bg-white/1.5 text-[11px] text-text-3">
-          {loading ? 'Loading pool history…' : 'Not enough pool history yet — check back after a few updates.'}
+          {loading ? 'Loading pool history…' : 'Not enough pool history yet. Check back after a few updates.'}
         </div>
       </div>
     );
