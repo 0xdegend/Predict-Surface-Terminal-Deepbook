@@ -49,6 +49,10 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
   const isDesktop = useMediaQuery(DESKTOP_MQ);
   const open = useV2TradeStore((s) => s.ticketSheetOpen);
   const close = useV2TradeStore((s) => s.closeTicketSheet);
+  // Range stacks more controls under the chart than binary does (two edge inputs, the
+  // strip picker, the reset), so it gets the shorter chart. The band still reads fine
+  // at this height — it is a position, not a shape you study.
+  const mode = useV2TradeStore((s) => s.mode);
 
   // The page freeze is reference counted, so overlapping overlays can't strand it.
   useScrollLock(!isDesktop && open);
@@ -104,7 +108,9 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
             <LuX size={18} />
           </button>
         </div>
-        <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] pt-1">
+        {/* pb clears the PINNED action bar (sticky, ~62px incl. its own safe-area pad), so
+              the last control can still scroll clear of it instead of ending up behind it. */}
+          <div className="scroll-quiet relative min-h-0 overflow-y-auto overscroll-contain px-4 pb-20 pt-1">
           {/* Mobile: the chart renders inside binary step 1 (read-only — taps scroll
               the sheet), only mounted while the sheet is open + a market is picked.
               Its strike/win-zone overlays track the payout slider live. */}
@@ -115,7 +121,11 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
             mobile
             chart={
               open && market ? (
-                <div className="pointer-events-none mb-3 h-36 overflow-hidden rounded-xl bg-black/20">
+                <div
+                  className={`pointer-events-none mb-3 overflow-hidden rounded-xl bg-black/20 ${
+                    mode === 'range' ? 'h-28' : 'h-36'
+                  }`}
+                >
                   <V2PriceChart market={market} pricer={pricer} />
                 </div>
               ) : null

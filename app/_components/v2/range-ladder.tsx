@@ -102,6 +102,7 @@ export function RangeLadder({
   onChange,
   disabled,
   onReset,
+  showChance = true,
 }: {
   forward: number;
   svi: SviFloat;
@@ -109,6 +110,9 @@ export function RangeLadder({
   admissionTickSize: bigint;
   /** Optional Reset, rendered beside the LOW/HIGH fields. */
   onReset?: () => void;
+  /** The mobile sheet moves the band chance into the payout card to save a row,
+   *  so it turns this off. Desktop keeps it here, next to the picker it describes. */
+  showChance?: boolean;
   lower: number;
   higher: number;
   onChange: (lo: number, hi: number) => void;
@@ -346,9 +350,11 @@ export function RangeLadder({
       {/* "drag or tap the handles" used to sit on the left. The handles carry grip marks
           and are the only interactive thing in the strip, so the instruction was only ever
           news once and cost a row forever. */}
-      <div className="flex items-center justify-end font-mono text-[10px] tabular-nums text-text-3">
-        <span className="text-up">≈ {pct(chance, 0)} chance in band</span>
-      </div>
+      {showChance && (
+        <div className="flex items-center justify-end font-mono text-[10px] tabular-nums text-text-3">
+          <span className="text-up">≈ {pct(chance, 0)} chance in band</span>
+        </div>
+      )}
     </div>
   );
 }

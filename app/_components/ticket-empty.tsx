@@ -55,8 +55,7 @@ export function TicketEmpty({ heroView }: { heroView?: 'surface' | 'chart' | nul
           {isChart ? 'Pick a market to trade' : 'Click the surface to trade'}
         </h3>
         <p className="mx-auto mt-1.5 max-w-[16rem] text-[13px] leading-relaxed text-text-2">
-          Connect a wallet, then pick a market, from the live surface, the odds list, or the chart,
-          to mint a position.
+          Connect a wallet, then pick a market from the live surface, the odds list, or the chart.
         </p>
       </div>
 

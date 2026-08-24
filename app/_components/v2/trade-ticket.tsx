@@ -642,8 +642,20 @@ export function V2TradeTicket({
                 <span className="text-[22px] leading-none text-up">${winDollars.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
                 <span className="text-[11px] leading-none text-text-3">{sym}</span>
               </span>
-              <span className="shrink-0 rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">
-                {fmtMult(mult)}
+              <span className="flex shrink-0 items-baseline gap-1.5">
+                {/* The band chance used to sit under the range picker as a small grey
+                    right-aligned line, which cost a row and buried the most decision-
+                    relevant number on the screen. Beside the payout it reads as one
+                    answer: "50% chance, pays 1.91×". Mobile range only, so the desktop
+                    rail keeps it on the ladder where there is room for both. */}
+                {mobile && rangeMode && (
+                  <span className="rounded bg-white/6 px-1.5 py-0.5 text-[10px] leading-none text-text-2">
+                    {pct(rangeProb, 0)} chance
+                  </span>
+                )}
+                <span className="shrink-0 rounded bg-(--accent-soft) px-1.5 py-0.5 text-[10px] leading-none text-up">
+                  {fmtMult(mult)}
+                </span>
               </span>
             </span>
           </div>
@@ -712,20 +724,31 @@ export function V2TradeTicket({
     </div>
   );
 
-  const betFooter = (
-    <>
-      {/* No "Closing in Ns." banner here. The countdown at the TOP of the ticket already
-          turns red on the same `closingSoon` flag, so this was the same number, in the same
-          colour, twice on one screen. Past the block the quote card says "About to settle"
-          and the button reads "Too close to expiry", which covers the urgent end. */}
+  /**
+   * The primary action. On the mobile sheet it PINS to the bottom of the scroll area
+   * rather than sitting at the end of the stack.
+   *
+   * Trimming rows buys height once; the sheet grows again the next time a control is
+   * added, and the button is the one thing that must never be off-screen. `-mx-4` cancels
+   * the sheet's own `px-4` so the bar spans edge to edge, and it carries a hairline + a
+   * blurred fill so the controls scrolling underneath stay legible without bleeding
+   * through. Desktop is a plain block, exactly as before.
+   */
+  const actionRow = (
+    <div
+      data-tour="place"
+      className={
+        mobile
+          ? 'sticky bottom-0 z-20 -mx-4 flex flex-col border-t border-white/10 bg-bg-1/92 px-4 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2.5 backdrop-blur-md'
+          : 'flex flex-col'
+      }
+    >
+      <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
+    </div>
+  );
 
-      {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
-          (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
-      {/* flex column so the primary action stretches — ReviewButton is a form control and
-          shrink-wraps in a plain block, which is what left Confirm as a stub. */}
-      <div data-tour="place" className="flex flex-col">
-        <ActionButton acct={acct} tone={tone} quotable={quotable} stakeTooSmall={stakeTooSmall} tooCloseToExpiry={tooCloseToExpiry} onReview={openReview} shortfall={shortfall} insufficientFunds={insufficientFunds} oneTap={oneTapPlace} />
-      </div>
+  const footerNotes = (
+    <>
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
       {/* Only the one-tap caution survives: it warns there is NO review step, which the
           button does not say. The review-flow twin just restated a button labelled
@@ -743,6 +766,31 @@ export function V2TradeTicket({
         >
           <LuShare2 size={12} /> Share this trade with a friend
         </button>
+      )}
+    </>
+  );
+
+  const betFooter = (
+    <>
+      {/* No "Closing in Ns." banner here. The countdown at the TOP of the ticket already
+          turns red on the same `closingSoon` flag, so this was the same number, in the same
+          colour, twice on one screen. Past the block the quote card says "About to settle"
+          and the button reads "Too close to expiry", which covers the urgent end. */}
+
+      {/* Faster-trades opt-in moved OUT of the ticket and into the confirm dialog
+          (SessionOptInRow via MintConfirmModal's `extra`), so the ticket stays short. */}
+      {/* Order flips on mobile: the notes sit ABOVE the pinned bar, because a sticky
+          element with siblings after it in flow would paint over them at full scroll. */}
+      {mobile ? (
+        <>
+          {footerNotes}
+          {actionRow}
+        </>
+      ) : (
+        <>
+          {actionRow}
+          {footerNotes}
+        </>
       )}
     </>
   );
@@ -796,7 +844,10 @@ export function V2TradeTicket({
   // banner — so the remaining controls can afford the air, and each one reads as its own
   // decision rather than another box in a stack. The mobile two-step binary stays at 12px:
   // it is height-constrained and the StepBar already does the separating.
-  const controlGap = rangeMode || oneStep ? 'gap-5' : 'gap-3';
+  // gap-5 was chosen for the DESKTOP rail, which has the room. On the mobile sheet the
+  // same eight controls stack inside ~700px, and 20px between each spends ~56px on
+  // whitespace alone — enough on its own to push the CTA below the fold in range mode.
+  const controlGap = rangeMode || oneStep ? (mobile ? 'gap-4' : 'gap-5') : 'gap-3';
 
   return (
     <div className={`flex flex-col ${bodyGap} font-mono text-[12px] tabular-nums`}>
@@ -821,7 +872,12 @@ export function V2TradeTicket({
       )}
 
       {/* Plain-language "what do I do here" guide for first-timers (step-aware,
-          and mode-aware so range traders aren't told to pick Up/Down). */}
+          and mode-aware so range traders aren't told to pick Up/Down).
+          DESKTOP ONLY. On the mobile sheet it cost a ~64px row at the very top of a
+          drawer that is already over-height, and it is the third door to the same
+          guide: the header carries a "?" and the markets page carries "New here? See
+          how to place a trade". The rail keeps it. */}
+      {!mobile && (
       <TicketGuide
         step={guideStep}
         mode={rangeMode ? 'range' : 'binary'}
@@ -837,6 +893,7 @@ export function V2TradeTicket({
             : 'Tip: click the surface or a market in the list to load it here.',
         }}
       />
+      )}
 
       {/* One step up from gap-2: collapsing the odds panel freed vertical room, so
           each control (countdown, mode, side, strike, stake, quote) gets a bit more
@@ -882,7 +939,16 @@ export function V2TradeTicket({
         </div>
 
         {rangeMode ? (
-          anchorStrike != null && !bandSet ? (
+          <>
+            {/* Same live chart the binary side gets. On the mobile sheet the band you
+                are dragging below is invisible without it: the range picker sits under
+                the fold with nothing showing where the two edges actually fall against
+                the tape. V2PriceChart already reads `mode` from the shared store and
+                shades the band (with "range start" / "range end" lines), so this needed
+                mounting, not building. Desktop passes no `chart`, so this is mobile-only
+                and the rail is untouched. */}
+            {chart}
+            {anchorStrike != null && !bandSet ? (
             // Mid-pick on the Odds-tab curve (rare): the first tap set an anchor and
             // cleared the band, so guide to the second tap. Otherwise the band is
             // always seeded (50/50 default) and the ladder below is the picker.
@@ -905,6 +971,7 @@ export function V2TradeTicket({
                   price strip you drag/tap below. Snaps to real admission strikes;
                   the Odds tab keeps the full curve. */}
               <RangeLadder
+                showChance={!mobile}
                 onReset={resetToDefault}
                 forward={pricer.forward}
                 svi={svi}
@@ -921,7 +988,8 @@ export function V2TradeTicket({
               {quoteCard}
               {betFooter}
             </>
-          )
+            )}
+          </>
         ) : (
           <>
             {!oneStep && <StepBar step={step} onStep={setStep} />}
