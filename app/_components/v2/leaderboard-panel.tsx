@@ -307,7 +307,7 @@ export function V2LeaderboardPanel() {
 
       {showPoints ? (
         <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-          Points = liquidity (DUSDC staked) + performance (net profit, floored at zero — a loss never
+          Points = liquidity (DUSDC staked) + performance (net profit, floored at zero, a loss never
           subtracts) + holding time. Season 2 counts only trades on the new release; win rate &amp;
           authoritative PnL live on your{' '}
           <Link href="/v2/portfolio" className="underline hover:text-text-2">
@@ -317,7 +317,7 @@ export function V2LeaderboardPanel() {
         </p>
       ) : (
         <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-          A read-only look at how the whole {predictV2Config.network} venue trades — ranked by volume,
+          A read-only look at how the whole {predictV2Config.network} venue trades, ranked by volume,
           with trade counts and each trader&rsquo;s live positions a click away via View positions. No
           points here; points are earned on the Skew board. Quote asset · {predictV2Config.quote.symbol}.
         </p>

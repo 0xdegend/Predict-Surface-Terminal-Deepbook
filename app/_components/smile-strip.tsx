@@ -246,7 +246,7 @@ export function SmileStrip({ input }: { input: SmileInput }) {
           <span className="inline-flex items-center gap-1 font-mono text-[10px] text-up">
             Prices look healthy ✓
             <InfoTip label="prices look healthy">
-              The odds drop smoothly as the price rises — everything lines up, with no free-money
+              The odds drop smoothly as the price rises, everything lines up, with no free-money
               gaps in the pricing.
             </InfoTip>
           </span>
@@ -478,7 +478,7 @@ export function SmileStrip({ input }: { input: SmileInput }) {
         <span className="inline-flex items-center gap-1">
           ≈ 50/50 at {pct(atm, 1)} up
           <InfoTip label="the 50/50 point">
-            Around the expected price, ending higher or lower is roughly even — about as close to a
+            Around the expected price, ending higher or lower is roughly even, about as close to a
             coin flip as this market gets.
           </InfoTip>
         </span>

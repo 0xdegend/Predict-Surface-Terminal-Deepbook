@@ -508,14 +508,14 @@ function BetCard({ bet, onPlace, onEdit }: { bet: BetSuggestion; onPlace: () => 
       {review && !expired && (
         <p className="mt-2 text-[10.5px] leading-snug text-text-2">
           Betting <span className="font-mono text-text-1">${num(bet.amount!, 0)}</span> at{' '}
-          <span className="font-mono text-text-1">{num(bet.leverage!, 1)}×</span> — could win{' '}
+          <span className="font-mono text-text-1">{num(bet.leverage!, 1)}×</span>, could win{' '}
           <span className="font-mono text-up">~${num(bet.amount! * bet.payoutMult, 0)}</span>.
         </p>
       )}
 
       {expired ? (
         <p className="mt-2.5 text-[10.5px] text-text-3">
-          This market has expired — {review ? 'start a new one with “set up a trade”.' : 'ask me for a fresh one.'}
+          This market has expired. {review ? 'Start a new one with “set up a trade”.' : 'Ask me for a fresh one.'}
         </p>
       ) : review ? (
         <div className="mt-2.5 flex gap-2">

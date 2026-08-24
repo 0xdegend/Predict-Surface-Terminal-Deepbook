@@ -141,9 +141,8 @@ export function V2VaultPanel() {
             <span className="font-medium text-text-1">
               Your {fmtQuote(queuedDeposit)} {sym} deposit is still in the queue.
             </span>{' '}
-            It hasn&apos;t converted to PLP shares yet, and Remove can only sell shares — so
-            there&apos;s nothing here to remove. To get it back now, cancel it in the queue below.
-            Otherwise it fills at the next vault update.
+            Remove only sells shares, so there is nothing to remove yet. Cancel it below to get it
+            back now, or let it fill at the next update.
           </p>
         </div>
       )}
@@ -161,8 +160,8 @@ export function V2VaultPanel() {
 
       <p className="text-[10px] leading-relaxed text-text-3">
         {mode === 'add'
-          ? `Your deposit joins the queue and converts to PLP shares at the next vault update, at the live share price. If your trading account is short, the difference tops up from your wallet in the same transaction.`
-          : `Removing converts your shares back to ${sym} at the share price when the queue fills. That value rises and falls with the pool, so it isn't guaranteed.`}
+          ? `Converts to shares at the next update, at the live share price. Tops up from your wallet if your account is short.`
+          : `Converts back to ${sym} at the share price when it fills, which moves with the pool.`}
       </p>
     </div>
   );

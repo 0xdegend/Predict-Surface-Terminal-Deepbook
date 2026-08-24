@@ -219,7 +219,7 @@ export function QuestsPanel({ competitionsHref = "/competitions" }: { competitio
       <FundingNote
         note={
           <>
-            Quests reward Skew Points, not DUSDC — points can’t be cashed out
+            Quests reward Skew Points, not DUSDC, points can’t be cashed out
             directly, which keeps farmers and sybils off the loop while the
             system matures. Points feed your leaderboard standing today and
             unlock future rewards. Live on testnet first; values shown here are

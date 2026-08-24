@@ -90,7 +90,7 @@ function Body({ input, now }: { input: SmileInput; now: number }) {
 
       {expired && (
         <p className="mt-2 text-[10px] leading-relaxed text-text-3">
-          This market is at expiry — with no time left, the odds collapse to a hard yes/no at the
+          This market is at expiry, with no time left, the odds collapse to a hard yes/no at the
           current price. Pick a later expiry on the surface for a full curve.
         </p>
       )}

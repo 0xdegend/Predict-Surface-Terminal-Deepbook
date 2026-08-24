@@ -77,7 +77,7 @@ export function FundingNote({ note }: { note?: ReactNode }) {
       <span>
         {note ?? (
           <>
-            Rewards will be paid in DUSDC from the Skew treasury — funded by the 1% Skew fee, so
+            Rewards will be paid in DUSDC from the Skew treasury, funded by the 1% Skew fee, so
             the prize pool grows as the community trades. Live on testnet first; values shown here
             are illustrative.
           </>

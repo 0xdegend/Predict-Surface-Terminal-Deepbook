@@ -251,7 +251,7 @@ function ReadingSurface() {
       <SubHead icon={LuTriangleAlert} title="The built-in sanity check" />
       <P>
         Turn on the checker and Skew highlights any prices that don&apos;t quite
-        add up — for example, a bet that looks cheaper than a safer one sitting
+        add up, for example, a bet that looks cheaper than a safer one sitting
         right next to it. On a healthy market this stays quiet; there&apos;s a
         &ldquo;stress&rdquo; switch that nudges the numbers so you can see the
         warning light up.
@@ -265,7 +265,7 @@ function ReadingSurface() {
       <Callout tone="warn" title="Why do the “jumpiness” numbers look so big?">
         Because these bets are decided so quickly (often ~15 minutes), even a
         small price move counts as a big swing in percentage terms. So those
-        readings naturally look high — that&apos;s normal, not a glitch.
+        readings naturally look high, that&apos;s normal, not a glitch.
       </Callout>
     </Section>
   );
@@ -295,7 +295,7 @@ function Instruments() {
         <Card icon={LuArrowDown} hue={HUE.coral} title="In a range">
           A bet that the price finishes <b className="text-text-1">between</b>{" "}
           two levels you choose. If it lands inside your range, each unit pays
-          $1. It doesn&apos;t matter which way the price moves — only where it
+          $1. It doesn&apos;t matter which way the price moves, only where it
           ends up.
         </Card>
       </Cards>
@@ -424,7 +424,7 @@ function Ranks() {
   return (
     <Section id="ranks" icon={LuTrophy} title="Ranks & rewards" hue={HUE.amber}>
       <Lead>
-        The more you trade, the higher you climb — and rewards are on the way.
+        The more you trade, the higher you climb, and rewards are on the way.
       </Lead>
       <Cards>
         <Card icon={LuTrophy} hue={HUE.amber} title="Leaderboard">
@@ -452,7 +452,7 @@ function Faq() {
     <Section id="faq" icon={LuCircleHelp} title="FAQ & help" hue={HUE.coral}>
       <div className="flex flex-col gap-2.5">
         <QA q="Which wallet should I use?">
-          Signing in with Google is the simplest — it&apos;s free and skips
+          Signing in with Google is the simplest, it&apos;s free and skips
           network fees. You can also connect a Sui wallet like Slush. Either
           way, make sure it&apos;s set to <b className="text-text-1">Testnet</b>
           .

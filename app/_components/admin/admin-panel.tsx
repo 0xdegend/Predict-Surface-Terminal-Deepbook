@@ -37,7 +37,7 @@ export function AdminPanel() {
     return (
       <Shell>
         <p className="text-[12px] text-text-3">
-          The fee router isn’t deployed for this network — nothing to administer.
+          The fee router isn’t deployed for this network, nothing to administer.
         </p>
       </Shell>
     );

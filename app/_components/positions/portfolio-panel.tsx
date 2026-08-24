@@ -110,7 +110,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
                 Create your trading account
               </h2>
               <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
-                A personal vault that holds your DUSDC and positions. One transaction — then mint
+                A personal vault that holds your DUSDC and positions. One transaction, then mint
                 your first contract from the surface.
               </p>
             </div>

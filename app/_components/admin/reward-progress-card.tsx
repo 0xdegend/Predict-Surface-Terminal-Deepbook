@@ -185,7 +185,7 @@ export function RewardProgressCard() {
               <li>
                 Send DUSDC to the treasury address above until it covers the remaining{' '}
                 <span className="text-text-2">{num(data.remainingCommittedDusdc, 0)} {sym}</span>. The
-                builder-fee earnings are the source — sweep them with{' '}
+                builder-fee earnings are the source, sweep them with{' '}
                 <code className="text-text-2">claim_all_builder_fees</code> into the treasury.
               </li>
               <li>

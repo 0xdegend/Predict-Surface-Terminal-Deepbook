@@ -323,7 +323,7 @@ export function SimpleScreen({
       return (
         <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col justify-center px-3 py-4 sm:px-5">
           <p className="rounded-2xl border border-(--line-soft) bg-bg-1 py-24 text-center text-[13px] text-text-3">
-            No live rounds right now — check back in a moment.
+            No live rounds right now. Check back in a moment.
           </p>
         </main>
       );

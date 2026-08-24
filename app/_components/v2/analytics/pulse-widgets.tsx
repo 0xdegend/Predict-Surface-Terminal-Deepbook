@@ -150,7 +150,7 @@ export function V2PriceSwing({ cell, className = '' }: { cell: MarketCell | null
               <span className="text-[11px] font-medium text-text-2">expected swing</span>
             </div>
             <p className="text-[11px] leading-relaxed text-text-3">
-              The market&apos;s implied volatility for the front expiry — how big a move traders are
+              The market&apos;s implied volatility for the front expiry, how big a move traders are
               pricing in before it settles.
             </p>
           </>

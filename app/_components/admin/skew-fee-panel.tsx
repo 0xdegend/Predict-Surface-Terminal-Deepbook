@@ -119,11 +119,11 @@ export function SkewFeePanel() {
         <LuInfo size={16} className="mt-0.5 shrink-0 text-text-3" />
         {onChain ? (
           <p className="text-[12px] leading-relaxed text-text-3">
-            The <span className="text-text-1">Skew fee</span> is <span className="text-up">live on-chain</span> —
+            The <span className="text-text-1">Skew fee</span> is <span className="text-up">live on-chain</span>,
             a percentage of each bet, charged <span className="text-text-1">on top of</span> the builder fee and
             sent to the treasury on every standard trade. The rate below is the on-chain{' '}
             <span className="text-text-1">FeeConfig</span>; change it here and it takes effect immediately.
-            Instant-trading (session) bets are the one exception — they aren&rsquo;t charged yet.
+            Instant-trading (session) bets are the one exception, they aren&rsquo;t charged yet.
           </p>
         ) : (
           <p className="text-[12px] leading-relaxed text-text-3">
@@ -227,7 +227,7 @@ export function SkewFeePanel() {
 
         {noVolume && (
           <p className="border-t border-line px-4 py-2.5 text-[11px] leading-relaxed text-text-3">
-            No attributed volume yet on {predictV2Config.network} — this fills in as trades come through Skew.
+            No attributed volume yet on {predictV2Config.network}, this fills in as trades come through Skew.
             Use the what-if below to model ahead.
           </p>
         )}

@@ -342,7 +342,7 @@ export function SurfaceCanvas({
         <div className="pointer-events-none absolute bottom-[5.25rem] left-1/2 hidden -translate-x-1/2 lg:block">
           <span className="chip h-7 px-3 text-[11px] text-text-2">
             <span className="h-1.5 w-1.5 rounded-full bg-down" />
-            Stress is a preview — turn it off to trade
+            Stress is a preview, turn it off to trade
           </span>
         </div>
       ) : (
@@ -1061,7 +1061,7 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
       </div>
       {!hover.tradeable && (
         <div className="mt-2 border-t border-line-soft pt-2 font-mono text-[10px] leading-snug text-text-3">
-          too far from spot to mint — pick a node nearer the colored ridge
+          too far from spot to mint, pick a node nearer the colored ridge
         </div>
       )}
     </div>
@@ -1303,7 +1303,7 @@ function LegendRow({
         </span>
       )}
       <span className="text-[10.5px] leading-snug text-text-3">
-        <span className="font-medium text-text-1">{label}</span> — {desc}
+        <span className="font-medium text-text-1">{label}</span>: {desc}
       </span>
     </div>
   );

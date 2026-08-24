@@ -51,7 +51,7 @@ export function VolTab() {
         <div className="p-4">
           <p className="mb-3 text-[11.5px] leading-relaxed text-text-3">
             How big a price move traders are expecting for each market. A higher point means a bumpier,
-            less certain market — the price could swing more before it ends.
+            less certain market, the price could swing more before it ends.
           </p>
           {loading ? (
             <ChartSkeleton />

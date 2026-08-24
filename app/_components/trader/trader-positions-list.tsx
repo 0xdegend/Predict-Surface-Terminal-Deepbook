@@ -65,7 +65,7 @@ export function TraderPositionsList({
       <div className="glass-inset px-4 py-12 text-center">
         <p className="text-[13px] text-text-2">No open positions right now.</p>
         <p className="mt-1 text-[12px] text-text-3">
-          This trader has no live binaries or ranges — only settled history.
+          This trader has no live binaries or ranges, only settled history.
         </p>
       </div>
     );
@@ -76,7 +76,7 @@ export function TraderPositionsList({
       {partial && (
         <div className="flex items-center gap-2 rounded-md border border-[var(--warn-soft)] bg-[var(--warn-soft)] px-3 py-2 text-[11px] leading-snug text-warn">
           <LuTriangleAlert size={13} className="flex-none" />
-          Some positions couldn&apos;t be loaded right now — showing what&apos;s available, retrying…
+          Some positions couldn&apos;t be loaded right now, showing what&apos;s available, retrying…
         </div>
       )}
       {binary.length > 0 && (

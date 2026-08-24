@@ -252,7 +252,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
           <IconChip icon={LuFlaskConical} color={HUE.amber} size={26} />
           <p className="text-[11.5px] leading-relaxed text-text-2">
             <span className="font-medium text-text-1">You&apos;re viewing sample data.</span>{' '}
-            Your balances are live, but the positions, PnL and history shown are illustrative —
+            Your balances are live, but the positions, PnL and history shown are illustrative,
             they switch to your real figures the moment the new deployment&apos;s data feed comes
             online.
           </p>
@@ -348,7 +348,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
             {fmtQuote(fromQuote(acct.plpBalanceBase))} <span className="text-[11px] text-text-3">PLP</span>
           </span>
           <span className="relative text-[10px] leading-relaxed text-text-3">
-            Your share of the market-making vault —{' '}
+            Your share of the market-making vault, {' '}
             <Link href="/v2/vault" className="underline underline-offset-2 hover:text-text-2">
               manage in Vault
             </Link>
@@ -520,7 +520,7 @@ function CreateAccountCard({ busy, onCreate }: { busy: boolean; onCreate: () => 
             </h2>
             <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
               A personal vault that holds your DUSDC and positions on the new release. One
-              transaction — then fund it and place your first bet.
+              transaction, then fund it and place your first bet.
             </p>
           </div>
 

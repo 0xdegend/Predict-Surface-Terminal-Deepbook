@@ -162,7 +162,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
             <>
               Earn from the pool, with built-in crash protection. Most of your deposit goes into the
               shared pool to earn a share of the trading fees; a small part buys protection that pays out
-              if {chosen?.oracle.underlying_asset ?? 'BTC'} drops sharply — softening the pool&apos;s worst day. It all
+              if {chosen?.oracle.underlying_asset ?? 'BTC'} drops sharply, softening the pool&apos;s worst day. It all
               happens in one transaction.
             </>
           ) : (
@@ -282,7 +282,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
             {hedge && hedgeQty > 0n && (
               <p className="font-sans text-[11px] leading-relaxed text-text-3">
                 If {chosen?.oracle.underlying_asset ?? 'BTC'} finishes below {price(hedge.strike, 0)}, the protection
-                pays {fmtQuote(maxCrashPayout)} {predictConfig.quote.symbol} — offsetting the pool&apos;s loss. If it
+                pays {fmtQuote(maxCrashPayout)} {predictConfig.quote.symbol}, offsetting the pool&apos;s loss. If it
                 doesn&apos;t, the protection simply expires, and its cost was the price of insurance.
               </p>
             )}
@@ -308,7 +308,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-        You hold your own pool shares and crash protection directly — Skew never takes custody. More
+        You hold your own pool shares and crash protection directly, Skew never takes custody. More
         pooling options are coming soon. {predictConfig.quote.symbol} · {predictConfig.network}.
       </p>
     </div>

@@ -89,7 +89,7 @@ export function ArenaBanner({
           DEGEN ARENA
         </h1>
         <p className="mt-2 text-[12px] tracking-wide text-text-2">
-          Welcome to {SEASON.label} — factions clash for the prize pool
+          Welcome to {SEASON.label}. Factions clash for the prize pool
         </p>
       </div>
     </div>

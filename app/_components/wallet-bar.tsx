@@ -278,7 +278,7 @@ function ConnectMenu({
       <span className="eyebrow px-2 pt-1.5 pb-1">Connect a wallet</span>
       {wallets.length === 0 ? (
         <p className="px-2 py-3 text-[11px] leading-relaxed text-text-3">
-          No Sui wallet detected. Slush opens in-browser automatically — pick it when prompted.
+          No Sui wallet detected. Slush opens in-browser automatically. Pick it when prompted.
         </p>
       ) : (
         wallets.map((w) => {

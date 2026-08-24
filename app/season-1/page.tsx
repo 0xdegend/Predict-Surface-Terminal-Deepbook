@@ -43,7 +43,7 @@ export default async function Season1Page() {
         <h1 className="text-[22px] font-semibold tracking-tight text-text-1">Season 1 leaderboard</h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-text-2">
           Final standings from the original Skew deployment. These can’t carry to the new
-          on-chain packages, so they’re preserved here — the new release starts everyone fresh
+          on-chain packages, so they’re preserved here, the new release starts everyone fresh
           as <span className="text-text-1">Season 2</span>.
         </p>
       </header>

@@ -22,8 +22,7 @@ export default function V2VaultPage() {
           Liquidity vault
         </h1>
         <p className="mt-1 max-w-2xl text-[12px] text-text-3">
-          Back the protocol and earn its trading edge. Money moves through a queue and fills at
-          each vault update.
+          Back the protocol and earn its trading edge.
         </p>
       </header>
       {/* grid-cols-1 (= minmax(0,1fr)) on mobile so the single column can't grow

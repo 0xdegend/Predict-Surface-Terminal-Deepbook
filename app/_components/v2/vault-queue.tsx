@@ -69,7 +69,7 @@ export function V2VaultQueue() {
     return (
       <div className="flex items-center gap-2 rounded-xl border border-line-soft px-3.5 py-2.5 text-[11.5px] text-text-3">
         <LuClock size={13} className="shrink-0" />
-        <span>Nothing queued. Deposits and withdrawals appear here until the next vault update.</span>
+        <span>Nothing queued.</span>
       </div>
     );
   }
@@ -81,22 +81,20 @@ export function V2VaultQueue() {
         <div className="flex flex-col">
           <h3 className="text-[14px] font-semibold tracking-tight text-text-1">In the queue</h3>
           <span className="text-[10px] text-text-3">
-            waiting for the next vault update · escrowed, not yet filled
+            escrowed until the next vault update
           </span>
         </div>
       </div>
 
       {error ? (
         <p className="text-[11.5px] leading-relaxed text-down">
-          Couldn&apos;t read the queue from the vault. It&apos;s safe to retry. Nothing is lost;
-          your funds stay escrowed on-chain either way.
+          Couldn&apos;t read the queue. Your funds stay escrowed on-chain, so it is safe to retry.
         </p>
       ) : isLoading ? (
         <span className="font-mono text-[12px] text-text-3">loading…</span>
       ) : rows.length === 0 ? (
         <p className="text-[12px] leading-relaxed text-text-2">
-          Nothing queued. Deposits and withdrawals land here while they wait for the next vault
-          update, and you can cancel them from here until they fill.
+          Nothing queued.
         </p>
       ) : (
         <>

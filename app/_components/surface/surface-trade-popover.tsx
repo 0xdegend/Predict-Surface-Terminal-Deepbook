@@ -390,7 +390,7 @@ function BinaryBody({
           </div>
           {!tradeable && (
             <p className="px-0.5 text-[10.5px] leading-snug text-text-3">
-              This strike is too far from spot to price — pick one nearer the
+              This strike is too far from spot to price, pick one nearer the
               colored ridge.
             </p>
           )}
@@ -863,13 +863,13 @@ function QuoteCard({
   if (expired) {
     body = (
       <span className="text-text-3">
-        This market has expired — pick another expiry.
+        This market has expired. Pick another expiry.
       </span>
     );
   } else if (!tradeable) {
     body = (
       <span className="text-text-3">
-        Too far from spot to price — pick a strike nearer the colored ridge.
+        Too far from spot to price, pick a strike nearer the colored ridge.
       </span>
     );
   } else if (!q) {

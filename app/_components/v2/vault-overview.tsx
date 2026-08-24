@@ -63,8 +63,7 @@ export function V2VaultOverview() {
             <IconChip icon={LuLandmark} color={HUE.teal} size={30} />
             <span className="eyebrow">Pool value</span>
             <InfoTip label="Pool value">
-              Everything the vault holds — idle money plus the capital currently backing open
-              bets. Your share of it is what your vault shares are worth.
+              Idle money plus the capital backing open bets. Your shares are worth a slice of it.
             </InfoTip>
           </div>
           <div className="relative flex flex-col gap-2">
@@ -72,7 +71,7 @@ export function V2VaultOverview() {
               {poolValue != null ? <Money value={poolValue} /> : '…'}
             </span>
             <span className="text-[10px] uppercase tracking-[0.12em] text-text-3">
-              {predictV2Config.quote.symbol} · backs every open position
+              {predictV2Config.quote.symbol}
             </span>
           </div>
         </div>
@@ -102,7 +101,7 @@ export function V2VaultOverview() {
           icon={LuClock}
           color={HUE.coral}
           label="In the queue"
-          info="Deposits and withdrawals wait here until the next vault update fills them at the live share price."
+          info="Fills at the next vault update, at the live share price."
           value={vault ? `${vault.supplyPending} · ${vault.withdrawPending}` : '…'}
           sub="deposits · withdrawals"
         />
@@ -124,7 +123,7 @@ export function V2VaultOverview() {
           </span>
           <span className="relative text-[10px] leading-relaxed text-text-3">
             {acct.wrapperExists
-              ? `${fmtQuote(yourShares)} PLP shares · value moves with the pool`
+              ? `${fmtQuote(yourShares)} PLP shares`
               : 'Connect and create a trading account to provide liquidity'}
           </span>
         </div>
@@ -148,13 +147,13 @@ export function V2VaultOverview() {
         </div>
 
         <div className="flex flex-wrap gap-x-5 gap-y-1.5 font-mono text-[10px] tabular-nums text-text-3">
-          <Legend dot="bg-up/80" label="Idle, free for withdrawals" value={<Money value={idle} />} />
-          <Legend dot="bg-white/25" label="Backing open markets" value={<Money value={deployed} />} />
+          <Legend dot="bg-up/80" label="Idle" value={<Money value={idle} />} />
+          <Legend dot="bg-white/25" label="Backing markets" value={<Money value={deployed} />} />
         </div>
 
         {(reserve > 0 || feeInc > 0) && (
           <p className="font-mono text-[10px] tabular-nums text-text-3">
-            Protocol-owned, outside the pool: reserve {fmtQuote(reserve)} · fee incentives {fmtQuote(feeInc)}
+            Outside the pool: reserve {fmtQuote(reserve)} · fee incentives {fmtQuote(feeInc)}
           </p>
         )}
 
@@ -163,8 +162,7 @@ export function V2VaultOverview() {
         <p className="text-[11px] leading-relaxed text-text-3">
           {flush ? (
             <>
-              Last vault update {ago(flush.checkpoint_timestamp_ms, now)} — {flush.market_count}{' '}
-              markets valued
+              Last update {ago(flush.checkpoint_timestamp_ms, now)}, {flush.market_count} markets valued
               {flush.requests_processed > 0
                 ? `, ${flush.supplies_filled} deposits and ${flush.withdrawals_filled} withdrawals filled.`
                 : '.'}

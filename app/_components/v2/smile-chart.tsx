@@ -273,7 +273,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
           <span className="inline-flex items-center gap-1 font-mono text-[10px] text-up">
             Prices look healthy ✓
             <InfoTip label="prices look healthy">
-              The odds drop smoothly as the price rises — everything lines up, with no free-money gaps
+              The odds drop smoothly as the price rises, everything lines up, with no free-money gaps
               in the pricing.
             </InfoTip>
           </span>
@@ -453,7 +453,7 @@ export function V2SmileChart({ market, pricer }: { market: V2Market; pricer: Liv
         <span className="inline-flex items-center gap-1">
           ≈ 50/50 at {pct(atmUp, 1)} up
           <InfoTip label="the 50/50 point">
-            Around the expected price, ending higher or lower is roughly even — about as close to a coin
+            Around the expected price, ending higher or lower is roughly even, about as close to a coin
             flip as this market gets.
           </InfoTip>
         </span>

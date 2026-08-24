@@ -89,7 +89,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
           Is the pool safe?
         </h1>
         <p className="mt-1 max-w-2xl text-[12px] text-text-3">
-          A live health check on the liquidity pool — how much is at work, how much you could
+          A live health check on the liquidity pool: how much is at work, how much you could
           withdraw right now, how far it covers what it might owe, and how it holds up if bets go
           against it.
         </p>
@@ -171,8 +171,8 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
           If <span className="text-text-2">every</span> open bet won at once, the pool would owe{' '}
           <span className="font-mono tabular-nums text-text-1">
             {fmtQuote(maxPayoutAtRisk)} {sym}
-          </span>{' '}
-          — {Number.isFinite(coverage) ? `${coverageDisplay} covered` : 'nothing is at risk right now'}.
+          </span>{', '}
+          {Number.isFinite(coverage) ? `${coverageDisplay} covered` : 'nothing is at risk right now'}.
         </p>
       </div>
 
@@ -195,7 +195,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
         <PerfChart points={series} />
         {latestFlush && (
           <p className="text-[11px] leading-relaxed text-text-3">
-            Last vault update {ago(latestFlush.checkpoint_timestamp_ms, now)} — {latestFlush.market_count} markets
+            Last vault update {ago(latestFlush.checkpoint_timestamp_ms, now)}, {latestFlush.market_count} markets
             re-valued. The pool is marked at each keeper flush.
           </p>
         )}
@@ -265,7 +265,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
         )}
 
         <p className="text-[11px] leading-relaxed text-text-3">
-          Worst case — <span className="text-text-2">every</span> open bet wins at {amp}× book —
+          Worst case: <span className="text-text-2">every</span> open bet wins at {amp}× book, and
           the pool pays {fmtQuote(ampMaxPayout)} {sym} and stays{' '}
           <span className={Number.isFinite(ampCoverage) && ampCoverage < 1 ? 'text-down' : 'text-up'}>
             {Number.isFinite(ampCoverage) ? `${num(ampCoverage, ampCoverage >= 100 ? 0 : 1)}× covered` : 'fully covered'}
@@ -282,7 +282,7 @@ export function V2RiskPanel({ initialMarkets = [] }: { initialMarkets?: V2Market
         </CardTitle>
         {exposures.length === 0 ? (
           <p className="text-[12px] leading-relaxed text-text-2">
-            No open bets against the pool right now — nothing at risk.
+            No open bets against the pool right now, nothing at risk.
           </p>
         ) : (
           <div className="overflow-x-auto">

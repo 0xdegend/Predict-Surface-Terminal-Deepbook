@@ -67,7 +67,7 @@ export function SurfaceControls({
           </span>
           <InfoTip label="Time Travel" size={13}>
             <span className="block">
-              <span className="font-medium text-accent">Time Travel</span> — drag the slider to rewind
+              <span className="font-medium text-accent">Time Travel</span>: drag the slider to rewind
               the volatility surface through its recent history and watch how the odds shifted minute
               by minute.
             </span>
@@ -109,12 +109,12 @@ export function SurfaceControls({
         </div>
         <InfoTip label="the surface overlays" size={13}>
           <span className="block">
-            <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
+            <span className="font-medium text-accent">Arb Check</span>: scans the surface for prices
             that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
             any bad spots light up; if every price is fair, nothing shows.
           </span>
           <span className="mt-2 block">
-            <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
+            <span className="font-medium text-down">Stress</span>: drops one made-up bad price into
             the live surface, so Arb Check has a real example to catch. The rest of the surface stays
             exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
             prices.

@@ -213,7 +213,7 @@ export function StrategyBuilder({
 
         {legs.length === 0 ? (
           <p className="mt-4 text-[13px] leading-relaxed text-text-3">
-            Pick a preset or add a leg to build a custom payoff. Every leg is a plain up/down or range bet on this expiry —
+            Pick a preset or add a leg to build a custom payoff. Every leg is a plain up/down or range bet on this expiry,
             stacked, they make shapes a single bet can&apos;t.
           </p>
         ) : (
@@ -257,7 +257,7 @@ export function StrategyBuilder({
             ) : (
               <p className="mt-3 rounded-md border border-down/30 bg-down/10 px-3 py-2.5 text-[12px] leading-relaxed text-down">
                 One or more legs are too far from spot to price on this expiry (their chance rounds to 0%). Move them closer, or
-                use a preset — those size to this market&apos;s expected move.
+                use a preset, those size to this market&apos;s expected move.
               </p>
             )}
 

@@ -315,7 +315,7 @@ export function RiskPanel({
 
             <p className="mt-4 text-[12px] leading-relaxed text-text-3">
               Drag the slider to imagine the price suddenly jumping or dropping,
-              and see how the pool would hold up — every open bet is re-valued
+              and see how the pool would hold up, every open bet is re-valued
               live. The far ends are rare, extreme swings.
             </p>
             <p className="mt-2 text-[11px] text-text-3">
@@ -352,7 +352,7 @@ export function RiskPanel({
                 <InfoTip label="demo amplifier">
                   The test network has very few open bets, so the dials barely
                   move. ×1 is the real, live amount; higher settings exaggerate it
-                  so you can see the effect — those figures are marked as
+                  so you can see the effect, those figures are marked as
                   amplified.
                 </InfoTip>
               </span>
@@ -405,7 +405,7 @@ export function RiskPanel({
             <p className="mt-3 text-[10px] leading-relaxed text-text-3">
               {stressX > 1 && (
                 <span className="text-[var(--warn)]">
-                  Amplified ×{stressX} for demo —{" "}
+                  Amplified ×{stressX} for demo, {" "}
                 </span>
               )}
               Calculated live from the pool&apos;s current open bets (up/down

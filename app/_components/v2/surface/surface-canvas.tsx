@@ -569,14 +569,14 @@ export function SurfaceCanvasV2({
         <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
           <span className="chip h-7 px-3 text-[11px] text-text-2">
             <span className="h-1.5 w-1.5 rounded-full bg-warn" />
-            Drag slowly to morph the surface — hit Live to trade
+            Drag slowly to morph the surface, hit Live to trade
           </span>
         </div>
       ) : stress ? (
         <div className="pointer-events-none absolute bottom-19 left-1/2 hidden -translate-x-1/2 lg:block">
           <span className="chip h-7 px-3 text-[11px] text-text-2">
             <span className="h-1.5 w-1.5 rounded-full bg-down" />
-            Stress is a preview — turn it off to trade
+            Stress is a preview, turn it off to trade
           </span>
         </div>
       ) : (
@@ -1742,7 +1742,7 @@ function SurfaceTooltip({ hover }: { hover: HoverInfo }) {
       </div>
       {!hover.tradeable && (
         <div className="mt-2 border-t border-line-soft pt-2 font-mono text-[10px] leading-snug text-text-3">
-          too far from spot to mint — pick a node nearer the colored ridge
+          too far from spot to mint, pick a node nearer the colored ridge
         </div>
       )}
     </div>
@@ -1869,14 +1869,14 @@ function SurfaceControls({
           </span>
           <InfoTip label="Time Travel" size={13}>
             <span className="block">
-              <span className="font-medium text-accent">Time Travel</span> — drag the slider to rewind
+              <span className="font-medium text-accent">Time Travel</span>: drag the slider to rewind
               the volatility surface and watch how the odds shifted, moment by moment.{' '}
-              <span className="font-medium text-text-1">Drag slowly</span> — the surface morphs as you
+              <span className="font-medium text-text-1">Drag slowly</span>, the surface morphs as you
               go, and a gentle pace is what makes it read.
             </span>
             <span className="mt-2 block">
               Each keyframe is a real recording of the prices the protocol was quoting, captured
-              live while this page is open — so the window grows the longer you watch (the motion
+              live while this page is open, so the window grows the longer you watch (the motion
               between recordings is smoothed). The time on the right is the moment you’re viewing;
               hit <span className="font-medium text-accent">Live</span> to snap back to the
               streaming surface. Rewound odds aren’t for sale, so trading is paused until you do.
@@ -1910,12 +1910,12 @@ function SurfaceControls({
         </div>
         <InfoTip label="the surface overlays" size={13}>
           <span className="block">
-            <span className="font-medium text-accent">Arb Check</span> — scans the surface for prices
+            <span className="font-medium text-accent">Arb Check</span>: scans the surface for prices
             that don’t add up, like a cheaper bet paying out more than a pricier one. Turn it on and
             any bad spots light up; if every price is fair, nothing shows.
           </span>
           <span className="mt-2 block">
-            <span className="font-medium text-down">Stress</span> — drops one made-up bad price into
+            <span className="font-medium text-down">Stress</span>: drops one made-up bad price into
             the live surface, so Arb Check has a real example to catch. The rest of the surface stays
             exactly as it is. Turn both on to watch it flag the spot, then off to go back to live
             prices.
@@ -1978,7 +1978,7 @@ function LegendRow({
         </span>
       )}
       <span className="text-[10.5px] leading-snug text-text-3">
-        <span className="font-medium text-text-1">{label}</span> — {desc}
+        <span className="font-medium text-text-1">{label}</span>: {desc}
       </span>
     </div>
   );

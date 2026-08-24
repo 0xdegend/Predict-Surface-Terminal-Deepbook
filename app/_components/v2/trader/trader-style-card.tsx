@@ -34,7 +34,7 @@ export function V2TraderStyleCard({
         <LuSparkles size={14} className="text-accent" />
         <h2 className="text-[13px] font-medium text-text-1">Trading style</h2>
         <InfoTip label="trading style">
-          A quick read of how this person tends to bet, worked out from their past bets — the kinds of
+          A quick read of how this person tends to bet, worked out from their past bets: the kinds of
           markets they pick, how big they bet, and whether they back likely or unlikely outcomes.
         </InfoTip>
       </div>

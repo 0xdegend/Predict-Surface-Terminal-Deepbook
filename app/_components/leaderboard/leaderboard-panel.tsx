@@ -310,7 +310,7 @@ export function LeaderboardPanel() {
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
         Points = liquidity (DUSDC minted) + performance (net profit, floored at
-        zero — a loss never subtracts) + holding time, computed live from the
+        zero, a loss never subtracts) + holding time, computed live from the
         event stream within the latest window, so every trader is ranked. Win
         rate &amp; authoritative PnL are on your{" "}
         <a href="/portfolio" className="underline hover:text-text-2">
@@ -485,7 +485,7 @@ function NotRankedHint() {
         className="pointer-events-none absolute inset-x-6 top-0 h-px bg-linear-to-r from-transparent via-white/15 to-transparent"
       />
       <LuTrophy size={14} className="flex-none text-text-3" />
-      You&apos;re connected but haven&apos;t traded yet — mint a position to
+      You&apos;re connected but haven&apos;t traded yet. Mint a position to
       claim your spot on the leaderboard.
     </div>
   );

@@ -45,7 +45,7 @@ export function V2FlowTape({
       <div className="rows-divided flex-1">
         {visible.length === 0 ? (
           <div className="px-4 py-10 text-center text-[12px] text-text-3">
-            No bets yet — as soon as someone places one it shows up here.
+            No bets yet. As soon as someone places one it shows up here.
           </div>
         ) : (
           visible.map((r) => <FlowRowView key={r.id} row={r} now={now} />)

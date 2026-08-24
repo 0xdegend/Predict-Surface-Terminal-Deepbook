@@ -223,7 +223,7 @@ export function V2TraderProfile({ address }: { address: string }) {
 
       <p className="mt-6 text-[10px] leading-relaxed text-text-3">
         Positions are public on-chain state, marked at the current price. Copy carries the market only
-        (which market, direction, strike) — you set your own stake and pay the live quote. Win rate is over
+        (which market, direction, strike), you set your own stake and pay the live quote. Win rate is over
         settled bets; authoritative PnL lives on the trader’s own portfolio. Quote asset ·{' '}
         {predictV2Config.quote.symbol} · {predictV2Config.network}.
       </p>

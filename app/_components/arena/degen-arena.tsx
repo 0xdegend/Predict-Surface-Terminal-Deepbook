@@ -72,7 +72,7 @@ export function DegenArena({ questsHref = '/quests' }: { questsHref?: string } =
       <FundingNote
         note={
           <>
-            Prize pool is paid in DUSDC from the Skew treasury — funded by the 1% Skew fee, so it grows as
+            Prize pool is paid in DUSDC from the Skew treasury, funded by the 1% Skew fee, so it grows as
             the community trades. Factions, members and pools shown here are illustrative; the season clock is real.
           </>
         }

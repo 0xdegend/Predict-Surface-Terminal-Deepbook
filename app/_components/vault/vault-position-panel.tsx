@@ -114,7 +114,7 @@ export function VaultPositionPanel() {
         <div className="glass-card flex flex-col items-start gap-1 p-5">
           <span className="text-[13px] text-text-1">Nothing in the pool yet</span>
           <span className="text-[11px] leading-relaxed text-text-3">
-            Add to the pool above to start earning a share of the trading fees — with or without crash
+            Add to the pool above to start earning a share of the trading fees, with or without crash
             protection. Your stake and earnings will show up here, and you can take your money out any
             time.
           </span>
@@ -178,7 +178,7 @@ export function VaultPositionPanel() {
             )}
             {limiterCaps && (
               <span className="font-sans text-[10px] leading-relaxed text-text-3">
-                You can take out up to {fmtQuote(availableWithdrawal)} {sym} right now — some of the pool
+                You can take out up to {fmtQuote(availableWithdrawal)} {sym} right now, some of the pool
                 is backing open bets. The rest frees up as those finish.
               </span>
             )}

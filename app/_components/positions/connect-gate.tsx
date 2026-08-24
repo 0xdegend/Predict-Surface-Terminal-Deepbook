@@ -72,7 +72,7 @@ export function ConnectGate() {
                 Connect your wallet
               </h2>
               <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
-                Here&apos;s your portfolio at a glance — account value, live PnL, and open positions
+                Here&apos;s your portfolio at a glance: account value, live PnL, and open positions
                 light up the moment a wallet is connected. Nothing is shared until you do.
               </p>
             </div>

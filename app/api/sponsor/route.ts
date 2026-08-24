@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     console.error(
       `[sponsor:${phase}] POST https://api.enoki.mystenlabs.com/v1/transaction-blocks/sponsor${
         phase === 'execute' ? `/${body.digest}` : ''
-      } → status=${err.status ?? '?'} code=${err.code ?? '?'} — ${msg}`,
+      } → status=${err.status ?? '?'} code=${err.code ?? '?'}, ${msg}`,
       err.cause ?? '',
     );
     return NextResponse.json({ error: `${phase} phase: ${msg}` }, { status: 502 });

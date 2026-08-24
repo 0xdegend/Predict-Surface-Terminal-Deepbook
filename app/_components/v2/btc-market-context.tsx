@@ -300,7 +300,7 @@ function StrikeCard({
             <span className="flex items-center gap-1 text-[9px] uppercase tracking-widest text-text-3">
               Chance this bet wins
               <InfoTip label="chance this bet wins">
-                Two takes on the very same thing — how likely this bet is to win. One counts what BTC
+                Two takes on the very same thing: how likely this bet is to win. One counts what BTC
                 actually did recently; the other is the live price you&apos;d pay. When they disagree,
                 that gap is the whole point.
               </InfoTip>
@@ -323,7 +323,7 @@ function StrikeCard({
                 sub="live surface odds"
                 tip={
                   <>
-                    What the surface charges for this bet right now — the market&apos;s own view of the
+                    What the surface charges for this bet right now, the market&apos;s own view of the
                     odds, and effectively what you pay.
                   </>
                 }

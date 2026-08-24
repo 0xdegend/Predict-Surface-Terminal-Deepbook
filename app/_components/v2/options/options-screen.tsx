@@ -859,7 +859,7 @@ function OptionsComingSoon({ children }: { children: ReactNode }) {
             </span>
             <h1 className="mt-6 text-[22px] font-semibold tracking-tight text-text-1">BTC Options</h1>
             <p className="mx-auto mt-3 max-w-sm text-[13.5px] leading-relaxed text-text-2">
-              The clearest read on Bitcoin options — the live surface, a plain-language probability ladder, expected
+              The clearest read on Bitcoin options: the live surface, a plain-language probability ladder, expected
               move, and a reality check. Every number is one click from a bet.
             </p>
             <p className="mt-5 text-[12px] text-text-3">We’re putting the finishing touches on it.</p>

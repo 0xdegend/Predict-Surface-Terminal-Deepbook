@@ -49,7 +49,7 @@ export function SentimentTab() {
           <SkeletonRows />
         ) : lopsided.length === 0 ? (
           <div className="px-4 py-12 text-center text-[12px] text-text-3">
-            No bets on live markets yet — sentiment hasn’t taken a side.
+            No bets on live markets yet. Sentiment hasn’t taken a side.
           </div>
         ) : (
           <div className="rows-divided">

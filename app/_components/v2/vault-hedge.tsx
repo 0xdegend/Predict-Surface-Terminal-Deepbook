@@ -147,8 +147,7 @@ export function V2VaultHedge() {
       </div>
 
       <p className="text-[11.5px] leading-relaxed text-text-3">
-        Providing liquidity means you&apos;re long the pool, so a sharp BTC drop is your worst day.
-        Spend a little to buy protection that pays out if that happens — softening the hit.
+        You are long the pool, so a sharp BTC drop is your worst day. This pays out if that happens.
       </p>
 
       {/* budget */}
@@ -229,9 +228,8 @@ export function V2VaultHedge() {
 
       {hedge && quantity > 0n && (
         <p className="text-[11px] leading-relaxed text-text-3">
-          If BTC finishes below {price(hedge.strike, 0)}, this pays {fmtQuote(fromQuote(quantity))} {sym} —
-          offsetting the pool&apos;s loss. If it doesn&apos;t, the protection simply expires, and its cost was
-          the price of insurance.
+          If BTC finishes below {price(hedge.strike, 0)}, this pays {fmtQuote(fromQuote(quantity))} {sym},
+          offsetting the pool&apos;s loss. If it doesn&apos;t, it expires worthless.
         </p>
       )}
 
@@ -246,8 +244,7 @@ export function V2VaultHedge() {
       />
 
       <p className="text-[10px] leading-relaxed text-text-3">
-        You hold the protection directly as a position — it appears in your portfolio and redeems there.
-        Bought on the longest-dated live market. {sym} · {predictV2Config.network}.
+        Held as a position in your portfolio, where it redeems. Bought on the longest-dated live market.
       </p>
     </div>
   );
