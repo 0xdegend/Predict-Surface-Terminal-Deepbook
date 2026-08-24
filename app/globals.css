@@ -1294,3 +1294,84 @@ select:focus-visible,
     display: none;
   }
 }
+
+/* ── Nav menu icons: hover motion ────────────────────────────────────────────
+   Drives the hand-authored glyphs in app/_components/v2/nav-icons.tsx. All the
+   timing lives here, on purpose: ten icons animating on their own schedules would
+   read as ten toys, so they share one duration and one curve and differ only in
+   WHAT moves. Each icon uses exactly one of draw / lift / pulse / turn / open.
+
+   Everything is scoped to `.group:hover` and `.group:focus-visible`, so nothing
+   moves until the trader deliberately points at a tile — no idle motion in the
+   chrome, which is the rule the surface's own animation depends on to stay the
+   loudest thing on screen.
+
+   Transform-box + transform-origin are required on SVG children: without them a
+   rotation pivots about the SVG's origin, not the shape's own box, and the blade
+   swings off the canvas instead of turning on its hilt. */
+.nav-ico {
+  overflow: visible;
+}
+.nav-ico-lift,
+.nav-ico-pulse,
+.nav-ico-turn,
+.nav-ico-open {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--d, 0ms);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* draw — the stroke paints itself in. The path carries pathLength="1", so these are
+     NORMALISED units: one dash of length 1 covers the whole stroke whatever its real
+     geometry measures. Offset 0 = fully drawn (the resting state). */
+  .nav-ico-draw {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .group:hover .nav-ico-draw,
+  .group:focus-visible .nav-ico-draw {
+    animation: navIcoDraw 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes navIcoDraw {
+    from {
+      stroke-dashoffset: 1;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  /* lift — a staggered rise, for things that read as bars or candles. */
+  .group:hover .nav-ico-lift,
+  .group:focus-visible .nav-ico-lift {
+    transform: translateY(-1.5px);
+  }
+
+  /* pulse — expands and fades back, for concentric or alerting marks. */
+  .group:hover .nav-ico-pulse,
+  .group:focus-visible .nav-ico-pulse {
+    transform: scale(1.14);
+  }
+
+  /* turn — a small rotation about a named pivot (a hilt, a keyway). */
+  .nav-ico-turn {
+    transform-origin: var(--ox, center) var(--oy, center);
+    transform-box: view-box;
+  }
+  .group:hover .nav-ico-turn,
+  .group:focus-visible .nav-ico-turn {
+    transform: rotate(var(--deg, 6deg));
+  }
+
+  /* open — a hinge, for a book cover or a message tail. */
+  .group:hover .nav-ico-open,
+  .group:focus-visible .nav-ico-open {
+    transform: translateY(0.75px) scale(1.06);
+  }
+}

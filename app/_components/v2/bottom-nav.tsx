@@ -24,18 +24,9 @@ import {
   LuActivity,
   LuWallet,
   LuVault,
-  LuShieldAlert,
   LuTrophy,
   LuLayoutGrid,
-  LuChartNoAxesCombined,
-  LuChartCandlestick,
-  LuTarget,
-  LuSwords,
-  LuBookOpen,
-  LuMessageSquare,
   LuArrowUpRight,
-  LuBadgeCheck,
-  LuGauge,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { useV2TradeStore } from '@/lib/store/v2-trade-store';
@@ -44,6 +35,7 @@ import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-vi
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { V2_SIMPLE_ENABLED } from '@/config/predict';
 import { TradeModeToggle } from './trade-mode-toggle';
+import { IcoAnalytics, IcoArena, IcoAutopilot, IcoDocs, IcoKelly, IcoOptions, IcoQuests, IcoRecord, IcoRisk } from './nav-icons';
 import { SOCIAL_ICON } from '../social-links';
 import { SOCIALS } from '@/config/socials';
 
@@ -64,18 +56,18 @@ const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
 
 const MORE: MoreItem[] = [
   // Descs kept short so each tile is a single line on mobile (uniform height).
-  { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: LuMessageSquare },
-  ...(AUTOPILOT ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Trades your rules', icon: LuGauge } as MoreItem] : []),
+  { href: '/v2/options', label: 'BTC Options', desc: 'Probability ladder', icon: IcoOptions },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface', icon: IcoKelly },
+  ...(AUTOPILOT ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Trades your rules', icon: IcoAutopilot } as MoreItem] : []),
   ...(KELLY_RECEIPTS
-    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed', icon: LuBadgeCheck } as MoreItem]
+    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed', icon: IcoRecord } as MoreItem]
     : []),
-  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety', icon: LuShieldAlert },
-  { href: '/v2/analytics', label: 'Analytics', desc: 'Markets & activity', icon: LuChartNoAxesCombined },
-  { href: '/v2/quests', label: 'Quests', desc: 'Earn DUSDC', icon: LuTarget, soon: true },
-  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: LuSwords, soon: true },
+  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety', icon: IcoRisk },
+  { href: '/v2/analytics', label: 'Analytics', desc: 'Markets & activity', icon: IcoAnalytics },
+  { href: '/v2/quests', label: 'Quests', desc: 'Earn DUSDC', icon: IcoQuests, soon: true },
+  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: IcoArena, soon: true },
   // Reference, not a destination tile → full-width footer row (keeps the grid even).
-  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
+  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: IcoDocs, footer: true },
   // Socials — off-site footer rows, one per account, from the shared list.
   ...SOCIALS.map((s): MoreItem => ({
     href: s.url,
@@ -206,7 +198,7 @@ export function V2BottomNav() {
                       role="menuitem"
                       onClick={() => setOpen(false)}
                       aria-current={active ? 'page' : undefined}
-                      className={`ctrl-soft flex h-full min-w-0 flex-col gap-1 rounded-2xl px-3 py-2.5 transition-colors ${
+                      className={`group ctrl-soft flex h-full min-w-0 flex-col gap-1 rounded-2xl px-3 py-2.5 transition-colors ${
                         active ? 'text-text-1' : 'text-text-2'
                       }`}
                     >
@@ -231,7 +223,7 @@ export function V2BottomNav() {
               {MORE.filter((m) => m.footer).map((item) => {
                 const active = !item.external && pathname.startsWith(item.href);
                 const Icon = item.icon;
-                const cls = `ctrl-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 transition-colors ${
+                const cls = `group ctrl-soft flex items-center gap-2.5 rounded-2xl px-3.5 py-2.5 transition-colors ${
                   active ? 'text-text-1' : 'text-text-2'
                 }`;
                 const body = (

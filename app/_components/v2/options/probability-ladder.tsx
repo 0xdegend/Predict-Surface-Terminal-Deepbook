@@ -260,7 +260,13 @@ function Row({
       <td className="px-2 py-2.5 text-right tabular-nums sm:px-3.5">
         <span className="inline-flex items-center justify-end gap-2">
           <span className="hidden h-1.5 w-16 overflow-hidden rounded border border-line bg-bg-3 sm:block">
-            <span className="block h-full bg-accent/70" style={{ width: `${r.chanceAbove * 100}%` }} />
+            {/* Fixed precision on purpose. The raw float rendered 82.0889% on the server
+                and 82.08890101959425% on the client (the snapshot the server prices from
+                carries fewer digits than the live pricer the client re-reads), and React
+                treats that as a hydration mismatch. The bar is 64px wide, so two decimals
+                is already finer than a pixel — rounding costs nothing and removes the whole
+                class of drift. */}
+            <span className="block h-full bg-accent/70" style={{ width: `${(r.chanceAbove * 100).toFixed(2)}%` }} />
           </span>
           {(r.chanceAbove * 100).toFixed(0)}%
         </span>

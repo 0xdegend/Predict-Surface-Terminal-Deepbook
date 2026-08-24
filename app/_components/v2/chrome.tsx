@@ -25,17 +25,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LuChevronDown,
-  LuVault,
-  LuShieldAlert,
-  LuTarget,
-  LuSwords,
-  LuBookOpen,
-  LuKeyRound,
-  LuMessageSquare,
-  LuChartCandlestick,
   LuArrowUpRight,
-  LuBadgeCheck,
-  LuGauge,
 } from 'react-icons/lu';
 import type { IconType } from 'react-icons';
 import { WalletBar } from '../wallet-bar';
@@ -44,6 +34,7 @@ import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-vi
 import { usePythTapeSpotFeed } from '@/lib/hooks/use-v2-pyth-history';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { TourButton } from '../tour/tour-button';
+import { IcoAdmin, IcoArena, IcoAutopilot, IcoDocs, IcoKelly, IcoOptions, IcoQuests, IcoRecord, IcoRisk, IcoVault } from './nav-icons';
 import { SocialIconLinks } from '../social-links';
 import { V2SpotTape } from './spot-tape';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
@@ -71,8 +62,8 @@ const PRIMARY: NavItem[] = [
 
 /** Vault group — mirrors legacy NavVault (Vault + Vault Risk). */
 const VAULT_ITEMS: MenuItem[] = [
-  { href: '/v2/vault', label: 'Vault', desc: 'Add liquidity · earn the trading edge', icon: LuVault },
-  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: LuShieldAlert },
+  { href: '/v2/vault', label: 'Vault', desc: 'Add liquidity · earn the trading edge', icon: IcoVault },
+  { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety check', icon: IcoRisk },
 ];
 
 /** Secondary destinations — same set as the legacy "More" menu, rendered as a
@@ -87,17 +78,17 @@ const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
 const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
 
 const MORE_ITEMS: MenuItem[] = [
-  { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: LuChartCandlestick },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: LuMessageSquare },
+  { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: IcoOptions },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: IcoKelly },
   ...(AUTOPILOT
-    ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: LuGauge } as MenuItem]
+    ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: IcoAutopilot } as MenuItem]
     : []),
   ...(KELLY_RECEIPTS
-    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed on Walrus', icon: LuBadgeCheck } as MenuItem]
+    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed on Walrus', icon: IcoRecord } as MenuItem]
     : []),
-  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
-  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
-  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen, footer: true },
+  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: IcoQuests, soon: true },
+  { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: IcoArena, soon: true },
+  { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: IcoDocs, footer: true },
 ];
 
 const matches = (p: string, n: NavItem) => (n.exact ? p === n.href : p.startsWith(n.href));
@@ -134,7 +125,7 @@ export function V2Chrome() {
           href: '/v2/admin',
           label: 'Admin',
           desc: 'Claim protocol builder fees',
-          icon: LuKeyRound,
+          icon: IcoAdmin,
           // Full-width row like Docs (not a 5th tile) so the launcher grid never
           // leaves an odd hole. Matches the "any Admin row" note above.
           footer: true,
@@ -386,7 +377,7 @@ function MenuRow({
 }) {
   const active = !item.external && pathname.startsWith(item.href);
   const Icon = item.icon;
-  const cls = `ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
+  const cls = `group ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
     active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
   }`;
   const body = (
@@ -436,7 +427,7 @@ function MenuTile({
       role="menuitem"
       onClick={onSelect}
       aria-current={active ? 'page' : undefined}
-      className={`ctrl-soft flex h-full flex-col gap-2 rounded-xl p-3 transition-colors ${
+      className={`group ctrl-soft flex h-full flex-col gap-2 rounded-xl p-3 transition-colors ${
         active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
       }`}
     >
