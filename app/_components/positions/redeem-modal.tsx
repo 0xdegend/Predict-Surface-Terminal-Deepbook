@@ -114,7 +114,7 @@ export function RedeemModal({
             {worthless
               ? 'This market settled against your bet, so it paid nothing. Clearing just removes the worthless position from your account.'
               : m.isSettled
-                ? 'This market has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+                ? 'This market has settled. Redeeming pays out the final result. You can claim part now and the rest later.'
                 : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 

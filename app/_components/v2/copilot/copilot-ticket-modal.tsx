@@ -49,7 +49,7 @@ export function V2CopilotTicketModal({
       open={open}
       onClose={close}
       title="Place your bet"
-      subtitle="Set your amount and trade — nothing sends until you confirm."
+      subtitle="Set your amount and trade."
       variant="glass"
       maxWidthClass="max-w-sm"
       contentClassName="p-0"

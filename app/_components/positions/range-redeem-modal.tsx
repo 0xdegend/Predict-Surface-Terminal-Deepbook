@@ -74,7 +74,7 @@ export function RangeRedeemModal({
       variant="glass"
       title={worthless ? 'Clear settled range' : decided ? 'Redeem settled range' : 'Close range'}
       subtitle={
-        p ? `${p.underlying || 'BTC'} ${price(toFloat(p.lowerStrike))} — ${price(toFloat(p.higherStrike))}` : undefined
+        p ? `${p.underlying || 'BTC'} ${price(toFloat(p.lowerStrike))} to ${price(toFloat(p.higherStrike))}` : undefined
       }
       footer={
         <>
@@ -114,7 +114,7 @@ export function RangeRedeemModal({
             {worthless
               ? 'This range settled out of the band, so it paid nothing. Clearing just removes the worthless position from your account.'
               : decided
-                ? 'This range has settled — redeeming pays out the final result. You can claim part now and the rest later.'
+                ? 'This range has settled. Redeeming pays out the final result. You can claim part now and the rest later.'
                 : 'Closing returns the range’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 

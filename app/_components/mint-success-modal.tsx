@@ -58,7 +58,7 @@ export function MintSuccessModal({
       open={open}
       onClose={onClose}
       title="Bet placed"
-      subtitle="Your position is open — good luck"
+      subtitle="Your position is open. Good luck."
       variant="glass"
       maxWidthClass="max-w-sm"
       mascot="won"

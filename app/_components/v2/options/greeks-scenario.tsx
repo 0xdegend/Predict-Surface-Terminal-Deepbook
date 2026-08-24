@@ -337,6 +337,44 @@ const PAD_B = 22;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = H - PAD_T - PAD_B;
 
+/**
+ * Below this gap (in viewBox units) the strike guide and the "now" guide are the same
+ * line to the eye, so only one is drawn. At the money they are EXACTLY coincident, and
+ * stacking two translucent greys on one pixel just muddies it — both labels already
+ * point at the line from above and below, which says it better than a double stroke.
+ */
+const GUIDE_MERGE_UNITS = 2.5;
+
+/**
+ * The at-expiry payoff, split into runs of constant value.
+ *
+ * A binary's payoff at expiry is a genuine DISCONTINUITY at the strike, and drawing a
+ * vertical connector across it is a convention, not the data. Here that convention cost
+ * real legibility: the connector landed on exactly the pixel the strike guide and the
+ * "now" guide already share, so an at-the-money bet drew three lines on top of each
+ * other. Emitting one polyline per level draws the payoff as what it is — two flat
+ * levels with a gap — and takes a line off the pile.
+ *
+ * Splitting on the `expiry` flag rather than on the strike means this stays correct for
+ * a contract that flips more than once (a range pays in the middle, not on one side).
+ */
+function payoffRuns(points: ScenarioPoint[], at: (p: ScenarioPoint) => string): string[] {
+  const runs: string[] = [];
+  let run: string[] = [];
+  // `expiry` is the OUTCOME (0 or 1 for a binary), not a flag, so compare the value.
+  let level: number | null = null;
+  for (const p of points) {
+    if (level !== null && p.expiry !== level) {
+      if (run.length > 1) runs.push(run.join(' '));
+      run = [];
+    }
+    run.push(at(p));
+    level = p.expiry;
+  }
+  if (run.length > 1) runs.push(run.join(' '));
+  return runs;
+}
+
 const PayoffChart = ({
   svgRef,
   scenario,
@@ -378,11 +416,13 @@ const PayoffChart = ({
   const ePnl = (p: ScenarioPoint) => (p.expiry ? profit : -STAKE);
 
   const markPts = scenario.map((p) => `${X(p.forward).toFixed(1)},${Y(mPnl(p)).toFixed(1)}`).join(' ');
-  const expPts = scenario.map((p) => `${X(p.forward).toFixed(1)},${Y(ePnl(p)).toFixed(1)}`).join(' ');
+  const expRuns = payoffRuns(scenario, (p) => `${X(p.forward).toFixed(1)},${Y(ePnl(p)).toFixed(1)}`);
   const markArea = `${X(Fmin).toFixed(1)},${(H - PAD_B).toFixed(1)} ${markPts} ${X(Fmax).toFixed(1)},${(H - PAD_B).toFixed(1)}`;
 
   const y0 = Y(0);
   const strikeIn = strike >= Fmin && strike <= Fmax;
+  // At the money these are the same x. Draw one line, not two greys on one pixel.
+  const guidesMerged = Math.abs(X(strike) - X(forward)) < GUIDE_MERGE_UNITS;
   const gid = 'payoff-fill';
 
   const leftPct = (x: number) => `${(x / W) * 100}%`;
@@ -418,18 +458,85 @@ const PayoffChart = ({
         <polygon points={markArea} fill={`url(#${gid})`} />
 
         {/* Break-even line. */}
-        <line x1={PAD_L} y1={y0} x2={W - PAD_R} y2={y0} stroke="var(--text-3)" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
+        <line
+          x1={PAD_L}
+          y1={y0}
+          x2={W - PAD_R}
+          y2={y0}
+          stroke="var(--text-3)"
+          strokeWidth={1}
+          strokeDasharray="3 3"
+          opacity={0.5}
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
 
-        {/* At-expiry payoff (stepped, muted) and mark-now curve (solid, tone). */}
-        <polyline points={expPts} fill="none" stroke="var(--text-3)" strokeWidth={1.25} strokeDasharray="4 3" opacity={0.7} />
-        <polyline points={markPts} fill="none" stroke={accent} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        {/* At-expiry payoff: one polyline per level, no connector across the jump. */}
+        {expRuns.map((pts, i) => (
+          <polyline
+            key={i}
+            points={pts}
+            fill="none"
+            stroke="var(--text-3)"
+            strokeWidth={1.25}
+            strokeDasharray="6 4"
+            opacity={0.75}
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
 
-        {/* Strike + current-price guides. */}
-        {strikeIn && <line x1={X(strike)} y1={PAD_T} x2={X(strike)} y2={H - PAD_B} stroke="var(--text-3)" strokeWidth={1} opacity={0.35} />}
-        <line x1={X(forward)} y1={PAD_T} x2={X(forward)} y2={H - PAD_B} stroke="var(--text-2)" strokeWidth={1} opacity={0.55} />
+        {/* Mark-now curve. The one line here that is a real curve, so it keeps its
+            antialiasing (no crispEdges) and just stops being stretched. */}
+        <polyline
+          points={markPts}
+          fill="none"
+          stroke={accent}
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+
+        {/* Strike + current-price guides. Dashed = a fixed reference level, solid =
+            where the price actually is, so the two read apart the moment they separate. */}
+        {strikeIn && !guidesMerged && (
+          <line
+            x1={X(strike)}
+            y1={PAD_T}
+            x2={X(strike)}
+            y2={H - PAD_B}
+            stroke="var(--text-3)"
+            strokeWidth={1}
+            strokeDasharray="2 4"
+            opacity={0.6}
+            vectorEffect="non-scaling-stroke"
+            shapeRendering="crispEdges"
+          />
+        )}
+        <line
+          x1={X(forward)}
+          y1={PAD_T}
+          x2={X(forward)}
+          y2={H - PAD_B}
+          stroke="var(--text-2)"
+          strokeWidth={1}
+          opacity={0.7}
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
 
         {/* Scrub marker. */}
-        <line x1={X(scrubF)} y1={PAD_T} x2={X(scrubF)} y2={H - PAD_B} stroke={accent} strokeWidth={1.25} opacity={scrubActive ? 0.9 : 0} />
+        <line
+          x1={X(scrubF)}
+          y1={PAD_T}
+          x2={X(scrubF)}
+          y2={H - PAD_B}
+          stroke={accent}
+          strokeWidth={1.25}
+          opacity={scrubActive ? 0.9 : 0}
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="crispEdges"
+        />
       </svg>
 
       {/* HTML label overlay (crisp under preserveAspectRatio="none"). */}

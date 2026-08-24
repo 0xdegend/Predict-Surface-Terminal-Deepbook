@@ -429,7 +429,7 @@ export function FlowPanel({
       } catch {
         setConfirmOpen(false);
         setError(
-          "Couldn’t refresh the price — the market may have just moved or expired. Try again.",
+          "Couldn’t refresh the price. The market may have just moved or expired, so try again.",
         );
         return;
       }
@@ -594,7 +594,7 @@ export function FlowPanel({
             rel="noreferrer"
             className="glass-card px-3 py-2 text-[11px] text-accent underline-offset-2 hover:underline"
           >
-            Low balance — get testnet {sym} →
+            Low balance. Get testnet {sym} →
           </a>
         ) : null)}
 
@@ -686,7 +686,7 @@ export function FlowPanel({
 
                   {!tradeable && !expired && (
                     <p className="text-[12px] leading-relaxed text-text-2">
-                      That strike is too far from spot to price — move it nearer{" "}
+                      That strike is too far from spot to price. Move it nearer{" "}
                       <span className="text-text-1">{price(forward)}</span> to
                       continue.
                     </p>
@@ -785,12 +785,12 @@ export function FlowPanel({
                   >
                     {expired ? (
                       <span className="text-text-2">
-                        This market has expired and is awaiting settlement —
+                        This market has expired and is awaiting settlement.
                         pick another expiry on the surface or in the table.
                       </span>
                     ) : !tradeable ? (
                       <span className="text-text-2">
-                        Strike too far from spot to trade — pick one nearer{" "}
+                        Strike too far from spot to trade. Pick one nearer{" "}
                         {price(forward)} (only odds away from the 0%/100%
                         extremes can be priced).
                       </span>
@@ -933,7 +933,7 @@ export function FlowPanel({
                                   <span className="text-[10px] leading-relaxed text-down">
                                     That’s more than your{" "}
                                     {fmtQuote(fromQuote(dusdcBalance ?? 0n))}{" "}
-                                    {sym} wallet balance — add {sym} or lower
+                                    {sym} wallet balance. Add {sym} or lower
                                     your bet.
                                   </span>
                                 )}
@@ -947,7 +947,7 @@ export function FlowPanel({
                                 ) : walletNow === 0n ? (
                                   <span className="text-[10px] leading-relaxed text-text-3">
                                     Fully covered by your trading account
-                                    balance — nothing new is pulled from your
+                                    balance, so nothing new is pulled from your
                                     wallet.
                                   </span>
                                 ) : null}
@@ -994,7 +994,7 @@ export function FlowPanel({
                       : tooCloseToExpiry
                         ? "Too close to expiry"
                         : insufficientFunds
-                          ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletOutflow))}`
+                          ? `Not enough ${sym}, you need ${fmtQuote(fromQuote(walletOutflow))}`
                           : q
                             ? `Review`
                             : "Review bet"}
@@ -1075,7 +1075,7 @@ export function FlowPanel({
         title="Account funded"
         eyebrow="Received"
         amount={grant.success?.amount ?? 0}
-        sub="added to your wallet — you’re ready to trade"
+        sub="added to your wallet. You’re ready to trade"
         gasNote={
           grant.success?.sui
             ? `+ ${grant.success.sui} SUI added for gas`

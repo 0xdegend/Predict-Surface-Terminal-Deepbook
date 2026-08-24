@@ -220,7 +220,7 @@ export function SimpleBetDrawer({
             {!connected
               ? 'Connect your wallet (top right) to place a bet.'
               : closing
-                ? 'This round is closing — the next one opens in a moment.'
+                ? 'This round is closing. The next one opens in a moment.'
                 : ready
                   ? ''
                   : 'Working out the price…'}

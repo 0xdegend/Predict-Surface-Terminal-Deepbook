@@ -383,14 +383,17 @@ export function V2OptionsScreen({
                 <div className="grid h-full place-items-center text-[12px] text-text-3">Building the live surface…</div>
               )}
             </div>
-            {/* The surface was never the problem — the SILENCE around it was. Clicking a
-                ladder row already calls `highlight()`, which lights that strike here, and
-                nothing on the page said so. A first-timer read the 3-D shape as decoration
-                they could not act on, when it is in fact the picture of the very thing
-                they are about to bet on. One line, Plain only: Pro knows what a surface is. */}
+            {/* One line, Plain only: Pro knows what a surface is.
+                It used to add "pick a row below and it lights up here". That is TRUE — a
+                row click calls `highlight()` and the surface reads the same store fields
+                (verified: clicking a rung moves the shared selection) — but the Bet button
+                sitting in that same row opens the ticket OVER the surface, so following the
+                instruction most obviously showed nothing happening. A caption that invites
+                a reader to test it, against a control that hides the result, is worse than
+                no caption. Say what the surface IS and let the interaction speak. */}
             <PlainOnly>
               <p className="text-[11.5px] leading-relaxed text-text-3">
-                Every price and every expiry at once, priced live. Pick a row below and it lights up here.
+                Every price and every expiry at once, priced live.
               </p>
             </PlainOnly>
           </div>

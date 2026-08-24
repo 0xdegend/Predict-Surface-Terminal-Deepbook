@@ -33,7 +33,7 @@ function shareText(card: TraderShareCard): string {
     const rank = d.rank != null ? `ranked #${d.rank}` : 'trading';
     const wr = d.winRate != null ? ` · ${pct(d.winRate, 0)} win rate` : '';
     return (
-      `Check out ${shortId(d.trader, 6, 4)} on @skew_sui — ${rank} with ${d.trades} bets placed${wr} 📊\n\n` +
+      `Check out ${shortId(d.trader, 6, 4)} on @skew_sui, ${rank} with ${d.trades} bets placed${wr} 📊\n\n` +
       `Trade the live volatility surface yourself 👇`
     );
   }
@@ -43,7 +43,7 @@ function shareText(card: TraderShareCard): string {
       ? `${d.underlying} landing between $${price(d.band?.lower ?? 0)} and $${price(d.band?.higher ?? 0)}`
       : `${d.underlying} settling ${d.direction === 'Up' ? 'above' : 'below'} $${price(d.strike ?? 0)}`;
   return (
-    `${shortId(d.trader, 6, 4)} is betting ${bet} — ${pct(d.odds, 0)} odds to win ${fmtQuote(d.toWin)} DUSDC on @skew_sui 🎯\n\n` +
+    `${shortId(d.trader, 6, 4)} is betting ${bet} at ${pct(d.odds, 0)} odds to win ${fmtQuote(d.toWin)} DUSDC on @skew_sui 🎯\n\n` +
     `Copy the trade on the live volatility surface 👇`
   );
 }
@@ -129,9 +129,9 @@ export function V2TraderShareModal({ card, onClose }: { card: TraderShareCard | 
       : status === 'copied'
         ? 'Image copied to clipboard.'
         : status === 'shared'
-          ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
+          ? 'Post is pre-filled and tagged @skew_sui. Paste the card (Ctrl/⌘+V) to attach it.'
           : status === 'nocopy'
-            ? 'Clipboard unavailable — use Save Image instead.'
+            ? 'Your browser won’t let us copy it. Use Save Image instead.'
             : 'Save it, copy it, or post it on X.';
 
   const statusTone = status === 'nocopy' ? 'text-warn' : status ? 'text-up' : 'text-text-3';

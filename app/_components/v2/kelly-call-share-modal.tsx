@@ -17,13 +17,13 @@ function shareText(d: CallShareData): string {
   const kind = d.role === 'read' ? 'forecast' : 'pick';
   if (d.outcome === 'won') {
     return (
-      `🦊 Kelly called it. ${d.summary} — WON.\n\n` +
+      `🦊 Kelly called it: ${d.summary}. WON.\n\n` +
       `Signed to Walrus the moment it was made on @skew_sui, so it can't be edited after the fact. Verify 👇`
     );
   }
   if (d.outcome === 'lost') {
     return (
-      `🦊 Kelly's ${kind}: ${d.summary} — didn't hit this time.\n\n` +
+      `🦊 Kelly's ${kind}: ${d.summary}. Didn't hit this time.\n\n` +
       `Win or lose, every call is signed to Walrus the moment it's made on @skew_sui. No edits. 👇`
     );
   }
@@ -115,9 +115,9 @@ export function KellyCallShareModal({
       : status === 'copied'
         ? 'Image copied to clipboard.'
         : status === 'shared'
-          ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
+          ? 'Post is pre-filled and tagged @skew_sui. Paste the card (Ctrl/⌘+V) to attach it.'
           : status === 'nocopy'
-            ? 'Clipboard unavailable — use Save Image instead.'
+            ? 'Your browser won’t let us copy it. Use Save Image instead.'
             : 'Save it, copy it, or post it on X.';
 
   const statusTone = status === 'nocopy' ? 'text-warn' : status ? 'text-up' : 'text-text-3';

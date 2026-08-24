@@ -158,15 +158,15 @@ export function ShareCardModal({
       const line =
         data.result === 'won'
           ? data.band
-            ? `I just won a range bet on ${asset} — it landed ${what} (${move}) 📈`
+            ? `I just won a range bet on ${asset}. It landed ${what} (${move}) 📈`
             : `I just won a bet on ${asset} settling ${what} (${move}) 📈`
           : data.result === 'lost'
             ? data.band
-              ? `So close — my range bet on ${asset} ${what} didn't land (${move}).`
+              ? `So close. My range bet on ${asset} ${what} didn't land (${move}).`
               : `My bet on ${asset} settling ${what} didn't land (${move}).`
             : data.band
-              ? `I'm riding a range bet on ${asset} ${what} — currently ${move} 📈`
-              : `I'm riding a bet on ${asset} settling ${what} — currently ${move} 📈`;
+              ? `I'm riding a range bet on ${asset} ${what}, currently ${move} 📈`
+              : `I'm riding a bet on ${asset} settling ${what}, currently ${move} 📈`;
       const text = `${line}\n\nTrade the live volatility surface on @skew_sui 👇`;
       // `url=` makes X render a link-preview card (the site's OG image), so an
       // image always rides along; a pasted card overrides it and the link stays a
@@ -188,13 +188,13 @@ export function ShareCardModal({
         : status === 'copied'
           ? 'Image copied to clipboard.'
           : status === 'shared'
-            ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
+            ? 'Post is pre-filled and tagged @skew_sui. Paste the card (Ctrl/⌘+V) to attach it.'
             : status === 'gif'
-              ? 'GIF saved — attach it to your tweet and X will loop it.'
+              ? 'GIF saved. Attach it to your tweet and X will loop it.'
               : status === 'giferr'
-                ? 'Couldn’t build the GIF — try Save Image instead.'
+                ? 'Couldn’t build the GIF. Try Save Image instead.'
                 : status === 'nocopy'
-                  ? 'Clipboard unavailable — use Save Image instead.'
+                  ? 'Your browser won’t let us copy it. Use Save Image instead.'
                   : 'Pick a style, then save, post, or grab an animated GIF.';
 
   const statusTone =

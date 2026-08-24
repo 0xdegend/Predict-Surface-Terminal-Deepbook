@@ -157,12 +157,6 @@ export function SimpleScreen({
     state: active ? stateSeeds[active.expiry_market_id] : undefined,
   });
   const { line, lineInfo, upQ, dnQ } = hero;
-  // Said out loud whenever the round has left its opening line behind, so the headline
-  // number changing reads as a deliberate move rather than a glitch. See
-  // `chooseRoundLine` for why a line moves at all.
-  const movedNote = lineInfo?.moved
-    ? 'Bitcoin ran past the opening strike, so this round now runs from the current price.'
-    : null;
 
   // Every OTHER round that is open right now, carded up soonest-first — not just one per
   // tab, which was hiding four of the six or seven live markets. Each still comes out of
@@ -466,15 +460,13 @@ export function SimpleScreen({
                   onPick={() => active && lineInfo && openBet({ market: active, cadence, isUp: false, lineScaled: lineInfo.lineScaled })}
                 />
               </div>
-              {(closing || rolling || movedNote) && (
+              {(closing || rolling) && (
                 <p className="px-3 pb-3 text-center text-[11.5px] text-text-3 lg:hidden">
                   {cadenceEmpty
                     ? emptyNote
                     : rolling
                       ? 'Setting up the next round…'
-                      : closing
-                        ? 'This round is closing. The next one opens in a moment.'
-                        : movedNote}
+                      : 'This round is closing. The next one opens in a moment.'}
                 </p>
               )}
             </section>
@@ -491,6 +483,10 @@ export function SimpleScreen({
                 >
                   {shownLine == null ? '—' : price(shownLine)}
                 </span>
+                {/* No note for a MOVED line. When a round leaves its opening strike
+                    behind it re-anchors to the current price, which the fallback below
+                    already describes exactly — the old sentence explained the mechanic
+                    at the moment a trader is reading the number, not the mechanic. */}
                 <span className="text-[11px] leading-snug text-text-3">
                   {cadenceEmpty
                     ? emptyNote
@@ -498,9 +494,7 @@ export function SimpleScreen({
                       ? 'Setting up the next round…'
                       : hero.lineInfo?.pinned
                         ? 'Fixed for this round. Settles above or below it.'
-                        : hero.lineInfo?.moved
-                          ? 'Bitcoin ran past the opening strike, so this round now runs from the current price.'
-                          : 'The price right now. Higher or lower from here.'}
+                        : 'The price right now. Higher or lower from here.'}
                 </span>
               </div>
 

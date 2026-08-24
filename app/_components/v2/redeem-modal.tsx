@@ -144,7 +144,7 @@ export function V2RedeemModal({
             {worthless
               ? 'This market settled against your bet, so it paid nothing. Clearing just removes the worthless position from your account.'
               : settled
-                ? 'This market has settled — the payout is claimed in full (a settled position can’t be claimed in parts).'
+                ? 'This market has settled, so the payout is claimed in full.'
                 : 'Closing returns the position’s current value. Close all of it, or part of it and leave the rest open to close later. The exact amount is confirmed on-chain when you sign.'}
           </p>
 

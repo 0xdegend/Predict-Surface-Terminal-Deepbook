@@ -59,7 +59,7 @@ export function WithdrawModal({
       <div className="flex flex-col gap-4">
         <p className="text-[12px] leading-relaxed text-text-3">
           This sends your entire trading account balance back to your connected wallet. Open
-          positions are unaffected — only uncommitted funds move.
+          positions stay put. Only uncommitted funds move.
         </p>
 
         <div className="glass-inset relative overflow-hidden p-4">

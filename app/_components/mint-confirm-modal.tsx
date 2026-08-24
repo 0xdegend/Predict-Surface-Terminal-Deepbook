@@ -26,7 +26,7 @@ export function MintConfirmModal({
   cost,
   maxWin,
   confirmLabel = 'Confirm mint',
-  subtitle = 'Signed in with Google — mints instantly, no wallet pop-up',
+  subtitle = 'Signed in with Google, so it mints instantly with no wallet pop-up.',
   extra,
 }: {
   open: boolean;

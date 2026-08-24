@@ -77,7 +77,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
 
   const titles: Record<Step, { title: string; subtitle?: string }> = {
     form: { title: `Cash out ${sym}`, subtitle: 'Send to an external wallet you control' },
-    confirm: { title: 'Confirm withdrawal', subtitle: 'Review before sending — this can’t be undone' },
+    confirm: { title: 'Confirm withdrawal', subtitle: 'Review before sending. This can’t be undone.' },
     success: { title: 'Withdrawal sent' },
   };
 
@@ -114,7 +114,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
       {step === 'form' && (
         <div className="flex flex-col gap-4">
           <p className="text-[12px] leading-relaxed text-text-3">
-            Your Google account is secured by your login — there’s no key to export. Move your {sym} to
+            Your Google account is secured by your login, so there’s no key to export. Move your {sym} to
             a wallet you fully control (a seed-phrase wallet). Gas is sponsored, so you don’t need any
             SUI. <span className="text-text-2">Transfers are irreversible.</span>
           </p>
@@ -140,7 +140,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
               <span className="text-[11px] text-down">Not a valid Sui address.</span>
             )}
             {destIsSelf && (
-              <span className="text-[11px] text-warn">That’s this same account — use a different wallet.</span>
+              <span className="text-[11px] text-warn">That’s this same account. Use a different wallet.</span>
             )}
           </label>
 
@@ -185,13 +185,13 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
           <div className="glass-inset flex flex-col gap-2 p-4 font-mono text-[12px] tabular-nums">
             <Row label="To" value={shortId(dest, 10, 8)} strong />
             <Row label="Network" value={predictV2Config.network} />
-            <Row label="Gas" value="sponsored — free" />
+            <Row label="Gas" value="free (sponsored)" />
           </div>
 
           <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-warn">
             <LuTriangleAlert size={13} className="mt-0.5 flex-none" />
-            Double-check the address. Sui transfers are irreversible — funds sent to the wrong address
-            can’t be recovered.
+            Double-check the address. Sui transfers are irreversible, so funds sent to the wrong
+            address can’t be recovered.
           </p>
         </div>
       )}

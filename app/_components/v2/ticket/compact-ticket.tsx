@@ -332,7 +332,7 @@ function BinaryBody({
           </div>
           {!probOk && (
             <p className="px-0.5 text-[10.5px] leading-snug text-text-3">
-              This strike is too far from spot to price — pick one nearer the colored ridge.
+              This strike is too far from spot to price. Pick one nearer the colored ridge.
             </p>
           )}
           <button
@@ -374,7 +374,7 @@ function BinaryBody({
 
           {closingSoon && !expired && (
             <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
-              Closes in {countdown(market.expiry, now)} — may revert if it settles first.
+              Closes in {countdown(market.expiry, now)}. May revert if it settles first.
             </p>
           )}
 
@@ -613,7 +613,7 @@ function RangeBody({
 
           {closingSoon && !expired && (
             <p className="rounded border border-down/40 bg-down/10 px-2 py-1 text-[10px] leading-tight text-down">
-              Closes in {countdown(market.expiry, now)} — may revert if it settles first.
+              Closes in {countdown(market.expiry, now)}. May revert if it settles first.
             </p>
           )}
 
@@ -782,15 +782,15 @@ function QuoteCard({
 
   let body: React.ReactNode;
   if (expired) {
-    body = <span className="text-text-3">This market is about to settle — pick another market.</span>;
+    body = <span className="text-text-3">This market is about to settle. Pick another one.</span>;
   } else if (!probOk) {
     body = (
       <span className="text-text-3">
-        Too far from spot to price — pick a level nearer the colored ridge.
+        Too far from spot to price. Pick a level nearer the colored ridge.
       </span>
     );
   } else if (s.stakeBase < MIN_STAKE_BASE) {
-    body = <span className="text-text-3">Minimum bet is $1 — pick a bigger amount.</span>;
+    body = <span className="text-text-3">Minimum bet is $1. Pick a bigger amount.</span>;
   } else {
     const pay = fromQuote(s.stakeBase);
     const allIn = fromQuote(s.estCostBase + skewFeeDue);
@@ -831,7 +831,7 @@ function QuoteCard({
           </span>
         )}
         <span className="mt-1.5 text-[9.5px] leading-tight text-text-3">
-          Estimate — exact cost shown before you confirm.
+          Estimate. You’ll see the exact cost before you sign.
         </span>
       </div>
     );

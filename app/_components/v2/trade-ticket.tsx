@@ -1097,7 +1097,7 @@ export function V2TradeTicket({
         title="Account funded"
         eyebrow="Received"
         amount={grant.success?.amount ?? 0}
-        sub="added to your wallet — you’re ready to trade"
+        sub="added to your wallet. You’re ready to trade"
         gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
         digest={grant.success?.digest}
       />

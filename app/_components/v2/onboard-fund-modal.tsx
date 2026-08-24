@@ -197,7 +197,7 @@ export function OnboardFundModal() {
             <Dot />
             <span className="text-text-3">
               {acct.gasless
-                ? 'No popups and no gas — you’re on Google sign-in'
+                ? 'No popups, no gas. You’re signed in with Google.'
                 : 'One quick wallet approval to create your account'}
             </span>
           </li>

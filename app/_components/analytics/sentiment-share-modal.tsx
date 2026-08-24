@@ -23,11 +23,11 @@ function composeTweet(s: Sentiment): string {
   const tail = "Trade the shape of volatility on Sui.";
   switch (leanOf(s)) {
     case "down":
-      return `📉 Sentiment is leaning DOWN — ${down}% of the last hour's bets on Skew are calling lower.\n\n↓ DOWN ${down}%    ↑ UP ${up}%\n\n${tail}`;
+      return `📉 Sentiment is leaning DOWN. ${down}% of the last hour's bets on Skew are calling lower.\n\n↓ DOWN ${down}%    ↑ UP ${up}%\n\n${tail}`;
     case "up":
-      return `📈 Sentiment is leaning UP — ${up}% of the last hour's bets on Skew are calling higher.\n\n↑ UP ${up}%    ↓ DOWN ${down}%\n\n${tail}`;
+      return `📈 Sentiment is leaning UP. ${up}% of the last hour's bets on Skew are calling higher.\n\n↑ UP ${up}%    ↓ DOWN ${down}%\n\n${tail}`;
     default:
-      return `⚖️ Dead heat — sentiment on Skew is split ${up}/${down} on where price goes next.\n\n${tail}`;
+      return `⚖️ Dead heat. Sentiment on Skew is split ${up}/${down} on where price goes next.\n\n${tail}`;
   }
 }
 

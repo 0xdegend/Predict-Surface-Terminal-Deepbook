@@ -117,9 +117,9 @@ export function FearGreedShareModal({
       : status === 'copied'
         ? 'Image copied to clipboard.'
         : status === 'shared'
-          ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
+          ? 'Post is pre-filled and tagged @skew_sui. Paste the card (Ctrl/⌘+V) to attach it.'
           : status === 'nocopy'
-            ? 'Clipboard unavailable — use Save Image instead.'
+            ? 'Your browser won’t let us copy it. Use Save Image instead.'
             : 'Save it, copy it, or post it on X.';
 
   const statusTone = status === 'nocopy' ? 'text-warn' : status ? 'text-up' : 'text-text-3';

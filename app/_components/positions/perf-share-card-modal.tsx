@@ -178,9 +178,9 @@ export function PerfShareCardModal({
       : status === 'copied'
         ? 'Image copied to clipboard.'
         : status === 'shared'
-          ? 'Post pre-filled & tagged @skew_sui — paste the card (Ctrl/⌘+V) to attach it.'
+          ? 'Post is pre-filled and tagged @skew_sui. Paste the card (Ctrl/⌘+V) to attach it.'
           : status === 'nocopy'
-            ? 'Clipboard unavailable — use Save Image instead.'
+            ? 'Your browser won’t let us copy it. Use Save Image instead.'
             : 'Pick a style, then save or post it.';
 
   const statusTone = status === 'nocopy' ? 'text-warn' : status ? 'text-up' : 'text-text-3';

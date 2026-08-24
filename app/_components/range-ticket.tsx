@@ -166,7 +166,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
         );
       } catch {
         setConfirmOpen(false);
-        acct.setError('Couldn’t refresh the price — the market may have just moved or expired. Try again.');
+        acct.setError('Couldn’t refresh the price. The market may have just moved or expired, so try again.');
         return;
       }
       const digest =
@@ -233,7 +233,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
             {anchored ? (
               <>
                 Lower level set at{' '}
-                <span className="tabular-nums text-accent">{price(anchor!.strike)}</span> — now tap
+                <span className="tabular-nums text-accent">{price(anchor!.strike)}</span>. Now tap
                 the <span className="text-accent">upper</span> price on the curve.
               </>
             ) : (
@@ -315,11 +315,11 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
       <div className={`glass-card p-3.5 ${q && tradeable && !expired ? 'up glow-accent' : ''}`}>
         {expired ? (
           <span className="text-text-3">
-            This market has expired and is awaiting settlement — pick another expiry.
+            This market has expired and is awaiting settlement. Pick another expiry.
           </span>
         ) : !tradeable ? (
           <span className="text-text-3">
-            This band is too far from spot (or too wide) to quote — narrow it toward{' '}
+            This band is too far from spot (or too wide) to quote. Narrow it toward{' '}
             {price(active.forward)} (only odds away from the 0%/100% extremes can be priced).
           </span>
         ) : !q ? (
@@ -403,7 +403,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
               {insufficient && (
                 <span className="text-[10px] leading-relaxed text-down">
                   That’s more than your {fmtQuote(fromQuote(acct.dusdcBalance ?? 0n))} {sym} wallet
-                  balance — add {sym} or lower your bet.
+                  balance. Add {sym} or lower your bet.
                 </span>
               )}
             </div>
@@ -422,7 +422,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
           : tooCloseToExpiry
             ? 'Too close to expiry'
             : insufficient
-              ? `Insufficient ${sym} — need ${fmtQuote(fromQuote(walletNow))}`
+              ? `Not enough ${sym}, you need ${fmtQuote(fromQuote(walletNow))}`
               : q
                 ? 'Review'
                 : 'Review bet'}
