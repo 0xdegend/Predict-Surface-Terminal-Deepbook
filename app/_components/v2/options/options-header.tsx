@@ -13,6 +13,7 @@ import { useMounted } from '@/lib/hooks/use-mounted';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { num, signed } from '@/lib/format';
 import { VocabToggle, useVocab } from './vocab';
+import { AssetLogo } from '../asset-logo';
 import { expiryLabel } from '@/lib/insights';
 import type { PythObservation } from '@/lib/api/v2/types';
 import type { MarketIntel } from '@/lib/insights';
@@ -50,7 +51,7 @@ export function OptionsHeader({ intel, insights, serverNow }: { intel: MarketInt
           pills. From sm up the title shrinks back and the toggle rejoins the right
           cluster where it has always lived. */}
       <div className="flex w-full items-center gap-2 sm:w-auto">
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-linear-to-br from-[#f7931a] to-[#ffb64d] text-[12px] font-bold text-black">₿</span>
+        <AssetLogo asset={intel.asset} size={24} />
         <span className="text-[15px] font-semibold text-text-1">{intel.asset.label} Options</span>
         <span className="ml-auto sm:hidden">
           <VocabToggle />
