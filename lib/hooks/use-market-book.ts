@@ -20,6 +20,7 @@ import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getMarketOrders, qkV2 } from '@/lib/api/v2/client';
 import { buildMarketBook, EMPTY_BOOK, type MarketBook } from '@/lib/analytics/market-book';
+import { buildFlowHistory, EMPTY_FLOW, type FlowHistory } from '@/lib/analytics/flow-history';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 /** Deep enough to hold a busy short market's whole life; these settle in minutes. */
@@ -27,14 +28,21 @@ const ORDERS_LIMIT = 120;
 /** The book moves on mints, not on price ticks, so this is a slow poll on purpose. */
 const REFETCH_MS = 15_000;
 
+/** The flow chart re-buckets at most this often, however fast `now` ticks. */
+const FLOW_QUANTUM_MS = 5_000;
+
 export interface UseMarketBook {
   book: MarketBook;
+  /** How that book was built over time, from the same feed. */
+  flow: FlowHistory;
   isLoading: boolean;
   /** True once a feed has resolved, even if the market has no bets on it yet. */
   hasData: boolean;
 }
 
-export function useMarketBook(market: V2Market | null): UseMarketBook {
+/** `now` anchors the flow chart's right edge to the present, so a market that has
+ *  gone quiet shows the quiet instead of ending at its last trade. */
+export function useMarketBook(market: V2Market | null, now = 0): UseMarketBook {
   const marketId = market?.expiry_market_id ?? null;
 
   const q = useQuery<V2OrderEvent[]>({
@@ -53,5 +61,27 @@ export function useMarketBook(market: V2Market | null): UseMarketBook {
     [q.data, market],
   );
 
-  return { book, isLoading: q.isLoading, hasData: q.isSuccess };
+  // Quantized so a 1s page clock cannot re-bucket the whole feed on every tick; the
+  // underlying query only refetches every 15s anyway. Never falls back to `Date.now()`:
+  // reading the wall clock during render is impure (CLAUDE.md), so an absent clock
+  // anchors the chart on the newest event in the feed instead.
+  const nowQ = now > 0 ? Math.floor(now / FLOW_QUANTUM_MS) * FLOW_QUANTUM_MS : 0;
+  const flow = useMemo(() => {
+    if (!q.data) return EMPTY_FLOW;
+    const anchor = nowQ > 0 ? nowQ : newestStamp(q.data);
+    return anchor > 0 ? buildFlowHistory(q.data, { now: anchor }) : EMPTY_FLOW;
+  }, [q.data, nowQ]);
+
+  return { book, flow, isLoading: q.isLoading, hasData: q.isSuccess };
+}
+
+/** Newest event timestamp in a feed, or 0. The flow chart's fallback anchor when the
+ *  caller has no live clock to pass. */
+function newestStamp(orders: V2OrderEvent[]): number {
+  let max = 0;
+  for (const o of orders) {
+    const t = o.checkpoint_timestamp_ms;
+    if (typeof t === 'number' && Number.isFinite(t) && t > max) max = t;
+  }
+  return max;
 }

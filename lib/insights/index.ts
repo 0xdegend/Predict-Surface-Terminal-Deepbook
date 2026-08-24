@@ -24,4 +24,7 @@ export * from './surface-shape';
 export * from './positioning';
 export * from './positioning-read';
 export * from './consensus';
+export * from './house-book';
+export * from './iv-history';
+export * from './surface-headline';
 export * from './narrative';

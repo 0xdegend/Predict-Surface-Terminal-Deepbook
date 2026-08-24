@@ -26,6 +26,8 @@ import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
 import { useBtcPositioning, type Positioning } from '@/lib/hooks/use-btc-positioning';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useMarketBook } from '@/lib/hooks/use-market-book';
+import { useV2Risk } from '@/lib/hooks/use-v2-risk';
+import { useIvHistory } from '@/lib/hooks/use-iv-history';
 import type { BtcCandles } from '@/lib/hooks/use-strike-analysis';
 import { SurfaceMountV2 } from '../surface/surface-mount';
 import { V2CopilotTicketModal } from '../copilot/copilot-ticket-modal';
@@ -38,11 +40,16 @@ import { PositioningFlow } from './positioning-flow';
 import { ProbabilityConsensus } from './consensus';
 import { OptionsEdgeScanner } from './edge-scanner';
 import { OurBook } from './our-book';
+import { HouseBook } from './house-book';
+import { FlowHistoryPanel } from './flow-history';
+import { VolRank } from './vol-rank';
+import { SurfaceStatement } from './surface-statement';
 import { GreeksScenario } from './greeks-scenario';
 import { StrategyBuilder } from './strategy-builder';
-import { PlainOnly, VocabProvider, useVocab } from './vocab';
-import { buildMarketIntel, getAsset, analyzeStrikeForMarket, buildConsensus, defaultExpiryId, expectedMove, expiryLabel, outsideContext, tenorBand, type Consensus, type EngineCandidate, type MarketExpiry, type MarketIntel, type MarketRead } from '@/lib/insights';
+import { PlainOnly, ProOnly, Term, VocabProvider, useVocab } from './vocab';
+import { buildMarketIntel, buildHouseBook, buildSurfaceHeadline, forwardBasisPct, riskReversal, getAsset, analyzeStrikeForMarket, buildConsensus, defaultExpiryId, expectedMove, expiryLabel, outsideContext, tenorBand, type Consensus, type EngineCandidate, type MarketExpiry, type MarketIntel, type MarketRead, type SurfaceHeadline } from '@/lib/insights';
 import { paidProbAt, type MarketBook } from '@/lib/analytics/market-book';
+import type { FlowHistory } from '@/lib/analytics/flow-history';
 import { timeLeftWords } from '@/lib/format';
 import { pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { OptionsShareModal } from './options-share-modal';
@@ -74,7 +81,7 @@ type DeckTab = 'bet' | 'scan' | 'context' | 'build';
 const DECK_TABS: { key: DeckTab; label: string; hint: string; pro?: boolean }[] = [
   { key: 'bet', label: 'This bet', hint: 'The odds and payoff for the strike you’ve picked.' },
   { key: 'scan', label: 'Scan', hint: 'Where the surface is cheap versus recent history, across every expiry.', pro: true },
-  { key: 'context', label: 'Context', hint: 'Our own book on this expiry, the skew term structure, and a reality check.', pro: true },
+  { key: 'context', label: 'The market', hint: 'Who else is betting, how the money came in, and who is on the other side.' },
   { key: 'build', label: 'Build', hint: 'Combine several legs into one payoff, then place them together.', pro: true },
 ];
 
@@ -223,7 +230,7 @@ export function V2OptionsScreen({
   // OUR OWN standing interest on the selected market. Feeds both the consensus (as
   // the "what traders paid" read) and the Context tab's book panel, so it is read
   // once here rather than per-panel.
-  const { book, isLoading: bookLoading } = useMarketBook(selected);
+  const { book, flow, isLoading: bookLoading } = useMarketBook(selected, pulseNow);
 
   const ladderPricer = selectedPricer ?? (selected ? pricers[selected.expiry_market_id] : undefined);
   // The expected range belongs to the expiry the page is ON, not the one that happens to
@@ -259,6 +266,36 @@ export function V2OptionsScreen({
     if (!(chance > 0.005 && chance < 0.995)) return null;
     return { lower, higher, chance, netPayout: netPayoutMultiple(chance, feeRatesFor(selected, skewFeeBps)) };
   }, [selectedEm, intel.expectedMove, selected, ladderPricer, skewFeeBps]);
+
+  // Where this market's vol sits against its own accumulated history. Shared query
+  // key with the Context tab's VolRank, so the page pays for it once.
+  const { rank: ivRankRead } = useIvHistory(OPTIONS_LIVE);
+
+  /**
+   * The page's opening statement, built from the surface alone: the expected move,
+   * which side of the smile is dear, how the term structure is shaped, the basis.
+   * Deliberately independent of the picked strike AND of Clawby, so the page says
+   * something true about the market on first paint.
+   */
+  const headline = useMemo<SurfaceHeadline | null>(() => {
+    const em = selectedEm ?? intel.expectedMove;
+    const shape = ladderPricer && selected ? riskReversal(ladderPricer, selected.expiry, pulseNow) : null;
+    const here = selected ? intel.expiries.find((e) => e.marketId === selected.expiry_market_id) : undefined;
+    const term =
+      intel.expiries.length >= 2
+        ? { nearIv: intel.expiries[0].iv, farIv: intel.expiries[intel.expiries.length - 1].iv }
+        : null;
+    return buildSurfaceHeadline({
+      asset: intel.asset.short,
+      em,
+      horizon: selected ? expiryLabel(selected.expiry, pulseNow) : null,
+      shape,
+      atmIv: here?.iv ?? null,
+      ivBand: ivRankRead?.band ?? null,
+      term,
+      basisPct: ladderPricer ? forwardBasisPct(ladderPricer.forward, intel.spot) : null,
+    });
+  }, [selectedEm, intel, selected, ladderPricer, pulseNow, ivRankRead]);
 
   function betRange() {
     if (!selected || !rangeBet) return;
@@ -351,15 +388,12 @@ export function V2OptionsScreen({
       <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-4">
         <OptionsHeader intel={intel} insights={liveInsights} serverNow={serverNow} />
 
-        {/* One line of orientation, Plain only. The page otherwise opens on four regime
-            pills and a 3-D surface, which tells a newcomer nothing about what they are
-            looking at or what they can do with it. */}
-        <PlainOnly>
-          <p className="mb-3 text-[12.5px] leading-relaxed text-text-2">
-            These are bets on where BTC lands by a set time. Pick a price below, see the chance and what it pays,
-            then place it in one tap.
-          </p>
-        </PlainOnly>
+        {/* The page's opening STATEMENT, off our own surface and needing no strike.
+            This replaces a Plain-only paragraph that explained the product: useful to a
+            newcomer, but it meant the page said nothing about the market until someone
+            clicked. The statement carries both jobs now, and Plain keeps a single line
+            of instruction underneath it. */}
+        <SurfaceStatement headline={headline} loading={!mounted || !ladderPricer} />
 
         {/* Hero: the read + expected move alongside the live surface. */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
@@ -432,6 +466,7 @@ export function V2OptionsScreen({
           now={pulseNow}
           skewFeeBps={skewFeeBps}
           book={book}
+          flow={flow}
           bookLoading={bookLoading}
           consensus={consensus}
           consensusStrike={consensusStrike}
@@ -477,6 +512,7 @@ function AnalyticsDeck({
   now,
   skewFeeBps,
   book,
+  flow,
   bookLoading,
   consensus,
   consensusStrike,
@@ -496,6 +532,7 @@ function AnalyticsDeck({
   now: number;
   skewFeeBps: number;
   book: MarketBook;
+  flow: FlowHistory;
   bookLoading: boolean;
   consensus: Consensus | null;
   consensusStrike: number | null;
@@ -585,13 +622,48 @@ function AnalyticsDeck({
                 while the feed that describes THIS expiry went unread. */}
             <section>
               <div className="mb-3 mt-1 flex items-center gap-2.5">
-                <h2 className="text-[14px] font-semibold text-text-1">Our book</h2>
+                <h2 className="text-[14px] font-semibold text-text-1">
+                  <Term plain="Who else is betting" pro="Our book" />
+                </h2>
                 <span className="text-[10.5px] uppercase tracking-wide text-text-3">where the money is on this expiry</span>
                 <span className="h-px flex-1 bg-linear-to-r from-line to-transparent" />
               </div>
               <OurBook book={book} forward={pricerPair?.forward ?? null} isLoading={bookLoading} onPick={onBet} />
             </section>
 
+            {/* HOW that book was built. A snapshot cannot tell a market that drifted
+                to 63% up over an hour from one that flipped there ninety seconds ago,
+                and those mean opposite things. Same order feed as OurBook, so this
+                costs no extra request. */}
+            <section>
+              <div className="mb-3 mt-1 flex items-center gap-2.5">
+                <h2 className="text-[14px] font-semibold text-text-1">How it built</h2>
+                <span className="text-[10.5px] uppercase tracking-wide text-text-3">money in, over time</span>
+                <span className="h-px flex-1 bg-linear-to-r from-line to-transparent" />
+              </div>
+              <FlowHistoryPanel flow={flow} isLoading={bookLoading} />
+            </section>
+
+            {/* THE HOUSE'S BOOK. The one read on this page that cannot be had on any
+                other options venue: on Deribit the market maker's inventory is private
+                and people pay firms to estimate it, while here the counterparty is a
+                public vault. Mounts with this tab rather than with the screen, because
+                it fans out one open-interest query per market. */}
+            <section>
+              <div className="mb-3 mt-1 flex items-center gap-2.5">
+                <h2 className="text-[14px] font-semibold text-text-1">
+                  <Term plain="Who pays you if you win" pro="The house" />
+                </h2>
+                <span className="text-[10.5px] uppercase tracking-wide text-text-3">who is on the other side</span>
+                <span className="h-px flex-1 bg-linear-to-r from-line to-transparent" />
+              </div>
+              <HouseBookLive markets={markets} marketId={selected?.expiry_market_id ?? null} />
+            </section>
+
+            {/* Everything below is desk vocabulary (a Deribit pin, a term structure,
+                an IV rank, implied-vs-realized), so it stays Pro even though the tab
+                itself is now open to Plain. */}
+            <ProOnly>
             {/* The wider options market, weighted by whether it shares our horizon.
                 A monthly Deribit pin is a real input to a 1-week bet and says nothing
                 about the next five minutes, so below the hour it is hidden rather than
@@ -600,11 +672,14 @@ function AnalyticsDeck({
               <PositioningFlow positioning={positioning} insights={insights} intel={intel} relevance={outsideRelevance} />
             )}
 
-            {/* Term structure + reality check. */}
-            <div className="grid gap-3 lg:grid-cols-2">
+            {/* The three vol reads: shape across expiries, today against this market's
+                own history, and implied against what actually happened. */}
+            <div className="grid gap-3 lg:grid-cols-3">
               <SkewTerm expiries={intel.expiries} arb={intel.arb} now={now} pricers={pricers} spot={intel.spot} />
+              <VolRank enabled={OPTIONS_LIVE} />
               <RealityCheck pricer={pricerPair} expiryMs={selected?.expiry ?? null} now={now} closes={closes} />
             </div>
+            </ProOnly>
           </div>
         )}
 
@@ -615,6 +690,19 @@ function AnalyticsDeck({
       </div>
     </div>
   );
+}
+
+/**
+ * The vault read, wired. Deliberately a container rather than a prop on the screen:
+ * `useV2Risk` fans out one open-interest query per active market, and the Context tab
+ * is the only place that needs it, so mounting the hook here keeps those queries off
+ * the page until a trader actually opens the tab. Query keys are shared with the risk
+ * route, so a trader who has been there already has the data cached.
+ */
+function HouseBookLive({ markets, marketId }: { markets: V2Market[]; marketId: string | null }) {
+  const { risk, isLoading } = useV2Risk(markets);
+  const house = useMemo(() => buildHouseBook(risk, marketId), [risk, marketId]);
+  return <HouseBook house={house} isLoading={isLoading} />;
 }
 
 function MarketReadCard({ read, loading, onShare }: { read: MarketRead | null; loading?: boolean; onShare?: () => void }) {
