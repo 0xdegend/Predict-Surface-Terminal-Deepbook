@@ -104,31 +104,57 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 }
 
-/** How many settled-market reads to fan out per track-record request (bounds the cost). */
+/** How many NEW settled-market reads to fan out per request (bounds the cost). Only markets
+ *  missing from the cache count against it, so this bounds work, not coverage. */
 const MAX_SETTLEMENT_READS = 40;
 
 /**
+ * Resolved settlements, kept for the life of the server process.
+ *
+ * A settlement price is IMMUTABLE: once a market settles, that number never changes. So a
+ * market only ever needs reading once, and caching it is not a staleness risk — it is the
+ * whole fix. Before this, every request re-read every expired market from scratch and the
+ * fan-out was capped at 40, which quietly meant COVERAGE was capped at 40: with 50 distinct
+ * expired markets, the 10 oldest fell off the end of the slice on every single request and
+ * sat on "Awaiting settle" forever, getting worse with every new call Kelly made. They were
+ * settled on chain the whole time; nothing ever read them.
+ *
+ * Now the cap applies only to markets not yet resolved, so a backlog drains over a couple of
+ * refreshes and then stays resolved for free.
+ */
+const settlementCache = new Map<string, number>();
+/** Guard against unbounded growth in a long-lived process (ids are cheap, but not free). */
+const SETTLEMENT_CACHE_MAX = 5_000;
+
+/**
  * Best-effort settlement map (marketId → settlement price in USD) for the EXPIRED calls only.
- * Reads each distinct expired market's state (settlement lives on /markets/:id/state), deduped
- * and bounded. A market that isn't settled yet (or a flaky read) simply stays pending — honest.
+ * Cached markets are free; the read budget is spent on the ones still unresolved. A market that
+ * isn't settled yet (or a flaky read) simply stays pending, which is honest, and it gets
+ * retried on the next request because nothing negative is cached.
  */
 async function settlementMap(entries: ReceiptIndexEntry[], now: number): Promise<Map<string, number>> {
+  const expired = [...new Set(entries.filter((e) => e.claim.expiry < now).map((e) => e.claim.marketId))];
   const map = new Map<string, number>();
-  const ids = [...new Set(entries.filter((e) => e.claim.expiry < now).map((e) => e.claim.marketId))].slice(
-    0,
-    MAX_SETTLEMENT_READS,
-  );
+  for (const id of expired) {
+    const hit = settlementCache.get(id);
+    if (hit != null) map.set(id, hit);
+  }
+  const toRead = expired.filter((id) => !map.has(id)).slice(0, MAX_SETTLEMENT_READS);
   await Promise.all(
-    ids.map(async (id) => {
+    toRead.map(async (id) => {
       try {
         const st = await getV2MarketState(id);
         const sp = st?.settlement?.settlement_price;
         if (sp != null) {
           const usd = toFloat(sp);
-          if (Number.isFinite(usd)) map.set(id, usd);
+          if (Number.isFinite(usd)) {
+            map.set(id, usd);
+            if (settlementCache.size >= SETTLEMENT_CACHE_MAX) settlementCache.clear();
+            settlementCache.set(id, usd);
+          }
         }
       } catch {
-        /* not settled / read flaky — leave pending */
+        /* not settled / read flaky — leave pending, and retry next request */
       }
     }),
   );

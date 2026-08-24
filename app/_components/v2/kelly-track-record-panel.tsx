@@ -6,9 +6,10 @@
  * Every concrete call Kelly makes (a bet/range recommendation) is signed and written to
  * Walrus the moment it lands (see lib/walrus/receipts.ts). This page reads that log back
  * (GET /api/kelly/receipts → fetchTrackRecord), scores each call against on-chain settlement,
- * and shows the record: win rate, won/lost/pending, and every call with a "Verify" link that
- * opens the original signed receipt on the public Walrus aggregator. It's the trust-and-
- * marketing surface for the receipts phase — nothing here can be edited after the fact.
+ * and shows the record: win rate, won/lost/pending, and every call Kelly made. It's the
+ * trust-and-marketing surface for the receipts phase — nothing here can be edited after the
+ * fact. (The per-row "Verify" link to the raw Walrus blob is pulled for now; the receipts are
+ * still written and still content-addressed, so it can come back as-is.)
  *
  * House style matches the Leaderboard panel: max-w-5xl container, glass cards, mono numerals,
  * teal (up) / coral (down) semantics, hairline dividers.
@@ -26,7 +27,6 @@ import {
   LuCircleCheck,
   LuCircleX,
   LuClock,
-  LuArrowUpRight,
   LuSparkles,
   LuShare2,
   LuRefreshCw,
@@ -35,13 +35,11 @@ import { fetchTrackRecord, type TrackRecordCall } from '@/lib/copilot/receipts-c
 import { KellyTrackRecordShareModal } from './kelly-track-record-share-modal';
 import type { TrackRecordShareData } from './kelly-track-record-share-card-canvas';
 import { KellyCallShareModal } from './kelly-call-share-modal';
-import { walrusConfig } from '@/config/walrus';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { useNow } from '@/lib/hooks/use-now';
 import { num } from '@/lib/format';
 
 /** The public, content-addressed receipt on Walrus — anyone can open + verify it. */
-const blobUrl = (blobId: string) => `${walrusConfig.aggregatorUrl}/v1/blobs/${encodeURIComponent(blobId)}`;
 
 /** Compact "2m ago" from a ms timestamp. */
 function ago(ms: number, now: number): string {
@@ -218,9 +216,9 @@ export function KellyTrackRecordPanel() {
       <p className="mt-4 flex items-start gap-1.5 text-[10.5px] leading-relaxed text-text-3">
         <LuShieldCheck size={12} className="mt-px flex-none text-text-3" />
         <span>
-          Each receipt is content-addressed and signed by Kelly. <span className="text-text-2">Verify</span> opens the
-          original on the public Walrus network, exactly as it was written. Outcomes are scored against on-chain
-          settlement, so a call stays <span className="text-text-2">Awaiting settle</span> until its market settles.
+          Each receipt is content-addressed and signed by Kelly, and written to the public Walrus network
+          exactly as it was made. Outcomes are scored against on-chain settlement, so a call stays{' '}
+          <span className="text-text-2">Awaiting settle</span> until its market settles.
         </span>
       </p>
 
@@ -339,7 +337,6 @@ function CallRow({ call, now, onShare }: { call: TrackRecordCall; now: number; o
         >
           <LuShare2 size={11} className="transition-colors duration-200 group-hover:text-accent" />
         </button>
-        <VerifyLink blobId={call.blobId} />
       </div>
     </div>
   );
@@ -357,22 +354,6 @@ function OutcomePill({ outcome }: { outcome: TrackRecordCall['outcome'] }) {
       <Icon size={11} />
       {label}
     </span>
-  );
-}
-
-function VerifyLink({ blobId }: { blobId: string }) {
-  return (
-    <a
-      href={blobUrl(blobId)}
-      target="_blank"
-      rel="noreferrer"
-      title="Open the signed receipt on Walrus"
-      className="group glass-inset inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
-    >
-      <LuShieldCheck size={11} className="text-text-3 transition-colors duration-200 group-hover:text-accent" />
-      <span className="hidden sm:inline">Verify</span>
-      <LuArrowUpRight size={10} className="text-text-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-    </a>
   );
 }
 

@@ -580,12 +580,12 @@ function KellyPanel({
           pushBot(
             saved
               ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']
-              : ["I couldn't save that just now — give it a moment and try again."],
+              : ["I couldn't save that just now. Give it a moment and try again."],
           );
         }
       }
     } catch {
-      pushBot(["I couldn't reach your memory just now — give it a moment and ask again."]);
+      pushBot(["I couldn't reach your memory just now. Give it a moment and ask again."]);
     } finally {
       setBusy(false);
     }
@@ -778,15 +778,15 @@ function KellyPanel({
       const why = !acct.owner
         ? 'connect your wallet and place it there'
         : expired
-          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          ? 'that market’s about to settle, so pick a fresh one in the ticket'
           : !acct.wrapperExists
             ? 'let’s set up your trading account in the ticket first'
             : !walletKnown
-              ? 'I’m still loading your balance — place it from the ticket'
+              ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
-      pushBot([`I’ve opened your ticket — ${why}.`]);
+      pushBot([`I’ve opened your ticket: ${why}.`]);
       return;
     }
 
@@ -794,9 +794,12 @@ function KellyPanel({
     setBusy(true);
     try {
       const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
-      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      // silentSuccess: Kelly already says it landed in the thread, and the ticket's
+      // toast under the composer said the same thing a second time. One confirmation,
+      // in the place the trader was looking when they asked for the trade.
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit }, { silentSuccess: true });
       if (digest) {
-        pushBot([`Done — your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+        pushBot([`Done. Your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
         autoRememberBetStyle(bet);
       } else {
         pushBot(['That didn’t go through, so nothing was placed. Say “trade it” to try again, or tap Place this bet to do it from the ticket.']);

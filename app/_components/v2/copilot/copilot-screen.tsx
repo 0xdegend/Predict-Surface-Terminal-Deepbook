@@ -211,7 +211,7 @@ function previewMessages(serverNow: number): ChatMessage[] {
       id: 'p2',
       role: 'assistant',
       text: [
-        'BTC is holding around $66,200 and the mood is calm — no strong push either way right now.',
+        'BTC is holding around $66,200 and the mood is calm, with no strong push either way right now.',
         'For the next 5 minutes only a small move is priced in, so the safer bets sit close to the current price. Want a bigger payout? You’d bet on a sharper move.',
       ],
     },
@@ -220,7 +220,7 @@ function previewMessages(serverNow: number): ChatMessage[] {
       id: 'p4',
       role: 'assistant',
       text: [
-        'Here’s a safer UP bet on the 5-minute market — it wins as long as BTC stays above a strike just under where it is now.',
+        'Here’s a safer UP bet on the 5-minute market. It wins as long as BTC stays above a strike just under where it is now.',
         'I’ve loaded it into your ticket and lit it up on the surface. Review the amount and place it whenever you’re ready.',
       ],
       bet: {
@@ -849,7 +849,7 @@ export function V2CopilotScreen({
         id: `grant-${grant.success!.digest}`,
         role: 'assistant',
         text: [
-          `Done — ${fmtQuote(grant.success!.amount)} test DUSDC is in your wallet${sui}.`,
+          `Done. ${fmtQuote(grant.success!.amount)} test DUSDC is in your wallet${sui}.`,
           funded
             ? 'You’re funded and ready. Tell me a direction and I’ll set up a bet.'
             : 'Now say “create my trading account” (or tap the button) and you’re ready to bet.',
@@ -949,17 +949,17 @@ export function V2CopilotScreen({
       const why = !acct.owner
         ? 'connect your wallet and place it there'
         : expired
-          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          ? 'that market’s about to settle, so pick a fresh one in the ticket'
           : !acct.wrapperExists
             ? 'let’s set up your trading account in the ticket first'
             : !walletKnown
-              ? 'I’m still loading your balance — place it from the ticket'
+              ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
       setThinking(true);
       replyTimer.current = setTimeout(() => {
-        pushBot([`I’ve opened your ticket — ${why}.`]);
+        pushBot([`I’ve opened your ticket: ${why}.`]);
         setThinking(false);
       }, 500);
       return;
@@ -970,10 +970,13 @@ export function V2CopilotScreen({
     const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
     setThinking(true);
     try {
-      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      // silentSuccess: Kelly already says it landed in the thread, and the ticket's
+      // toast under the composer said the same thing a second time. One confirmation,
+      // in the place the trader was looking when they asked for the trade.
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit }, { silentSuccess: true });
       if (digest) {
         pulseFill({ marketId: bet.marketId, strike: plan!.strike, isUp: bet.isUp });
-        pushBot([`Done — your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
+        pushBot([`Done. Your $${num(stake, 0)} ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet is live. Watch it below, or close it any time.`]);
         autoRememberBetStyle(bet);
       } else {
         // It didn't place — keep the bet pending so "trade it" can retry it.
@@ -1031,17 +1034,17 @@ export function V2CopilotScreen({
       const why = !acct.owner
         ? 'connect your wallet and place it there'
         : expired
-          ? 'that market’s about to settle — pick a fresh one in the ticket'
+          ? 'that market’s about to settle, so pick a fresh one in the ticket'
           : !acct.wrapperExists
             ? 'let’s set up your trading account in the ticket first'
             : !walletKnown
-              ? 'I’m still loading your balance — place it from the ticket'
+              ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC — top up and place it from the ticket'
+                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
       setThinking(true);
       replyTimer.current = setTimeout(() => {
-        pushBot([`I’ve opened your ticket — ${why}.`]);
+        pushBot([`I’ve opened your ticket: ${why}.`]);
         setThinking(false);
       }, 500);
       return;
@@ -1052,10 +1055,13 @@ export function V2CopilotScreen({
     const deposit = plan!.maxCost > acct.balanceBase ? plan!.maxCost - acct.balanceBase : undefined;
     setThinking(true);
     try {
-      const digest = await acct.mintBudget({ ...plan!.mint, deposit });
+      // silentSuccess: Kelly already says it landed in the thread, and the ticket's
+      // toast under the composer said the same thing a second time. One confirmation,
+      // in the place the trader was looking when they asked for the trade.
+      const digest = await acct.mintBudget({ ...plan!.mint, deposit }, { silentSuccess: true });
       if (digest) {
         pulseFill({ marketId: range.marketId, strike: (plan!.lower + plan!.higher) / 2, isUp: true });
-        pushBot([`Done — your $${num(stake, 0)} range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
+        pushBot([`Done. Your $${num(stake, 0)} range bet on $${num(plan!.lower, 0)}–$${num(plan!.higher, 0)} is live. Watch it below, or close it any time.`]);
         autoRememberRangeStyle();
       } else {
         // It didn't place — keep the range pending so "trade it" can retry it.
@@ -1084,7 +1090,7 @@ export function V2CopilotScreen({
       const now = Date.now();
       const open = markets.filter((m) => m.expiry > now).sort((a, b) => a.expiry - b.expiry);
       if (open.length === 0) {
-        pushBot(["There's no live market right now — a new one opens about every minute, so check back in a moment."]);
+        pushBot(["There's no live market right now. A new one opens about every minute, so check back in a moment."]);
         return;
       }
       const targets = scope === 'now' ? open.slice(0, 1) : open.slice(0, 12);
@@ -1115,7 +1121,7 @@ export function V2CopilotScreen({
         }
       }
     } catch {
-      pushBot(["I couldn't read the recent bets just now — give it a moment and ask again."]);
+      pushBot(["I couldn't read the recent bets just now. Give it a moment and ask again."]);
     } finally {
       setThinking(false);
     }
@@ -1146,7 +1152,7 @@ export function V2CopilotScreen({
       return;
     }
     if (match.action === 'ask') {
-      botAfterBeat(['You have a few open — which one?', ...match.positions.map((p) => `• ${positionCloseLabel(p)}`), 'Tell me the side or strike (e.g. “close the up one” or “close the 65k”), or say “close all”.']);
+      botAfterBeat(['You have a few open. Which one?', ...match.positions.map((p) => `• ${positionCloseLabel(p)}`), 'Tell me the side or strike (e.g. “close the up one” or “close the 65k”), or say “close all”.']);
       return;
     }
 
@@ -1171,11 +1177,11 @@ export function V2CopilotScreen({
         const side = positionCloseLabel(p).split(' · ')[0];
         pushBot([
           lost
-            ? `Cleared your ${side} bet — it settled a loss, so there was nothing to redeem.`
-            : `Closed your ${side} bet${gained > 0 ? ` — ${'$' + num(gained, 2)} back in your account` : ''}.`,
+            ? `Cleared your ${side} bet. It settled a loss, so there was nothing to redeem.`
+            : `Closed your ${side} bet${gained > 0 ? `, ${'$' + num(gained, 2)} back in your account` : ''}.`,
         ]);
       } else {
-        pushBot([`Closed ${done} bets${proceeds > 0 ? ` — about $${num(proceeds, 2)} back in your account` : ''}. Nice.`]);
+        pushBot([`Closed ${done} bets${proceeds > 0 ? `, about $${num(proceeds, 2)} back in your account` : ''}. Nice.`]);
       }
     } catch {
       pushBot(['That didn’t go through, so nothing was closed. You can try again, or use the Portfolio panel.']);
@@ -1221,12 +1227,12 @@ export function V2CopilotScreen({
           pushBot(
             saved
               ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']
-              : ["I couldn't save that just now — give it a moment and try again."],
+              : ["I couldn't save that just now. Give it a moment and try again."],
           );
         }
       }
     } catch {
-      pushBot(["I couldn't reach your memory just now — give it a moment and ask again."]);
+      pushBot(["I couldn't reach your memory just now. Give it a moment and ask again."]);
     } finally {
       setThinking(false);
     }
@@ -1772,7 +1778,7 @@ export function V2CopilotScreen({
         title="Account funded"
         eyebrow="Received"
         amount={grant.success?.amount ?? 0}
-        sub="added to your wallet — you’re ready to trade"
+        sub="added to your wallet. You’re ready to trade"
         gasNote={grant.success?.sui ? `+ ${grant.success.sui} SUI added for gas` : undefined}
         digest={grant.success?.digest}
       />
