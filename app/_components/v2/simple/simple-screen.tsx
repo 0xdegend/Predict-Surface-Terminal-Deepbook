@@ -45,6 +45,8 @@ import { RoundCards, type HorizonRound, type RoundPick } from './round-cards';
 import { MyBets } from './my-bets';
 import { ResultsTape } from './results-tape';
 import { SimpleSkeleton } from './simple-skeleton';
+import { AssetLogo } from '../asset-logo';
+import { getAsset } from '@/lib/insights';
 import { SideButton } from './side-button';
 import { CADENCE_META, CADENCE_TABS, clock } from './cadence';
 import { sanitizeAmount } from './amount';
@@ -346,25 +348,31 @@ export function SimpleScreen({
 
       {/* title + cadence */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* One line on a phone. The COPY is what buys that, not a smaller type ramp:
-            "Bitcoin" → "BTC", and "this round?" → "?" (the cadence tabs right below and
-            the chart card's "round closes in" already say which round this is). Measured
-            at 15px, the full sentence wants ~425px against the 366px a 390px phone gives,
-            so there was no tightening that fitted it. What can't go is the ASSET NAME —
-            without it the screen asks "higher or lower than 72,333.12?" about nothing in
-            particular, and the nav's BTC chip is small and far away.
+        {/* One line on a phone. The COPY is what buys that, not a smaller type ramp.
+            "BTC" now reads at BOTH breakpoints (it used to say "Bitcoin" from sm up),
+            which is what pays for the logo: the ticker is 4 characters shorter than the
+            word, so the mark goes in front without costing the line any width. What
+            can't go is the ASSET ITSELF — without it the screen asks "higher or lower
+            than 72,333.12" about nothing in particular, and the nav's BTC chip is small
+            and far away. The logo does that job harder than the word did.
+
+            No terminal question mark. The word order already makes it a question, and
+            headings do not take one. "this round" still drops on a phone, where the
+            cadence tabs right below and the chart card's "round closes in" say which
+            round this is.
 
             The price keeps its phrase: pill and tail are ONE flex item, so a narrow
             screen or a six-figure price wraps them together instead of stranding the
             number at the end of a line. Flex-wrap stays as that safety net. */}
         <h1 className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[14px] font-semibold tracking-tight text-text-1 sm:text-[17px]">
-          <span className="whitespace-nowrap sm:hidden">Will BTC be higher or lower than</span>
-          <span className="hidden whitespace-nowrap sm:inline">Will Bitcoin be higher or lower than</span>
+          <span className="inline-flex items-center gap-2 whitespace-nowrap">
+            <AssetLogo asset={getAsset('BTC')} size={20} className="h-4.5 w-4.5 sm:h-5.5 sm:w-5.5" />
+            Will BTC be higher or lower than
+          </span>
           {shownLine != null && (
             <span className="inline-flex items-center">
               <LinePill value={shownLine} momentum={momentum} />
-              <span className="sm:hidden">?</span>
-              <span className="ml-2 hidden sm:inline">this round?</span>
+              <span className="ml-2 hidden sm:inline">this round</span>
             </span>
           )}
         </h1>
