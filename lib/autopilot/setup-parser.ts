@@ -161,3 +161,82 @@ export function resolveSetup(
   const durationMins = intent.durationMins ?? Math.round(current.armDurationMs / 60_000);
   return { preset: intent.preset, budgetUsd, perTradeUsd, durationMins, live: intent.live };
 }
+
+/* ------------------------ what the trader left out ------------------------ */
+
+/** A required piece of the setup that the trader has not stated yet. */
+export type SetupGap = 'style' | 'budget' | 'duration';
+
+/** Asked in this order, one at a time. Style first because it frames the rest. */
+export const GAP_ORDER: SetupGap[] = ['style', 'budget', 'duration'];
+
+/**
+ * Which required pieces are still missing.
+ *
+ * `resolveSetup` fills gaps from the panel's current values so a proposal is always
+ * applicable, which is right at APPLY time and wrong at ASK time: it is what let Kelly
+ * put up a budget the trader never chose. This reports the gaps instead, so the caller
+ * can ask for them.
+ *
+ * Watch-vs-live is deliberately NOT a gap. That choice moved into the arm confirm, so
+ * asking for it here would be asking twice.
+ */
+export function missingFrom(intent: SetupIntent): SetupGap[] {
+  const gaps: SetupGap[] = [];
+  if (!intent.presetNamed) gaps.push('style');
+  if (intent.budgetUsd == null) gaps.push('budget');
+  if (intent.durationMins == null) gaps.push('duration');
+  return gaps;
+}
+
+/** True when nothing is left to ask for. */
+export function isComplete(intent: SetupIntent): boolean {
+  return missingFrom(intent).length === 0;
+}
+
+/**
+ * Fold a later turn onto an earlier one. A turn only overrides what it actually names,
+ * so "cautious" then "$50" then "for an hour" builds up across three replies, and a
+ * correction ("actually make it $20") replaces just the budget.
+ */
+export function mergeIntents(base: SetupIntent, next: SetupIntent): SetupIntent {
+  return {
+    preset: next.presetNamed ? next.preset : base.preset,
+    presetNamed: base.presetNamed || next.presetNamed,
+    budgetUsd: next.budgetUsd ?? base.budgetUsd,
+    perTradeUsd: next.perTradeUsd ?? base.perTradeUsd,
+    durationMins: next.durationMins ?? base.durationMins,
+    live: next.live ?? base.live,
+  };
+}
+
+/** An intent that names nothing: the starting point of a conversation. */
+export function emptyIntent(): SetupIntent {
+  return { preset: 'balanced', presetNamed: false };
+}
+
+/**
+ * Clamp an intent that came from OUTSIDE this module (the LLM tier) to the same bounds
+ * the rule parser enforces. The model is only ever trusted to READ English, never to
+ * pick a number, so every field it returns is re-checked here: a non-finite, negative,
+ * or absurd value is dropped rather than clamped into something plausible, because a
+ * dropped field becomes a question and a clamped one becomes a silent assumption.
+ */
+export function sanitizeIntent(raw: unknown): SetupIntent {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const num = (v: unknown, lo: number, hi: number): number | undefined => {
+    const n = typeof v === 'number' ? v : NaN;
+    if (!Number.isFinite(n) || n < lo || n > hi) return undefined;
+    return Math.round(n);
+  };
+  const styleRaw = typeof o.style === 'string' ? o.style.toLowerCase() : '';
+  const named = styleRaw === 'cautious' || styleRaw === 'balanced' || styleRaw === 'bold';
+  return {
+    preset: named ? (styleRaw as PresetId) : 'balanced',
+    presetNamed: named,
+    budgetUsd: num(o.budgetUsd, 1, 100_000),
+    perTradeUsd: num(o.perTradeUsd, 1, 100_000),
+    durationMins: num(o.durationMins, 5, 24 * 60),
+    live: typeof o.live === 'boolean' ? o.live : undefined,
+  };
+}

@@ -24,7 +24,7 @@ export function Modal({
   children,
   footer,
   maxWidthClass = 'max-w-md',
-  variant = 'solid',
+  variant = 'glass',
   contentClassName = 'px-4 py-4',
   mascot,
 }: {
@@ -36,7 +36,11 @@ export function Modal({
   footer?: React.ReactNode;
   /** Tailwind max-width for the panel. Defaults to a compact dialog. */
   maxWidthClass?: string;
-  /** 'solid' = raised panel; 'glass' = frosted, borderless, larger radius. */
+  /** 'glass' (the default) = frosted, borderless, larger radius, which is the house
+   *  dialog style: every dialog in the app uses it. 'solid' is the raised bordered
+   *  panel, kept as an escape hatch but currently unused. The default used to be
+   *  'solid', which meant a new dialog silently opted OUT of the design system unless
+   *  its author remembered the prop. */
   variant?: 'solid' | 'glass';
   /** Override the content wrapper padding (e.g. for full-bleed layouts). */
   contentClassName?: string;
