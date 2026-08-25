@@ -1258,6 +1258,18 @@ select:focus-visible,
     position: fixed;
     inset: 0;
     width: 100%;
+    /* Sit in the VISIBLE box, not the layout one. `position: fixed` anchors to the
+       layout viewport, which iOS never shrinks for the keyboard, and Safari pans the
+       visible box down to hunt for the focused field and never pans back. Left
+       uncompensated the shell stays up top while the visible box has moved past it,
+       which is the empty screen under the nav that a trader sees the moment they tap
+       the chat box. --kvt/--kvh come from useKeyboardViewport; the fallbacks are the
+       old full-viewport behaviour for desktop and no-VisualViewport browsers.
+       `bottom: auto` because `inset: 0` above also set it, and top + bottom + height
+       is over-constrained. */
+    top: var(--kvt, 0px);
+    bottom: auto;
+    height: var(--kvh, 100%);
     /* Drop the global floating-dock clearance (the base `body { padding-bottom:
        5rem }` below lg): on the chat page the dock is in the shell flow, and that
        80px sitting under the --kvh shell is what made the body taller than the
@@ -1291,6 +1303,12 @@ select:focus-visible,
     padding-bottom: 0;
   }
   html.kb-open .v2-dock {
+    display: none;
+  }
+  /* The ambient market read above the thread. Fixed height, cannot shrink, and not
+     what anyone is looking at mid-sentence — so it yields its space to the thread
+     and the composer while the keyboard is up. */
+  html.kb-open .chat-pinned {
     display: none;
   }
 }

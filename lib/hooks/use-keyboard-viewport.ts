@@ -25,6 +25,23 @@ import { useEffect } from 'react';
  *  keyboard (a real mobile keyboard is ~250-350px; the URL bar is ~60-100px). */
 const KEYBOARD_MIN_PX = 140;
 
+/**
+ * Is the on-screen keyboard up? Pure, so the rule can be pinned by a test.
+ *
+ * `innerHeight` is the LAYOUT viewport, which iOS does not shrink for the keyboard.
+ * `viewportHeight` is `visualViewport.height`, which it does. The gap between them is
+ * the keyboard.
+ *
+ * The visual viewport's `offsetTop` is deliberately NOT an input. It is how far Safari
+ * has panned the visible box down inside the layout viewport, not height it has taken
+ * away, and the version of this that subtracted it read ≈ 0 precisely when Safari had
+ * panned the furthest — which is exactly when the keyboard is up. That is what left
+ * the bottom nav sitting over the keyboard on the Ask Kelly page.
+ */
+export function isKeyboardOpen(innerHeight: number, viewportHeight: number): boolean {
+  return innerHeight - viewportHeight > KEYBOARD_MIN_PX;
+}
+
 export function useKeyboardViewport(): void {
   useEffect(() => {
     const root = document.documentElement;
@@ -40,13 +57,21 @@ export function useKeyboardViewport(): void {
     }
 
     const update = () => {
-      // Keyboard overlap = layout viewport height − what's actually visible.
-      const overlap = window.innerHeight - vv.height - vv.offsetTop;
-      const open = overlap > KEYBOARD_MIN_PX;
-      root.classList.toggle('kb-open', open);
+      root.classList.toggle('kb-open', isKeyboardOpen(window.innerHeight, vv.height));
       // The REAL visible height (tracks toolbar show/hide AND the keyboard), which
       // the shell is sized to — precise where `dvh` drifts.
       root.style.setProperty('--kvh', `${Math.round(vv.height)}px`);
+      // How far Safari has panned the visible box DOWN the layout viewport.
+      //
+      // It pans on focus to reveal the field, measuring against the shell's height
+      // BEFORE --kvh has shrunk it, and it never pans back afterwards. The shell is
+      // a fixed box anchored to the layout viewport, so with the pan left
+      // uncompensated it stays up top while the visible box has moved past it: the
+      // trader ends up looking at the dock and then a screen of empty body. Moving
+      // the shell by this amount puts it back inside the visible box, and since the
+      // composer then sits at the bottom of that box, Safari has nothing left to
+      // reveal and does not pan again.
+      root.style.setProperty('--kvt', `${Math.round(vv.offsetTop)}px`);
     };
 
     update();
@@ -57,6 +82,7 @@ export function useKeyboardViewport(): void {
       vv.removeEventListener('scroll', update);
       root.classList.remove('kb-open', 'chat-page');
       root.style.removeProperty('--kvh');
+      root.style.removeProperty('--kvt');
     };
   }, []);
 }

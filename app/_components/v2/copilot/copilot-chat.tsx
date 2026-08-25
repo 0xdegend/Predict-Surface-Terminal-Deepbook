@@ -104,6 +104,9 @@ export function CopilotChat({
   const chips = suggestions && suggestions.length > 0 ? suggestions : CHIPS;
   const [draft, setDraft] = useState('');
   const typing = draft.trim().length > 0; // hide the suggestion chips while composing
+  // Composer focus, which on a phone means the keyboard is up. Chips are worth two
+  // rows of a full screen and worth nothing of the half-screen left above a keyboard.
+  const [focused, setFocused] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
@@ -202,8 +205,12 @@ export function CopilotChat({
         </div>
       )}
 
-      {/* pinned ambient read — sits under the header, above the scrolling thread */}
-      {pinnedTop}
+      {/* Pinned ambient read: under the header, above the scrolling thread. Wrapped
+          so globals.css can drop it while the keyboard is up (`html.kb-open`). It is
+          a fixed ~190px block that cannot shrink, so on a short phone it ate the
+          space the composer needed and pushed it off the bottom of the shell. It is
+          also the least useful thing on screen at the moment you are typing. */}
+      {pinnedTop && <div className="chat-pinned">{pinnedTop}</div>}
 
       {/* thread */}
       <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
@@ -217,10 +224,13 @@ export function CopilotChat({
 
       {/* chips + input */}
       <div className="border-t border-line px-3 py-3">
-        {/* The suggestion chips only show when the input is empty — they clear out
-            of the way the moment the trader starts composing, and return on send. */}
+        {/* The suggestion chips show while the input is empty, and clear out of the way
+            the moment the trader starts composing. On a PHONE they also clear on focus,
+            before a single character: two rows of chips out of the half screen a
+            keyboard leaves is most of the conversation. Kept until text is typed at lg+,
+            where there is room and no keyboard to lose it to. */}
         {!typing && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
+          <div className={`mb-2 flex-wrap gap-1.5 ${focused ? 'hidden lg:flex' : 'flex'}`}>
             {chips.map((c) => (
               <button
                 key={c}
@@ -252,7 +262,9 @@ export function CopilotChat({
                 submit(draft);
               }
             }}
+            onBlur={() => setFocused(false)}
             onFocus={() => {
+              setFocused(true);
               // The mobile keyboard shrinks the chat to about half its height, and a
               // scroll container keeps its scrollTop when it shrinks, so the message
               // the trader is replying to slides out of view under the fold. Re-pin
