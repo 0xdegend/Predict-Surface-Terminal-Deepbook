@@ -83,6 +83,14 @@ export function humanizeError(raw: unknown): string {
   // toward the top-up (see runSessionTx); the plain wallet copy is the fallback.
   if (isInsufficientGas(raw))
     return 'Not enough SUI to cover the network fee in this wallet. Add a little testnet SUI, then try again.';
+  // A NON-gas coin shortfall: the trader simply does not hold enough of the token.
+  // The node spells that out in full, e.g. "Insufficient balance for coin type
+  // 0x…::dusdc::DUSDC for owner 0x…, requested: N, available: M", which reached the
+  // trade ticket verbatim because the fallthrough at the end of this function returns
+  // the raw message. That is a wall of hex on a phone and none of it is actionable, so
+  // it is reduced to the one fact that matters. Ordered AFTER the gas branch so a SUI
+  // shortfall keeps its more specific "add testnet SUI" copy.
+  if (/insufficient (?:balance|funds)/i.test(msg)) return 'Insufficient balance.';
   if (/getaddrinfo|fetch failed|ENOTFOUND|network/i.test(msg))
     return 'Network hiccup reaching the chain. Check your connection and retry.';
   if (/Enoki API failed|sponsor failed|sponsorship/i.test(msg)) {

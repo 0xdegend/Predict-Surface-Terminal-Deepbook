@@ -34,6 +34,9 @@ const GAP_CHIPS: Record<SetupGap, string[]> = {
 
 const GAP_LABEL: Record<SetupGap, string> = { style: 'Style', budget: 'Budget', duration: 'For' };
 
+/** Composer height cap, matching the co-pilot chat: roughly three lines, then scroll. */
+const MAX_INPUT_H = 76;
+
 interface Turn {
   id: number;
   who: 'kelly' | 'trader';
@@ -98,6 +101,7 @@ export function KellySetupCard({
   const [busy, setBusy] = useState(false);
   const nextId = useRef(1);
   const threadRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const gaps = missingFrom(intent);
   const openGap = gaps[0] ?? null;
@@ -107,6 +111,17 @@ export function KellySetupCard({
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
   }, [turns.length, busy]);
+
+  /** Grow the composer with its text, then let it scroll. A single-line input hid the
+   *  end of anything longer than the box, which is the wrong trade in the one field on
+   *  the page where a trader is asked to write a whole sentence. Same treatment, and the
+   *  same cap, as the co-pilot chat's composer. */
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_H)}px`;
+  }, [text]);
 
   function push(who: Turn['who'], t: string) {
     setTurns((prev) => [...prev, { id: nextId.current++, who, text: t }]);
@@ -240,16 +255,25 @@ export function KellySetupCard({
           e.preventDefault();
           void send(text);
         }}
-        className="flex items-center gap-2"
+        className="flex items-end gap-2"
       >
-        <input
-          type="text"
+        <textarea
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter sends; Shift+Enter (or a newline mid-IME) drops a line.
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              void send(text);
+            }
+          }}
           disabled={busy}
+          rows={1}
           placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Try "cautious, $25 for an hour"'}
           aria-label="Tell Kelly how you want Autopilot to run"
-          className="glass-inset w-full rounded-lg px-3 py-2.5 text-[16px] text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
+          // 16px is deliberate: iOS Safari force-zooms a focused field under 16px.
+          className="scroll-quiet glass-inset w-full resize-none rounded-lg px-3 py-2.5 text-[16px] leading-snug text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
         />
         <button
           type="submit"
