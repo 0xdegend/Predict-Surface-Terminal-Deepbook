@@ -60,3 +60,49 @@ export function useKeyboardViewport(): void {
     };
   }, []);
 }
+
+/**
+ * useVisualViewportBox — publish the VISIBLE rectangle so a fixed OVERLAY can sit
+ * exactly inside it: `--vv-h` (height) and `--vv-t` (offset from the layout top).
+ *
+ * Same root cause as the hook above, different shape of victim. `position: fixed` is
+ * anchored to the LAYOUT viewport, which iOS Safari does not shrink for the keyboard.
+ * So a `fixed inset-0` drawer stays full height, its composer ends up under the
+ * keyboard, and Safari then pans the visual viewport to hunt for the focused field,
+ * dragging the whole overlay off-screen and leaving the page behind it showing through
+ * as a big empty band. That is the Ask-Kelly drawer bug.
+ *
+ * `useKeyboardViewport` cannot be reused for it: that one marks the document
+ * `chat-page`, which pins `body { position: fixed }` and would throw away the
+ * underlying page's scroll position the moment the drawer opened. An overlay must
+ * leave the page beneath it exactly as it found it, so this hook only publishes
+ * measurements and lets the overlay size itself.
+ *
+ * Both `resize` and `scroll` matter: resize fires when the keyboard opens/closes,
+ * scroll fires when Safari pans, and following the pan is what keeps the drawer glued
+ * to the visible area instead of sliding away under it.
+ *
+ * Side-effecting only (no re-renders). Mount it in an overlay that owns the screen.
+ */
+export function useVisualViewportBox(): void {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return; // no API: the caller's `100%` / `top: 0` fallbacks stand
+    const root = document.documentElement;
+
+    const update = () => {
+      root.style.setProperty('--vv-h', `${Math.round(vv.height)}px`);
+      root.style.setProperty('--vv-t', `${Math.round(vv.offsetTop)}px`);
+    };
+
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      root.style.removeProperty('--vv-h');
+      root.style.removeProperty('--vv-t');
+    };
+  }, []);
+}

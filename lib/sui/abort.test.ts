@@ -88,3 +88,30 @@ describe('insufficient balance (non-gas)', () => {
     expect(humanizeError(new Error('Insufficient funds for coin type 0x2::foo::BAR'))).toBe('Insufficient balance.');
   });
 });
+
+describe('enoki account mismatch', () => {
+  // Verbatim from @mysten/enoki (wallet.mjs) — it names both addresses in full, and
+  // the fallthrough at the end of humanizeError used to print the whole thing.
+  const RAW =
+    'The specified account 0xd962a895e3aeb8a317c55d06c5beb6a451ccd1c72723104beefaa72f9e4642a1 does not match ' +
+    'the currently connected Enoki address 0x068341e7b6986ce9b463678e6c52d8bf483693541eb08793b422d4e7cd34dab8.';
+
+  it('replaces the two-address message with one short instruction', () => {
+    const out = humanizeError(new Error(RAW));
+    expect(out).toBe('Your sign-in changed. Sign in again, then retry.');
+    expect(out).not.toMatch(/0x[0-9a-f]{8}/i);
+    expect(out.length).toBeLessThan(60);
+  });
+
+  it('is not swallowed by the wallet-locked branch below it', () => {
+    // Ordering guard: the mismatch text has no "locked" / "reject" / "popup" in it
+    // today, but this pins the branch's position if that copy ever changes.
+    expect(humanizeError(new Error(RAW))).not.toMatch(/unlock|cancelled|wallet window/i);
+  });
+
+  it('leaves the expired-session copy alone', () => {
+    // A lapsed zkLogin session is a DIFFERENT failure with different copy; the
+    // isSessionExpired check runs first and must keep winning.
+    expect(humanizeError(new Error('Failed to retrieve an active session.'))).toMatch(/Google sign-in has expired/i);
+  });
+});

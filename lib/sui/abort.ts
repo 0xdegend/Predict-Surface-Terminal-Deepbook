@@ -72,6 +72,14 @@ export function humanizeError(raw: unknown): string {
   // below would otherwise mis-label it as a wallet-window error.
   if (isSessionExpired(raw)) return SESSION_EXPIRED_MESSAGE;
 
+  // The Enoki wallet refusing to sign for an address it is no longer holding. Its own
+  // text names both addresses in full ("The specified account 0x… does not match the
+  // currently connected Enoki address 0x…"), which is two lines of hex in a red box on
+  // a phone and tells the trader nothing they can act on. It means the signed-in
+  // account moved out from under the app, so the fix is always the same: sign in again.
+  if (/does not match the currently connected enoki address/i.test(msg))
+    return 'Your sign-in changed. Sign in again, then retry.';
+
   // Wallet-level outcomes first.
   if (/incorrect password|wrong password|invalid password|locked/i.test(msg))
     return 'Your wallet couldn’t unlock to sign (it reported an incorrect password / locked vault). Unlock Slush, or lock and re-unlock it, then try again. This is a wallet error, not the trade.';

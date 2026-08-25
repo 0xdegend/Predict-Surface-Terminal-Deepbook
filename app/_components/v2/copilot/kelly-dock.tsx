@@ -41,6 +41,7 @@ import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallR
 import { firstVisitToday } from '@/lib/copilot/greeting-cadence';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
+import { useVisualViewportBox } from '@/lib/hooks/use-keyboard-viewport';
 import { styleNoteForBet, claimAutoRememberSlot } from '@/lib/copilot/auto-memory';
 import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
 import { respondToIntent, type BetCandidate, type BetSuggestion, type CopilotReply } from '@/lib/copilot/respond';
@@ -378,6 +379,13 @@ function KellyPanel({
   // Reference counted: it floats above every page and often closes while a modal is
   // still up, which is exactly the out-of-order case that used to strand the page.
   useScrollLock(true);
+
+  // Publishes the VISIBLE viewport box (--vv-h / --vv-t), which the panel below is
+  // sized to. Without it the on-screen keyboard put the composer underneath itself:
+  // `fixed` is anchored to the layout viewport, iOS only shrinks the VISUAL one, and
+  // Safari's hunt for the focused field then panned the whole drawer off-screen,
+  // leaving the empty band the trader saw. See use-keyboard-viewport for the why.
+  useVisualViewportBox();
 
   // Esc closes.
   useEffect(() => {
@@ -861,10 +869,14 @@ function KellyPanel({
         onClick={onClose}
         className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${onScreen ? 'opacity-100' : 'opacity-0'}`}
       />
+      {/* Not `top-0 h-full`: the panel tracks the VISIBLE box so the composer lands on
+          top of the keyboard rather than behind it. The var fallbacks are the old
+          full-height behaviour, for desktop, SSR, and no-VisualViewport browsers. */}
       <div
         role="dialog"
         aria-label="Ask Kelly"
-        className={`absolute right-0 top-0 flex h-full w-full flex-col border-l border-line bg-bg-1 shadow-2xl transition-transform duration-300 ease-out sm:w-[400px] lg:w-[420px] ${onScreen ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{ top: 'var(--vv-t, 0px)', height: 'var(--vv-h, 100%)' }}
+        className={`absolute right-0 flex w-full flex-col border-l border-line bg-bg-1 shadow-2xl transition-transform duration-300 ease-out sm:w-[400px] lg:w-[420px] ${onScreen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <header className="flex flex-none items-center gap-3 border-b border-line px-4 py-3">
           <span

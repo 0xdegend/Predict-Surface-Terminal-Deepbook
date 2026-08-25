@@ -106,6 +106,7 @@ export function CopilotChat({
   const typing = draft.trim().length > 0; // hide the suggestion chips while composing
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
 
   // Keep the newest message (or the typing bubble) in view as the thread grows.
   useEffect(() => {
@@ -205,7 +206,7 @@ export function CopilotChat({
       {pinnedTop}
 
       {/* thread */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
+      <div ref={threadRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scroll-quiet px-4 py-4">
         {messages.map((m) => (
           <MessageBubble key={m.id} message={m} onPlaceBet={onPlaceBet} onPlaceRange={onPlaceRange} onEditBet={onEditBet} onAction={onAction} onVaultDeposit={onVaultDeposit} onShare={onShare} busy={busy} />
         ))}
@@ -250,6 +251,18 @@ export function CopilotChat({
                 e.preventDefault();
                 submit(draft);
               }
+            }}
+            onFocus={() => {
+              // The mobile keyboard shrinks the chat to about half its height, and a
+              // scroll container keeps its scrollTop when it shrinks, so the message
+              // the trader is replying to slides out of view under the fold. Re-pin
+              // the bottom once the keyboard has finished animating. We set scrollTop
+              // on the thread itself rather than calling scrollIntoView, which walks
+              // up and scrolls ancestors too, panning the whole drawer.
+              setTimeout(() => {
+                const t = threadRef.current;
+                if (t) t.scrollTop = t.scrollHeight;
+              }, 320);
             }}
             disabled={busy}
             rows={1}
