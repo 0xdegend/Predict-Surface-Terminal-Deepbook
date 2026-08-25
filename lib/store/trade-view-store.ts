@@ -16,7 +16,7 @@
  *
  * Every write is MIRRORED INTO A COOKIE. The server decides where a phone lands (see
  * `shouldLandOnSimple`) and cannot read localStorage, so the cookie is how an explicit
- * "I want Advanced" reaches it. Writing it here, in the one place the view changes, is
+ * "I want Pro" reaches it. Writing it here, in the one place the view changes, is
  * what keeps the two from drifting.
  */
 import { create } from 'zustand';

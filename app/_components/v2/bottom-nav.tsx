@@ -7,7 +7,7 @@
  * More slides up the secondary-destinations sheet (Analytics, Quests,
  * Competitions, Docs). Hidden at lg+ where the header nav takes over.
  *
- * The sheet also carries the phone's ONE switch, Simple ⇄ Advanced, and only on the
+ * The sheet also carries the phone's ONE switch, Easy ⇄ Pro, and only on the
  * trade routes where it applies. It replaced the Legacy ⇄ Latest toggle that used to
  * head the sheet: a control about which PROTOCOL you're on, offered on every page,
  * when the switch traders actually reach for is between the two trade screens. That
@@ -175,7 +175,7 @@ export function V2BottomNav() {
             {/* Capped height so the sheet can never swallow the whole screen on
                 small phones — it scrolls internally past that. */}
             <div className="flex max-h-[72vh] flex-col gap-1.5 overflow-y-auto scroll-quiet">
-              {/* Simple ⇄ Advanced — the desktop header toggle's mobile home. Only on the
+              {/* Easy ⇄ Pro — the desktop header toggle's mobile home. Only on the
                   trade routes it applies to; everywhere else the sheet opens straight into
                   the destinations, with no dead section heading. */}
               {V2_SIMPLE_ENABLED && isTradeRoute(pathname) && (

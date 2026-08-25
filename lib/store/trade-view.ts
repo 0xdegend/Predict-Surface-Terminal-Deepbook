@@ -51,7 +51,7 @@ export function isDocumentRequest({
  *
  * Phones land on the calm screen by default: the advanced terminal is a 3-D surface, a
  * market table and a full options ticket, which is not what a first tap on a phone should
- * open. It is a DEFAULT, not a lock — the moment a trader picks Advanced (header toggle or
+ * open. It is a DEFAULT, not a lock — the moment a trader picks Pro (header toggle or
  * the mobile More sheet) the store writes `advanced` to the cookie and this stops firing,
  * on that phone, for good.
  *
@@ -74,7 +74,7 @@ export function shouldLandOnSimple({
    * Is this someone ARRIVING (a page load), rather than the app fetching a route for
    * itself? In-app navigations and prefetches carry the `RSC` header, and they are always
    * a deliberate act — the Trade tab already routes by the remembered view, and the only
-   * other way to /v2 on a phone is tapping Advanced. Redirecting those would both undo
+   * other way to /v2 on a phone is tapping Pro. Redirecting those would both undo
    * the tap and poison the prefetch cache with a redirect, so this rule only ever applies
    * to a real landing.
    */

@@ -635,7 +635,7 @@ export const V2_SESSIONS_ENABLED: boolean =
 
 /**
  * Simple mode ([[simple-mode]]): a stripped-down UP/DOWN "round" trade screen at
- * `/v2/simple`, reachable via a Simple ⇄ Advanced toggle that shows only on the
+ * `/v2/simple`, reachable via a Easy ⇄ Pro toggle that shows only on the
  * trade screen. Reuses the same markets / pricer / mint plumbing as the full
  * ticket — it's a calmer front-end, not a second engine, so its trades still land
  * on the leaderboard, portfolio, and PnL like any other. Ships DARK behind the

@@ -121,7 +121,7 @@ export function V2TradeScreen({
     {/* First-run onboarding: a fresh wallet (no trading account yet) gets a single
         modal to fund + create their account in one tap. Self-contained + portaled. */}
     <OnboardFundModal />
-    {/* No Simple/Advanced switch here: desktop has it in the header, and on mobile it
+    {/* No Easy/Pro switch here: desktop has it in the header, and on mobile it
         lives in the dock's More sheet. A full-width bar pinned above the surface spent
         the first band of a phone screen on a control you touch once a session.
         What DOES sit here is the one-time note telling an existing trader that the

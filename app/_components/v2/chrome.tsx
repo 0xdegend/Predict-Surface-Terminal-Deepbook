@@ -4,13 +4,13 @@
  * V2Chrome — the persistent terminal chrome for the NEW (Latest) deployment.
  *
  * A parallel of TopChrome (frozen for legacy) with nav pointing at /v2/* routes,
- * the live BTC chip, the Simple↔Advanced toggle, and the wallet. Same glass three-
+ * the live BTC chip, the Easy↔Pro toggle, and the wallet. Same glass three-
  * zone layout AND the same nav arrangement as legacy: Trade · Portfolio ·
  * Analytics · Leaderboard inline, then a rich "Vault" dropdown and a rich "More"
  * dropdown (Quests / Competitions / Docs) whose triggers adopt the active
  * sub-page's label. Mobile uses V2BottomNav.
  *
- * The header holds ONE switch, and only on the trade screen: Simple ⇄ Advanced. The
+ * The header holds ONE switch, and only on the trade screen: Easy ⇄ Pro. The
  * Legacy ⇄ Latest deployment toggle used to live here on every other page — a control
  * about which PROTOCOL you're on, sitting beside pages that have nothing to do with the
  * choice. The Legacy deployment is no longer linked from the nav at all; /legacy
@@ -102,7 +102,7 @@ export function V2Chrome() {
   // network. See the hook for why backfilling afterwards can't do the same job.
   usePythTapeSpotFeed();
 
-  // Simple/Advanced: remember the trader's last-used trade view so the Trade tab
+  // Easy/Pro: remember the trader's last-used trade view so the Trade tab
   // and logo reopen it (default simple). Mounted-guarded so a persisted 'advanced'
   // can't cause an SSR href mismatch. Inert unless V2_SIMPLE_ENABLED.
   const tradeView = useTradeViewStore((s) => s.view);
@@ -223,7 +223,7 @@ export function V2Chrome() {
       <div className="col-start-3 flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
         <SocialIconLinks className="hidden xl:flex" />
         <TourButton />
-        {/* The header carries ONE switch and only where it applies: Simple ⇄ Advanced,
+        {/* The header carries ONE switch and only where it applies: Easy ⇄ Pro,
             on the trade screen. Every other page shows none — the Legacy ⇄ Latest
             deployment switch used to sit here, which put a control about which PROTOCOL
             you're on next to pages that have nothing to do with the choice.

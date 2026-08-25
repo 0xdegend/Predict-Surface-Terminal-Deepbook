@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * TradeModeToggle — the Simple ⇄ Advanced switch, and the ONLY switch in the Latest
- * header. It routes between the two trade experiences — Simple = `/v2/simple` (the calm
- * UP/DOWN round view), Advanced = `/v2` (the full terminal) — and remembers the choice
+ * TradeModeToggle — the Easy ⇄ Pro switch, and the ONLY switch in the Latest
+ * header. It routes between the two trade experiences — Easy = `/v2/simple` (the calm
+ * UP/DOWN round view), Pro = `/v2` (the full terminal) — and remembers the choice
  * in the trade-view store so the Trade tab reopens where the trader left.
  *
  * Deliberately NOT the DeploymentToggle: that switches PROTOCOL deployment (Legacy ↔
@@ -57,9 +57,17 @@ const OPTIONS: {
 
 // Per-variant sizing. The markup (two segments + centre swap-circle) is shared; only
 // the dimensions differ. Mirrors DeploymentToggle's bar/sheet pair.
+//
+// TWO EQUAL COLUMNS, not a flex row. The swap circle is absolutely positioned at 50% of
+// the track, so 50% has to BE the seam between the halves. As a content-sized flex row
+// it was not: each segment took its own content width, so the longer word pushed the
+// seam past centre and the circle sat on top of that word's last letter (`Simple`/`Pro`
+// measured 96px against 77px, seam at 96, circle centred at 86). Equal `1fr` columns in
+// an intrinsically sized grid both take the WIDER segment's width, which puts the seam
+// on centre for any pair of words and keeps the control symmetric.
 const SIZES = {
   bar: {
-    track: 'inline-flex h-9 shrink-0 rounded-full',
+    track: 'inline-grid grid-cols-2 h-9 shrink-0 rounded-full',
     icon: 14,
     label: 'text-[11px]',
     padL: 'pl-3 pr-6',
@@ -68,7 +76,7 @@ const SIZES = {
     circleIcon: 12,
   },
   full: {
-    track: 'flex h-12 w-full rounded-2xl',
+    track: 'grid grid-cols-2 h-12 w-full rounded-2xl',
     icon: 16,
     label: 'text-[13px]',
     padL: 'pl-4 pr-9',
@@ -141,7 +149,7 @@ export function TradeModeToggle({
             aria-checked={isActive}
             title={opt.hint}
             onClick={() => choose(opt.simple, opt.href)}
-            className={`group relative z-0 flex flex-1 items-center gap-2 transition-colors ${
+            className={`group relative z-0 flex items-center gap-2 transition-colors ${
               isLeft ? `justify-start rounded-l-full rounded-r-lg ${sz.padL}` : `justify-end rounded-r-full rounded-l-lg ${sz.padR}`
             }`}
             style={

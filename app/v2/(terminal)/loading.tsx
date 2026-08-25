@@ -5,7 +5,7 @@ import { TradeBodySkeleton } from '@/app/_components/trade-skeleton';
  *
  * WHY THE ROUTE GROUP. Without a loading boundary the App Router has nothing to show
  * while the page's server work runs, so it holds the PREVIOUS screen on-screen until the
- * new one is completely ready — which is what made Simple ⇄ Advanced feel like a dead
+ * new one is completely ready — which is what made Easy ⇄ Pro feel like a dead
  * tap rather than a toggle. This page needs ~1.3s warm (a market list + status read, then
  * a wave of on-chain pricer simulations that can only start once the list is in).
  *

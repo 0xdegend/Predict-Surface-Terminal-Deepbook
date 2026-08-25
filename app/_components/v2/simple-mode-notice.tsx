@@ -24,7 +24,7 @@ import { LuX } from 'react-icons/lu';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { useTradeViewStore } from '@/lib/store/trade-view-store';
 import { visitorKind } from '@/lib/store/visitor';
-import { TRADE_MODE_ICON } from './trade-mode';
+import { TRADE_MODE_ICON, TRADE_MODE_LABEL } from './trade-mode';
 import { V2_SIMPLE_ENABLED } from '@/config/predict';
 
 export function SimpleModeNotice() {
@@ -49,7 +49,7 @@ export function SimpleModeNotice() {
             pushes the chart down, so small screens get the headline alone; `truncate`
             is the backstop for a narrow phone or a large text-size setting. */}
         <p className="min-w-0 flex-1 truncate text-[12.5px] text-text-2">
-          <span className="font-semibold text-text-1">Simple mode is live.</span>
+          <span className="font-semibold text-text-1">{TRADE_MODE_LABEL.simple} mode is live.</span>
           <span className="hidden sm:inline"> Up or down on a timed round, in two taps.</span>
         </p>
         <Link

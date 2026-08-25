@@ -87,7 +87,7 @@ export function ExperienceModal() {
   const chosen = useTradeViewStore((s) => s.chosen);
   const choose = useTradeViewStore((s) => s.choose);
   // Phones are never asked: the server already lands them on simple mode, and a phone
-  // that reaches /v2 only got here by CHOOSING Advanced — asking "which experience?"
+  // that reaches /v2 only got here by CHOOSING Pro — asking "which experience?"
   // on top of the one they just picked is a question with no right answer. Matches the
   // app's mobile breakpoint (below lg the nav becomes the bottom dock).
   const phone = useMediaQuery('(max-width: 1023px)');

@@ -335,7 +335,7 @@ export function SimpleScreen({
 
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-3 py-4 sm:px-5">
-      {/* No Simple/Advanced switch here — desktop has it in the header, mobile in the
+      {/* No Easy/Pro switch here — desktop has it in the header, mobile in the
           dock's More sheet. Kept off BOTH trade screens deliberately: leaving it on this
           one would mean switching happens in a different place depending on which screen
           you're standing on, and you could never get back the way you came. */}
