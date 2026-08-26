@@ -9,11 +9,12 @@
  */
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { LuArrowRight, LuCircleCheck, LuSparkles } from 'react-icons/lu';
+import { useAutopilotStore } from '@/lib/store/autopilot-store';
+import { LuArrowRight, LuCircleCheck, LuMessageSquareText, LuRotateCcw } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
 import type { PresetId } from '@/lib/autopilot/presets';
-import { GAP_ORDER, type ResolvedSetup, type SetupGap, type SetupIntent, emptyIntent, mergeIntents, missingFrom, resolveSetup } from '@/lib/autopilot/setup-parser';
+import { GAP_ORDER, type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
 import { readSetup } from '@/lib/autopilot/read-setup';
 
 const OPENERS = ['Keep it safe with $25', 'Balanced, $50 for an hour', 'Go bold with $100', 'Careful, $20, half an hour'];
@@ -36,12 +37,6 @@ const GAP_LABEL: Record<SetupGap, string> = { style: 'Style', budget: 'Budget', 
 
 /** Composer height cap, matching the co-pilot chat: roughly three lines, then scroll. */
 const MAX_INPUT_H = 76;
-
-interface Turn {
-  id: number;
-  who: 'kelly' | 'trader';
-  text: string;
-}
 
 /**
  * Build Kelly's acknowledgement from what the last reply actually taught her. Used when
@@ -91,15 +86,32 @@ function listWords(xs: string[]): string {
 export function KellySetupCard({
   current,
   onApply,
+  onStart,
+  startIssue,
 }: {
   current: { budgetUsd: number; perTradeUsd: number; armDurationMs: number };
   onApply: (r: ResolvedSetup) => void;
+  /** Begin the run from the conversation. Runs the SAME path as the Start button, which
+   *  ends at the arm confirm: that dialog is where watch-vs-live and the funding route
+   *  are chosen, and it is the last stop before real money, so a typed word opens it
+   *  rather than stepping around it. */
+  onStart?: () => void;
+  /** Why starting is blocked right now (the panel's own arm check), so Kelly can say it
+   *  in words instead of the trader typing "start" into silence. */
+  startIssue?: string | null;
 }) {
-  const [intent, setIntent] = useState<SetupIntent>(() => emptyIntent());
-  const [turns, setTurns] = useState<Turn[]>([]);
+  // The conversation lives in the store, not here: local state was thrown away every
+  // time the trader walked to another tab and back. See SetupChat in the store for why
+  // it reads straight from there rather than mirroring into local state.
+  const turns = useAutopilotStore((s) => s.setupChat.turns);
+  const intent = useAutopilotStore((s) => s.setupChat.intent);
+  const push = useAutopilotStore((s) => s.pushSetupTurn);
+  const setIntent = useAutopilotStore((s) => s.setSetupIntent);
+  const resetChat = useAutopilotStore((s) => s.resetSetupChat);
+  // The draft stays local on purpose: a half-typed word is not worth persisting, and
+  // restoring one would put words in the box that the trader did not leave there.
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const nextId = useRef(1);
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -123,15 +135,33 @@ export function KellySetupCard({
     el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_H)}px`;
   }, [text]);
 
-  function push(who: Turn['who'], t: string) {
-    setTurns((prev) => [...prev, { id: nextId.current++, who, text: t }]);
-  }
-
   async function send(raw: string) {
     const message = raw.trim();
     if (!message || busy) return;
     setText('');
     push('trader', message);
+
+    // "start" is a COMMAND, not a description of a run, and it is answered here: before
+    // the reader, by a rule, with no model anywhere in the path. Arming spends money, so
+    // what triggers it must never depend on what a model made of the sentence.
+    //
+    // Kelly still refuses on an unfinished setup, which is the same promise she keeps
+    // everywhere else in this card: she never supplies a number the trader did not pick,
+    // and "start" is not permission to invent the missing ones.
+    if (wantsStart(message)) {
+      if (gaps.length > 0) {
+        push('kelly', `Not yet, there's still one thing I need. ${GAP_QUESTION[gaps[0]]}`);
+        return;
+      }
+      if (startIssue) {
+        push('kelly', `I can't start yet: ${lowerFirst(startIssue)}.`);
+        return;
+      }
+      push('kelly', "On it. Confirm the plan and I'll start.");
+      onStart?.();
+      return;
+    }
+
     setBusy(true);
     try {
       const read = await readSetup({
@@ -155,7 +185,7 @@ export function KellySetupCard({
       if (ack) lines.push(ack);
       else lines.push("I didn't catch that one.");
       if (nextGaps.length > 0) lines.push(GAP_QUESTION[nextGaps[0]]);
-      else lines.push("That's everything. Check the plan and press Start when you're ready.");
+      else lines.push("That's everything. Check the plan, then say \u201cstart\u201d whenever you're ready.");
       push('kelly', lines.join(' '));
 
       if (nextGaps.length === 0) onApply(resolveSetup(merged, current));
@@ -165,8 +195,7 @@ export function KellySetupCard({
   }
 
   function restart() {
-    setIntent(emptyIntent());
-    setTurns([]);
+    resetChat();
     setText('');
   }
 
@@ -183,7 +212,7 @@ export function KellySetupCard({
         />
         <div className="min-w-0 flex-1">
           <p className="eyebrow flex items-center gap-1.5">
-            <LuSparkles size={12} className="text-accent" /> Set it up for me
+            <LuMessageSquareText size={12} className="text-accent" /> Set it up for me
           </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
             Tell me how you want to play it, in your own words. I&rsquo;ll ask about anything you leave out.
@@ -193,8 +222,9 @@ export function KellySetupCard({
           <button
             type="button"
             onClick={restart}
-            className="flex-none rounded-md px-2 py-1 text-[11px] text-text-3 transition-colors hover:text-text-1"
+            className="glass-inset flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1"
           >
+            <LuRotateCcw size={12} className="flex-none" />
             Start over
           </button>
         )}
@@ -287,7 +317,7 @@ export function KellySetupCard({
 
       {/* Openers before the first message, then answers to whatever Kelly just asked. */}
       <div className="flex flex-wrap gap-1.5">
-        {(turns.length === 0 ? OPENERS : openGap ? GAP_CHIPS[openGap] : []).map((s) => (
+        {(turns.length === 0 ? OPENERS : openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : []).map((s) => (
           <button
             key={s}
             type="button"
@@ -303,7 +333,8 @@ export function KellySetupCard({
       {done ? (
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
           <LuCircleCheck size={12} className="mt-px flex-none" />
-          Your settings are loaded. The plan is on the right, and nothing runs until you press Start.
+          Your settings are loaded and the plan is on the right. Say &ldquo;start&rdquo; when you want it to
+          begin, and nothing runs until you confirm.
         </p>
       ) : (
         <p className="text-[11px] leading-relaxed text-text-3">
@@ -313,6 +344,11 @@ export function KellySetupCard({
       )}
     </div>
   );
+}
+
+/** Drop a sentence-cased blocker into the middle of one of Kelly's own sentences. */
+function lowerFirst(t: string): string {
+  return t.charAt(0).toLowerCase() + t.slice(1);
 }
 
 /** The value shown in a "so far" slot, or null while it is still unknown. */

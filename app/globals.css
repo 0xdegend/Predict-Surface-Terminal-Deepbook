@@ -1393,3 +1393,144 @@ select:focus-visible,
     transform: translateY(0.75px) scale(1.06);
   }
 }
+
+/* ── Autopilot plan phases ───────────────────────────────────────────────────
+   Drives the four hand-authored glyphs in app/_components/v2/autopilot/plan-card.tsx.
+
+   All timing lives here, on purpose, for the same reason the nav icons do it: four
+   glyphs animating on four schedules would read as four toys. They share ONE 8s cycle
+   and differ only in WHAT moves, and the card passes each phase a 2s-larger
+   `animation-delay` so the highlight walks down the list in order. The card performs the
+   sequence it is describing.
+
+   This is the app's one piece of idle motion, and it earns the exception by being the
+   content rather than chrome around it. Kept slow, low-contrast, and confined to a
+   quarter of the cycle per phase so it can never compete with a live number elsewhere
+   on the page. Everything below the resting styles sits inside `no-preference`, so a
+   trader who has asked for less motion gets the same illustration, fully drawn and
+   completely still.
+
+   Every drawn path carries pathLength="1": one dash of length 1 covers the whole stroke
+   whatever the geometry measures, so no hardcoded dash length can drift out of date. */
+.plan-step-dot {
+  color: var(--text-3);
+  background-color: transparent;
+}
+.plan-ring {
+  /* Invisible at rest ON PURPOSE: the watch glyph's two static rings are the icon, and
+     this one only exists to ride outward over them. An earlier cut had no statics and
+     rested this at 0.4, which meant the glyph was a lone dot for 84% of the cycle and
+     for every trader with reduced motion on. */
+  opacity: 0;
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+.plan-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.plan-bar {
+  transform-box: view-box;
+  /* The rects' shared bottom edge, so they grow UP off the baseline rather than
+     out of their own middles. */
+  transform-origin: 12px 18.5px;
+}
+.plan-hand {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* The dot lights while its phase is the one being described, then hands over. */
+  .plan-step-dot {
+    animation: planStepOn 8s linear infinite;
+  }
+  @keyframes planStepOn {
+    0%,
+    14% {
+      color: var(--accent);
+      background-color: var(--accent-soft);
+    }
+    26%,
+    100% {
+      color: var(--text-3);
+      background-color: transparent;
+    }
+  }
+
+  /* watch — pulse. Rings push out of a still centre: listening, not hunting. */
+  .plan-ring {
+    animation: planPulse 8s ease-out infinite;
+  }
+  @keyframes planPulse {
+    0% {
+      opacity: 0;
+      transform: scale(0.35);
+    }
+    4% {
+      opacity: 0.9;
+    }
+    16%,
+    100% {
+      opacity: 0;
+      transform: scale(1.3);
+    }
+  }
+
+  /* pick — draw. The crosshair holds still and the check writes itself across it. */
+  .plan-draw {
+    animation: planDraw 8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+  @keyframes planDraw {
+    0%,
+    4% {
+      stroke-dashoffset: 1;
+    }
+    16%,
+    96% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: 1;
+    }
+  }
+
+  /* stake — lift. Three stakes rise off the baseline on a stagger. */
+  .plan-bar {
+    animation: planLift 8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+  @keyframes planLift {
+    0% {
+      transform: scaleY(0.15);
+      opacity: 0.3;
+    }
+    16%,
+    96% {
+      transform: scaleY(1);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleY(0.15);
+      opacity: 0.3;
+    }
+  }
+
+  /* stop — turn. One hand sweeps the dial and holds short of the top, which reads as
+     time running out rather than time passing. It closes the last 30deg at the end of
+     the cycle so the reset lands on 360 (visually identical to 0) and never snaps. */
+  .plan-hand {
+    animation: planHand 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes planHand {
+    0% {
+      transform: rotate(0deg);
+    }
+    16%,
+    94% {
+      transform: rotate(330deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+}

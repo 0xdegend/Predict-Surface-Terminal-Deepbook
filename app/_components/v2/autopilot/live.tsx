@@ -407,7 +407,11 @@ function LivePriceTile({ spot, watching }: { spot: number | null; watching: numb
  * there IS a track record costs nothing and buys back the top of the page.
  */
 export function StatBand({ spot, watching, history }: { spot: number | null; watching: number; history: RunResult[] }) {
-  if (history.length === 0) return <LivePriceTile spot={spot} watching={watching} />;
+  // All four tiles, always. This used to collapse to the price tile alone until a run
+  // had been saved, which hid the win rate and the P&L from exactly the person deciding
+  // whether to try this: someone with no runs yet. The tiles were already written for
+  // the empty case ("$0.00", "none yet", a dash for an undefined rate), so the early
+  // return was doing nothing but taking the row away.
   const net = history.reduce((a, r) => a + r.realizedPnlUsd, 0);
   const wins = history.reduce((a, r) => a + r.wins, 0);
   const losses = history.reduce((a, r) => a + r.losses, 0);

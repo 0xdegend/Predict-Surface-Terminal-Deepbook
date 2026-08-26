@@ -7,13 +7,11 @@
  * Split out of autopilot-panel.tsx, which had grown past 2,400 lines. No behaviour
  * change: these are the same components, moved.
  */
-import Image from 'next/image';
 import type { IconType } from 'react-icons';
-import { LuChevronDown, LuCircleCheck, LuFlame, LuScale, LuShieldCheck, LuSlidersHorizontal, LuSparkles, LuTrendingDown, LuTrendingUp } from 'react-icons/lu';
-import { MASCOT_SRC } from '@/lib/mascot';
+import { LuChevronDown, LuCircleCheck, LuFlame, LuMessageSquare, LuScale, LuShieldCheck, LuSlidersHorizontal, LuTrendingDown, LuTrendingUp } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
-import { type AutopilotPreset, PRESETS, type PresetId, planSentence } from '@/lib/autopilot/presets';
+import { type AutopilotPreset, PRESETS, type PresetId } from '@/lib/autopilot/presets';
 import { type Limits, ModeTab, type Rules, type SetupMode } from './shared';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -121,9 +119,12 @@ function NumField({
 export function SetupModeTabs({ mode, onMode }: { mode: SetupMode; onMode: (m: SetupMode) => void }) {
   return (
     <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-white/4 p-1">
+      {/* A chat bubble, not sparkles. The pair has to read as two ways of doing the same
+          job, and sparkles says "AI magic" where the sibling says "controls". A bubble
+          and a set of sliders are both plain descriptions of an interface. */}
       <ModeTab
         active={mode === 'auto'}
-        icon={LuSparkles}
+        icon={LuMessageSquare}
         label="Auto"
         sub="Tell Kelly what you want"
         onClick={() => onMode('auto')}
@@ -372,53 +373,6 @@ function MoneyField({
 }
 
 /* ------------------------------ setup: plan ------------------------------ */
-
-export function PlanLine({
-  rules,
-  limits,
-  live,
-  presetId,
-  avatar = true,
-}: {
-  rules: Rules;
-  limits: Limits;
-  /** null = the mode has not been chosen yet, so the plan stays quiet about it. */
-  live: boolean | null;
-  presetId: PresetId | null;
-  /** Drop the inline fox where the surrounding shell already has one (the arm
-   *  confirm peeks Kelly into its corner, so a second one inside would double her). */
-  avatar?: boolean;
-}) {
-  const preset = presetId ? PRESETS.find((p) => p.id === presetId) : null;
-  return (
-    <div className="glass-inset flex items-start gap-3 border-l-2 border-(--accent-line) p-3.5">
-      {avatar && (
-        <Image
-          src={MASCOT_SRC.thinking}
-          alt=""
-          width={32}
-          height={32}
-          aria-hidden
-          className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
-        />
-      )}
-      <div className="min-w-0">
-        <p className="eyebrow mb-1 flex items-center gap-1.5">
-          The plan
-          <span className="rounded-full bg-white/6 px-1.5 py-px text-[9.5px] font-medium text-text-2">
-            {preset ? preset.name : 'Custom'}
-          </span>
-        </p>
-        <p className="text-[13px] leading-relaxed text-text-1">{planSentence(rules, limits)}</p>
-        {live != null && (
-          <p className="mt-1 text-[11px] leading-relaxed text-text-3">
-            {live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 /* --------------------------- setup: customize ---------------------------- */
 

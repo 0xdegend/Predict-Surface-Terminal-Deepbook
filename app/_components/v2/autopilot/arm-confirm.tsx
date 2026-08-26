@@ -13,7 +13,7 @@ import { Modal } from '@/app/_components/ui/modal';
 import { num } from '@/lib/format';
 import type { PresetId } from '@/lib/autopilot/presets';
 import { type FundingMode, type Limits, ModeTab, type Rules } from './shared';
-import { PlanLine } from './setup';
+import { PlanCard } from './plan-card';
 
 function hoursMins(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 60_000));
@@ -110,7 +110,7 @@ export function ArmConfirmModal({
       }
     >
       <div className="flex flex-col gap-4">
-        <PlanLine rules={rules} limits={limits} live={live} presetId={presetId} avatar={false} />
+        <PlanCard rules={rules} limits={limits} live={live} presetId={presetId} avatar={false} variant="compact" />
 
         <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-white/4 p-1">
           <ModeTab

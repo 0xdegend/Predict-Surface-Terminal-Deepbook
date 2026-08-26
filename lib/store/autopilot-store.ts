@@ -26,6 +26,40 @@ import {
   type TradeSide,
 } from '@/lib/autopilot/policy';
 import { presetPatch, DEFAULT_PRESET } from '@/lib/autopilot/presets';
+import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
+
+/** One line of Kelly's Auto-mode setup conversation. */
+export interface SetupTurn {
+  id: number;
+  who: 'kelly' | 'trader';
+  text: string;
+}
+
+/**
+ * The Auto-mode conversation, kept in the store rather than in the card's own state.
+ *
+ * It used to be local `useState`, so walking to Portfolio and back threw away a setup
+ * the trader had just spent four replies building. It lives here because the store is
+ * already the persisted one, and because being the single source of truth avoids the
+ * race a local mirror would have: the store uses `skipHydration` (the panel rehydrates
+ * after mount), so a component seeding itself from `useState` would always read the
+ * pre-hydration value and a mirror effect would write its empty state back over the
+ * saved one. Reading straight from the store means rehydration is just a re-render.
+ *
+ * This is deliberately ONE conversation, not a history. Past chats are their own
+ * feature; this only promises that leaving the screen does not wipe what is on it.
+ */
+export interface SetupChat {
+  turns: SetupTurn[];
+  /** What Kelly has understood so far, so the slots and gaps survive the trip too. */
+  intent: SetupIntent;
+  /** Monotonic, so React keys stay stable across a rehydrate. */
+  nextId: number;
+}
+
+function freshSetupChat(): SetupChat {
+  return { turns: [], intent: emptyIntent(), nextId: 1 };
+}
 
 export type AutopilotStatus = 'idle' | 'armed' | 'stopped';
 
@@ -181,6 +215,34 @@ const noopStorage: StateStorage = {
   removeItem: () => undefined,
 };
 
+/**
+ * True once the persisted blob has been READ. Until then this store must not write.
+ *
+ * THE HOLE THIS CLOSES. `skipHydration: true` (see below) means the store boots at its
+ * defaults, `history: []` among them, and waits for the panel to call `rehydrate()` in
+ * a mount effect. But `persist` writes on EVERY `set()`, so anything that changed state
+ * inside that window flushed the empty defaults straight over a trader's saved runs.
+ *
+ * The window is not theoretical. Every effect inside `useAutopilotEngine` (called at the
+ * top of the panel) runs before the panel's own rehydrate effect, and a store-file edit
+ * during development hot-replaces this module, rebuilding the store at defaults while
+ * the mounted panel's `[]` effect does not run again. One `set()` after either and the
+ * archive is gone, with nothing in the code that looks like it deletes anything.
+ *
+ * Refusing writes until the read has happened makes the ordering irrelevant: the worst
+ * a premature `set()` can now do is not be saved, which the next real one fixes.
+ */
+let hydrated = false;
+
+const browserStorage: StateStorage = {
+  getItem: (name) => window.localStorage.getItem(name),
+  setItem: (name, value) => {
+    if (!hydrated) return; // never write over a blob we have not read
+    window.localStorage.setItem(name, value);
+  },
+  removeItem: (name) => window.localStorage.removeItem(name),
+};
+
 let seq = 0;
 const nextId = (now: number) => `${now}-${seq++}`;
 
@@ -305,7 +367,17 @@ interface AutopilotState {
    *  place as its late trades settle (while the tab stays open). */
   history: RunResult[];
 
+  // --- Auto-mode setup conversation (persisted) ---
+  setupChat: SetupChat;
+
   // --- settings actions ---
+  /** Append one line to the setup conversation. */
+  pushSetupTurn: (who: SetupTurn['who'], text: string) => void;
+  /** Replace what Kelly has understood so far. */
+  setSetupIntent: (intent: SetupIntent) => void;
+  /** Wipe the conversation (the card's "Start over"). */
+  resetSetupChat: () => void;
+
   setRules: (patch: Partial<AutopilotRules>) => void;
   setLimits: (patch: Partial<AutopilotLimits>) => void;
   setDryRun: (on: boolean) => void;
@@ -367,6 +439,18 @@ export const useAutopilotStore = create<AutopilotState>()(
       log: [],
       interruptedByReload: false,
       history: [],
+      setupChat: freshSetupChat(),
+
+      pushSetupTurn: (who, text) =>
+        set((s) => ({
+          setupChat: {
+            ...s.setupChat,
+            turns: [...s.setupChat.turns, { id: s.setupChat.nextId, who, text }],
+            nextId: s.setupChat.nextId + 1,
+          },
+        })),
+      setSetupIntent: (intent) => set((s) => ({ setupChat: { ...s.setupChat, intent } })),
+      resetSetupChat: () => set({ setupChat: freshSetupChat() }),
 
       setRules: (patch) => set((s) => ({ rules: { ...s.rules, ...patch } })),
       setLimits: (patch) => set((s) => ({ limits: { ...s.limits, ...patch } })),
@@ -540,7 +624,7 @@ export const useAutopilotStore = create<AutopilotState>()(
       name: 'skew-autopilot',
       version: 1,
       storage: createJSONStorage(() =>
-        typeof window !== 'undefined' && window.localStorage ? window.localStorage : noopStorage,
+        typeof window !== 'undefined' && window.localStorage ? browserStorage : noopStorage,
       ),
       // Persist the settings, the Results archive, AND the live run (so a reload shows
       // it + its open trades). _resumeAfterReload enforces that it never resumes trading.
@@ -553,10 +637,15 @@ export const useAutopilotStore = create<AutopilotState>()(
         run: s.run,
         stopReason: s.stopReason,
         log: s.log,
+        setupChat: s.setupChat,
       }),
       // After the persisted state loads, downgrade any armed run to stopped so nothing
       // trades on its own after a refresh.
       onRehydrateStorage: () => (state) => {
+        // Unconditionally, and BEFORE the set() below: the read has happened either way,
+        // and leaving this false after a failed read would silently stop persisting for
+        // the rest of the session.
+        hydrated = true;
         state?._resumeAfterReload();
       },
       // The panel SSRs, so rehydrating automatically would mismatch (server renders the

@@ -31,7 +31,6 @@ import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
 import { useV2Markets } from './use-v2-markets';
 import { useV2Pricers } from './use-v2-pricers';
 import { useV2Spot } from './use-v2-spot';
-import { useNow } from './use-now';
 import { useBtcInsights, type BtcInsights } from './use-btc-insights';
 import { usePredictAccountV2 } from './use-predict-account-v2';
 import { respondToIntent, type BetCandidate } from '@/lib/copilot/respond';
@@ -42,9 +41,7 @@ import {
   gateTrade,
   settleOutcome,
   type AutopilotHealth,
-  type AutopilotRuntime,
   type GateCode,
-  type GateResult,
   type ProposedTrade,
   type TradeSide,
 } from '@/lib/autopilot/policy';
@@ -140,26 +137,6 @@ export interface AutopilotPerf {
   winRate: number | null;
 }
 
-/**
- * What Autopilot would do RIGHT NOW, if it were armed.
- *
- * Produced by the same three steps the armed tick uses (filter to the trader's
- * windows, ask the recommender for its best-value pick, run `gateTrade`), so the
- * pre-arm preview cannot drift from the real behaviour. That mattered enough to reuse
- * the pipeline rather than re-derive it: a preview that disagrees with the engine is
- * worse than no preview.
- *
- * Note the engine picks ONE bet per tick and gates it, so this is a single would-be
- * trade, not a count of "how many markets qualify". No such count exists in the engine,
- * and inventing one here would be describing behaviour the app does not have.
- */
-export interface AutopilotPreview {
-  /** Kelly's current best pick, or null when she has nothing to offer at all. */
-  bet: { marketId: string; strikePrice: number | null; isUp: boolean; prob: number; expiry: number; leverage: number } | null;
-  /** Whether that pick clears the trader's rules. `code` says why not. */
-  gate: GateResult;
-}
-
 export interface AutopilotEngineView {
   /** Markets we can currently price (Kelly's universe this tick). */
   candidates: BetCandidate[];
@@ -170,8 +147,6 @@ export interface AutopilotEngineView {
   positions: AutopilotOpenView[];
   /** The run's live performance summary. */
   perf: AutopilotPerf;
-  /** What would happen if you armed right now. Null until there is enough to say. */
-  preview: AutopilotPreview | null;
 }
 
 /**
@@ -220,14 +195,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
   );
 
   const status = useAutopilotStore((s) => s.status);
-  // Subscribed (not read through getState like the tick does) because the preview has
-  // to recompute the moment the trader changes a rule.
-  const previewRules = useAutopilotStore((s) => s.rules);
-  const previewLimits = useAutopilotStore((s) => s.limits);
-  // A coarse clock for the preview. The memo has to stay pure (react-hooks/purity), so
-  // `now` comes in as a dep rather than being read inside it. 5s is plenty: this is a
-  // "what would happen if you armed" read, not a live quote.
-  const previewNow = useNow(5_000);
   // Live-PnL inputs: the open positions + the run's realized tape (subscribed so the
   // marked view re-renders as the store changes, separate from the 6s tick).
   const open = useAutopilotStore((s) => s.run.open);
@@ -479,50 +446,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
 
   /** Mirrors the armed tick's pick-and-gate, with an untouched runtime (nothing has
    *  fired yet), so the pacing gates cannot report a cooldown that does not exist. */
-  const preview = useMemo<AutopilotPreview | null>(() => {
-    if (candidates.length === 0) return null;
-    const now = previewNow;
-    const allowed = candidates.filter((c) => previewRules.tenors.includes(classifyTenor(c.market.expiry - now)));
-    if (allowed.length === 0) return { bet: null, gate: { allow: false, code: 'tenor_not_allowed' } };
-
-    const reply = respondToIntent(
-      { kind: 'best_value' },
-      { insights: insights ?? null, candidates: allowed, now, spot, closes: candles?.closes ?? null, selection: null },
-    );
-    const bet = reply.bet;
-    if (!bet || !(bet.prob > 0)) return null;
-
-    const proposed: ProposedTrade = {
-      kind: 'binary',
-      marketId: bet.marketId,
-      expiry: bet.expiry,
-      prob: bet.prob,
-      edge: 0,
-      side: bet.isUp ? 'up' : 'down',
-      leverage: bet.leverage ?? 1,
-      sizeUsd: previewLimits.perTradeUsd,
-    };
-    const idleRuntime: AutopilotRuntime = {
-      armedAt: now,
-      spentUsd: 0,
-      tradeCount: 0,
-      openCount: 0,
-      consecutiveLosses: 0,
-      lastTradeAt: null,
-      firedMarkets: {},
-    };
-    return {
-      bet: {
-        marketId: bet.marketId,
-        strikePrice: bet.strikePrice ?? null,
-        isUp: bet.isUp,
-        prob: bet.prob,
-        expiry: bet.expiry,
-        leverage: bet.leverage ?? 1,
-      },
-      gate: gateTrade(proposed, previewRules, previewLimits, idleRuntime, now),
-    };
-  }, [candidates, previewRules, previewLimits, insights, spot, candles, previewNow]);
 
   return {
     candidates,
@@ -530,6 +453,5 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     ready: candidates.length > 0 && (candles?.closes?.length ?? 0) > 0,
     positions,
     perf,
-    preview,
   };
 }

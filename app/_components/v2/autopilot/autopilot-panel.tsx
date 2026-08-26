@@ -42,9 +42,9 @@ import { useAutopilotStore } from '@/lib/store/autopilot-store';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets';
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
-import { NextPick } from './next-pick';
 import { type FundingMode, type SetupMode } from './shared';
-import { CustomizeSection, MoneyCard, PlanDetails, PlanLine, PresetPicker, SetupModeTabs } from './setup';
+import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs } from './setup';
+import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
 import { MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunningModeBanner, StatBand, StatusPill, StoppedBanner } from './live';
@@ -83,11 +83,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const [view, setView] = useState<'cockpit' | 'results'>('cockpit');
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false); // arm-time confirm (live only)
-  // Auto (tell Kelly) vs Manual (set the controls yourself). Null means "not chosen
-  // yet", which resolves below off the track record rather than being pinned at first
-  // render: `history` rehydrates from storage in an effect, so a plain useState seed
-  // would always read as a first-time trader.
-  const [setupModeChoice, setSetupModeChoice] = useState<SetupMode | null>(null);
+  // Auto (tell Kelly) vs Manual (set the controls yourself). Auto is the landing tab for
+  // everyone, not just first-timers: describing a run in a sentence is the shorter path
+  // even when you already know the controls, and Manual is one tap away. This used to
+  // resolve off `history` (Auto for a first run, Manual once you had a track record),
+  // which meant the people most able to judge the feature stopped being shown it.
+  const [setupMode, setSetupMode] = useState<SetupMode>('auto');
 
   // Load the persisted run + results after mount (see skipHydration in the store): a
   // reload restores an in-progress run's open trades, and _resumeAfterReload lands it
@@ -99,10 +100,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const armed = status === 'armed';
   const stopped = status === 'stopped';
   const live = !dryRun; // "live trading" vs "watch mode"
-  // A first-time trader gets Auto (say it in words); anyone with runs behind them gets
-  // the controls straight away. Either way one tap switches.
-  const setupMode: SetupMode = setupModeChoice ?? (history.length === 0 ? 'auto' : 'manual');
-
   const timeLeftMs = armed ? Math.max(0, limits.armDurationMs - (now - run.armedAt)) : limits.armDurationMs;
   const openCount = useMemo(() => run.open.filter((p) => p.expiry > now).length, [run.open, now]);
 
@@ -308,13 +305,15 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           confirm, not the setup. */}
       {!armed && (
         <div className="mb-4 flex flex-col gap-4">
-          <SetupModeTabs mode={setupMode} onMode={setSetupModeChoice} />
+          <SetupModeTabs mode={setupMode} onMode={setSetupMode} />
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
             <div className="flex min-w-0 flex-col gap-4">
               {setupMode === 'auto' ? (
                 <KellySetupCard
                   current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
                   onApply={applySetup}
+                  onStart={handleStart}
+                  startIssue={armIssue}
                 />
               ) : (
                 <>
@@ -339,8 +338,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
                 scroll away exactly while you are changing what it describes.
                 `live={null}` because the mode has not been chosen yet at this point. */}
             <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
-              <PlanLine rules={rules} limits={limits} live={null} presetId={activePreset} />
-              <NextPick preview={engine.preview} now={now} />
+              <PlanCard rules={rules} limits={limits} live={null} presetId={activePreset} />
               {setupMode === 'manual' && <PlanDetails rules={rules} limits={limits} />}
             </div>
           </div>
@@ -378,7 +376,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           which on a phone meant a screenful of plan before a single live number. */}
       {armed && (
         <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <PlanLine rules={rules} limits={limits} live={null} presetId={activePreset} />
+          <PlanCard rules={rules} limits={limits} live={null} presetId={activePreset} />
           <RunningModeBanner live={live} />
         </div>
       )}

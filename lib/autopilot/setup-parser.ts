@@ -194,6 +194,38 @@ export function isComplete(intent: SetupIntent): boolean {
   return missingFrom(intent).length === 0;
 }
 
+/* ------------------------------ "go" ------------------------------------- */
+
+/**
+ * Does this reply mean START THE RUN, rather than describe one?
+ *
+ * Arming is a money path, so this is a rule and never a model call: the same standing
+ * line the rest of this file holds, that the LLM reads language and never decides. A
+ * false positive here would arm a run off a sentence that was only describing one.
+ *
+ * WHOLE-MESSAGE MATCH, on purpose. "start" alone is a command; "start with $50" is a
+ * budget, "start over" is the reset, and a substring test would fire on both. The
+ * message is stripped of leading agreement ("ok", "yes", "sure") and trailing politeness
+ * ("now", "please") first, so "ok, start please" still counts.
+ *
+ * Nothing here may overlap the STYLE slang above: "send it", "go big" and "yolo" all
+ * mean BOLD to `parseSetup`, and stealing them for the start command would turn a
+ * description of how to trade into an instruction to begin trading.
+ */
+const START_PHRASE =
+  /^(?:go|go ahead|start|start it|start it up|start trading|start the run|start autopilot|begin|begin trading|run it|kick it off|kick off|fire it up|let'?s go|do it)$/;
+
+export function wantsStart(input: string): boolean {
+  const cleaned = String(input ?? '')
+    .toLowerCase()
+    .replace(/[.!?,]+/g, ' ')
+    .replace(/^\s*(?:ok(?:ay)?|alright|right|yes|yep|yeah|sure|cool)\s+/, '')
+    .replace(/\s+(?:now|please|then)\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return START_PHRASE.test(cleaned);
+}
+
 /**
  * Fold a later turn onto an earlier one. A turn only overrides what it actually names,
  * so "cautious" then "$50" then "for an hour" builds up across three replies, and a

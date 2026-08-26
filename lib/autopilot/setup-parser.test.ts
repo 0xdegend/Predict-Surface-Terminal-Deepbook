@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSetup, resolveSetup, missingFrom, isComplete, mergeIntents, emptyIntent, sanitizeIntent } from './setup-parser';
+import { parseSetup, resolveSetup, missingFrom, isComplete, mergeIntents, emptyIntent, sanitizeIntent, wantsStart } from './setup-parser';
 
 // The panel's current money/time, used as the fallback when a phrase leaves a gap.
 const CURRENT = { budgetUsd: 25, perTradeUsd: 5, armDurationMs: 60 * 60_000 };
@@ -211,5 +211,42 @@ describe('sanitizeIntent', () => {
     const i = sanitizeIntent({ style: 'balanced' });
     expect(i.budgetUsd).toBeUndefined();
     expect(missingFrom(i)).toContain('budget');
+  });
+});
+
+describe('wantsStart', () => {
+  it('reads a plain go-ahead as the start command', () => {
+    for (const m of ['start', 'Start', 'start trading', 'start it', 'go', 'go ahead', 'begin', 'run it', "let's go", 'do it', 'fire it up']) {
+      expect(wantsStart(m)).toBe(true);
+    }
+  });
+
+  it('tolerates agreement in front and politeness behind', () => {
+    for (const m of ['ok start', 'Okay, start.', 'yes go ahead', 'sure, begin', 'start now', 'start please', 'Start it up!']) {
+      expect(wantsStart(m)).toBe(true);
+    }
+  });
+
+  it('never claims a sentence that is describing the run', () => {
+    // Each of these contains a start word and means something else entirely. A
+    // substring test would arm a run on every one of them.
+    for (const m of ['start with $50', 'I want to start trading with $100', 'start over', 'restart', 'when does it start?', 'go bold', 'go big', 'start small, $10']) {
+      expect(wantsStart(m)).toBe(false);
+    }
+  });
+
+  it('leaves the bold-style slang alone', () => {
+    // "send it" / "go big" / "yolo" are how a trader says BOLD. If start stole them,
+    // saying how you want to trade would begin trading.
+    for (const m of ['send it', 'send it, let it rip', 'go big', 'yolo', 'swing for it']) {
+      expect(wantsStart(m)).toBe(false);
+      expect(parseSetup(m).preset === 'bold' || !parseSetup(m).presetNamed).toBe(true);
+    }
+    expect(parseSetup('send it').preset).toBe('bold');
+    expect(parseSetup('go big').preset).toBe('bold');
+  });
+
+  it('handles junk without throwing', () => {
+    for (const m of ['', '   ', '!!!', '???']) expect(wantsStart(m)).toBe(false);
   });
 });
