@@ -172,6 +172,21 @@ export function StatusPill({ status, settling }: { status: 'idle' | 'armed' | 's
  * the run + its open trades are still here and settling, and that Autopilot only
  * paused PLACING new trades — one tap re-arms.
  */
+/**
+ * "Clearing this log in 8s", shown under the stop banner once a finished run is on its
+ * way out. It appears only after a quiet pause, so the countdown is never the first thing
+ * on screen when a run ends, and it says the number out loud rather than letting the
+ * dashboard vanish unannounced. The header's "Clear log" button makes it happen now.
+ */
+export function ClearingNote({ seconds }: { seconds: number | null }) {
+  if (seconds == null) return null;
+  return (
+    <span className="mt-1 text-[11px] leading-relaxed opacity-70">
+      Clearing this log in {seconds}s.
+    </span>
+  );
+}
+
 export function ReloadBanner({ settlingCount }: { settlingCount: number }) {
   return (
     <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-(--accent-line) bg-(--accent-soft) p-3.5 text-[12.5px] text-text-1">
@@ -196,7 +211,31 @@ export function ReloadBanner({ settlingCount }: { settlingCount: number }) {
  * guard) gets the warning tone. Either way, if trades are still open it reassures
  * that Autopilot has only stopped opening NEW trades and the rest settle on their own.
  */
-export function StoppedBanner({ reason, settlingCount }: { reason: StopReason | null; settlingCount: number }) {
+/**
+ * The "some trades are still running" line, built in JS rather than assembled out of
+ * inline ternaries in JSX.
+ *
+ * Two bugs came out of the JSX version at once. It rendered "1 tradestill open", because
+ * a JSX text node that both begins with a space and spans a line break loses that leading
+ * space, and the singular ternary next to it collapsed to an empty string with nothing to
+ * separate the words. It also read "it finishes on its own and land in your results",
+ * since only some of the verbs were switched for the singular. Neither is possible here.
+ */
+function settlingLine(n: number): string {
+  return n === 1
+    ? 'One trade is still open. Autopilot won\u2019t place any new ones, and it settles on its own and lands in your results.'
+    : `${n} trades are still open. Autopilot won\u2019t place any new ones, and they settle on their own and land in your results.`;
+}
+
+export function StoppedBanner({
+  reason,
+  settlingCount,
+  clearInSec,
+}: {
+  reason: StopReason | null;
+  settlingCount: number;
+  clearInSec?: number | null;
+}) {
   const attention = reason != null && stopReasonKind(reason) === 'attention';
   const headline =
     reason == null
@@ -213,13 +252,8 @@ export function StoppedBanner({ reason, settlingCount }: { reason: StopReason | 
       <Icon size={15} className="mt-px flex-none" />
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="font-medium">{headline}</span>
-        {settlingCount > 0 && (
-          <span className="text-[11.5px] leading-relaxed opacity-90">
-            {settlingCount} trade{settlingCount === 1 ? '' : 's'} still open. Autopilot won&rsquo;t place any new trades,
-            and {settlingCount === 1 ? 'it finishes' : 'they finish'} on {settlingCount === 1 ? 'its' : 'their'} own and
-            land in your results.
-          </span>
-        )}
+        {settlingCount > 0 && <span className="text-[11.5px] leading-relaxed opacity-90">{settlingLine(settlingCount)}</span>}
+        <ClearingNote seconds={clearInSec ?? null} />
       </div>
     </div>
   );

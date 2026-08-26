@@ -12,7 +12,7 @@ import { ReviewButton } from '@/app/_components/ticket/review-button';
 import { Modal } from '@/app/_components/ui/modal';
 import { num } from '@/lib/format';
 import type { PresetId } from '@/lib/autopilot/presets';
-import { type FundingMode, type Limits, ModeTab, type Rules } from './shared';
+import { type Limits, ModeTab, type Rules } from './shared';
 import { PlanCard } from './plan-card';
 
 function hoursMins(ms: number): string {
@@ -44,8 +44,8 @@ export function ArmConfirmModal({
   presetId,
   live,
   onSetLive,
-  fundingMode,
-  onSetFunding,
+  balanceUsd,
+  topUpUsd,
   sessionReady,
   sessionExpiresInMs,
   onEndSession,
@@ -62,8 +62,11 @@ export function ArmConfirmModal({
   presetId: PresetId | null;
   live: boolean;
   onSetLive: (on: boolean) => void;
-  fundingMode: FundingMode;
-  onSetFunding: (m: FundingMode) => void;
+  /** What is already in the trading account (DUSDC). */
+  balanceUsd: number;
+  /** What has to move in from the wallet before the run can cover its budget, or 0 when
+   *  the account already covers it. The panel does the arithmetic; this only reads it. */
+  topUpUsd: number;
   sessionReady: boolean;
   sessionExpiresInMs: number | null;
   onEndSession: () => Promise<void>;
@@ -74,8 +77,9 @@ export function ArmConfirmModal({
   onConfirm: () => void;
   error: string | null;
 }) {
-  // Reusing the account balance with a session already live needs no signature at all.
-  const noSignature = !live || (sessionReady && fundingMode === 'existing');
+  // A funded account with a session already live needs no signature at all.
+  const topUp = topUpUsd > 0;
+  const noSignature = !live || (sessionReady && !topUp);
   return (
     <Modal
       open={open}
@@ -87,6 +91,12 @@ export function ArmConfirmModal({
       mascot={arming ? 'confident' : 'thinking'}
       footer={
         <div className="flex items-center gap-2">
+          {/* Cancel sets the shape here and Start matches it (`size="sm"`), not the other
+              way round: a modal footer wants two of the same control in two colours, and
+              the ticket's full-width `lg` next to a quiet 12px button read as two
+              different kinds of thing. The `flex-1` wrapper that used to hold ReviewButton
+              is gone; the modal footer is `justify-end`, so it never had free space to
+              claim and the button was content-sized either way. */}
           <button
             type="button"
             onClick={onClose}
@@ -94,17 +104,15 @@ export function ArmConfirmModal({
           >
             Cancel
           </button>
-          <div className="flex-1">
-            <ReviewButton tone="up" onClick={onConfirm} disabled={!canConfirm || arming}>
-              {arming
-                ? noSignature
-                  ? 'Starting…'
-                  : 'Approve in wallet…'
-                : live
-                  ? 'Start trading'
-                  : 'Start watching'}
-            </ReviewButton>
-          </div>
+          <ReviewButton tone="up" size="sm" onClick={onConfirm} disabled={!canConfirm || arming}>
+            {arming
+              ? noSignature
+                ? 'Starting…'
+                : 'Approve in wallet…'
+              : live
+                ? 'Start trading'
+                : 'Start watching'}
+          </ReviewButton>
         </div>
       }
     >
@@ -131,24 +139,28 @@ export function ArmConfirmModal({
 
         {live ? (
           <>
-            <div className="flex flex-col gap-1.5">
-              <span className="eyebrow">Fund it with</span>
-              <div className="grid gap-1.5 sm:grid-cols-2">
-                <FundingOption
-                  active={fundingMode === 'deposit'}
-                  onClick={() => onSetFunding('deposit')}
-                  title={`Deposit $${num(limits.budgetUsd, 0)}`}
-                  desc="Moves the budget in first, so the run can't spend past it."
-                />
-                <FundingOption
-                  active={fundingMode === 'existing'}
-                  onClick={() => onSetFunding('existing')}
-                  title="Use account balance"
-                  // The old line ("Trade from your existing account balance") just said the
-                  // title again. This says the thing that actually differs from Deposit.
-                  desc={sessionReady ? "Uses what's already in there. No signature needed." : "Uses what's already in there."}
-                />
+            {/* Was a "Fund it with" pair of radio buttons: deposit the budget, or use the
+                account balance. Two clicks for a question with one right answer, asked of
+                someone who is one tap from spending money. The balance decides it, so the
+                balance is what gets shown. */}
+            <div className="glass-inset flex items-center justify-between gap-3 rounded-lg p-3">
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-medium text-text-1">Trading account</p>
+                {/* Naming both amounts reads as a stutter when they are the same number
+                    ("$25.00 moves in from your wallet to cover the $25"), which is the
+                    common case: an empty account. The budget is worth saying once, since
+                    the plan sentence above states the per-bet size but never the total. */}
+                <p className="mt-0.5 text-[11px] leading-relaxed text-text-3">
+                  {!topUp
+                    ? `Covers the $${num(limits.budgetUsd, 0)} budget, so nothing moves in.`
+                    : balanceUsd > 0
+                      ? `$${num(topUpUsd, 2)} more moves in to reach the $${num(limits.budgetUsd, 0)} budget.`
+                      : `Your $${num(limits.budgetUsd, 0)} budget moves in from your wallet.`}
+                </p>
               </div>
+              <span className="flex-none font-mono text-[15px] tabular-nums text-text-1">
+                ${num(balanceUsd, 2)}
+              </span>
             </div>
 
             {sessionReady && <SessionStatusRow expiresInMs={sessionExpiresInMs} onEndSession={onEndSession} />}
@@ -158,7 +170,9 @@ export function ArmConfirmModal({
               <span>
                 {noSignature
                   ? 'Instant trading is already on, so this starts with no signature. '
-                  : 'One signature turns on instant trading, then Kelly places bets with no wallet pop-ups. '}
+                  : topUp
+                    ? 'One signature moves the money in and turns on instant trading, then Kelly places bets with no wallet pop-ups. '
+                    : 'One signature turns on instant trading, then Kelly places bets with no wallet pop-ups. '}
                 It can only spend your trading-account balance, never withdraw, and you can stop any time.
               </span>
             </p>
@@ -262,37 +276,5 @@ function SessionStatusRow({
         </div>
       )}
     </div>
-  );
-}
-
-function FundingOption({
-  active,
-  onClick,
-  title,
-  desc,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex flex-col gap-1 rounded-lg border p-3 text-left transition-all duration-150 ${
-        active ? 'border-(--accent-line) bg-(--accent-soft)' : 'glass-inset border-transparent hover:border-white/10'
-      }`}
-    >
-      <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-text-1">
-        <span
-          className={`inline-block h-3 w-3 flex-none rounded-full border ${
-            active ? 'border-accent bg-accent' : 'border-white/25'
-          }`}
-        />
-        {title}
-      </span>
-      <span className="pl-4.5 text-[10.5px] leading-relaxed text-text-3">{desc}</span>
-    </button>
   );
 }

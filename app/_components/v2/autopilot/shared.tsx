@@ -1,7 +1,7 @@
 /**
  * Shared vocabulary for the Autopilot screens: the store-derived config types, the
- * funding/setup mode unions, the two signed-number formatters, and the one control
- * (ModeTab) that both the setup fork and the arm confirm use.
+ * setup-mode union, the two signed-number formatters, and the one control (ModeTab)
+ * that both the setup fork and the arm confirm use.
  *
  * Anything here is used by MORE THAN ONE of setup / live / results. Single-area helpers
  * deliberately live with their area instead, so this file stays a genuine crossroads
@@ -9,9 +9,6 @@
  */
 import type { IconType } from 'react-icons';
 import { useAutopilotStore } from '@/lib/store/autopilot-store';
-
-/** How the session is funded when arming LIVE trading (a per-run choice). */
-export type FundingMode = 'deposit' | 'existing';
 
 /** How the trader sets Autopilot up: say it in words, or work the controls. */
 export type SetupMode = 'auto' | 'manual';

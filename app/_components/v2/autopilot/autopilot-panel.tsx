@@ -33,7 +33,7 @@ import { ReviewButton } from '@/app/_components/ticket/review-button';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { useNow } from '@/lib/hooks/use-now';
 import { num } from '@/lib/format';
-import { toQuote } from '@/config/scale';
+import { fromQuote, toQuote } from '@/config/scale';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import { useAutopilotEngine } from '@/lib/hooks/use-autopilot-engine';
@@ -42,7 +42,8 @@ import { useAutopilotStore } from '@/lib/store/autopilot-store';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets';
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
-import { type FundingMode, type SetupMode } from './shared';
+import { topUpBase } from '@/lib/autopilot/funding';
+import { type SetupMode } from './shared';
 import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs } from './setup';
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
@@ -54,6 +55,20 @@ interface Props {
   markets: V2Market[];
   pricerSeeds: Record<string, LivePricer>;
 }
+
+/**
+ * A finished run clears itself, in two beats.
+ *
+ * First a quiet pause, so the last thing a trader sees when a run ends is the run and not
+ * a countdown. Then a visible countdown, because a dashboard that empties itself with no
+ * warning reads as a bug. Fifteen seconds in total, and the header's "Clear log" button
+ * still does it immediately for anyone who has already read enough.
+ *
+ * Nothing is lost when it goes: the run is in Results by then, with every trade and its
+ * digest. Only the rolling log itself is dropped.
+ */
+const CLEAR_QUIET_MS = 5_000;
+const CLEAR_COUNTDOWN_MS = 10_000;
 
 export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const acct = usePredictAccountV2(); // arming live trading approves the session key
@@ -78,7 +93,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const deleteResult = useAutopilotStore((s) => s.deleteResult);
   const clearHistory = useAutopilotStore((s) => s.clearHistory);
 
-  const [fundingMode, setFundingMode] = useState<FundingMode>('deposit');
   const [arming, setArming] = useState(false);
   const [view, setView] = useState<'cockpit' | 'results'>('cockpit');
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -96,6 +110,42 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   useEffect(() => {
     void useAutopilotStore.persist.rehydrate();
   }, []);
+
+  /**
+   * Clear a finished run on its own, so nobody has to press "Clear log" to get their setup
+   * screen back.
+   *
+   * Gated on `run.open.length`, NOT on `openCount`: openCount drops a position the moment
+   * its expiry passes, but the engine keeps holding it until it can read the on-chain
+   * settlement and score it. Resetting in that window would throw away a win or a loss,
+   * because recordSettlement only folds a result into the archive while the run is still
+   * `stopped`. Waiting for the tracked list to empty means the archive is complete first.
+   *
+   * The arm confirm holds it off too, so the banner it is sitting on top of does not
+   * disappear underneath the dialog.
+   */
+  const trackedOpen = run.open.length;
+  // `interruptedByReload` is excluded on purpose. Its banner exists to explain that a run
+  // was stopped for you while the page was away, which is the one message here worth
+  // making someone dismiss themselves.
+  const finished = status === 'stopped' && trackedOpen === 0 && !interruptedByReload && !arming && !confirmOpen;
+  /**
+   * WHEN it became fully done, derived rather than remembered: the newest log line IS that
+   * moment, either the disarm itself or the settlement that emptied the last position. So
+   * there is no effect holding a timestamp, no second interval for the count (the panel
+   * already re-renders every second off `now`), and a deadline instead of a tick means a
+   * backgrounded tab catches up on return rather than stalling part-way down.
+   */
+  const clearAt = finished && log[0] ? log[0].at + CLEAR_QUIET_MS + CLEAR_COUNTDOWN_MS : null;
+  useEffect(() => {
+    if (clearAt == null) return;
+    const t = setTimeout(() => reset(), Math.max(0, clearAt - Date.now()));
+    return () => clearTimeout(t);
+  }, [clearAt, reset]);
+  // Null through the quiet pause, then counts the last ten seconds out loud.
+  const msToClear = clearAt != null ? clearAt - now : null;
+  const clearInSec =
+    msToClear != null && msToClear <= CLEAR_COUNTDOWN_MS ? Math.max(0, Math.ceil(msToClear / 1000)) : null;
 
   const armed = status === 'armed';
   const stopped = status === 'stopped';
@@ -127,16 +177,19 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           ? 'Set up your trading account first (place one trade from the ticket)'
           : null
     : null;
-  // Whether the CHOSEN funding route can actually cover the run. Kept separate because
-  // the funding choice now lives inside the confirm: folding this into the Start button
-  // would disable the only door to the screen where you can switch to the other route.
-  const fundingIssue = live
-    ? fundingMode === 'deposit' && (acct.walletDusdcBase ?? 0n) < toQuote(limits.budgetUsd)
-      ? `Not enough DUSDC in your wallet to deposit $${num(limits.budgetUsd, 0)}`
-      : fundingMode === 'existing' && acct.balanceBase < toQuote(limits.perTradeUsd)
-        ? `Your trading account needs at least $${num(limits.perTradeUsd, 0)} to trade`
-        : null
-    : null;
+  // How much has to move in from the wallet before the run can cover its budget. This
+  // used to be a question ("deposit, or use the account balance?") on a screen where the
+  // trader is one tap from spending money, and it had exactly one right answer every
+  // time: top up if you are short, otherwise do not. So it is arithmetic now, and the
+  // confirm shows the balance instead of asking.
+  const topUp = live ? topUpBase(toQuote(limits.budgetUsd), acct.balanceBase) : 0n;
+  // Kept separate from armIssue because the mode itself is chosen inside the confirm:
+  // folding a live-only blocker into the Start button would lock you out of the screen
+  // where you could have picked Watch instead.
+  const fundingIssue =
+    live && topUp > 0n && (acct.walletDusdcBase ?? 0n) < topUp
+      ? `Your wallet needs $${num(fromQuote(topUp), 2)} of DUSDC to top the run up to $${num(limits.budgetUsd, 0)}`
+      : null;
   // Only a broken SETUP keeps you out of the confirm. Live-specific blockers are
   // deliberately NOT folded in here: the mode itself is now chosen inside the dialog,
   // so gating the door on a live problem would lock you out of the screen where you
@@ -150,11 +203,11 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const sessionExpiresInMs = acct.sessionExpiryMs != null ? Math.max(0, acct.sessionExpiryMs - now) : null;
 
   /**
-   * Arm the run. Watch mode arms immediately. Live mode first turns on the session
-   * key (one signature): "deposit" pre-commits the budget into the trading account
-   * so the session's on-chain ceiling equals it; "existing" reuses the account's
-   * current balance (no deposit, and no signature at all when a session is already
-   * live). Only after the session is authorized do we flip the run to armed.
+   * Arm the run. Watch mode arms immediately. Live mode first turns on the session key,
+   * moving in only the shortfall between the trading account and the run's budget: the
+   * session spends the account balance, so topping it up to the budget is all the run
+   * ever needs. A full account tops up nothing, and when a session is already live that
+   * means no signature at all. Only once the session is authorized does the run arm.
    */
   /** Open the confirm. Watch and live both route through it: the mode is picked there. */
   function handleStart() {
@@ -173,13 +226,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     if (!acct.sessionsEnabled || !acct.owner || !acct.wrapperExists) return;
     setArming(true);
     try {
-      if (fundingMode === 'deposit') {
-        const digest = await acct.startSession({ budgetBase: toQuote(limits.budgetUsd), duration: '24h' });
+      // Recomputed here rather than read off the render, so the amount signed for is
+      // the shortfall at the moment of signing.
+      const deposit = topUpBase(toQuote(limits.budgetUsd), acct.balanceBase);
+      if (deposit > 0n || !acct.sessionCanTrade) {
+        const digest = await acct.startSession({ budgetBase: deposit, duration: '24h' });
         if (!digest) return; // cancelled or failed — acct.error explains why
-      } else if (!acct.sessionCanTrade) {
-        // Reuse the account balance: authorize the key with no fresh deposit.
-        const digest = await acct.startSession({ budgetBase: 0n, duration: '24h' });
-        if (!digest) return;
       }
       arm(Date.now());
       setConfirmOpen(false);
@@ -292,7 +344,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         (interruptedByReload ? (
           <ReloadBanner settlingCount={openCount} />
         ) : (
-          <StoppedBanner reason={stopReason} settlingCount={openCount} />
+          <StoppedBanner reason={stopReason} settlingCount={openCount} clearInSec={clearInSec} />
         ))}
 
       {/* ── Setup (idle or stopped) ─────────────────────────────────────────
@@ -400,8 +452,8 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         presetId={activePreset}
         live={live}
         onSetLive={(on) => setDryRun(!on)}
-        fundingMode={fundingMode}
-        onSetFunding={setFundingMode}
+        balanceUsd={fromQuote(acct.balanceBase)}
+        topUpUsd={fromQuote(topUp)}
         sessionReady={sessionReady}
         sessionExpiresInMs={sessionExpiresInMs}
         onEndSession={async () => {
