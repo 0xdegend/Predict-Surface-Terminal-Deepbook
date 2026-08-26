@@ -47,6 +47,7 @@ export function PlanCard({
   presetId,
   avatar = true,
   variant = 'full',
+  surface,
 }: {
   rules: Rules;
   limits: Limits;
@@ -70,19 +71,26 @@ export function PlanCard({
    * strip keeps the phase language and every number, in about a third of the height.
    */
   variant?: 'full' | 'compact';
+  /**
+   * The material, which is a separate question from the density above it. `card` is a
+   * peer block on a page; `inset` is nested inside another surface. Compact is used in
+   * both places now (the arm confirm nests it, the running dashboard does not), so the
+   * default follows each variant's usual home and the odd one out says so.
+   */
+  surface?: 'card' | 'inset';
 }) {
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : null;
   const phases = planPhases(rules, limits);
   const compact = variant === 'compact';
+  /* On the setup screen this is a peer of "Set it up for me" and of the Manual controls,
+     every one of which is a `glass-card p-4`, so it is one too: side by side, a raised
+     card next to a recessed panel reads as two unrelated things rather than a pair, and
+     the padding difference put their two mascots on different baselines. Inside the arm
+     confirm it is nested in a dialog, where an inset with the accent edge is right. */
+  const inset = (surface ?? (compact ? 'inset' : 'card')) === 'inset';
 
   return (
-    /* The surface follows the CONTEXT, which is what `variant` already encodes. On the
-       setup screen this card is a peer of "Set it up for me" and of the Manual controls,
-       every one of which is a `glass-card p-4`, so it is one too: side by side, a raised
-       card next to a recessed panel reads as two unrelated things rather than a pair, and
-       the 2px padding difference put their two mascots on different baselines. Inside the
-       arm confirm it is nested in a dialog, where an inset with the accent edge is right. */
-    <div className={compact ? 'glass-inset border-l-2 border-(--accent-line) p-3.5' : 'glass-card p-4'}>
+    <div className={inset ? 'glass-inset border-l-2 border-(--accent-line) p-3.5' : 'glass-card p-4'}>
       <div className="flex items-start gap-3">
         {avatar && (
           <Image

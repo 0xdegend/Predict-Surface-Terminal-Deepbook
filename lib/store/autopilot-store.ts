@@ -357,6 +357,11 @@ interface AutopilotState {
   status: AutopilotStatus;
   run: Run;
   stopReason: StopReason | null;
+  /** When the run stopped (ms epoch), or null while it has never run or is still armed.
+   *  The meters need it to say how long a run ACTUALLY lasted: without it they fell back
+   *  to the configured length, so a 10-minute run that hit its trade cap after four
+   *  minutes still read "Ran for 10:00". */
+  stoppedAt: number | null;
   log: AutopilotLogEntry[];
   /** True right after a reload landed an armed run as stopped for safety. Cleared on
    *  the next arm/reset. Drives a "picked up where you left off" banner. */
@@ -436,6 +441,7 @@ export const useAutopilotStore = create<AutopilotState>()(
       status: 'idle',
       run: freshRun(0),
       stopReason: null,
+      stoppedAt: null,
       log: [],
       interruptedByReload: false,
       history: [],
@@ -461,6 +467,7 @@ export const useAutopilotStore = create<AutopilotState>()(
           status: 'armed',
           run: freshRun(now),
           stopReason: null,
+          stoppedAt: null,
           interruptedByReload: false,
           log: appendLog(s.log, {
             id: nextId(now),
@@ -474,6 +481,7 @@ export const useAutopilotStore = create<AutopilotState>()(
         set((s) => ({
           status: 'stopped',
           stopReason: reason === 'manual' ? null : reason,
+          stoppedAt: now,
           // Save the run to Results the moment it ends (if it did anything). It then
           // completes in place as any late trades settle. A no-trade run isn't saved.
           history:
@@ -486,7 +494,8 @@ export const useAutopilotStore = create<AutopilotState>()(
           }),
         })),
 
-      reset: () => set({ status: 'idle', run: freshRun(0), stopReason: null, log: [], interruptedByReload: false }),
+      reset: () =>
+        set({ status: 'idle', run: freshRun(0), stopReason: null, stoppedAt: null, log: [], interruptedByReload: false }),
 
       pruneExpired: (now, graceMs = 0) => {
         const before = get().run.open;
@@ -599,11 +608,22 @@ export const useAutopilotStore = create<AutopilotState>()(
           return {
             status: 'stopped',
             stopReason: null,
+            stoppedAt: now,
             interruptedByReload: true,
             history:
               s.run.tradeCount > 0
                 ? upsertHistory(s.history, snapshotRun(s.run, s.dryRun, s.limits, 'manual', now))
                 : s.history,
+            // A logged event, not just a banner. The reload IS the thing that ended the
+            // run, so it belongs in the run's own history, and it gives the panel a real
+            // "this just happened" timestamp: the auto-clear reads the newest log line to
+            // decide when a finished run has been on screen long enough.
+            log: appendLog(s.log, {
+              id: nextId(now),
+              at: now,
+              kind: 'disarmed',
+              text: 'Autopilot stopped when the page reloaded',
+            }),
           };
         }),
 
@@ -652,6 +672,7 @@ export const useAutopilotStore = create<AutopilotState>()(
         status: s.status,
         run: s.run,
         stopReason: s.stopReason,
+        stoppedAt: s.stoppedAt,
         log: s.log,
         setupChat: s.setupChat,
       }),

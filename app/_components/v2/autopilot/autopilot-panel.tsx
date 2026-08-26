@@ -48,7 +48,7 @@ import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs }
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
-import { MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunningModeBanner, StatBand, StatusPill, StoppedBanner } from './live';
+import { MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
 import { ResultsView } from './results';
 
 interface Props {
@@ -81,6 +81,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const run = useAutopilotStore((s) => s.run);
   const dryRun = useAutopilotStore((s) => s.dryRun);
   const stopReason = useAutopilotStore((s) => s.stopReason);
+  const stoppedAt = useAutopilotStore((s) => s.stoppedAt);
   const interruptedByReload = useAutopilotStore((s) => s.interruptedByReload);
   const log = useAutopilotStore((s) => s.log);
   const setRules = useAutopilotStore((s) => s.setRules);
@@ -125,10 +126,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    * disappear underneath the dialog.
    */
   const trackedOpen = run.open.length;
-  // `interruptedByReload` is excluded on purpose. Its banner exists to explain that a run
-  // was stopped for you while the page was away, which is the one message here worth
-  // making someone dismiss themselves.
-  const finished = status === 'stopped' && trackedOpen === 0 && !interruptedByReload && !arming && !confirmOpen;
+  // Every stopped run clears, including one a reload stopped: `_resumeAfterReload` logs
+  // that as an event, so the deadline below is measured from the reload rather than from
+  // whatever last happened before it. It has to clear, now that a stopped run holds the
+  // page: without this there would be no way back to setup but the button, which is not
+  // on screen at phone widths.
+  const finished = status === 'stopped' && trackedOpen === 0 && !arming && !confirmOpen;
   /**
    * WHEN it became fully done, derived rather than remembered: the newest log line IS that
    * moment, either the disarm itself or the settlement that emptied the last position. So
@@ -149,8 +152,24 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
 
   const armed = status === 'armed';
   const stopped = status === 'stopped';
+  /**
+   * Setup, or a run. Never both.
+   *
+   * The page used to fork on `armed`, so the moment a run stopped it dropped the setup
+   * screen back in ABOVE the run: a trade could still be open, still moving, and the
+   * meters and log watching it slid down the page under a fresh "how do you want to play
+   * it". A run that has stopped placing trades has not finished, and it stays where it
+   * was until its log clears, automatically or by the button. That is also one reflow
+   * instead of two, since the run does not move down and then vanish fifteen seconds
+   * later.
+   */
+  const idle = status === 'idle';
   const live = !dryRun; // "live trading" vs "watch mode"
   const timeLeftMs = armed ? Math.max(0, limits.armDurationMs - (now - run.armedAt)) : limits.armDurationMs;
+  // Capped at the configured length so a run that overran by a second does not read past
+  // its own limit, and floored at 0 for the idle state where there is no run to measure.
+  const ranForMs =
+    stoppedAt != null ? Math.min(limits.armDurationMs, Math.max(0, stoppedAt - run.armedAt)) : 0;
   const openCount = useMemo(() => run.open.filter((p) => p.expiry > now).length, [run.open, now]);
 
   // Basic setup issues (either mode).
@@ -302,6 +321,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           <div className="mt-0.5 flex items-center gap-2">
             <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[19px]">Autopilot</h1>
             <StatusPill status={status} settling={stopped && openCount > 0} />
+            {armed && <RunModePill live={live} />}
           </div>
         </div>
         <div className="flex flex-none items-center gap-2">
@@ -328,16 +348,22 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           </div>
         </div>
       </div>
-      {!armed && armIssue && (
+      {idle && armIssue && (
         <p className="mb-4 -mt-1 flex items-center justify-end gap-1.5 text-[10.5px] leading-tight text-text-3">
           <LuTriangleAlert size={11} className="flex-none" /> {armIssue}
         </p>
       )}
 
-      {/* ── Stat band: live market + lifetime performance, at a glance ─────── */}
-      <div className="mb-4">
-        <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
-      </div>
+      {/* ── Stat band: live market + lifetime performance, at a glance ───────
+          Top of the page while nothing is running. During a run it moves BELOW the live
+          blocks (see the armed section): stacking it over the meters put two identical
+          rows of four tiles in a row, so the trader's own record competed with the
+          numbers that change every second. Ordered by what you are actually watching. */}
+      {idle && (
+        <div className="mb-4">
+          <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
+        </div>
+      )}
 
       {/* ── Stop / reload banner (prominent, right under the header) ────────── */}
       {stopped &&
@@ -355,7 +381,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           using is now gone, which is the trim and the feature at the same time.
           The right column stays put in both, because the mode and the plan are the
           confirm, not the setup. */}
-      {!armed && (
+      {idle && (
         <div className="mb-4 flex flex-col gap-4">
           <SetupModeTabs mode={setupMode} onMode={setSetupMode} />
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
@@ -409,6 +435,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             maxConcurrent={limits.maxConcurrent}
             armed={armed}
             timeLeftMs={timeLeftMs}
+            ranForMs={ranForMs}
             armDurationMs={limits.armDurationMs}
           />
           {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
@@ -422,14 +449,26 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         </div>
       )}
 
-      {/* ── Armed: the locked plan + the mode, AFTER the live read ──────────
-          A running dashboard's primary content is what is happening now, so the meters,
-          PnL and run log come first and this sits below as reference. It used to lead,
-          which on a phone meant a screenful of plan before a single live number. */}
-      {armed && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <PlanCard rules={rules} limits={limits} live={null} presetId={activePreset} />
-          <RunningModeBanner live={live} />
+      {/* ── Armed: the locked plan, then the all-time record ────────────────
+          A running dashboard's primary content is what is happening NOW, so the meters,
+          PnL and run log come first and these sit below as reference.
+
+          The plan is `compact` here, not the four-row stepper. The stepper teaches a plan
+          you are still deciding on; once a run is live the plan is a locked read-out, and
+          at full height it was a 440px card sharing a row with a one-line mode banner. The
+          strip says the same thing, full width, in about a third of the space. */}
+      {!idle && (
+        <div className="mb-4 flex flex-col gap-4">
+          <PlanCard
+            rules={rules}
+            limits={limits}
+            live={null}
+            presetId={activePreset}
+            avatar={false}
+            variant="compact"
+            surface="card"
+          />
+          <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
         </div>
       )}
 

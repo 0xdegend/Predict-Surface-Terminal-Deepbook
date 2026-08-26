@@ -287,3 +287,43 @@ describe('the persisted archive survives', () => {
     expect((saved.setupChat as { turns: unknown[] }).turns.length).toBe(1);
   });
 });
+
+describe('how long a run actually lasted', () => {
+  it('records the stop time, so the meters do not fall back to the setting', () => {
+    S().arm(1_000);
+    expect(S().stoppedAt).toBeNull();
+    S().recordPlacement(trade({ qty: 10, cost: 5 }), { dryRun: true }, 1_100);
+    S().disarm('trade_cap_reached', 250_000);
+    // A run configured for an hour that hit its trade cap after four minutes lasted four
+    // minutes. Without this the time meter read "Ran for 60:00".
+    expect(S().stoppedAt! - 1_000).toBe(249_000);
+  });
+
+  it('clears the stop time on the next arm and on reset', () => {
+    S().arm(1_000);
+    S().disarm('manual', 2_000);
+    expect(S().stoppedAt).toBe(2_000);
+    S().arm(3_000);
+    expect(S().stoppedAt).toBeNull();
+    S().disarm('manual', 4_000);
+    S().reset();
+    expect(S().stoppedAt).toBeNull();
+  });
+
+  it('logs the reload itself, and stamps it', () => {
+    // The reload IS what ended the run, so it belongs in the run's own log. It also gives
+    // the panel a fresh "this just happened" moment: the auto-clear reads the newest log
+    // line, and without an entry here it would measure from before the reload and wipe
+    // the "picked up where you left off" banner on arrival.
+    S().arm(1_000);
+    S().recordPlacement(trade({ qty: 10, cost: 5 }), { dryRun: true }, 1_100);
+    const before = S().log.length;
+    S()._resumeAfterReload();
+    expect(S().status).toBe('stopped');
+    expect(S().interruptedByReload).toBe(true);
+    expect(S().stoppedAt).not.toBeNull();
+    expect(S().log.length).toBe(before + 1);
+    expect(S().log[0].text).toMatch(/page reloaded/i);
+    expect(S().log[0].at).toBe(S().stoppedAt);
+  });
+});

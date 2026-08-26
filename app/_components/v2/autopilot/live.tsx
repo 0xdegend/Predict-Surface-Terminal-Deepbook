@@ -41,23 +41,26 @@ function mmss(ms: number): string {
  * What is left is the one thing that belongs on a RUNNING dashboard: a read-out of the
  * mode you are actually in, with no controls on it.
  */
-export function RunningModeBanner({ live }: { live: boolean }) {
+/**
+ * Which mode the running run is in, as a pill beside the status.
+ *
+ * It was a half-width `glass-card` in a two-column row with the plan, holding one line of
+ * text. On a wide screen that left roughly four hundred pixels of empty card next to the
+ * single most important fact on the dashboard, which is most of what made this screen read
+ * as scattered. A pill puts it where a trader already looks for run state, and costs no
+ * layout at all.
+ */
+export function RunModePill({ live }: { live: boolean }) {
+  const Icon = live ? LuRadioTower : LuEye;
   return (
-    <div className={`glass-card flex items-start gap-2.5 p-4 ${live ? 'border-up/30' : ''}`}>
-      {live ? (
-        <LuRadioTower size={15} className="mt-px flex-none text-up" />
-      ) : (
-        <LuEye size={15} className="mt-px flex-none text-accent" />
-      )}
-      {/* One line. The long version restated the plan card's own mode note directly
-          above it, which cost about forty words at the top of a RUNNING dashboard,
-          pushing the live meters off a phone screen. The plan card no longer repeats
-          the mode, so this is now the single statement of it. */}
-      <p className="text-[12px] leading-relaxed text-text-2">
-        <span className="font-medium text-text-1">{live ? 'Live trading.' : 'Watch mode.'}</span>{' '}
-        {live ? 'Real DUSDC, inside your budget and limits.' : 'Nothing is spent.'}
-      </p>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${
+        live ? 'bg-up/12 text-up' : 'bg-(--accent-soft) text-accent'
+      }`}
+    >
+      <Icon size={10} className="flex-none" />
+      {live ? 'Live' : 'Watch'}
+    </span>
   );
 }
 
@@ -168,11 +171,6 @@ export function StatusPill({ status, settling }: { status: 'idle' | 'armed' | 's
 }
 
 /**
- * Shown after a reload landed an armed run as stopped (for safety). Reassures that
- * the run + its open trades are still here and settling, and that Autopilot only
- * paused PLACING new trades — one tap re-arms.
- */
-/**
  * "Clearing this log in 8s", shown under the stop banner once a finished run is on its
  * way out. It appears only after a quiet pause, so the countdown is never the first thing
  * on screen when a run ends, and it says the number out loud rather than letting the
@@ -187,6 +185,11 @@ export function ClearingNote({ seconds }: { seconds: number | null }) {
   );
 }
 
+/**
+ * Shown after a reload landed an armed run as stopped (for safety). Reassures that
+ * the run + its open trades are still here and settling, and that Autopilot only
+ * paused PLACING new trades — one tap re-arms.
+ */
 export function ReloadBanner({ settlingCount }: { settlingCount: number }) {
   return (
     <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-(--accent-line) bg-(--accent-soft) p-3.5 text-[12.5px] text-text-1">
@@ -208,8 +211,13 @@ export function ReloadBanner({ settlingCount }: { settlingCount: number }) {
 /**
  * The stop banner. A run that ran its course (budget / trade cap / time) reads as a
  * calm finish, not an alarm; only a real problem (key/gas/feed, or the losing-streak
- * guard) gets the warning tone. Either way, if trades are still open it reassures
- * that Autopilot has only stopped opening NEW trades and the rest settle on their own.
+ * guard) gets the warning tone.
+ *
+ * NOTHING IS "FINISHED" WHILE MONEY IS STILL ON THE TABLE. With a trade still open the
+ * run has stopped OPENING trades, not stopped: the headline says "Finishing up" and only
+ * becomes "Autopilot finished" once the last one settles. The one exception is a run that
+ * stopped because something broke, which keeps its alarm wording either way, since
+ * softening that to "finishing up" would bury the part worth acting on.
  */
 /**
  * The "some trades are still running" line, built in JS rather than assembled out of
@@ -237,11 +245,13 @@ export function StoppedBanner({
   clearInSec?: number | null;
 }) {
   const attention = reason != null && stopReasonKind(reason) === 'attention';
-  const headline =
-    reason == null
-      ? 'You stopped Autopilot.'
-      : attention
-        ? `Autopilot stopped. ${stopReasonLabel(reason)}.`
+  const why = reason == null ? 'You stopped it' : stopReasonLabel(reason);
+  const headline = attention
+    ? `Autopilot stopped. ${stopReasonLabel(reason)}.`
+    : settlingCount > 0
+      ? `Finishing up. ${why}.`
+      : reason == null
+        ? 'You stopped Autopilot.'
         : `Autopilot finished. ${stopReasonLabel(reason)}.`;
   const Icon = attention ? LuTriangleAlert : settlingCount > 0 ? LuClock : LuCircleCheck;
   const toneCls = attention
@@ -484,6 +494,7 @@ export function MetersStrip({
   maxConcurrent,
   armed,
   timeLeftMs,
+  ranForMs,
   armDurationMs,
 }: {
   spentUsd: number;
@@ -494,6 +505,8 @@ export function MetersStrip({
   maxConcurrent: number;
   armed: boolean;
   timeLeftMs: number;
+  /** How long the run actually lasted, once it has stopped. */
+  ranForMs: number;
   armDurationMs: number;
 }) {
   return (
@@ -522,12 +535,17 @@ export function MetersStrip({
         frac={maxConcurrent > 0 ? openCount / maxConcurrent : 0}
         color="#c9a0ff"
       />
+      {/* Two different questions, so two different readings. While armed the useful one
+          is how long is LEFT, and the bar empties with it. Once the run is over the useful
+          one is how long it actually lasted, which is not the configured length: a
+          ten-minute run that hit its trade cap after four minutes was still reading
+          "Ran for 10:00", because there was nothing to read but the setting. */}
       <Meter
         icon={LuTimer}
         label={armed ? 'Time left' : 'Ran for'}
-        value={mmss(timeLeftMs)}
-        sub={armed ? 'remaining' : 'of the run'}
-        frac={armed && armDurationMs > 0 ? 1 - timeLeftMs / armDurationMs : 0}
+        value={mmss(armed ? timeLeftMs : ranForMs)}
+        sub={armed ? 'remaining' : `of ${mmss(armDurationMs)}`}
+        frac={armDurationMs > 0 ? (armed ? timeLeftMs : ranForMs) / armDurationMs : 0}
         color="#9aa4af"
       />
     </div>
