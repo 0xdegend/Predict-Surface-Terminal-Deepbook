@@ -42,7 +42,12 @@ export interface AutopilotPreset {
 export const PRESETS: readonly AutopilotPreset[] = [
   {
     id: 'cautious',
-    name: 'Cautious',
+    // "Careful", not "Cautious": Kelly asks for a style with "Careful, balanced, or
+    // bold?", her openers and answer chips say Careful, and this label is what the
+    // preset picker and the plan badge show. Two words for one setting made the two
+    // setup modes read as two different features. The ID stays `cautious` because it is
+    // persisted and matched on.
+    name: 'Careful',
     tagline: 'Play it safe',
     blurb: 'Only high-confidence bets, no leverage, and it backs off fast if it goes cold.',
     risk: 1,
@@ -150,9 +155,19 @@ export function matchPreset(rules: AutopilotRules, limits: AutopilotLimits): Pre
 
 function durationWords(ms: number): string {
   const mins = Math.round(ms / 60_000);
-  if (mins < 60) return `${mins} minutes`;
+  if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'}`;
   const hours = mins / 60;
   return Number.isInteger(hours) ? `${hours} hour${hours === 1 ? '' : 's'}` : `${(mins / 60).toFixed(1)} hours`;
+}
+
+/**
+ * The same duration after the words "the next", where a bare 1 reads wrong: the plan
+ * sentence was saying "over the next 1 hour". People drop the count there.
+ * "1.5 hours" is untouched, since it does not start with a lone 1.
+ */
+function nextDurationWords(ms: number): string {
+  const w = durationWords(ms);
+  return w.startsWith('1 ') ? w.slice(2) : w;
 }
 
 function sidesWords(sides: AutopilotRules['sides']): string {
@@ -174,7 +189,7 @@ export function planSentence(rules: AutopilotRules, limits: AutopilotLimits): st
   const each = `$${limits.perTradeUsd % 1 === 0 ? limits.perTradeUsd : limits.perTradeUsd.toFixed(2)}`;
   const lev = rules.maxLeverage > 1 ? `, up to ${rules.maxLeverage}x` : '';
   const n = limits.maxTrades;
-  return `Up to ${n} ${adj} ${sides} bet${n === 1 ? '' : 's'}, about ${each} each, over the next ${durationWords(
+  return `Up to ${n} ${adj} ${sides} bet${n === 1 ? '' : 's'}, about ${each} each, over the next ${nextDurationWords(
     limits.armDurationMs,
   )}${lev}. Stops after ${limits.maxConsecutiveLosses} ${limits.maxConsecutiveLosses === 1 ? 'loss' : 'losses'} in a row.`;
 }

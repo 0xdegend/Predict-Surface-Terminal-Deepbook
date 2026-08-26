@@ -87,7 +87,16 @@ describe('planSentence', () => {
       { ...DEFAULT_LIMITS, armDurationMs: 60 * 60_000 },
     );
     expect(withLev).toContain('up to 3x');
-    expect(withLev).toContain('1 hour');
+    // "over the next 1 hour" is not how anyone says it, and it was on the arm confirm.
+    expect(withLev).toContain('over the next hour');
+    expect(withLev).not.toContain('next 1 hour');
+    // A count only disappears when it is exactly one.
+    expect(planSentence(DEFAULT_RULES, { ...DEFAULT_LIMITS, armDurationMs: 120 * 60_000 })).toContain(
+      'over the next 2 hours',
+    );
+    expect(planSentence(DEFAULT_RULES, { ...DEFAULT_LIMITS, armDurationMs: 90 * 60_000 })).toContain(
+      'over the next 1.5 hours',
+    );
 
     const noLev = planSentence({ ...DEFAULT_RULES, maxLeverage: 1 }, DEFAULT_LIMITS);
     expect(noLev).not.toContain('x.');

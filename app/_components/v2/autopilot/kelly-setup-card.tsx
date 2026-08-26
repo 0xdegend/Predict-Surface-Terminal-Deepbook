@@ -13,11 +13,17 @@ import { useAutopilotStore } from '@/lib/store/autopilot-store';
 import { LuArrowRight, LuCircleCheck, LuMessageSquareText, LuRotateCcw } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
-import type { PresetId } from '@/lib/autopilot/presets';
+import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
 import { GAP_ORDER, type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
 import { readSetup } from '@/lib/autopilot/read-setup';
 
-const OPENERS = ['Keep it safe with $25', 'Balanced, $50 for an hour', 'Go bold with $100', 'Careful, $20, half an hour'];
+/**
+ * The four openers were two careful ones, a bold one and a balanced one, half of them
+ * missing a duration, so tapping one usually bought a follow-up question. Three now, one
+ * per style, each naming all three things Kelly needs: a tap lands a finished setup and
+ * the plan fills in beside it. Typing a half-sentence still starts the conversation.
+ */
+const OPENERS = ['Careful, $25 for an hour', 'Balanced, $50 for an hour', 'Bold, $100 for 30 minutes'];
 
 /** What Kelly asks for, in the order she asks. Plain words, one thing at a time. */
 const GAP_QUESTION: Record<SetupGap, string> = {
@@ -45,7 +51,7 @@ const MAX_INPUT_H = 76;
  */
 function ackFor(before: SetupIntent, after: SetupIntent): string | null {
   const learned: string[] = [];
-  if (!before.presetNamed && after.presetNamed) learned.push(PRESET_BY_NAME[after.preset]);
+  if (!before.presetNamed && after.presetNamed) learned.push(presetWord(after.preset));
   if (before.budgetUsd == null && after.budgetUsd != null) learned.push(`$${num(after.budgetUsd, 0)} in total`);
   if (before.durationMins == null && after.durationMins != null) learned.push(durationWords(after.durationMins));
   if (before.perTradeUsd !== after.perTradeUsd && after.perTradeUsd != null) {
@@ -56,7 +62,13 @@ function ackFor(before: SetupIntent, after: SetupIntent): string | null {
   return `Got it: ${listWords(learned)}.`;
 }
 
-const PRESET_BY_NAME: Record<PresetId, string> = { cautious: 'careful', balanced: 'balanced', bold: 'bold' };
+/**
+ * The style's name in the middle of one of Kelly's sentences ("Got it: careful, $25 in
+ * total"), and in the STYLE slot. Lowercased off the preset's own name rather than
+ * spelled out again here: this used to be a hand-written map, which is how "Careful" in
+ * the picker and "cautious" in the chat came to disagree in the first place.
+ */
+const presetWord = (id: PresetId) => (PRESETS.find((p) => p.id === id)?.name ?? id).toLowerCase();
 
 function durationWords(mins: number): string {
   if (mins < 60) return `${mins} minutes`;
@@ -200,22 +212,22 @@ export function KellySetupCard({
   }
 
   return (
-    <div className="glass-card flex flex-col gap-3 p-4">
+    <div className="glass-card flex flex-1 flex-col gap-3 p-4">
       <div className="flex items-start gap-3">
         <Image
           src={MASCOT_SRC.thinking}
           alt=""
-          width={36}
-          height={36}
+          width={32}
+          height={32}
           aria-hidden
-          className="mt-0.5 h-9 w-9 flex-none rounded-full object-contain"
+          className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
         />
         <div className="min-w-0 flex-1">
           <p className="eyebrow flex items-center gap-1.5">
             <LuMessageSquareText size={12} className="text-accent" /> Set it up for me
           </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
-            Tell me how you want to play it, in your own words. I&rsquo;ll ask about anything you leave out.
+            Tell me how you want to play it, in your own words.
           </p>
         </div>
         {turns.length > 0 && (
@@ -254,31 +266,52 @@ export function KellySetupCard({
         })}
       </div>
 
-      {turns.length > 0 && (
-        <div ref={threadRef} className="scroll-quiet flex max-h-56 flex-col gap-2 overflow-y-auto pr-1">
-          {turns.map((t) => (
-            <div
-              key={t.id}
-              className={`max-w-[88%] rounded-xl px-3 py-2 text-[12.5px] leading-relaxed ${
-                t.who === 'kelly'
-                  ? 'glass-inset self-start text-text-1'
-                  : 'self-end bg-(--accent-soft) text-text-1 ring-1 ring-inset ring-(--accent-line)'
-              }`}
-            >
-              {t.text}
-            </div>
-          ))}
-          {busy && (
-            <div className="glass-inset self-start rounded-xl px-3 py-2 text-[12.5px] text-text-3">
-              <span className="inline-flex gap-1">
-                <Dot delay={0} />
-                <Dot delay={120} />
-                <Dot delay={240} />
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* The message area, always present even with nothing in it yet. `flex-1` hands it
+          the card's spare height, which is what puts the composer on the bottom edge of
+          the chat instead of floating halfway up an empty card. `min-h-0` lets it shrink
+          below its content so `max-h-56` still caps the card and scrolls a long thread
+          rather than growing forever. */}
+      <div
+        ref={threadRef}
+        className="scroll-quiet flex max-h-56 min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1"
+      >
+        {turns.map((t) => (
+          <div
+            key={t.id}
+            className={`max-w-[88%] rounded-xl px-3 py-2 text-[12.5px] leading-relaxed ${
+              t.who === 'kelly'
+                ? 'glass-inset self-start text-text-1'
+                : 'self-end bg-(--accent-soft) text-text-1 ring-1 ring-inset ring-(--accent-line)'
+            }`}
+          >
+            {t.text}
+          </div>
+        ))}
+        {busy && (
+          <div className="glass-inset self-start rounded-xl px-3 py-2 text-[12.5px] text-text-3">
+            <span className="inline-flex gap-1">
+              <Dot delay={0} />
+              <Dot delay={120} />
+              <Dot delay={240} />
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Openers before the first message, then answers to whatever Kelly just asked. */}
+      <div className="flex flex-wrap gap-1.5">
+        {(turns.length === 0 ? OPENERS : openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : []).map((s) => (
+          <button
+            key={s}
+            type="button"
+            disabled={busy}
+            onClick={() => void send(s)}
+            className="glass-inset rounded-full px-3 py-2 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1 disabled:opacity-40 sm:px-2.5 sm:py-1"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
 
       <form
         onSubmit={(e) => {
@@ -300,7 +333,7 @@ export function KellySetupCard({
           }}
           disabled={busy}
           rows={1}
-          placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Try "cautious, $25 for an hour"'}
+          placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Try "careful, $25 for an hour"'}
           aria-label="Tell Kelly how you want Autopilot to run"
           // 16px is deliberate: iOS Safari force-zooms a focused field under 16px.
           className="scroll-quiet glass-inset w-full resize-none rounded-lg px-3 py-2.5 text-[16px] leading-snug text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
@@ -315,31 +348,17 @@ export function KellySetupCard({
         </button>
       </form>
 
-      {/* Openers before the first message, then answers to whatever Kelly just asked. */}
-      <div className="flex flex-wrap gap-1.5">
-        {(turns.length === 0 ? OPENERS : openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : []).map((s) => (
-          <button
-            key={s}
-            type="button"
-            disabled={busy}
-            onClick={() => void send(s)}
-            className="glass-inset rounded-full px-3 py-2 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1 disabled:opacity-40 sm:px-2.5 sm:py-1"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-
       {done ? (
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
           <LuCircleCheck size={12} className="mt-px flex-none" />
-          Your settings are loaded and the plan is on the right. Say &ldquo;start&rdquo; when you want it to
-          begin, and nothing runs until you confirm.
+          Settings loaded. Say &ldquo;start&rdquo; whenever you&rsquo;re ready, and nothing runs until you
+          confirm.
         </p>
       ) : (
+        /* Just the promise. What to say is already on screen three times over: the three
+           slots above, the placeholder's worked example, and the openers below. */
         <p className="text-[11px] leading-relaxed text-text-3">
-          Say a style, an amount, and how long. I&rsquo;ll ask about whatever you leave out, and I never put up an
-          amount you didn&rsquo;t choose.
+          I&rsquo;ll ask about anything you leave out, and I never stake an amount you didn&rsquo;t choose.
         </p>
       )}
     </div>
@@ -353,7 +372,7 @@ function lowerFirst(t: string): string {
 
 /** The value shown in a "so far" slot, or null while it is still unknown. */
 function slotValue(gap: SetupGap, intent: SetupIntent): string | null {
-  if (gap === 'style') return intent.presetNamed ? PRESET_BY_NAME[intent.preset] : null;
+  if (gap === 'style') return intent.presetNamed ? presetWord(intent.preset) : null;
   if (gap === 'budget') return intent.budgetUsd != null ? `$${num(intent.budgetUsd, 0)}` : null;
   return intent.durationMins != null ? durationWords(intent.durationMins) : null;
 }

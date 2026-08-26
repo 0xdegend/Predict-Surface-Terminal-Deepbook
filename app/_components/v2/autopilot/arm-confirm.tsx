@@ -81,7 +81,6 @@ export function ArmConfirmModal({
       open={open}
       onClose={onClose}
       title="Start Autopilot"
-      subtitle="Check the plan, pick how it runs, then confirm."
       variant="glass"
       maxWidthClass="max-w-lg"
       contentClassName="px-5 pb-5"
@@ -110,7 +109,7 @@ export function ArmConfirmModal({
       }
     >
       <div className="flex flex-col gap-4">
-        <PlanCard rules={rules} limits={limits} live={live} presetId={presetId} avatar={false} variant="compact" />
+        <PlanCard rules={rules} limits={limits} live={null} presetId={presetId} avatar={false} variant="compact" />
 
         <div className="grid grid-cols-2 gap-1.5 rounded-lg bg-white/4 p-1">
           <ModeTab
@@ -139,13 +138,15 @@ export function ArmConfirmModal({
                   active={fundingMode === 'deposit'}
                   onClick={() => onSetFunding('deposit')}
                   title={`Deposit $${num(limits.budgetUsd, 0)}`}
-                  desc="One signature moves your budget into the account. The session can never spend past it."
+                  desc="Moves the budget in first, so the run can't spend past it."
                 />
                 <FundingOption
                   active={fundingMode === 'existing'}
                   onClick={() => onSetFunding('existing')}
                   title="Use account balance"
-                  desc={sessionReady ? 'Trade from what you already have. No signature needed.' : 'Trade from your existing account balance.'}
+                  // The old line ("Trade from your existing account balance") just said the
+                  // title again. This says the thing that actually differs from Deposit.
+                  desc={sessionReady ? "Uses what's already in there. No signature needed." : "Uses what's already in there."}
                 />
               </div>
             </div>
@@ -157,9 +158,8 @@ export function ArmConfirmModal({
               <span>
                 {noSignature
                   ? 'Instant trading is already on, so this starts with no signature. '
-                  : 'You\u2019ll approve one signature to turn on your session key. After that Kelly places bets with no wallet pop-ups until you stop. '}
-                The key can only spend your trading-account balance, it can&rsquo;t withdraw or move money out, and you
-                can stop the run at any moment.
+                  : 'One signature turns on instant trading, then Kelly places bets with no wallet pop-ups. '}
+                It can only spend your trading-account balance, never withdraw, and you can stop any time.
               </span>
             </p>
           </>
@@ -167,8 +167,8 @@ export function ArmConfirmModal({
           <p className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-text-3">
             <LuShieldCheck size={13} className="mt-px flex-none" />
             <span>
-              Kelly runs the full live logic and records every trade she would place, without spending anything and
-              without a wallet signature. A rehearsal you can watch before turning on real trades.
+              Kelly runs the real logic and records every trade she would place. Nothing is spent, and there is no
+              signature.
             </span>
           </p>
         )}
@@ -238,8 +238,8 @@ function SessionStatusRow({
       {confirm && (
         <div className="flex flex-col gap-2 rounded-lg border border-down/30 bg-down/10 p-2.5">
           <p className="text-[11.5px] leading-relaxed text-text-2">
-            End your session and send any leftover gas back to your wallet. Your trading balance stays in your account for
-            next time, and one-tap trading turns off here and across the app. You can start a fresh session whenever.
+            Leftover gas goes back to your wallet and one-tap trading turns off across the app. Your trading balance
+            stays put, and you can start a fresh session any time.
           </p>
           <div className="flex items-center gap-2">
             <button

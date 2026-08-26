@@ -253,3 +253,37 @@ describe('log cap', () => {
     expect(S().log[0].text).toBe('hold 199');
   });
 });
+
+describe('the persisted archive survives', () => {
+  // Two ways zustand's persist can silently empty a trader's Results archive, both of
+  // which have bitten us. Neither looks like deletion in the code, so they get pinned
+  // here rather than left to a comment.
+  const opts = () => useAutopilotStore.persist.getOptions();
+
+  it('carries an older stored version forward instead of dropping it', () => {
+    // With no migrate, a version bump makes zustand log "couldn't be migrated" and hand
+    // back NOTHING, wiping every saved run. A migrate that returns an empty object would
+    // do the same thing while looking deliberate.
+    const migrate = opts().migrate;
+    expect(migrate).toBeTypeOf('function');
+    const older = { history: [{ id: 'run-1' }], rules: DEFAULT_RULES };
+    const out = migrate!(older, 0) as { history: { id: string }[] };
+    expect(out.history.map((r) => r.id)).toEqual(['run-1']);
+  });
+
+  it('persists the archive and the setup conversation, not just the settings', () => {
+    // partialize is the allow-list. A field dropped from it stops being saved with no
+    // other symptom than "it was there yesterday".
+    S().arm(1_000);
+    S().recordPlacement(trade({ qty: 10, cost: 5 }), { dryRun: true }, 1_100);
+    S().disarm('manual', 2_000);
+    S().pushSetupTurn('trader', 'go bold');
+
+    const saved = opts().partialize!(useAutopilotStore.getState()) as Record<string, unknown>;
+    expect(Object.keys(saved)).toEqual(
+      expect.arrayContaining(['rules', 'limits', 'dryRun', 'history', 'status', 'run', 'log', 'setupChat']),
+    );
+    expect((saved.history as unknown[]).length).toBe(1);
+    expect((saved.setupChat as { turns: unknown[] }).turns.length).toBe(1);
+  });
+});

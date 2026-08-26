@@ -64,14 +64,14 @@ function money(v: number): string {
 
 function minutesWords(ms: number): string {
   const mins = Math.round(ms / 60_000);
-  if (mins < 60) return `${mins} minutes`;
+  if (mins < 60) return plural(mins, 'minute', 'minutes');
   const hours = mins / 60;
   return Number.isInteger(hours) ? `${hours} hour${hours === 1 ? '' : 's'}` : `${hours.toFixed(1)} hours`;
 }
 
 function secondsWords(ms: number): string {
   const s = Math.round(ms / 1000);
-  return s < 60 ? `${s} seconds` : minutesWords(ms);
+  return s < 60 ? plural(s, 'second', 'seconds') : minutesWords(ms);
 }
 
 function plural(n: number, one: string, many: string): string {

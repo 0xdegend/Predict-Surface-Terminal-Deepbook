@@ -70,6 +70,11 @@ describe('planPhases', () => {
     const one = planPhases(RULES, { ...LIMITS, maxTrades: 1, maxConsecutiveLosses: 1 });
     expect(one.find((p) => p.id === 'stake')!.detail).toContain('1 bet,');
     expect(one.find((p) => p.id === 'stop')!.detail).toContain('1 loss in a row');
+    // The Bold preset's cooldown is exactly one minute, so this one was on screen:
+    // "Up to 8 bets, 4 open at a time, 1 minutes between them."
+    expect(detail('stake', RULES, { ...LIMITS, cooldownMs: 60_000 })).toContain('1 minute between');
+    expect(detail('stake', RULES, { ...LIMITS, cooldownMs: 1_000 })).toContain('1 second between');
+    expect(detail('stake', RULES, { ...LIMITS, cooldownMs: 120_000 })).toContain('2 minutes between');
   });
 
   it('writes an hour as an hour and a cent amount in full', () => {

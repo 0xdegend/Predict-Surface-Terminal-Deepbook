@@ -623,6 +623,22 @@ export const useAutopilotStore = create<AutopilotState>()(
     {
       name: 'skew-autopilot',
       version: 1,
+      /**
+       * Carry an older blob forward instead of dropping it.
+       *
+       * Zustand DISCARDS the entire persisted state when the stored version differs and
+       * no migrate is given: it logs "couldn't be migrated since no migrate function was
+       * provided" and hands back nothing, so a routine schema bump would silently delete
+       * a trader's whole Results archive. That is the same shape of loss the `hydrated`
+       * guard above exists to prevent, from the other direction.
+       *
+       * Every field this store persists has only ever been ADDED, never reshaped, so
+       * handing the old state back and letting the default shallow merge fill in anything
+       * new is both safe and the only outcome anyone would want. The day a field changes
+       * shape, this is the function that converts it: take the second `version` argument
+       * and fix up that one key. Never make it return an empty object.
+       */
+      migrate: (persisted) => persisted as AutopilotState,
       storage: createJSONStorage(() =>
         typeof window !== 'undefined' && window.localStorage ? browserStorage : noopStorage,
       ),

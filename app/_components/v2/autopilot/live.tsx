@@ -43,7 +43,7 @@ function mmss(ms: number): string {
  */
 export function RunningModeBanner({ live }: { live: boolean }) {
   return (
-    <div className={`glass-inset flex items-start gap-2.5 p-3.5 ${live ? 'border-up/30' : ''}`}>
+    <div className={`glass-card flex items-start gap-2.5 p-4 ${live ? 'border-up/30' : ''}`}>
       {live ? (
         <LuRadioTower size={15} className="mt-px flex-none text-up" />
       ) : (

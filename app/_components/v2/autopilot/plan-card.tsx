@@ -76,7 +76,13 @@ export function PlanCard({
   const compact = variant === 'compact';
 
   return (
-    <div className="glass-inset border-l-2 border-(--accent-line) p-3.5">
+    /* The surface follows the CONTEXT, which is what `variant` already encodes. On the
+       setup screen this card is a peer of "Set it up for me" and of the Manual controls,
+       every one of which is a `glass-card p-4`, so it is one too: side by side, a raised
+       card next to a recessed panel reads as two unrelated things rather than a pair, and
+       the 2px padding difference put their two mascots on different baselines. Inside the
+       arm confirm it is nested in a dialog, where an inset with the accent edge is right. */
+    <div className={compact ? 'glass-inset border-l-2 border-(--accent-line) p-3.5' : 'glass-card p-4'}>
       <div className="flex items-start gap-3">
         {avatar && (
           <Image
@@ -124,20 +130,27 @@ export function PlanCard({
         </div>
       ) : (
       /* An ordered list because the order is the point. The spine is drawn per row so
-         it stops at the last dot instead of running past it. */
-      <ol className={`mt-3 flex flex-col ${avatar ? 'pl-11' : ''}`}>
+         it stops at the last dot instead of running past it.
+
+         TWO COLUMNS, and they are the header's two columns. The dots are the same 32px
+         box as the fox above them and start at the same card padding, so one line runs
+         down the left edge; the titles start at 32 + gap-3, which is exactly where "THE
+         PLAN" starts. This used to indent the whole list by `pl-11` to clear the fox,
+         which put the dots in a third column of their own and pushed every sentence 84px
+         off the card edge. `pt-2` centres the first line of a title on its dot. */
+      <ol className="mt-3 flex flex-col">
         {phases.map((p, i) => (
           <li key={p.id} className="relative flex gap-3 pb-3 last:pb-0">
             {i < phases.length - 1 && (
-              <span aria-hidden className="absolute left-[14px] top-8 bottom-0 w-px bg-white/10" />
+              <span aria-hidden className="absolute left-4 top-9 bottom-0 w-px bg-white/10" />
             )}
             <span
-              className="plan-step-dot relative z-10 flex h-7 w-7 flex-none items-center justify-center rounded-full ring-1 ring-inset ring-white/10"
+              className="plan-step-dot relative z-10 flex h-8 w-8 flex-none items-center justify-center rounded-full ring-1 ring-inset ring-white/10"
               style={{ animationDelay: `${i * PHASE_STAGGER_MS}ms` }}
             >
-              <PhaseGlyph id={p.id} delayMs={i * PHASE_STAGGER_MS} />
+              <PhaseGlyph id={p.id} delayMs={i * PHASE_STAGGER_MS} size={16} />
             </span>
-            <div className="min-w-0 flex-1 pt-0.5">
+            <div className="min-w-0 flex-1 pt-2">
               <p className="text-[12.5px] font-medium leading-tight text-text-1">{p.title}</p>
               <p className="mt-0.5 text-[11.5px] leading-relaxed text-text-3">{p.detail}</p>
             </div>
@@ -157,13 +170,15 @@ export function PlanCard({
 
 /* ------------------------------- the glyphs ------------------------------- */
 
-/** Shared frame: Lucide's viewBox and stroke weight, so these sit with the icon set. */
-function Svg({ children }: { children: React.ReactNode }) {
+/** Shared frame: Lucide's viewBox and stroke weight, so these sit with the icon set.
+ *  Sized by the caller so the glyph keeps the same half-of-the-dot proportion in both
+ *  variants (16 in the stepper's 32px dot, 14 in the strip's 24px one). */
+function Svg({ size, children }: { size: number; children: React.ReactNode }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width={14}
-      height={14}
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -179,13 +194,13 @@ function Svg({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PhaseGlyph({ id, delayMs }: { id: PlanPhaseId; delayMs: number }) {
+function PhaseGlyph({ id, delayMs, size = 14 }: { id: PlanPhaseId; delayMs: number; size?: number }) {
   const d = (extra = 0) => ({ animationDelay: `${delayMs + extra}ms` });
   switch (id) {
     // WATCH — pulse. Rings push out of a still centre: listening, not searching.
     case 'watch':
       return (
-        <Svg>
+        <Svg size={size}>
           {/* The resting glyph: a dot broadcasting. Drawn as ordinary static strokes so
               the icon still reads as something when the pulse is not running, which is
               most of the cycle and all of the time under reduced motion. */}
@@ -201,7 +216,7 @@ function PhaseGlyph({ id, delayMs }: { id: PlanPhaseId; delayMs: number }) {
     // PICK — draw. The crosshair sits still and the check writes itself across it.
     case 'pick':
       return (
-        <Svg>
+        <Svg size={size}>
           <circle cx="12" cy="12" r="8" />
           <path d="M12 1.5v2.5M12 20v2.5M1.5 12h2.5M20 12h2.5" />
           <path className="plan-draw" pathLength={1} d="M8.4 12.3l2.5 2.4 4.7-5.1" style={d(0)} />
@@ -210,7 +225,7 @@ function PhaseGlyph({ id, delayMs }: { id: PlanPhaseId; delayMs: number }) {
     // STAKE — lift. Three stakes rise on a stagger off a fixed baseline.
     case 'stake':
       return (
-        <Svg>
+        <Svg size={size}>
           <path d="M3 20.5h18" />
           <rect className="plan-bar" x="4.5" y="13" width="4.2" height="5.5" rx="1.2" style={d(0)} />
           <rect className="plan-bar" x="10" y="9.5" width="4.2" height="9" rx="1.2" style={d(140)} />
@@ -220,7 +235,7 @@ function PhaseGlyph({ id, delayMs }: { id: PlanPhaseId; delayMs: number }) {
     // STOP — turn. One hand sweeps the dial once and then holds, like a timer running out.
     case 'stop':
       return (
-        <Svg>
+        <Svg size={size}>
           <circle cx="12" cy="12" r="8.5" />
           <path className="plan-hand" d="M12 12V6.5" style={d(0)} />
           <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
