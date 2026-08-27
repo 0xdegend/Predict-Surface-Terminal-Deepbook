@@ -43,12 +43,13 @@ import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets';
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
 import { topUpBase } from '@/lib/autopilot/funding';
+import { buildRunTape } from '@/lib/autopilot/run-tape';
 import { type SetupMode } from './shared';
 import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs } from './setup';
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
-import { MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
+import { HeaderTape, MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
 import { ResultsView } from './results';
 
 interface Props {
@@ -171,6 +172,36 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const ranForMs =
     stoppedAt != null ? Math.min(limits.armDurationMs, Math.max(0, stoppedAt - run.armedAt)) : 0;
   const openCount = useMemo(() => run.open.filter((p) => p.expiry > now).length, [run.open, now]);
+  /**
+   * The run as a timeline, for the tape above the log.
+   *
+   * Deliberately free of `now`: the axis is the run's own clock, and the playhead is the
+   * component's business, so this only rebuilds when the run actually changes rather than
+   * once a second alongside the rest of the page.
+   */
+  const tape = useMemo(
+    () =>
+      buildRunTape({
+        armedAt: run.armedAt,
+        armDurationMs: limits.armDurationMs,
+        open: run.open,
+        settled: run.settled,
+        log,
+      }),
+    [run.armedAt, run.open, run.settled, limits.armDurationMs, log],
+  );
+  /**
+   * Arming, as a moment.
+   *
+   * Pressing Start hands a bot real money and then puts a screen full of zeroes on the
+   * page, and until now that screen simply appeared, fully formed and completely still.
+   * The block below keys on the run id so it remounts on every arm (including re-arming
+   * straight from a stopped run, where nothing else would have changed), and wears the
+   * sequence class only for the first couple of seconds, so a tab left open for an hour
+   * is not carrying an animation it finished long ago. The whole thing lives in CSS and
+   * skips entirely under `prefers-reduced-motion`.
+   */
+  const justArmed = status === 'armed' && now - run.armedAt < 2_000;
 
   // Basic setup issues (either mode).
   const settingIssue =
@@ -297,34 +328,37 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
-      {/* ── View tabs (cockpit vs saved results) ───────────────────────────── */}
-      <ViewTabs view={view} onView={setView} resultCount={history.length} running={armed} />
+      {/* ── One command bar ─────────────────────────────────────────────────
+          This was three stacked full-width strips before a single piece of content: a
+          view switcher, a header card, and the Auto/Manual fork. 308px of chrome on a
+          1200px screen, carrying the word "Autopilot" five times (the tab, the eyebrow,
+          the title) and 778px of nothing between the title and the button.
 
-      {view === 'results' ? (
-        <ResultsView history={history} onDelete={deleteResult} onClear={clearHistory} />
-      ) : (
-        <>
-      {/* ── Slim sticky header: status + primary action, always reachable ──── */}
-      <div className="glass-card sticky top-0 z-20 mb-4 flex items-center gap-3 p-3.5 backdrop-blur-md sm:gap-4">
-        <div className="relative flex h-11 w-11 flex-none items-center justify-center sm:h-12 sm:w-12">
+          One bar now, one title, and the void holds the live tape, which is the only
+          thing on this page that moves while nothing is running. The fork moved down to
+          sit above the column it actually switches. */}
+      <div className="glass-card sticky top-0 z-20 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2.5 p-3 backdrop-blur-md sm:gap-x-5 sm:p-3.5">
+        <div className="relative flex h-10 w-10 flex-none items-center justify-center">
           <span
             aria-hidden
             className="absolute inset-0"
             style={{ background: 'radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 70%)' }}
           />
-          <Image src={MASCOT_SRC.thinking} alt="Kelly the fox" width={48} height={48} className="relative h-full w-full object-contain" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow flex items-center gap-1.5">
-            <LuGauge size={11} className="text-accent" /> Kelly · Autopilot
-          </p>
-          <div className="mt-0.5 flex items-center gap-2">
-            <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[19px]">Autopilot</h1>
-            <StatusPill status={status} settling={stopped && openCount > 0} />
-            {armed && <RunModePill live={live} />}
-          </div>
+          <Image src={MASCOT_SRC.thinking} alt="Kelly the fox" width={40} height={40} className="relative h-full w-full object-contain" />
         </div>
         <div className="flex flex-none items-center gap-2">
+          <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[18px]">Autopilot</h1>
+          <StatusPill key={`${status}:${stopped && openCount > 0}`} status={status} settling={stopped && openCount > 0} />
+          {armed && <RunModePill live={live} />}
+        </div>
+
+        <HeaderTape spot={engine.spot} watching={engine.candidates.length} />
+
+        {/* On a phone this wraps to its own line, so it spreads rather than hugging the
+            right edge and leaving 340px of empty bar beside it. From `sm` it goes back to
+            sitting at the end of the row. */}
+        <div className="flex w-full flex-none items-center justify-between gap-2 sm:ml-auto sm:w-auto sm:justify-end">
+          <ViewSwitch view={view} onView={setView} resultCount={history.length} running={armed} />
           {stopped && (
             <button
               onClick={() => reset()}
@@ -335,7 +369,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           )}
           {/* Start is mode-neutral: it opens the confirm, and the confirm is where
               watch-vs-live and the wallet steps happen. */}
-          <div className="flex w-32 flex-col sm:w-40">
+          <div className="flex w-32 flex-col sm:w-36">
             {armed ? (
               <ReviewButton tone="down" onClick={() => disarm('manual', Date.now())}>
                 Stop Autopilot
@@ -348,6 +382,11 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           </div>
         </div>
       </div>
+
+      {view === 'results' ? (
+        <ResultsView history={history} onDelete={deleteResult} onClear={clearHistory} />
+      ) : (
+        <>
       {idle && armIssue && (
         <p className="mb-4 -mt-1 flex items-center justify-end gap-1.5 text-[10.5px] leading-tight text-text-3">
           <LuTriangleAlert size={11} className="flex-none" /> {armIssue}
@@ -382,10 +421,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           The right column stays put in both, because the mode and the plan are the
           confirm, not the setup. */}
       {idle && (
-        <div className="mb-4 flex flex-col gap-4">
-          <SetupModeTabs mode={setupMode} onMode={setSetupMode} />
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            {/* The fork sits above the column it switches, at its own width, instead of
+                spanning both columns as a third full-width bar. It governs the left side
+                only: the plan on the right is the same read-out either way. */}
             <div className="flex min-w-0 flex-col gap-4">
+              <SetupModeTabs mode={setupMode} onMode={setSetupMode} />
               {setupMode === 'auto' ? (
                 <KellySetupCard
                   current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
@@ -419,13 +460,22 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
               <PlanCard rules={rules} limits={limits} live={null} presetId={activePreset} />
               {setupMode === 'manual' && <PlanDetails rules={rules} limits={limits} />}
             </div>
-          </div>
         </div>
       )}
 
-      {/* ── Live / last-run: meters, then performance ⟷ run log ────────────── */}
-      {status !== 'idle' && (
-        <div className="mb-4 flex flex-col gap-4">
+      {/* ── Live / last-run: meters, performance ⟷ run log, the locked plan ──
+          ONE block, in the order a running dashboard is read: what the run has spent and
+          how long it has left, then how it is doing and what it just did, then the plan
+          it is following and the record it is adding to. These were two sibling blocks
+          with the same condition, which meant the arming sequence could only ever reach
+          half of them.
+
+          The plan is `compact` here, not the four-row stepper. The stepper teaches a plan
+          you are still deciding on; once a run is live the plan is a locked read-out, and
+          at full height it was a 440px card sharing a row with a one-line mode banner. The
+          strip says the same thing, full width, in about a third of the space. */}
+      {!idle && (
+        <div key={run.id} className={`mb-4 flex flex-col gap-4 ${justArmed ? 'arm-in' : ''}`}>
           <MetersStrip
             spentUsd={run.spentUsd}
             budgetUsd={limits.budgetUsd}
@@ -441,24 +491,11 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <PerformancePanel perf={engine.perf} positions={engine.positions} />
-              <RunLogPanel log={log} now={now} armed={armed} ready={engine.ready} />
+              <RunLogPanel log={log} tape={tape} now={now} armed={armed} ready={engine.ready} />
             </div>
           ) : (
-            <RunLogPanel log={log} now={now} armed={armed} ready={engine.ready} />
+            <RunLogPanel log={log} tape={tape} now={now} armed={armed} ready={engine.ready} />
           )}
-        </div>
-      )}
-
-      {/* ── Armed: the locked plan, then the all-time record ────────────────
-          A running dashboard's primary content is what is happening NOW, so the meters,
-          PnL and run log come first and these sit below as reference.
-
-          The plan is `compact` here, not the four-row stepper. The stepper teaches a plan
-          you are still deciding on; once a run is live the plan is a locked read-out, and
-          at full height it was a 440px card sharing a row with a one-line mode banner. The
-          strip says the same thing, full width, in about a third of the space. */}
-      {!idle && (
-        <div className="mb-4 flex flex-col gap-4">
           <PlanCard
             rules={rules}
             limits={limits}
@@ -512,7 +549,15 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
 
 /* ------------------------------- pieces ---------------------------------- */
 
-function ViewTabs({
+/**
+ * The view switch, as a control inside the command bar rather than a full-width strip
+ * above it. Labels collapse to icons below `sm`, where the bar is already carrying the
+ * title, the status and the primary action.
+ *
+ * "Run", not "Autopilot": the bar's own `h1` two controls to the left already says
+ * Autopilot, and the tab saying it again was one of the five on the page.
+ */
+function ViewSwitch({
   view,
   onView,
   resultCount,
@@ -524,27 +569,25 @@ function ViewTabs({
   running: boolean;
 }) {
   return (
-    <div className="mb-4 flex items-center gap-1 rounded-lg bg-white/4 p-1">
+    <div className="flex flex-none items-center gap-0.5 rounded-lg bg-white/4 p-0.5">
       <ViewTab active={view === 'cockpit'} onClick={() => onView('cockpit')}>
-        <span className="flex items-center gap-1.5">
-          <LuGauge size={13} /> Autopilot
-          {running && (
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
-            </span>
-          )}
-        </span>
+        <LuGauge size={13} className="flex-none" />
+        <span className="hidden sm:inline">Run</span>
+        {running && (
+          <span className="relative flex h-1.5 w-1.5 flex-none">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
+          </span>
+        )}
       </ViewTab>
       <ViewTab active={view === 'results'} onClick={() => onView('results')}>
-        <span className="flex items-center gap-1.5">
-          <LuHistory size={13} /> Results
-          {resultCount > 0 && (
-            <span className="rounded-full bg-white/8 px-1.5 py-px font-mono text-[10px] tabular-nums text-text-2">
-              {resultCount}
-            </span>
-          )}
-        </span>
+        <LuHistory size={13} className="flex-none" />
+        <span className="hidden sm:inline">Results</span>
+        {resultCount > 0 && (
+          <span className="rounded-full bg-white/8 px-1.5 py-px font-mono text-[10px] tabular-nums text-text-2">
+            {resultCount}
+          </span>
+        )}
       </ViewTab>
     </div>
   );
@@ -555,7 +598,7 @@ function ViewTab({ active, onClick, children }: { active: boolean; onClick: () =
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-md px-3 py-2 text-[12.5px] font-medium transition-all duration-150 ${
+      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-all duration-150 sm:px-3 ${
         active ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-1'
       }`}
     >

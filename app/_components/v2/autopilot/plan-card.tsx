@@ -113,8 +113,12 @@ export function PlanCard({
       {compact ? (
         <div className={avatar ? 'pl-11' : ''}>
           {/* The four phases as a strip. Wraps rather than scrolls, so a narrow phone
-              gets two rows of two instead of hiding the last one off the edge. */}
-          <ol className="mt-2.5 flex flex-wrap items-center gap-x-1 gap-y-1.5">
+              gets two rows of two instead of hiding the last one off the edge.
+              `plan-strip` is the hook the arming sequence uses to light them in order
+              (see the arm-in block in globals.css); the per-phase delays for THAT one
+              live on the list items, because the dots already carry their own inline
+              delay for the slow idle walk. */}
+          <ol className="plan-strip mt-2.5 flex flex-wrap items-center gap-x-1 gap-y-1.5">
             {phases.map((p, i) => (
               <li key={p.id} className="flex items-center gap-1.5">
                 <span

@@ -10,6 +10,7 @@ import { LuChevronDown, LuExternalLink, LuEye, LuHistory, LuInbox, LuRadioTower,
 import { num } from '@/lib/format';
 import { type RunResult, type RunTradeResult, useAutopilotStore } from '@/lib/store/autopilot-store';
 import { stopReasonLabel } from '@/lib/autopilot/policy';
+import { buildEquityCurve, curveGeometry, type EquityCurve } from '@/lib/autopilot/equity';
 import { buildSessionReportInput, mintSessionReport, reportBlobUrl } from '@/lib/autopilot/report-client';
 import { pnlClass, signedUsd } from './shared';
 
@@ -51,28 +52,35 @@ export function ResultsView({
   const wins = history.reduce((a, r) => a + r.wins, 0);
   const losses = history.reduce((a, r) => a + r.losses, 0);
   const resolved = wins + losses;
+  // Per TRADE, across every saved run: a run is a container, not a data point, and the
+  // order trades actually resolved in is what makes the shape real. Cheap enough to do
+  // on render (30 runs, a couple of hundred trades) and it changes whenever they do.
+  const curve = buildEquityCurve(history.flatMap((r) => r.trades));
   return (
     <div className="flex flex-col gap-3">
       {/* All-time summary across saved runs */}
-      <div className="glass-card flex items-center justify-between gap-3 p-4">
-        <div className="flex flex-col gap-0.5">
-          <span className="eyebrow flex items-center gap-1.5">
-            <LuHistory size={12} className="text-accent" /> All-time results
-          </span>
-          <span className={`font-mono text-[22px] font-semibold leading-none tabular-nums ${pnlClass(net)}`}>
-            {signedUsd(net)}
-          </span>
-          <span className="font-mono text-[11px] tabular-nums text-text-3">
-            {history.length} run{history.length === 1 ? '' : 's'} · {wins}W / {losses}L
-            {resolved > 0 ? ` · ${Math.round((wins / resolved) * 100)}%` : ''}
-          </span>
+      <div className="glass-card p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="eyebrow flex items-center gap-1.5">
+              <LuHistory size={12} className="text-accent" /> All-time results
+            </span>
+            <span className={`font-mono text-[22px] font-semibold leading-none tabular-nums ${pnlClass(net)}`}>
+              {signedUsd(net)}
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-text-3">
+              {history.length} run{history.length === 1 ? '' : 's'} · {wins}W / {losses}L
+              {resolved > 0 ? ` · ${Math.round((wins / resolved) * 100)}%` : ''}
+            </span>
+          </div>
+          <button
+            onClick={onClear}
+            className="group glass-inset inline-flex flex-none items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
+          >
+            <LuTrash2 size={12} className="transition-colors duration-200 group-hover:text-accent" /> Clear all
+          </button>
         </div>
-        <button
-          onClick={onClear}
-          className="group glass-inset inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
-        >
-          <LuTrash2 size={12} className="transition-colors duration-200 group-hover:text-accent" /> Clear all
-        </button>
+        <EquityChart curve={curve} />
       </div>
 
       {/* One card per finished run */}
@@ -80,6 +88,86 @@ export function ResultsView({
         {history.map((r) => (
           <RunResultCard key={r.id} r={r} onDelete={() => onDelete(r.id)} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------ the equity curve --------------------------- */
+
+const CURVE_W = 320;
+const CURVE_H = 56;
+
+/**
+ * Every saved run as one line.
+ *
+ * A total and a win rate are the two numbers that say least about a trader: +$40 reads
+ * exactly the same whether it arrived in a straight line or after a drawdown deep enough
+ * that you would have switched the thing off halfway. The curve is the part worth
+ * looking at, and it is the one view on this page that gets better the longer Autopilot
+ * is used.
+ *
+ * Drawn from `lib/autopilot/equity`, which owns both the running total and the geometry
+ * so this component is only ever about painting. It holds back until there are at least
+ * two settled trades, because one point is not a shape.
+ */
+function EquityChart({ curve }: { curve: EquityCurve }) {
+  const g = curveGeometry(curve, CURVE_W, CURVE_H, 3);
+  if (!g || curve.count < 2) return null;
+  const ahead = curve.net >= 0;
+  const stroke = ahead ? 'var(--up)' : 'var(--down)';
+  return (
+    <div className="mt-3.5">
+      <div className="relative h-14">
+        {/* `preserveAspectRatio="none"` lets the curve stretch to whatever width the card
+            has; `vector-effect` keeps the strokes a true 1px through that stretch, which
+            is the whole reason the geometry can be computed in a fixed box. */}
+        <svg
+          viewBox={`0 0 ${CURVE_W} ${CURVE_H}`}
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full"
+          aria-hidden
+        >
+          <defs>
+            <linearGradient id="autopilot-equity-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={stroke} stopOpacity={ahead ? 0.22 : 0.04} />
+              <stop offset="100%" stopColor={stroke} stopOpacity={ahead ? 0.04 : 0.22} />
+            </linearGradient>
+          </defs>
+          <path d={g.area} fill="url(#autopilot-equity-fill)" />
+          {/* Break-even, so a line above it and a line below it are told apart at a
+              glance rather than by reading the number. */}
+          <line
+            x1="0"
+            x2={CURVE_W}
+            y1={g.zeroY}
+            y2={g.zeroY}
+            stroke="rgba(255,255,255,0.16)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path d={g.line} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+        {/* Where it stands right now. An HTML dot rather than an SVG circle, which the
+            non-uniform stretch above would have squashed into an ellipse. */}
+        <span
+          className="absolute right-0 h-1.5 w-1.5 -translate-y-1/2 rounded-full"
+          style={{ top: `${(g.lastY / CURVE_H) * 100}%`, background: stroke }}
+        />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-3 text-[10px] text-text-3">
+        <span>
+          <span className="font-mono tabular-nums text-text-2">{curve.count}</span>{' '}
+          {curve.count === 1 ? 'settled trade' : 'settled trades'}
+        </span>
+        {/* The one number a total cannot fake: how far underwater this went at its worst. */}
+        <span>
+          worst dip{' '}
+          <span className="font-mono tabular-nums text-text-2">
+            {curve.maxDrawdown > 0 ? `-$${num(curve.maxDrawdown, 2)}` : 'none'}
+          </span>
+        </span>
       </div>
     </div>
   );

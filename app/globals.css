@@ -457,6 +457,24 @@ select:focus-visible,
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012) 60%),
     rgba(255, 255, 255, 0.022);
 }
+/* A glass-inset you can PICK — the twin of `.glass-card.interactive` above, and it has
+   to live here rather than as a `hover:border-…` utility on the element.
+
+   Tailwind's utilities are inside `@layer utilities`, and everything in this file is
+   unlayered. Unlayered beats layered outright, whatever the specificity, so the `border`
+   shorthand above silently wins over any `hover:border-*` utility a caller adds. The
+   edge simply never changed. Setting it from the same unlayered place is the only
+   version that works.
+
+   The fill lifts with the edge so the tile reads as coming forward under the cursor
+   rather than just outlining. Callers bring their own transition, same as .glass-card
+   .interactive does. */
+.glass-inset.interactive:hover {
+  border-color: var(--accent-line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.022) 60%),
+    rgba(255, 255, 255, 0.032);
+}
 
 /* Compact frosted chip that floats over charts and the 3-D surface (crosshair
    tooltips, value pills). Same glass language as .glass-card — translucent fill,
@@ -1532,5 +1550,102 @@ select:focus-visible,
     100% {
       transform: rotate(360deg);
     }
+  }
+}
+
+/* ─────────────────────────── autopilot: arming ────────────────────────────
+   The one moment on this page that deserves motion.
+
+   Pressing Start hands a bot real money and then puts a screen full of zeroes on
+   the page. Before this, that screen simply appeared, fully formed and completely
+   still, which is the same nothing an error state does. The sequence below is six
+   hundred milliseconds long, runs ONCE per run (the panel keys the block on the run
+   id and only applies the class for the first couple of seconds), and is the app's
+   only entrance animation outside the surface's own load.
+
+   It is a settle, not a flourish: rows rise a few pixels into place, the meters
+   sweep up from empty, and the plan's phases light left to right in the order the
+   run will perform them. Nothing bounces, nothing overshoots, and everything below
+   is inside `no-preference`, so a trader who asked for less motion gets the same
+   dashboard with no delay at all. */
+@media (prefers-reduced-motion: no-preference) {
+  /* Each direct child of the run block, in document order. */
+  .arm-in > * {
+    animation: armRise 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .arm-in > *:nth-child(1) { animation-delay: 0ms; }
+  .arm-in > *:nth-child(2) { animation-delay: 80ms; }
+  .arm-in > *:nth-child(3) { animation-delay: 160ms; }
+  .arm-in > *:nth-child(4) { animation-delay: 240ms; }
+  @keyframes armRise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* The meters fill from empty rather than arriving full. Their steady-state width
+     is the same custom property, so when the animation ends the bar is already
+     exactly where CSS would have put it and nothing snaps. */
+  .arm-in .meter-fill {
+    animation: meterSweep 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes meterSweep {
+    from { width: 0%; }
+    to { width: var(--fill); }
+  }
+
+  /* The plan's four phases light in the order the run will perform them. This is the
+     one place the delays live on the LIST ITEM rather than the dot inside it: the dot
+     already carries its own inline delay for the slow idle walk, and a second
+     animation there would inherit it and fire four, six and eight seconds late. */
+  .arm-in .plan-strip > li {
+    animation: planStepIn 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .arm-in .plan-strip > li:nth-child(1) { animation-delay: 180ms; }
+  .arm-in .plan-strip > li:nth-child(2) { animation-delay: 270ms; }
+  .arm-in .plan-strip > li:nth-child(3) { animation-delay: 360ms; }
+  .arm-in .plan-strip > li:nth-child(4) { animation-delay: 450ms; }
+  @keyframes planStepIn {
+    from { opacity: 0; transform: translateX(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* The status pill flipping to Running. Keyed on the status in the panel, so it
+     mounts fresh on every change and plays once: a ring that pushes out and goes,
+     the same vocabulary as the live pulse it sits beside. */
+  .status-flip {
+    animation: statusFlip 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes statusFlip {
+    from { transform: scale(0.9); }
+    to { transform: none; }
+  }
+  .status-flip::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.5;
+    animation: statusRing 620ms ease-out both;
+    pointer-events: none;
+  }
+  @keyframes statusRing {
+    from { box-shadow: 0 0 0 0 currentColor; opacity: 0.45; }
+    to { box-shadow: 0 0 0 6px currentColor; opacity: 0; }
+  }
+
+  /* A price that moves, moving. One wash in the direction of the tick, gone in a
+     third of a second, applied imperatively (see useTickFlash) so no React state
+     changes when the feed does. */
+  .tick-up { animation: tickUp 340ms ease-out; }
+  .tick-down { animation: tickDown 340ms ease-out; }
+  /* `from` only, on purpose: an implicit `to` keyframe takes the element's OWN computed
+     colour, so the wash always lands back on whatever that number is normally painted
+     rather than on a hardcoded token that would be wrong somewhere else. */
+  @keyframes tickUp {
+    from { color: var(--up); }
+  }
+  @keyframes tickDown {
+    from { color: var(--down); }
   }
 }

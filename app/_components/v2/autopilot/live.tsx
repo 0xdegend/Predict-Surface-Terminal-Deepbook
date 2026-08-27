@@ -14,6 +14,7 @@ import { predictV2Config } from '@/config/predict';
 import type { AutopilotOpenView, AutopilotPerf } from '@/lib/hooks/use-autopilot-engine';
 import type { AutopilotLogEntry, RunResult } from '@/lib/store/autopilot-store';
 import { type StopReason, stopReasonKind, stopReasonLabel } from '@/lib/autopilot/policy';
+import type { RunTape as RunTapeData, TapeTrade } from '@/lib/autopilot/run-tape';
 import { pnlClass, signedUsd } from './shared';
 import { clamp } from './setup';
 
@@ -167,7 +168,18 @@ export function StatusPill({ status, settling }: { status: 'idle' | 'armed' | 's
           armed: { label: 'Running', cls: 'bg-(--accent-soft) text-up' },
           stopped: { label: 'Stopped', cls: 'bg-(--down-soft) text-down' },
         }[status];
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium ${map.cls}`}>{map.label}</span>;
+  // `status-flip` plays once because the panel keys this on the status, so it mounts
+  // fresh on every change. Idle is left out: it is the state the page BOOTS in, and a
+  // ring on first paint would announce nothing having happened.
+  return (
+    <span
+      className={`relative inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium ${map.cls} ${
+        status === 'idle' ? '' : 'status-flip'
+      }`}
+    >
+      {map.label}
+    </span>
+  );
 }
 
 /**
@@ -286,7 +298,7 @@ function Meter({
 }) {
   const pct = clamp(frac, 0, 1) * 100;
   return (
-    <div className="glass-inset flex min-w-0 flex-col gap-2 p-3">
+    <div className="glass-inset flex min-w-0 flex-col gap-1.5 p-2.5">
       <div className="flex items-center gap-1.5">
         <Icon size={12} style={{ color }} className="flex-none" />
         <span className="eyebrow truncate">{label}</span>
@@ -296,10 +308,46 @@ function Meter({
         <span className="font-mono text-[10.5px] tabular-nums text-text-3">{sub}</span>
       </div>
       <div className="h-1 overflow-hidden rounded-full bg-white/6">
-        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+        {/* The width is set twice on purpose. The inline one is what the bar rests at and
+            what the transition animates when a meter moves mid-run; `--fill` is the same
+            number in a form the arm-in sweep keyframe can read, so the fill can start at
+            zero and land exactly where CSS would have put it anyway. */}
+        <div
+          className="meter-fill h-full rounded-full transition-all duration-500"
+          style={{ width: `${pct}%`, '--fill': `${pct}%`, background: color } as React.CSSProperties}
+        />
       </div>
     </div>
   );
+}
+
+/**
+ * Flash a number in the direction it just moved.
+ *
+ * Every terminal does this and this one did not: the spot price changed silently, so the
+ * only thing saying the feed was alive was a pulse dot that would pulse just as happily
+ * over a frozen number. A wash of up-teal or down-coral on the tick is the difference
+ * between "there is a price here" and "the price is moving".
+ *
+ * Imperative on purpose. The feed ticks about once a second, and comparing against the
+ * previous value in React state would re-render the whole band to change one colour, on
+ * top of tripping this repo's `set-state-in-effect` rule. Adding the class a frame after
+ * removing it restarts the animation even when the price moves the same way twice.
+ */
+function useTickFlash(value: number | null) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const prev = useRef<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const was = prev.current;
+    prev.current = value;
+    if (!el || value == null || was == null || value === was) return;
+    const cls = value > was ? 'tick-up' : 'tick-down';
+    el.classList.remove('tick-up', 'tick-down');
+    const id = requestAnimationFrame(() => el.classList.add(cls));
+    return () => cancelAnimationFrame(id);
+  }, [value]);
+  return ref;
 }
 
 /** A small teal "this is live" pulse dot. */
@@ -405,7 +453,7 @@ function StatTile({
   live?: boolean;
 }) {
   return (
-    <div className="glass-inset flex min-w-0 flex-col gap-1 p-3">
+    <div className="glass-inset flex min-w-0 flex-col gap-1 p-2.5">
       <span className="eyebrow flex items-center gap-1.5">
         {Icon && <Icon size={11} className="flex-none text-text-3" />}
         <span className="truncate">{label}</span>
@@ -421,13 +469,17 @@ function StatTile({
 
 /** The live-market tile: BTC spot with a pulse + an inline sparkline that moves. */
 function LivePriceTile({ spot, watching }: { spot: number | null; watching: number }) {
+  const priceRef = useTickFlash(spot);
   return (
-    <div className="glass-inset flex min-w-0 flex-col gap-1 p-3">
+    <div className="glass-inset flex min-w-0 flex-col gap-1 p-2.5">
       <span className="eyebrow flex items-center gap-1.5">
         BTC <LivePulse />
       </span>
       <div className="flex items-end gap-2">
-        <span className="font-mono text-[19px] font-semibold leading-none tabular-nums tracking-tight text-text-1">
+        <span
+          ref={priceRef}
+          className="font-mono text-[19px] font-semibold leading-none tabular-nums tracking-tight text-text-1"
+        >
           {spot != null ? `$${num(spot, 0)}` : '—'}
         </span>
         <div className="h-6 min-w-0 flex-1">
@@ -436,6 +488,41 @@ function LivePriceTile({ spot, watching }: { spot: number | null; watching: numb
       </div>
       <span className="truncate font-mono text-[10.5px] tabular-nums text-text-3">
         watching {watching} market{watching === 1 ? '' : 's'}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The live tape, sized for the command bar.
+ *
+ * The bar had 778px of nothing between the page title and the Start button. This is what
+ * belongs there: on a page whose whole promise is "it watches the market for you", the
+ * price is the one thing that moves while nothing is running, and a header that ticks
+ * reads as an instrument rather than a settings screen.
+ *
+ * Below `md` the bar has no room to spare, so the tape hides and the same reading stays
+ * available as the first tile of the stat band (see StatBand). One component, shown in
+ * whichever place the width allows, rather than two copies of the same number.
+ */
+export function HeaderTape({ spot, watching }: { spot: number | null; watching: number }) {
+  const priceRef = useTickFlash(spot);
+  return (
+    <div className="hidden min-w-0 flex-1 items-center justify-center gap-3 md:flex">
+      <span className="eyebrow flex flex-none items-center gap-1.5">
+        BTC <LivePulse />
+      </span>
+      <span
+        ref={priceRef}
+        className="flex-none font-mono text-[15px] font-semibold leading-none tabular-nums tracking-tight text-text-1"
+      >
+        {spot != null ? `$${num(spot, 0)}` : '\u2014'}
+      </span>
+      <div className="h-6 w-24 flex-none lg:w-32">
+        <Sparkline value={spot} />
+      </div>
+      <span className="flex-none font-mono text-[10.5px] tabular-nums text-text-3">
+        {watching} market{watching === 1 ? '' : 's'}
       </span>
     </div>
   );
@@ -464,8 +551,12 @@ export function StatBand({ spot, watching, history }: { spot: number | null; wat
   const resolved = wins + losses;
   const winRate = resolved > 0 ? Math.round((wins / resolved) * 100) : null;
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <LivePriceTile spot={spot} watching={watching} />
+    // Three tiles from `md`, where the price has moved up into the command bar's tape,
+    // and four below it, where the bar has no room for one.
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-3">
+      <div className="md:hidden">
+        <LivePriceTile spot={spot} watching={watching} />
+      </div>
       <StatTile
         label="All-time P&L"
         value={runs > 0 ? signedUsd(net) : '$0.00'}
@@ -510,7 +601,7 @@ export function MetersStrip({
   armDurationMs: number;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
       <Meter
         icon={LuWallet}
         label="Budget"
@@ -552,21 +643,154 @@ export function MetersStrip({
   );
 }
 
+/* --------------------------------- the tape ------------------------------- */
+
+/** One row of bars, and the gap under it. Four rows is the concurrency ceiling. */
+const LANE_H = 8;
+const LANE_GAP = 4;
+
+/**
+ * RunTape — the run on one axis.
+ *
+ * The log answers "what just happened" and cannot answer "what has this thing been
+ * DOING": it is reverse-chronological, every row is the same shape, and the two facts
+ * that make a run legible (when the bets landed, and how long each one lived) have to be
+ * reassembled out of timestamps across a scroll. Here they are the picture. Bursts,
+ * cooldown gaps, overlapping bets and the moment each one decided are all readable
+ * without a word.
+ *
+ * It sits ABOVE the log rather than replacing it, because a tape cannot carry the text,
+ * the explorer links or the reasons Kelly passed. Shape first, detail underneath.
+ *
+ * Colour is OUTCOME, not direction: won teal, lost coral, still open a neutral white
+ * (undecided, and deliberately NOT the accent, which is close enough to the up-teal that
+ * a live bet read as a win), never settled a dim grey. Direction is one word away in
+ * every bar's tooltip and spelled out in the row below, and encoding it here as well
+ * would put two meanings on one ramp.
+ */
+export function RunTape({ tape, now, armed }: { tape: RunTapeData; now: number; armed: boolean }) {
+  const span = Math.max(1, tape.endAt - tape.startAt);
+  // Pinned at the right edge once the clock is past the axis, which happens while a
+  // stopped run waits on its last settlement. "We are at the end" is the truth there.
+  const head = Math.min(1, Math.max(0, (now - tape.startAt) / span));
+  const height = tape.lanes * LANE_H + (tape.lanes - 1) * LANE_GAP;
+  const bets = tape.trades.length;
+  const passes = tape.holds.length;
+
+  return (
+    <div className="px-4 pt-3 pb-2.5">
+      <div className="relative" style={{ height }}>
+        {/* Quarter marks, so a gap can be read as a length rather than just a gap. */}
+        {[0.25, 0.5, 0.75].map((q) => (
+          <span key={q} aria-hidden className="absolute inset-y-0 w-px bg-white/6" style={{ left: `${q * 100}%` }} />
+        ))}
+        {/* Where the run was scheduled to end, drawn only when something ran past it. */}
+        {tape.plannedEnd < 1 && (
+          <span
+            aria-hidden
+            title="Where the run was set to end"
+            className="absolute -inset-y-1 w-px bg-white/20"
+            style={{ left: `${tape.plannedEnd * 100}%` }}
+          />
+        )}
+        {tape.trades.map((t) => (
+          <TapeBar key={`${t.marketId}-${t.from}`} t={t} />
+        ))}
+        {/* The playhead. Accent while it is still moving, quiet once it has stopped. */}
+        <span
+          aria-hidden
+          className="absolute -top-1.5 -bottom-1.5 w-px"
+          style={{ left: `${head * 100}%`, background: armed ? 'var(--accent)' : 'rgba(255,255,255,0.28)' }}
+        >
+          <span
+            className="absolute -top-0.5 -left-[1.5px] h-1 w-1 rounded-full"
+            style={{ background: armed ? 'var(--accent)' : 'rgba(255,255,255,0.4)' }}
+          />
+        </span>
+      </div>
+
+      {/* Every moment Kelly looked at a market and passed. Nothing happened at any of
+          them, and that is the point: the gaps between bets are full of decisions. */}
+      <div className="relative mt-2 h-1.5">
+        {/* Keyed by index as well as time: the engine can note two markets inside one
+            tick, and two holds landing on the same millisecond would collide. */}
+        {tape.holds.map((h, i) => (
+          <span
+            key={`${h.at}-${i}`}
+            title={h.text}
+            className="absolute inset-y-0 w-px bg-white/22"
+            style={{ left: `${h.pos * 100}%` }}
+          />
+        ))}
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-text-3">
+        <span className="font-mono tabular-nums">0:00</span>
+        <span className="truncate">
+          {bets === 0 ? 'nothing placed yet' : `${bets} bet${bets === 1 ? '' : 's'}`}
+          {passes > 0 ? ` · ${passes} looked at and passed` : ''}
+        </span>
+        <span className="font-mono tabular-nums">{mmss(span)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** One bet's life: where it went on, and how far it got. */
+function TapeBar({ t }: { t: TapeTrade }) {
+  const color =
+    t.outcome === 'won'
+      ? 'var(--up)'
+      : t.outcome === 'lost'
+        ? 'var(--down)'
+        : t.outcome === 'open'
+          ? 'rgba(255,255,255,0.5)'
+          : 'rgba(255,255,255,0.2)';
+  return (
+    <span
+      title={t.label}
+      className="absolute rounded-full"
+      style={{
+        left: `${t.from * 100}%`,
+        // A minimum so a bet that decided almost instantly is still a mark and not a
+        // gap, and so a never-settled trade (which has no length at all) still shows.
+        width: `max(5px, ${(t.to - t.from) * 100}%)`,
+        top: t.lane * (LANE_H + LANE_GAP),
+        height: LANE_H,
+        background: color,
+        opacity: t.outcome === 'lost' ? 0.85 : 1,
+      }}
+    >
+      {/* A live bet keeps pulsing at the end it has not reached yet. Same vocabulary as
+          the pulse dot in the header, so "this one is still running" reads the same way
+          wherever it appears. */}
+      {t.outcome === 'open' && (
+        <span className="absolute -right-0.5 top-1/2 flex h-1.5 w-1.5 -translate-y-1/2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** The run log as a self-contained panel (its own header), so it can sit in a grid cell. */
 export function RunLogPanel({
   log,
+  tape,
   now,
   armed,
   ready,
 }: {
   log: AutopilotLogEntry[];
+  tape: RunTapeData;
   now: number;
   armed: boolean;
   ready: boolean;
 }) {
   return (
     <div className="glass-card flex flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-white/6 px-4 py-2.5">
+      <div className="flex items-center gap-2 px-4 py-2.5">
         <h2 className="text-[13px] font-semibold text-text-1">Run log</h2>
         {armed && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-(--accent-soft) px-2 py-0.5 text-[10.5px] font-medium text-up">
@@ -579,6 +803,10 @@ export function RunLogPanel({
         )}
         {!ready && <span className="ml-auto text-[10.5px] text-text-3">Waiting for the live feed…</span>}
       </div>
+      {/* The shape of the run, above the words. The divider moved below it so the tape
+          reads as part of the header rather than as the first row of the list. */}
+      <RunTape tape={tape} now={now} armed={armed} />
+      <div className="border-b border-white/6" />
       {log.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
           <LuGauge size={22} className="text-text-3" />

@@ -11,7 +11,7 @@ import type { IconType } from 'react-icons';
 import { LuChevronDown, LuCircleCheck, LuFlame, LuMessageSquare, LuScale, LuShieldCheck, LuSlidersHorizontal, LuTrendingDown, LuTrendingUp } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
-import { type AutopilotPreset, PRESETS, type PresetId } from '@/lib/autopilot/presets';
+import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
 import { type Limits, ModeTab, type Rules, type SetupMode } from './shared';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -44,12 +44,19 @@ function Chip({
   onClick,
   disabled,
   title,
+  mono,
   children,
 }: {
   active: boolean;
   onClick?: () => void;
   disabled?: boolean;
   title?: string;
+  /** The chip holds a VALUE ($25, 65%, 90s) rather than a word. Those get the mono face
+   *  with tabular figures, the same as every other number in the terminal, so a row of
+   *  amounts lines up and so a chip does not disagree with the input sitting beside it
+   *  (the custom-amount field next to the money chips was mono all along). Word chips
+   *  keep the UI face: "Minutes" and "UP" are labels, not readings. */
+  mono?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -59,6 +66,8 @@ function Chip({
       disabled={disabled}
       title={title}
       className={`rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-all duration-150 ${
+        mono ? 'font-mono tabular-nums' : ''
+      } ${
         active
           ? 'border border-(--accent-line) bg-(--accent-soft) text-text-1'
           : 'glass-inset text-text-2 hover:text-text-1'
@@ -148,60 +157,89 @@ const BUDGET_CHOICES = [10, 25, 50, 100];
 
 const PERTRADE_CHOICES = [2, 5, 10, 25];
 
+/**
+ * PresetPicker — one control with three stops, not three sibling cards.
+ *
+ * WHY IT CHANGED. Careful, Balanced and Bold are an ORDERED ramp, and three equal boxes
+ * flattened that into a menu: nothing on screen said Bold sat further along the same axis
+ * than Careful. The blurb also rendered on the ACTIVE card only, which left the other two
+ * as half-empty boxes beside a full one, and the ragged bottoms were most of what made
+ * this step look unfinished. Each option now carries a three-segment rail that fills to
+ * its own level, so scanning the row reads the ramp straight off, and the blurb is one
+ * line under all three that always renders.
+ *
+ * NO RULES. The three used to be one frame carved up by hairlines: a border under the
+ * heading, two verticals between the options, one more above the blurb. Four hard lines
+ * on a step with three choices on it, and they were the only stark rules anywhere in the
+ * manual column, which is why this card read as a table while everything around it read
+ * as glass. The options are `glass-inset` tiles now, the same material the meters and the
+ * stat band are made of, so the separation comes from the surfaces themselves. Chosen is
+ * `glass-accent`, the house's accent-washed glass.
+ *
+ * The two glass classes are deliberately either/or rather than stacked. Both set the
+ * `background` and `border` shorthands at the same specificity, so which one won would
+ * come down to their order in globals.css: fine today, wrong the first time anyone moves
+ * a block. One class per state means there is nothing to resolve.
+ *
+ * Hover is `.interactive`, not a `hover:border-*` utility. Everything in globals.css is
+ * unlayered and Tailwind's utilities are in `@layer utilities`, so `.glass-inset`'s
+ * `border` shorthand beats any hover utility outright and the edge never moved. See the
+ * `.glass-inset.interactive` rule beside the base class.
+ */
 export function PresetPicker({ active, onApply }: { active: PresetId | null; onApply: (id: PresetId) => void }) {
+  const chosen = active ? (PRESETS.find((p) => p.id === active) ?? null) : null;
   return (
-    <div>
-      <p className="eyebrow mb-2 flex items-center gap-1.5">
+    <div className="glass-card p-3.5">
+      <p className="eyebrow mb-3 flex items-center gap-1.5">
         <StepBadge n={1} /> How should Kelly bet?
         {active === null && (
           <span className="rounded-full bg-white/6 px-1.5 py-px text-[9.5px] font-medium text-text-2">Custom</span>
         )}
       </p>
-      <div className="grid gap-2.5 sm:grid-cols-3">
-        {PRESETS.map((p) => (
-          <PresetCard key={p.id} preset={p} active={active === p.id} onClick={() => onApply(p.id)} />
-        ))}
+      <div className="grid gap-2 sm:grid-cols-3">
+        {PRESETS.map((p) => {
+          const on = active === p.id;
+          const Icon = PRESET_ICON[p.id];
+          return (
+            <button
+              key={p.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onApply(p.id)}
+              className={`flex items-center gap-3 p-3 text-left transition-all duration-200 sm:flex-col sm:items-stretch sm:gap-2.5 ${
+                on ? 'glass-accent rounded-xl' : 'glass-inset interactive'
+              }`}
+            >
+              {/* A chip that stays raised on both surfaces: accent-soft would sink into
+                  the accent wash of a chosen tile, so that one lifts with plain white. */}
+              <span
+                className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg ${
+                  on ? 'bg-white/10' : 'bg-white/6'
+                }`}
+              >
+                <Icon size={16} className={on ? 'text-accent' : 'text-text-2'} />
+              </span>
+              <span className="min-w-0 flex-1 sm:flex-none">
+                <span className="flex items-center gap-1.5">
+                  <span className={`text-[13.5px] font-semibold ${on ? 'text-text-1' : 'text-text-2'}`}>{p.name}</span>
+                  {on && <LuCircleCheck size={13} className="flex-none text-accent" />}
+                </span>
+                <span className="block text-[10.5px] text-text-3">{p.tagline}</span>
+              </span>
+              <RiskRail level={p.risk} active={on} />
+            </button>
+          );
+        })}
       </div>
+      {/* One line, always rendered. Fixed height whatever is selected, and it covers the
+          Custom case too, which the per-card version could not: with nothing selected
+          there was no card to hang an explanation on. Spacing separates it from the tiles
+          now, not a rule: it is a caption for the row above it, and the row is already
+          three distinct surfaces with air around them. */}
+      <p className="mt-3 px-0.5 text-[11px] leading-relaxed text-text-2">
+        {chosen ? chosen.blurb : 'Your own mix. Everything below is set by hand, and the plan updates as you change it.'}
+      </p>
     </div>
-  );
-}
-
-function PresetCard({ preset, active, onClick }: { preset: AutopilotPreset; active: boolean; onClick: () => void }) {
-  const Icon = PRESET_ICON[preset.id];
-  // Defined once, rendered into whichever slot the breakpoint shows.
-  const title = (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[13.5px] font-semibold text-text-1">{preset.name}</span>
-        {active && <LuCircleCheck size={13} className="flex-none text-accent" />}
-      </div>
-      <span className="text-[10.5px] text-text-3">{preset.tagline}</span>
-    </div>
-  );
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex flex-col gap-2 rounded-xl border p-3 text-left transition-all duration-150 sm:p-3.5 ${
-        active ? 'border-(--accent-line) bg-(--accent-soft)' : 'glass-inset border-transparent hover:border-white/10'
-      }`}
-    >
-      {/* Phone: icon, name and dots on ONE row, so three choices cost ~170px instead of
-          ~330px of a 390px-tall screen. From sm up the three cards sit side by side and
-          the taller stacked card is the better read. */}
-      <div className="flex items-center gap-3 sm:justify-between sm:gap-0">
-        <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-lg ${active ? 'bg-(--accent-soft)' : 'bg-white/6'}`}>
-          <Icon size={16} className={active ? 'text-accent' : 'text-text-2'} />
-        </span>
-        <div className="min-w-0 flex-1 sm:hidden">{title}</div>
-        <RiskDots level={preset.risk} active={active} />
-      </div>
-      <div className="hidden sm:block">{title}</div>
-      {/* The blurb only on the ACTIVE card, and never on a phone: it is the tallest part
-          of the card and the tagline already carries the choice. */}
-      {active && <p className="hidden text-[11px] leading-relaxed text-text-2 sm:block">{preset.blurb}</p>}
-    </button>
   );
 }
 
@@ -262,13 +300,23 @@ export function PlanDetails({ rules, limits }: { rules: Rules; limits: Limits })
   );
 }
 
-function RiskDots({ level, active }: { level: 1 | 2 | 3; active: boolean }) {
+/**
+ * Risk as a level meter, not three loose dots.
+ *
+ * Same information, read differently: a rail that fills further along the row makes the
+ * ordering visible at a glance, where three dots read as a rating on each card on its own.
+ * On a phone it is a fixed 12 units wide at the end of the row; from `sm` it spans the
+ * full width of its column, under the name, which is where the ramp reads best.
+ */
+function RiskRail({ level, active }: { level: 1 | 2 | 3; active: boolean }) {
   return (
-    <span className="flex items-center gap-1" aria-label={`Risk level ${level} of 3`}>
+    <span className="flex w-12 flex-none items-center gap-0.5 sm:w-full" aria-label={`Risk level ${level} of 3`}>
       {[1, 2, 3].map((i) => (
         <span
           key={i}
-          className={`h-1.5 w-1.5 rounded-full ${i <= level ? (active ? 'bg-accent' : 'bg-text-2') : 'bg-white/12'}`}
+          className={`h-1 flex-1 rounded-full transition-colors ${
+            i <= level ? (active ? 'bg-accent' : 'bg-text-3') : 'bg-white/8'
+          }`}
         />
       ))}
     </span>
@@ -309,6 +357,7 @@ export function MoneyCard({ limits, setLimits }: { limits: Limits; setLimits: (p
             {DURATION_CHOICES.map((m) => (
               <Chip
                 key={m}
+                mono
                 active={limits.armDurationMs === m * 60_000}
                 onClick={() => setLimits({ armDurationMs: m * 60_000 })}
               >
@@ -347,7 +396,7 @@ function MoneyField({
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {choices.map((c) => (
-          <Chip key={c} active={value === c} onClick={() => onChange(clamp(c, min, max))}>
+          <Chip key={c} mono active={value === c} onClick={() => onChange(clamp(c, min, max))}>
             ${c}
           </Chip>
         ))}
@@ -423,7 +472,7 @@ export function CustomizeSection({
             <div className="flex flex-col gap-3.5">
               <Field label="Only bet at least this likely">
                 {PROB_CHOICES.map((p) => (
-                  <Chip key={p} active={Math.abs(rules.minProb - p) < 1e-9} onClick={() => setRules({ minProb: p })}>
+                  <Chip key={p} mono active={Math.abs(rules.minProb - p) < 1e-9} onClick={() => setRules({ minProb: p })}>
                     {Math.round(p * 100)}%
                   </Chip>
                 ))}
@@ -448,7 +497,7 @@ export function CustomizeSection({
               </Field>
               <Field label="Max leverage">
                 {LEV_CHOICES.map((l) => (
-                  <Chip key={l} active={rules.maxLeverage === l} onClick={() => setRules({ maxLeverage: l })}>
+                  <Chip key={l} mono active={rules.maxLeverage === l} onClick={() => setRules({ maxLeverage: l })}>
                     {l}x
                   </Chip>
                 ))}
@@ -477,7 +526,7 @@ export function CustomizeSection({
               </div>
               <Field label="Cooldown between trades">
                 {COOLDOWN_CHOICES.map((c) => (
-                  <Chip key={c} active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
+                  <Chip key={c} mono active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
                     {c / 1000}s
                   </Chip>
                 ))}

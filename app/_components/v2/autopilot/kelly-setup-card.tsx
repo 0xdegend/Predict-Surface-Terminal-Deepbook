@@ -10,7 +10,7 @@
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useAutopilotStore } from '@/lib/store/autopilot-store';
-import { LuArrowRight, LuCircleCheck, LuMessageSquareText, LuRotateCcw } from 'react-icons/lu';
+import { LuArrowRight, LuCircleCheck, LuRotateCcw } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
 import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
@@ -223,9 +223,7 @@ export function KellySetupCard({
           className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
         />
         <div className="min-w-0 flex-1">
-          <p className="eyebrow flex items-center gap-1.5">
-            <LuMessageSquareText size={12} className="text-accent" /> Set it up for me
-          </p>
+          <p className="eyebrow">Set it up for me</p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
             Tell me how you want to play it, in your own words.
           </p>
