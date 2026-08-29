@@ -7,9 +7,6 @@ export const MASCOT_SRC: Record<MascotMood, string> = {
   won: "/skew-fox-won.png", // celebrating a win / payout
   loss: "/skew-fox-loss.png", // commiserating after a miss / error
 };
-
-/** Soft bloom tint behind each mood — the one semantic colour (teal up / coral
- *  down) the palette already uses, so the flourish never introduces a new hue. */
 export const MASCOT_GLOW: Record<MascotMood, string> = {
   thinking: "var(--accent-soft)",
   confident: "var(--accent-soft)",
