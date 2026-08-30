@@ -307,9 +307,20 @@ export function V2LeaderboardPanel() {
 
       {showPoints ? (
         <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-          Points = liquidity (DUSDC staked) + performance (net profit, floored at zero, a loss never
-          subtracts) + holding time. Season 2 counts only trades on the new release; win rate &amp;
-          authoritative PnL live on your{' '}
+          {/* Half the length it was. Two of the four things it used to say were already on
+              screen: the header three lines up says "Every trade earns Points, win or lose.
+              Winners just earn more.", which is "floored at zero, a loss never subtracts" in
+              words a trader actually uses, and the DUSDC in the first term is the same DUSDC
+              the quote-asset line names. "Authoritative PnL" went too: the number on your
+              Portfolio is the real one, and calling it authoritative only raises the question
+              of what this one is. Kept: the formula, the season's scope, and where to find
+              the numbers this board does not carry.
+
+              The run after the first expression stays on ONE physical line on purpose. A
+              JSXText node that begins with a space AND wraps loses that leading space here,
+              which is what once shipped "1 tradestill open" on the Autopilot dashboard. */}
+          Points = {predictV2Config.quote.symbol} staked + net profit + holding time, from trades on the new release.{' '}
+          Win rate and PnL live on your{' '}
           <Link href="/v2/portfolio" className="underline hover:text-text-2">
             Portfolio
           </Link>
