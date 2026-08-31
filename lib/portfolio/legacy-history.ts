@@ -1,40 +1,21 @@
 /**
- * lib/portfolio/legacy-history.ts — carry each wallet's 6-24 trade history forward.
+ * lib/portfolio/legacy-history.ts — merging a wallet's carried-over trade history in.
  *
- * Trade history is derived from the current deployment's order events keyed by the
- * wallet's (deployment-specific) account, so a redeploy (6-24 → 8-06, see
- * predict-refresh-8-06) leaves a returning trader with an EMPTY history tab. To keep it
- * continuous we captured each Skew wallet's fully-derived 6-24 rows (legacy-history-6-24
- * .json — self-contained PastPredictions, strikes/PnL already resolved, so they need no
- * 6-24 market object) and merge them under the connected wallet's live 8-06 history.
+ * Trade history is derived from the CURRENT deployment's order events, keyed by that
+ * deployment's account object, so every redeploy (6-24 → 8-06 → 8-21) leaves a returning
+ * trader staring at an empty history tab. We keep it continuous by snapshotting each
+ * retiring deployment's fully-derived rows and merging them underneath the live ones.
  *
- * Matched by wallet address (stable across deployments via the same zkLogin wallet),
- * case-insensitive. NEVER overlaid on its own source deployment (6-24), so live 6-24
- * rows are never doubled. Applied in useV2History, so it covers the portfolio tab, a
+ * This module is deliberately DATA-FREE so it is safe to import from a client component.
+ * The snapshots themselves live in legacy-history-data.ts and are served per wallet by
+ * /api/v2/legacy-history — see that file for why nearly a megabyte of JSON must not be
+ * bundled into the browser.
+ *
+ * Matched by wallet address, which is stable across deployments via the same zkLogin
+ * wallet, case-insensitive. Applied in useV2History, so it covers the portfolio tab, a
  * trader profile, and Kelly alike.
  */
-import seedJson from './legacy-history-6-24.json';
-import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import type { PastPrediction } from './history';
-
-interface HistorySeed {
-  deployment: string;
-  capturedAt: string;
-  byOwner: Record<string, PastPrediction[]>;
-}
-
-const SEED = seedJson as unknown as HistorySeed;
-
-/** Off on the seed's own deployment (would double the live 6-24 rows). */
-const CARRYOVER_ACTIVE = ACTIVE_V2_DEPLOYMENT !== SEED.deployment;
-
-export const LEGACY_HISTORY_SOURCE = SEED.deployment;
-
-/** A wallet's carried-over trades (empty when off, unknown wallet, or none). */
-export function legacyHistoryFor(owner: string | undefined): PastPrediction[] {
-  if (!CARRYOVER_ACTIVE || !owner) return [];
-  return SEED.byOwner[owner.toLowerCase()] ?? [];
-}
 
 /** Pure merge: live rows + legacy rows, newest-first, deduped by `key` (live wins).
  *  Returns the input untouched when there's nothing to add. */
@@ -44,21 +25,31 @@ export function mergeHistoryRows(live: PastPrediction[], legacy: PastPrediction[
   return [...live, ...legacy.filter((r) => !seen.has(r.key))].sort((a, b) => b.settledAt - a.settledAt);
 }
 
-/** Merge a wallet's carried-over 6-24 history under its live history. */
-export function mergeLegacyHistory(owner: string | undefined, live: PastPrediction[]): PastPrediction[] {
-  return mergeHistoryRows(live, legacyHistoryFor(owner));
+/** Fetch one wallet's carried-over rows. Best-effort: history must still render if the
+ *  snapshot route is unreachable, so a failure returns nothing rather than throwing. */
+export async function fetchLegacyHistory(owner: string | undefined, signal?: AbortSignal): Promise<PastPrediction[]> {
+  if (!owner) return [];
+  try {
+    const res = await fetch(`/api/v2/legacy-history?owner=${encodeURIComponent(owner)}`, { signal });
+    if (!res.ok) return [];
+    const json = (await res.json()) as { rows?: PastPrediction[] };
+    return json.rows ?? [];
+  } catch {
+    return [];
+  }
 }
 
-/**
- * The carried-over history keyed by wallet — the resolved (won/lost) track record of
- * every returning Skew trader. Powers the admin's win-rate + join-over-time stats.
- * Empty on the seed's own deployment (so it never double-counts live rows there).
- */
-export function legacyHistoryByOwner(): Record<string, PastPrediction[]> {
-  return CARRYOVER_ACTIVE ? SEED.byOwner : {};
-}
-
-/** All carried-over history rows, flattened (one entry per resolved position). */
-export function allLegacyHistory(): PastPrediction[] {
-  return Object.values(legacyHistoryByOwner()).flat();
+/** Fetch the full carried-over history keyed by wallet — the admin console's win-rate and
+ *  join-curve inputs. Same best-effort contract as the per-wallet read. */
+export async function fetchLegacyHistoryByOwner(
+  signal?: AbortSignal,
+): Promise<Record<string, PastPrediction[]>> {
+  try {
+    const res = await fetch('/api/v2/legacy-history?all=1', { signal });
+    if (!res.ok) return {};
+    const json = (await res.json()) as { byOwner?: Record<string, PastPrediction[]> };
+    return json.byOwner ?? {};
+  } catch {
+    return {};
+  }
 }

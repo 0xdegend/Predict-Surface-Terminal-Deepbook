@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getAccountOrders, qkV2 } from '@/lib/api/v2/client';
 import { deriveV2HistoryFromOrders } from '@/lib/portfolio/v2';
-import { mergeLegacyHistory } from '@/lib/portfolio/legacy-history';
+import { mergeHistoryRows, fetchLegacyHistory } from '@/lib/portfolio/legacy-history';
 import { toFloat } from '@/config/scale';
 import { useV2MarketStates } from './use-v2-market-states';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
@@ -27,6 +27,18 @@ export function useV2History(
     queryFn: () => getAccountOrders(accountId!, owner),
     enabled: !!accountId,
     refetchInterval: 15_000,
+  });
+
+  // The wallet's carried-over trades from retired deployments. Fetched rather than
+  // imported: the snapshots are ~960 KB and grow per release, while one visitor needs only
+  // their own rows (see /api/v2/legacy-history). Cached hard because the snapshot is a
+  // static file — it cannot change between renders, only between deploys.
+  const legacyQ = useQuery<PastPrediction[]>({
+    queryKey: ['v2', 'legacy-history', owner?.toLowerCase() ?? ''],
+    queryFn: ({ signal }) => fetchLegacyHistory(owner, signal),
+    enabled: !!owner,
+    staleTime: Infinity,
+    gcTime: Infinity,
   });
 
   // A history row's market is usually SETTLED, so it has dropped out of the
@@ -61,11 +73,15 @@ export function useV2History(
     return m;
   }, [marketStates]);
 
-  // Live 8-06 history, with the wallet's carried-over 6-24 trades merged underneath so
-  // a returning trader's history is continuous (a no-op on 6-24 and for new wallets).
+  // Live history with the wallet's carried-over trades merged underneath, so a returning
+  // trader's record is continuous (a no-op for a new wallet, and on a snapshot's own
+  // deployment, where the live read already returns those trades).
   const history = useMemo(
-    () => mergeLegacyHistory(owner, deriveV2HistoryFromOrders(q.data ?? [], mergedMap, settlements)),
-    [q.data, mergedMap, settlements, owner],
+    () => mergeHistoryRows(deriveV2HistoryFromOrders(q.data ?? [], mergedMap, settlements), legacyQ.data ?? []),
+    [q.data, mergedMap, settlements, legacyQ.data],
   );
-  return { history, isLoading: q.isLoading };
+  // Report loading until BOTH halves are in. The carried rows used to be bundled, so they
+  // were present on the first render; without this the tab would paint a short history and
+  // then grow, which reads as trades appearing out of nowhere.
+  return { history, isLoading: q.isLoading || legacyQ.isLoading };
 }

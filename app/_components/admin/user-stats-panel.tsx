@@ -21,7 +21,7 @@ import {
 import { predictV2Config } from '@/config/predict';
 import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
 import { useNow } from '@/lib/hooks/use-now';
-import { legacyHistoryByOwner } from '@/lib/portfolio/legacy-history';
+import { useLegacyHistoryByOwner } from '@/lib/hooks/use-legacy-history';
 import { computeSkewUserStats, buildJoinCurve } from '@/lib/leaderboard/user-stats';
 import { num, compact } from '@/lib/format';
 import { LineChart } from '@/app/_components/analytics/charts/line-chart';
@@ -46,9 +46,10 @@ export function UserStatsPanel() {
   const { skewRows, skewLoading } = useV2Leaderboard();
   const now = useNow(0);
 
+  const legacyByOwner = useLegacyHistoryByOwner();
   const stats = useMemo(
-    () => computeSkewUserStats(skewRows, legacyHistoryByOwner(), now),
-    [skewRows, now],
+    () => computeSkewUserStats(skewRows, legacyByOwner, now),
+    [skewRows, legacyByOwner, now],
   );
 
   // Join-curve time window. Default to all-time (the running total), with 1d/7d/14d to

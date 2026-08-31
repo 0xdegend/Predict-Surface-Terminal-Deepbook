@@ -275,8 +275,14 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       return;
     }
 
-    // Kelly's best-value pick, but only over the windows the trader allows.
-    const allowed = candidates.filter((c) => rules.tenors.includes(classifyTenor(c.market.expiry - now)));
+    // Kelly's best-value pick, but only over the windows the trader allows. A null tenor is
+    // a market settling past every named window, so it is dropped here too: the gate would
+    // deny it anyway, but leaving it in the candidate set lets Kelly reason about a bet she
+    // can never place, and the run reads as "no trades" rather than "nothing eligible".
+    const allowed = candidates.filter((c) => {
+      const tenor = classifyTenor(c.market.expiry - now);
+      return tenor !== null && rules.tenors.includes(tenor);
+    });
     if (allowed.length === 0) return;
 
     const reply = respondToIntent(

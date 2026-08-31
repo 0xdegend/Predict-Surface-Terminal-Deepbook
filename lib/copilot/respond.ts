@@ -18,6 +18,7 @@
 import { num, pct, signed, compact } from '@/lib/format';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { quantityForStake, winPayout, leverageSliderMax } from '@/lib/sui/v2/quote';
+import { TENOR_BUCKETS } from '@/lib/autopilot/policy';
 import { buildMarketRead, directionStance, recommendation } from '@/lib/insights/market-read';
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
@@ -224,6 +225,12 @@ export function timeLeftLabel(expiry: number, now: number): string {
   if (min === 1) return 'about a minute';
   if (min < 45) return `about ${min} minutes`;
   const hr = Math.round(min / 60);
+  // Days past a day and a half. This is the label on the bet card itself, so a 1-week market
+  // reading "about 223 hours" is the sentence a trader would decide on. 8-21 lists them.
+  if (hr >= 36) {
+    const days = Math.round(hr / 24);
+    return days === 1 ? 'about a day' : `about ${days} days`;
+  }
   return hr === 1 ? 'about an hour' : `about ${hr} hours`;
 }
 
@@ -233,13 +240,21 @@ function windowLabel(expiry: number, now: number): string {
   const min = Math.max(1, Math.round(Math.max(0, expiry - now) / 60_000));
   if (min < 45) return min === 1 ? 'minute' : `${min} minutes`;
   const hr = Math.round(min / 60);
+  // Days once it stops being a sentence anyone reads as a duration. 8-21 lists 1-day and
+  // 1-week markets, and "223 hours" is technically right and useless.
+  if (hr >= 36) {
+    const days = Math.round(hr / 24);
+    return days === 1 ? 'day' : `${days} days`;
+  }
   return hr === 1 ? 'hour' : `${hr} hours`;
 }
 
-/** An adjective for "this ___ market": "1-minute", "4-minute", "1-hour", "3-hour". */
+/** An adjective for "this ___ market": "1-minute", "4-minute", "1-hour", "3-hour", "9-day". */
 function windowAdj(expiry: number, now: number): string {
   const min = Math.max(1, Math.round(Math.max(0, expiry - now) / 60_000));
-  return min < 45 ? `${min}-minute` : `${Math.round(min / 60)}-hour`;
+  if (min < 45) return `${min}-minute`;
+  const hr = Math.round(min / 60);
+  return hr >= 36 ? `${Math.round(hr / 24)}-day` : `${hr}-hour`;
 }
 
 /** Pick the market a horizon points at, from those we can price. */
@@ -247,9 +262,19 @@ function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now: number
   const open = candidates.filter((c) => c.market.expiry > now);
   if (open.length === 0) return null;
   if (horizon === 'today') {
-    // The longest window we can price — the best available answer for "today" /
-    // "in a few hours" on a venue whose listed markets are short.
-    return open.reduce((best, c) => (c.market.expiry > best.market.expiry ? c : best));
+    // "The longest market we can price" WAS the right answer for "today" back when every
+    // listed market settled within the hour. 8-21 lists 1-day and 1-week markets, so that
+    // rule now answers "today" with a bet that settles next week. Bound it to the same
+    // window the Autopilot rules call today, then take the longest inside it.
+    const todayMax = now + TENOR_BUCKETS.todayMaxMs;
+    const withinToday = open.filter((c) => c.market.expiry <= todayMax);
+    if (withinToday.length > 0) {
+      return withinToday.reduce((best, c) => (c.market.expiry > best.market.expiry ? c : best));
+    }
+    // Nothing settles today. Answer with the soonest thing there is rather than the
+    // furthest: the copy always states the real time left, so "settles in 3 days" is an
+    // honest answer to "today", while silently offering a nine-day bet is not.
+    return open.reduce((best, c) => (c.market.expiry < best.market.expiry ? c : best));
   }
   if (horizon === 'hour') {
     const target = now + 3_600_000;
@@ -346,9 +371,10 @@ function betReply(dir: BetDirection, conviction: Conviction, horizon: Horizon, c
  *  live surface. A move (or an explicit side) shows one side and loads a bet; a
  *  bare strike shows BOTH sides and lets the trader pick. */
 function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: CopilotContext, horizonArg?: Horizon): CopilotReply {
-  // "soon"/"now"/no qualifier reads the soonest (~1-minute) market; "today"/"in a
-  // few hours" reads the longest market we list, so a strike that's out of reach in
-  // a minute gets a real chance over the longer window.
+  // "soon"/"now"/no qualifier reads the soonest (~1-minute) market; "today"/"in a few hours"
+  // reads the longest market that still settles TODAY, so a strike out of reach in a minute
+  // gets a real chance over the longer window without quietly becoming a next-week bet (8-21
+  // lists 1-day and 1-week markets; see pickCandidate).
   const horizon = horizonArg ?? 'soonest';
   const cand = pickCandidate(ctx.candidates, horizon, ctx.now);
   if (!cand) {

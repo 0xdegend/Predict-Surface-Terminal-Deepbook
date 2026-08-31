@@ -23,16 +23,42 @@ export type Tenor = 'soonest' | 'hour' | 'today';
 /** A tradeable direction. Binary picks are up/down; a two-sided band is 'range'. */
 export type TradeSide = 'up' | 'down' | 'range';
 
-/** Time-to-expiry buckets (ms). Kept as one place so the gate, the picker, and
- *  the UI agree on what "1h" means. Boundaries are inclusive on the upper edge:
- *  <= 20 min is soonest, <= 90 min is hour, anything longer is today. */
-export const TENOR_BUCKETS = { soonestMaxMs: 20 * 60_000, hourMaxMs: 90 * 60_000 } as const;
+/**
+ * Time-to-expiry buckets (ms). One place so the gate, the picker and the UI agree on what
+ * "1h" means. Boundaries are inclusive on the upper edge.
+ *
+ * `todayMaxMs` is the one that matters for safety, and it is why this function can return
+ * null. These three names are the trader's whole vocabulary, and they were written when
+ * every listed market settled within the hour, so "anything longer" and "today" were the
+ * same thing. On 8-21 they are not: the venue lists 1-day and 1-week markets, and there is
+ * a live market settling in 9.3 days. An unbounded `today` would classify that as today,
+ * and Autopilot would place a nine-day unattended bet while the plan card said it settles
+ * this afternoon. The trader would have consented to something they were not shown.
+ */
+export const TENOR_BUCKETS = {
+  soonestMaxMs: 20 * 60_000,
+  hourMaxMs: 90 * 60_000,
+  todayMaxMs: 12 * 3_600_000,
+} as const;
 
-/** Bucket a market by how long until it settles. */
-export function classifyTenor(msToExpiry: number): Tenor {
+/**
+ * Bucket a market by how long until it settles, or null when it settles beyond anything the
+ * trader's rules can name.
+ *
+ * Returning null rather than widening the enum is deliberate. It makes long markets
+ * fail CLOSED everywhere by construction: every caller tests membership in a chosen set, and
+ * null is in no set, so a market nobody has opted into is never eligible. Adding a 'week'
+ * bucket instead would have made those markets eligible for anyone whose saved rules happened
+ * to list it, and silently reinterpreted every rule already stored in a trader's browser.
+ *
+ * Long-dated markets are still fully tradeable by hand. This governs only the rules-driven
+ * paths, where nobody is watching at the moment the trade fires.
+ */
+export function classifyTenor(msToExpiry: number): Tenor | null {
   if (msToExpiry <= TENOR_BUCKETS.soonestMaxMs) return 'soonest';
   if (msToExpiry <= TENOR_BUCKETS.hourMaxMs) return 'hour';
-  return 'today';
+  if (msToExpiry <= TENOR_BUCKETS.todayMaxMs) return 'today';
+  return null;
 }
 
 /** A concrete bet Kelly has picked, normalized for the gate. Sizing (sizeUsd) is
@@ -177,7 +203,11 @@ export function gateTrade(
   // --- the trader's rules (the "your rules" filter) ---
   if (trade.prob < rules.minProb) return deny('below_min_prob');
   if (rules.minEdge > 0 && trade.edge < rules.minEdge) return deny('below_min_edge');
-  if (!rules.tenors.includes(classifyTenor(trade.expiry - now))) return deny('tenor_not_allowed');
+  // A null tenor is a market settling beyond any window the trader's rules can name (8-21
+  // lists 1-day and 1-week markets). It is denied here rather than defaulted into 'today',
+  // so nothing fires unattended on a horizon nobody opted into.
+  const tenor = classifyTenor(trade.expiry - now);
+  if (tenor === null || !rules.tenors.includes(tenor)) return deny('tenor_not_allowed');
   if (!rules.sides.includes(trade.side)) return deny('side_not_allowed');
   if (trade.leverage > rules.maxLeverage) return deny('leverage_too_high');
 

@@ -12,7 +12,7 @@ import type { V2Market } from '@/lib/api/v2/types';
 import { toFloat } from '@/config/scale';
 import { predictV2Config } from '@/config/predict';
 
-export type V2Cadence = '1m' | '5m' | '1h';
+export type V2Cadence = '1m' | '5m' | '1h' | '1d' | '1w';
 
 /** Wall-clock now, wrapped so callers (incl. dynamic Server Components) read time
  *  through a named util rather than an inline impure global. Prefer an indexer's

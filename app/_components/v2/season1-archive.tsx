@@ -25,11 +25,11 @@ import { HUE, IconChip } from '../ui/metric';
 import { WalletAvatar } from '../leaderboard/wallet-avatar';
 import { TraderName } from '../leaderboard/trader-name';
 import {
-  LEGACY_ROWS,
-  LEGACY_CAPTURED_AT,
-  LEGACY_SOURCE,
+  SEASON_1_ROWS,
+  SEASON_1_CAPTURED_AT,
+  SEASON_1_SOURCE,
   type LegacyRow,
-} from '@/lib/leaderboard/legacy-carryover';
+} from '@/lib/leaderboard/legacy-season1';
 
 const EXPLORER = (addr: string) => `https://suiscan.xyz/${predictV2Config.network}/account/${addr}`;
 const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
@@ -37,7 +37,7 @@ const RANK_HUE = ['#e8c14e', '#c2cbd4', '#c08a5a']; // gold / silver / bronze
 const COLS = 'grid-cols-[2rem_1fr_4.5rem_4.5rem] sm:grid-cols-[2.5rem_1fr_7rem_7rem]';
 
 // Sorted once at module load — the snapshot never changes.
-const RANKED: LegacyRow[] = [...LEGACY_ROWS].sort((a, b) => b.points - a.points);
+const RANKED: LegacyRow[] = [...SEASON_1_ROWS].sort((a, b) => b.points - a.points);
 const TOTALS = {
   traders: RANKED.length,
   points: RANKED.reduce((s, r) => s + r.points, 0),
@@ -46,7 +46,7 @@ const TOTALS = {
 };
 
 const capturedLabel = (() => {
-  const d = new Date(LEGACY_CAPTURED_AT);
+  const d = new Date(SEASON_1_CAPTURED_AT);
   return Number.isNaN(d.getTime())
     ? null
     : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -71,7 +71,7 @@ export function V2Season1Archive() {
             Season 1 leaderboard
           </h1>
           <p className="mt-1 text-[12px] text-text-3">
-            Final standings from the first Predict release ({LEGACY_SOURCE})
+            Final standings from the first Predict release ({SEASON_1_SOURCE})
             {capturedLabel ? `, captured ${capturedLabel}` : ''} · a frozen snapshot, ranked by Points
           </p>
         </div>
@@ -142,7 +142,7 @@ export function V2Season1Archive() {
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-        This is a frozen snapshot of the Season 1 ({LEGACY_SOURCE}) Skew board, kept because that release
+        This is a frozen snapshot of the Season 1 ({SEASON_1_SOURCE}) Skew board, kept because that release
         was retired and its board can no longer be recomputed. Points = liquidity (DUSDC staked) +
         performance (net profit, floored at zero) + holding time. Every Season 1 trader keeps these points
         as a starting baseline on the live{' '}

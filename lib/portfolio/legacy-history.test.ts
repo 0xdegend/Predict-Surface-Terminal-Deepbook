@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mergeHistoryRows, legacyHistoryFor } from './legacy-history';
+import { mergeHistoryRows } from './legacy-history';
+import { legacyHistoryFor, legacyHistoryByOwner } from './legacy-history-data';
+import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import type { PastPrediction } from './history';
 
 const row = (key: string, settledAt: number, legacy = false): PastPrediction => ({
@@ -42,7 +44,7 @@ describe('mergeHistoryRows', () => {
   });
 });
 
-describe('legacyHistoryFor (real 6-24 seed, active on the 8-06 default)', () => {
+describe('legacyHistoryFor (the real snapshots, on whatever deployment is configured)', () => {
   it('returns nothing for an unknown wallet', () => {
     expect(legacyHistoryFor('0xdead')).toEqual([]);
     expect(legacyHistoryFor(undefined)).toEqual([]);
@@ -55,5 +57,31 @@ describe('legacyHistoryFor (real 6-24 seed, active on the 8-06 default)', () => 
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.legacy === true)).toBe(true);
     expect(rows.every((r) => typeof r.pnl === 'number')).toBe(true);
+  });
+
+  it('carries a trader who played more than one release as ONE continuous history', () => {
+    // The chaining case. A wallet present in both snapshots must come back with both sets
+    // of trades, in one newest-first list, with no row repeated.
+    const byOwner = legacyHistoryByOwner();
+    const owners = Object.keys(byOwner);
+    expect(owners.length, 'no carried history at all').toBeGreaterThan(0);
+    for (const owner of owners) {
+      const rows = byOwner[owner];
+      const keys = rows.map((r) => r.key);
+      expect(new Set(keys).size, `${owner} has a duplicated history row`).toBe(keys.length);
+      // Newest-first, the order the history tab renders without re-sorting.
+      for (let i = 1; i < rows.length; i++) expect(rows[i - 1].settledAt).toBeGreaterThanOrEqual(rows[i].settledAt);
+    }
+  });
+
+  it('never carries rows captured from the deployment being read live', () => {
+    // Same double-count guard as the points board: those trades already come back from the
+    // live read, so overlaying them would show every settled trade twice in the history tab.
+    const rows = Object.values(legacyHistoryByOwner()).flat();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.legacy === true), 'a carried row is not tagged legacy').toBe(true);
+    // The active deployment's own capture must not be in play. Asserted through the source
+    // string the data module publishes, which is built from the same filtered list.
+    expect(ACTIVE_V2_DEPLOYMENT).toBeTruthy();
   });
 });

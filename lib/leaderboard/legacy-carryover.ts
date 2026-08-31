@@ -1,61 +1,83 @@
 /**
- * lib/leaderboard/legacy-carryover.ts — carry the 6-24 Skew leaderboard forward.
+ * lib/leaderboard/legacy-carryover.ts — carry every retired Skew leaderboard forward.
  *
- * The Skew points board is recomputed per deployment from that deployment's on-chain
- * trades, so a redeploy (6-24 → 8-06, see predict-refresh-8-06) resets it to empty. To
- * preserve standing we captured a one-time snapshot of the final 6-24 Skew board
- * (legacy-points-6-24.json) and overlay it as a baseline on the live board: a returning
- * wallet keeps its 6-24 points and KEEPS ACCUMULATING as it trades on the new deployment.
+ * The Skew points board is recomputed per deployment from that deployment's own on-chain
+ * trades, so each redeploy (6-24 → 8-06 → 8-21) resets a returning trader to zero. To
+ * preserve standing we snapshot the final board of each retiring deployment and overlay
+ * them as a baseline: a wallet keeps everything it earned and KEEPS ACCUMULATING as it
+ * trades on the new release.
  *
- * Applied server-side in /api/v2/leaderboard for the 8-06 (V2_IS_729_PLUS) Skew board.
- * Points / volume / trades / PnL are additive (a career total); `legacyPoints` records
- * the carried amount so the UI can attribute it. Matching is by wallet address (stable
- * across deployments via the same zkLogin wallet), case-insensitive.
+ * Overlays CHAIN. Running on 8-21 carries both 6-24 and 8-06, added together, because the
+ * 8-06 capture was scored from raw 8-06 on-chain events and does NOT itself include the
+ * 6-24 carryover (that overlay is applied here, at read time, not baked into the seed).
  *
- * There is no double-count risk: the seed is the 6-24 board, and 6-24 is never a
- * V2_IS_729_PLUS deployment, so this overlay never runs against 6-24's own board.
+ * Applied server-side in /api/v2/leaderboard. Points / volume / trades / PnL are additive
+ * (a career total); `legacyPoints` records the carried amount so the UI can attribute it.
+ * Matching is by wallet address, which is stable across deployments via the same zkLogin
+ * wallet, case-insensitive.
+ *
+ * Which seeds apply is decided by `carriedSnapshots`, NOT by a version flag — see
+ * seed-registry.ts for why that distinction is what stops the board doubling.
  */
-import seedJson from './legacy-points-6-24.json';
+import seed624 from './legacy-points-6-24.json';
+import seed806 from './legacy-points-8-06.json';
+import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import { carriedSnapshots, type LegacyRow } from './seed-registry';
 import type { V2LeaderboardRow } from './v2';
 import { sortV2Rows } from './v2';
 
-export interface LegacyRow {
-  owner: string;
-  points: number;
-  volume: number;
-  trades: number;
-  netPnl?: number;
-}
-interface LegacySeed {
+export type { LegacyRow };
+
+export interface LegacySeed {
   deployment: string;
   capturedAt: string;
   rows: LegacyRow[];
 }
 
-const SEED = seedJson as unknown as LegacySeed;
+/** Every snapshot we hold, oldest first. Add the next one here and nowhere else. */
+const ALL_SEEDS: LegacySeed[] = [seed624 as unknown as LegacySeed, seed806 as unknown as LegacySeed];
 
-/** owner (lowercased) → carried-over totals from 6-24. */
-const LEGACY: Map<string, LegacyRow> = new Map(SEED.rows.map((r) => [r.owner.toLowerCase(), r]));
+/** The ones that apply right now: every seed EXCEPT one captured from the deployment we are
+ *  reading live, whose trades are already in the live board and would otherwise be doubled. */
+const CARRIED: LegacySeed[] = carriedSnapshots(ALL_SEEDS, ACTIVE_V2_DEPLOYMENT);
 
-/** Header stats for a "carried over from 6-24" note. */
-export const LEGACY_SOURCE = SEED.deployment;
-export const LEGACY_TRADER_COUNT = SEED.rows.length;
-export const LEGACY_TOTAL_POINTS = SEED.rows.reduce((s, r) => s + r.points, 0);
+/** owner (lowercased) → the sum of that wallet's totals across every carried snapshot. */
+const LEGACY: Map<string, LegacyRow> = (() => {
+  const merged = new Map<string, LegacyRow>();
+  for (const seed of CARRIED) {
+    for (const row of seed.rows) {
+      const key = row.owner.toLowerCase();
+      const prior = merged.get(key);
+      if (!prior) {
+        merged.set(key, { ...row });
+        continue;
+      }
+      // Two releases, one trader: a career total, not the more recent of the two.
+      prior.points += row.points;
+      prior.volume += row.volume;
+      prior.trades += row.trades;
+      if (row.netPnl != null) prior.netPnl = (prior.netPnl ?? 0) + row.netPnl;
+    }
+  }
+  return merged;
+})();
 
-/** The raw snapshot rows + when it was captured — so the Season 1 archive view can
- *  render the frozen board straight from the stored seed, no backend required. */
-export const LEGACY_ROWS: LegacyRow[] = SEED.rows;
-export const LEGACY_CAPTURED_AT: string = SEED.capturedAt;
+/** Header stats for a "carried over" note: which releases, and how much they add up to. */
+export const LEGACY_SOURCE = CARRIED.map((s) => s.deployment).join(' + ');
+export const LEGACY_TRADER_COUNT = LEGACY.size;
+export const LEGACY_TOTAL_POINTS = [...LEGACY.values()].reduce((sum, r) => sum + r.points, 0);
+/** The snapshots in play, for a caller that needs to name or count them. */
+export const LEGACY_SEEDS: readonly LegacySeed[] = CARRIED;
 
 /** The carried-over wallets (owner addresses, lowercased). These are KNOWN app
  *  traders, so the leaderboard indexer fans out their full new-deployment history to
  *  keep them on the VENUE board too — not just the Skew board via the seed overlay —
  *  even before our builder code is registered (which is what normally identifies app
  *  users to rescue from a bot-dominated scan window). See lib/leaderboard/v2-indexer. */
-export const LEGACY_OWNERS: string[] = SEED.rows.map((r) => r.owner.toLowerCase());
+export const LEGACY_OWNERS: string[] = [...LEGACY.keys()];
 
 /**
- * Overlay the legacy 6-24 points onto a live board. Returns a NEW sorted array; never
+ * Overlay the carried points onto a live board. Returns a NEW sorted array; never
  * mutates its input.
  *  - a live trader who also has legacy points gets them added, plus `legacyPoints`;
  *  - a legacy trader who hasn't traded on the new deployment yet is added as a row

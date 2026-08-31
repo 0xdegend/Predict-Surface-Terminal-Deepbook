@@ -15,7 +15,7 @@ import { useBuilderFeeSummary } from '@/lib/hooks/use-builder-code';
 import { useV2Leaderboard } from '@/lib/hooks/use-v2-leaderboard';
 import { useNow } from '@/lib/hooks/use-now';
 import { computeSkewUserStats } from '@/lib/leaderboard/user-stats';
-import { legacyHistoryByOwner } from '@/lib/portfolio/legacy-history';
+import { useLegacyHistoryByOwner } from '@/lib/hooks/use-legacy-history';
 import { num } from '@/lib/format';
 import { BuilderCodePanel } from './builder-code-panel';
 import { SkewFeePanel } from './skew-fee-panel';
@@ -114,9 +114,10 @@ function SummaryBar() {
   const fee = useBuilderFeeSummary();
   const { skewRows, skewLoading } = useV2Leaderboard();
   const now = useNow(0);
+  const legacyByOwner = useLegacyHistoryByOwner();
   const stats = useMemo(
-    () => computeSkewUserStats(skewRows, legacyHistoryByOwner(), now),
-    [skewRows, now],
+    () => computeSkewUserStats(skewRows, legacyByOwner, now),
+    [skewRows, legacyByOwner, now],
   );
 
   const usersLoading = skewLoading && skewRows.length === 0;
