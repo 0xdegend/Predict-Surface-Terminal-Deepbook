@@ -14,6 +14,7 @@ import { predictV2Config, V2_IS_729_PLUS } from '@/config/predict';
 import { PredictApiError } from '@/lib/api/client';
 import {
   onchainMarkets,
+  onchainRegistryMarkets,
   onchainPythObservations,
   onchainPythLatest,
   onchainMarketState,
@@ -88,12 +89,32 @@ const synthStatus = (): V2Status => ({
 export const getV2Status = (o?: GetOptions): Promise<V2Status> =>
   V2_IS_729_PLUS ? Promise.resolve(synthStatus()) : beta<V2Status>('/status', o);
 
-/** All `MarketCreated` rows (newest-first). Filter to active via v2-discovery. On
- *  7-29 these come from the chain's own event index (see lib/api/v2/onchain.ts). */
-export const getV2Markets = (limit = 100, o?: GetOptions) =>
-  V2_IS_729_PLUS
-    ? onchainMarkets(limit, o)
-    : beta<V2Market[]>(`/markets?limit=${limit}`, o);
+/**
+ * All known market rows (newest-first). Filter to active via v2-discovery.
+ *
+ * TWO SOURCES, UNIONED. The event walk gives history — every market created inside the
+ * window, expired ones included, which the leaderboard and analytics need. The registry
+ * read gives the CURRENT board, including markets created long before the window opens.
+ * Neither is a superset of the other, so the union is the honest answer:
+ *
+ *   - events only: no 1-day or 1-week market ever appears. Their creation events sit 48h
+ *     and 336h back, while 100 events reach ~100 minutes and the indexer caps at 8.3h.
+ *   - registry only: no expired market, so a settled position loses its strike.
+ *
+ * The registry read is ADDITIVE and fails soft (returns [] on error), so the board is
+ * never worse than the event walk alone. Registry rows are appended last and deduped by
+ * id downstream with "freshest wins", so an event row — which carries the real creation
+ * timestamp — always beats the reconstructed one for the same market.
+ */
+export const getV2Markets = async (limit = 100, o?: GetOptions): Promise<V2Market[]> => {
+  if (!V2_IS_729_PLUS) return beta<V2Market[]>(`/markets?limit=${limit}`, o);
+  const [events, registry] = await Promise.all([
+    onchainMarkets(limit, o),
+    onchainRegistryMarkets(),
+  ]);
+  const seen = new Set(events.map((m) => m.expiry_market_id));
+  return [...events, ...registry.filter((m) => !seen.has(m.expiry_market_id))];
+};
 
 export const getV2MarketState = (marketId: string, o?: GetOptions) =>
   V2_IS_729_PLUS

@@ -23,6 +23,7 @@ import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
 import { normalizeOrderEvent, normalizeMarketCreated, oracleReadTimestamp, isFullSettledClose } from './event-compat';
+import { cadenceOf, CADENCE_PERIOD_MS, type V2Cadence } from '@/lib/markets/v2-discovery';
 import type { ClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import type {
   V2Market,
@@ -449,6 +450,13 @@ const u64LE = (b: Uint8Array): bigint => {
   return v;
 };
 const optU64 = (b: Uint8Array): bigint | null => ((b[0] ?? 0) === 0 ? null : u64LE(b.subarray(1)));
+/** `Option<ID>`: a 0 tag means none, a 1 tag is followed by the 32-byte address. Returns
+ *  null for a short/empty buffer too, so a missing return value reads as "no market"
+ *  rather than as the zero address, which is a real id shape. */
+const optAddress = (b: Uint8Array): string | null => {
+  if ((b[0] ?? 0) === 0 || b.length < 33) return null;
+  return '0x' + [...b.subarray(1, 33)].map((x) => x.toString(16).padStart(2, '0')).join('');
+};
 const boolAt = (b: Uint8Array): boolean => (b[0] ?? 0) !== 0;
 
 // Config fields that have no per-market getter — uniform protocol/template
@@ -545,6 +553,173 @@ export async function onchainMarketState(marketId: string): Promise<V2MarketStat
     mint_paused: boolAt(slot('mint_paused')),
     settlement,
   };
+}
+
+/**
+ * Live markets read from the REGISTRY instead of the event stream.
+ *
+ * WHY THIS EXISTS. `onchainMarkets` walks `MarketCreated` newest-first, which can only
+ * ever surface markets created inside the walk window. That is fine for the short ladder
+ * and structurally hopeless for the long one: a 1-day market is listed 48h before it
+ * expires and a 1-week market 336h before, while 100 events reach back roughly 100
+ * minutes and even the indexer's hard 500-row cap reaches 8.3 hours. The daily and weekly
+ * markets 8-21 added were live and tradeable on chain the whole time; the board simply
+ * had no way to find them, and got quieter the busier the venue was.
+ *
+ * `registry::expiry_market_id(&Registry, underlying, expiry) -> Option<ID>` turns
+ * discovery around: instead of hunting for a creation event we ask for an expiry. Market
+ * expiries are aligned to their cadence period from the epoch (verified against every
+ * live market), so the candidate set is computable — a few per ladder — and the registry
+ * answers whether each one exists. Cost is one simulate for the lookups plus one for the
+ * details, no matter how much the venue is churning.
+ */
+
+/** How many periods past the next boundary to probe per ladder.
+ *
+ *  `windowSize` is how many markets the scheduler keeps open at once (2 on 8-21, 3
+ *  before), and it is protocol config that can change without warning. Probing a couple
+ *  extra costs nothing measurable — they are commands in a PTB that is already being
+ *  sent — and a missing market is invisible in a way an extra `none` is not. */
+const CADENCE_PROBE_SLACK = 2;
+
+/** Config fields for a market discovered by expiry rather than by its creation event.
+ *  Cadence-dependent values come from the deployment's own cadence table, which is where
+ *  the scheduler reads them, so these are the real per-ladder numbers and not defaults. */
+function cadenceTemplate(cadence: V2Cadence) {
+  const row = predictV2Config.cadences.find((c) => c.name === cadence);
+  return {
+    max_expiry_allocation: row?.maxExpiryAllocation ?? TEMPLATE.max_expiry_allocation,
+    initial_expiry_cash: row?.initialExpiryCash ?? TEMPLATE.initial_expiry_cash,
+  };
+}
+
+/** The per-market getters the detail read calls, in order. Deliberately the small set
+ *  discovery and the trade ticket need; the full state read stays `onchainMarketState`. */
+const MARKET_FNS: readonly string[] = [
+  'expiry',
+  'tick_size',
+  'admission_tick_size',
+  'backing_buffer_lambda',
+  'expiry_fee_window_ms',
+  'expiry_fee_max_multiplier',
+];
+
+/**
+ * Every market the registry currently lists, across all enabled cadences.
+ *
+ * Two round trips: probe candidate expiries, then read details for the ones that exist.
+ * Returns [] on failure rather than throwing — this is a supplement to the event walk
+ * (see getV2Markets), so a registry hiccup must degrade to the old behaviour instead of
+ * emptying the board.
+ */
+let registryCache: { at: number; rows: V2Market[] } | null = null;
+
+/**
+ * How long a registry read stays good.
+ *
+ * The board polls every 4s to keep the 1-minute ladder from starving, but that pressure
+ * is entirely on the EVENT walk, which is unchanged and still runs every poll. The
+ * registry read exists for markets listed 48 hours to 14 days ahead, so re-probing it
+ * four times a second buys nothing and costs two simulates each time. Worst case a market
+ * nobody could have seen 30 seconds ago appears 30 seconds late.
+ */
+const REGISTRY_TTL_MS = 30_000;
+
+export async function onchainRegistryMarkets(now: number = Date.now()): Promise<V2Market[]> {
+  if (registryCache && now - registryCache.at < REGISTRY_TTL_MS) return registryCache.rows;
+  const pkg = predictV2Config.packages.predict;
+  const underlying = predictV2Config.asset.propbookUnderlyingId;
+
+  // Candidate expiries, deduped ACROSS ladders. An expiry on a weekly boundary is also on
+  // the daily and hourly ones, and it is one market, so probing it once is both cheaper
+  // and the reason a market never appears twice in the result.
+  const candidates = new Map<number, V2Cadence>();
+  for (const c of predictV2Config.cadences) {
+    const period = CADENCE_PERIOD_MS[c.name as V2Cadence];
+    if (!period) continue;
+    const count = Number(c.windowSize || 0) + CADENCE_PROBE_SLACK;
+    const first = Math.ceil(now / period) * period;
+    for (let k = 0; k < count; k++) candidates.set(first + k * period, c.name as V2Cadence);
+  }
+  const expiries = [...candidates.keys()].sort((a, b) => a - b);
+  if (!expiries.length) return [];
+
+  let found: { id: string; expiry: number }[];
+  try {
+    const probe = new Transaction();
+    for (const expiry of expiries) {
+      probe.moveCall({
+        target: `${pkg}::registry::expiry_market_id`,
+        arguments: [
+          probe.object(predictV2Config.shared.registry),
+          probe.pure.u32(underlying),
+          probe.pure.u64(expiry),
+        ],
+      });
+    }
+    const hits = await inspectReturns(probe);
+    found = expiries
+      .map((expiry, i) => ({ expiry, id: optAddress(hits[i]?.[0] ?? new Uint8Array()) }))
+      .filter((r): r is { expiry: number; id: string } => r.id !== null);
+  } catch {
+    return [];
+  }
+  if (!found.length) return [];
+
+  try {
+    const detail = new Transaction();
+    for (const m of found) {
+      for (const fn of MARKET_FNS) {
+        detail.moveCall({ target: `${pkg}::expiry_market::${fn}`, arguments: [detail.object(m.id)] });
+      }
+    }
+    const cmds = await inspectReturns(detail);
+    const rows = found.map((m, mi) => {
+      const at = (fn: string) => cmds[mi * MARKET_FNS.length + MARKET_FNS.indexOf(fn)]?.[0] ?? new Uint8Array();
+      const u64Of = (fn: string) => Number(u64LE(at(fn)));
+      const expiry = u64Of('expiry') || m.expiry;
+      const tpl = cadenceTemplate(cadenceOf({ expiry } as V2Market));
+      return {
+        expiry_market_id: m.id,
+        pool_vault_id: predictV2Config.shared.poolVault,
+        propbook_underlying_id: underlying,
+        expiry,
+        // The listing time the scheduler used, reconstructed from the ladder rather than
+        // observed. Nothing classifies on it any more (cadenceOf reads the expiry), but
+        // dedupe and "newest first" sorts do, and a 0 here would rank every long market
+        // last forever.
+        checkpoint_timestamp_ms: expiry - windowSpanMs(cadenceOf({ expiry } as V2Market)),
+        tick_size: u64LE(at('tick_size')).toString(),
+        admission_tick_size: u64LE(at('admission_tick_size')).toString(),
+        max_expiry_allocation: tpl.max_expiry_allocation,
+        initial_expiry_cash: tpl.initial_expiry_cash,
+        ...(normalizeMarketCreated({}) as Pick<
+          V2Market,
+          'liquidation_ltv' | 'max_admission_leverage' | 'trading_loss_rebate_rate'
+        >),
+        backing_buffer_lambda: u64Of('backing_buffer_lambda'),
+        base_fee: TEMPLATE.base_fee,
+        min_fee: TEMPLATE.min_fee,
+        min_entry_probability: TEMPLATE.min_entry_probability,
+        max_entry_probability: TEMPLATE.max_entry_probability,
+        expiry_fee_window_ms: u64Of('expiry_fee_window_ms'),
+        expiry_fee_max_multiplier: u64Of('expiry_fee_max_multiplier'),
+        kind: 'market_created',
+      } satisfies V2Market;
+    });
+    registryCache = { at: now, rows };
+    return rows;
+  } catch {
+    // Do NOT cache a failure: the next poll should retry rather than serve an empty
+    // board for 30 seconds because one simulate timed out.
+    return [];
+  }
+}
+
+/** How long before expiry the scheduler lists a market of this cadence. */
+function windowSpanMs(cadence: V2Cadence): number {
+  const row = predictV2Config.cadences.find((c) => c.name === cadence);
+  return CADENCE_PERIOD_MS[cadence] * Math.max(1, Number(row?.windowSize || 1));
 }
 
 /* ------------------------------ account orders --------------------------- */

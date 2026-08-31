@@ -39,18 +39,41 @@ function mkt(over: Partial<V2Market> & { expiry_market_id: string; expiry: numbe
   };
 }
 
+/** A cadence boundary from the epoch: a Thursday 00:00 UTC, so it sits on the weekly,
+ *  daily, hourly, 5-minute and 1-minute grid at once. Real market expiries are always on
+ *  one of these boundaries — see cadenceOf. */
+const WEEK_BASE = 2904 * 604_800_000;
+
 describe('cadenceOf', () => {
-  it('classifies by creation tenor (≈ windowSize × period)', () => {
-    const base = 1_000_000_000;
-    expect(cadenceOf(mkt({ expiry_market_id: 'a', checkpoint_timestamp_ms: base, expiry: base + 3 * MIN }))).toBe('1m');
-    expect(cadenceOf(mkt({ expiry_market_id: 'b', checkpoint_timestamp_ms: base, expiry: base + 15 * MIN }))).toBe('5m');
-    expect(cadenceOf(mkt({ expiry_market_id: 'c', checkpoint_timestamp_ms: base, expiry: base + 180 * MIN }))).toBe('1h');
+  it('classifies by the longest enabled ladder that divides the expiry', () => {
+    const at = (offset: number, id: string) =>
+      mkt({ expiry_market_id: id, checkpoint_timestamp_ms: WEEK_BASE - 3 * 60 * MIN, expiry: WEEK_BASE + offset });
+    expect(cadenceOf(at(61 * MIN, 'a'))).toBe('1m');
+    expect(cadenceOf(at(65 * MIN, 'b'))).toBe('5m');
+    expect(cadenceOf(at(300 * MIN, 'c'))).toBe('1h');
   });
 
-  it('treats the larger expiry allocation as hourly regardless of tenor', () => {
-    const base = 1_000_000_000;
-    const m = mkt({ expiry_market_id: 'd', checkpoint_timestamp_ms: base, expiry: base + 3 * MIN, max_expiry_allocation: '250000000000' });
-    expect(cadenceOf(m)).toBe('1h');
+  it('ignores the creation time entirely', () => {
+    // Cadence used to be read off (expiry − created) plus an allocation tell. It is now a
+    // pure function of the expiry, which is what lets discovery classify a market found by
+    // registry lookup, where there is no creation event to measure.
+    const hourly = (created: number) =>
+      mkt({ expiry_market_id: 'h', checkpoint_timestamp_ms: created, expiry: WEEK_BASE + 300 * MIN });
+    expect(cadenceOf(hourly(WEEK_BASE - 3 * 60 * MIN))).toBe('1h');
+    expect(cadenceOf(hourly(WEEK_BASE - 20_000 * MIN))).toBe('1h');
+    expect(cadenceOf(hourly(0))).toBe('1h');
+  });
+
+  it('ignores the expiry allocation, which no longer separates the ladders', () => {
+    // 8-21 gives 1h, 1d and 1w the SAME max_expiry_allocation, so the old "large
+    // allocation means hourly" tell would now label a weekly market hourly.
+    const m = mkt({
+      expiry_market_id: 'd',
+      checkpoint_timestamp_ms: WEEK_BASE,
+      expiry: WEEK_BASE + 61 * MIN,
+      max_expiry_allocation: '250000000000',
+    });
+    expect(cadenceOf(m)).toBe('1m');
   });
 });
 
@@ -97,11 +120,11 @@ describe('recentMarkets', () => {
 
 describe('groupByCadence', () => {
   it('buckets every active market into its cadence', () => {
-    const base = 1_000_000_000;
+    const created = WEEK_BASE - 3 * 60 * MIN;
     const ms = [
-      mkt({ expiry_market_id: 'a', checkpoint_timestamp_ms: base, expiry: base + 3 * MIN }),
-      mkt({ expiry_market_id: 'b', checkpoint_timestamp_ms: base, expiry: base + 15 * MIN }),
-      mkt({ expiry_market_id: 'c', checkpoint_timestamp_ms: base, expiry: base + 180 * MIN, max_expiry_allocation: '250000000000' }),
+      mkt({ expiry_market_id: 'a', checkpoint_timestamp_ms: created, expiry: WEEK_BASE + 61 * MIN }),
+      mkt({ expiry_market_id: 'b', checkpoint_timestamp_ms: created, expiry: WEEK_BASE + 65 * MIN }),
+      mkt({ expiry_market_id: 'c', checkpoint_timestamp_ms: created, expiry: WEEK_BASE + 300 * MIN }),
     ];
     const g = groupByCadence(ms);
     expect(g['1m'].map((m) => m.expiry_market_id)).toEqual(['a']);

@@ -1,18 +1,13 @@
 /**
- * lib/markets/v2-discovery.ts — turn the raw `/markets` event stream into the set
- * of live, tradeable ExpiryMarkets, grouped by cadence.
+ * lib/markets/v2-discovery.ts — turn raw market rows into the set of live, tradeable
+ * ExpiryMarkets, grouped by cadence.
  *
- * Cadence isn't in the event, so we derive it. Every market enters the rolling window
- * exactly `windowSize` periods before its expiry, so the creation tenor (expiry − created)
- * is ~constant per cadence. Measured on 8-21, where windowSize is 2: 1m≈2min, 5m≈10min,
- * 1h≈2h, 1d≈48h, 1w≈336h. (It was 3 periods on the older deployments, hence 1m≈3min there;
- * the classifier's bounds are wide enough to cover both.)
+ * A market on chain is keyed by (underlying, expiry) and carries no cadence of its own,
+ * so cadence is derived here: the longest enabled ladder whose period divides the expiry.
+ * See cadenceOf for why that is exact rather than a heuristic.
  *
- * The larger expiry allocation used to identify the 1h cadence on its own. It no longer
- * can: 8-21's 1d and 1w cadences carry the same allocation, so it now only separates those
- * three from the 1m/5m pair, and tenor does the rest. See cadenceOf.
- *
- * Pure + deterministic.
+ * Pure + deterministic. Discovery of WHICH markets exist lives in lib/api/v2/onchain.ts;
+ * this module only classifies and filters what it is handed.
  */
 import type { V2Market } from '@/lib/api/v2/types';
 import { toFloat } from '@/config/scale';
@@ -34,41 +29,51 @@ export const CADENCE_LABEL: Record<V2Cadence, string> = {
   '1w': 'Weekly',
 };
 
-/** The max expiry allocation shared by the 1h, 1d and 1w cadences (1e9 string). It separates
- *  those three from the 1m/5m pair, but NOT from each other — on 8-21 all three carry
- *  250000000000 — so it cannot be the whole test any more. Tenor does the rest. */
-const HOURLY_ALLOCATION = '250000000000';
+/** Milliseconds in one period of each cadence the protocol schedules. */
+export const CADENCE_PERIOD_MS: Record<V2Cadence, number> = {
+  '1m': 60_000,
+  '5m': 300_000,
+  '1h': 3_600_000,
+  '1d': 86_400_000,
+  '1w': 604_800_000,
+};
 
 /**
- * Upper bound (ms) on a cadence's CREATION tenor, i.e. `expiry - created`, which is
- * `windowSize` cadence periods rather than one.
+ * The cadences this deployment actually schedules, longest period first.
  *
- * Measured against the live 8-21 board on 2026-08-31, where windowSize is 2:
- *
- *   1m    0.03h      5m    0.17h      1h    2.00h      1d   48.00h      1w   336.00h
- *
- * The bounds sit well clear of those, because windowSize is protocol config and can change
- * without warning: a 1h market at windowSize 3 is 3h, and must not start reading as daily.
- * One observed 1w market came in at 290h rather than 336h, so the daily bound has to be far
- * below a week rather than just above two days.
+ * Read from config rather than hardcoded, so 8-06 (1m/5m/1h) and 8-21 (plus 1d/1w)
+ * each classify against their own ladder. On a deployment with no daily cadence an
+ * expiry that happens to land at midnight is correctly the HOURLY market, because
+ * that is the longest cadence that exists there.
  */
-const CADENCE_MAX_TENOR_MS = { hour: 12 * 3_600_000, day: 7 * 24 * 3_600_000 } as const;
+const ENABLED_CADENCES: { name: V2Cadence; periodMs: number }[] = predictV2Config.cadences
+  .map((c) => ({ name: c.name as V2Cadence, periodMs: CADENCE_PERIOD_MS[c.name as V2Cadence] }))
+  .filter((c) => c.periodMs > 0)
+  .sort((a, b) => b.periodMs - a.periodMs);
 
 /**
- * Classify a market into its cadence from creation tenor + allocation.
+ * Classify a market into its cadence FROM ITS EXPIRY ALONE: the longest enabled
+ * cadence whose period divides it.
  *
- * The long branches come FIRST and are tenor-only. Before 8-21 every listed market settled
- * within the hour, so `tenorMs > 40min` meaning hourly was true by construction. On 8-21 it
- * is not: a 1-week market satisfies that test, and without these branches a bet settling
- * nine days out was labelled "Hourly" everywhere it appeared. The short-market logic below
- * is untouched, so nothing a trader already recognises moves.
+ * WHY THIS AND NOT THE CREATION TENOR. A market is keyed on chain by (underlying,
+ * expiry) and nothing else — there is no cadence field, and no separate object per
+ * cadence. Verified live on 8-21: the market expiring 2026-09-03T00:00Z is the SAME
+ * object id for the daily and the weekly ladder, exactly as the 18:25 market is both
+ * the 1-minute and the 5-minute one. So a market does not "have" a cadence; an expiry
+ * simply belongs to every ladder whose period divides it, and the useful label is the
+ * longest one, because that is when it was first listed.
+ *
+ * That makes this a pure function of `expiry`, which is what the discovery rewrite
+ * needs: markets found by asking the registry have no creation event, so there is no
+ * tenor to measure. The old rule (expiry − created, plus an allocation tell) could only
+ * classify a market whose MarketCreated event we happened to be holding.
+ *
+ * Checked against all 500 rows the indexer retains: it reproduces the old classifier
+ * exactly, 500/500. This is a strictly wider domain, not a different answer.
  */
 export function cadenceOf(m: V2Market): V2Cadence {
-  const tenorMs = m.expiry - m.checkpoint_timestamp_ms;
-  if (tenorMs > CADENCE_MAX_TENOR_MS.day) return '1w';
-  if (tenorMs > CADENCE_MAX_TENOR_MS.hour) return '1d';
-  if (m.max_expiry_allocation === HOURLY_ALLOCATION || tenorMs > 40 * 60_000) return '1h';
-  return tenorMs < 4 * 60_000 ? '1m' : '5m';
+  for (const c of ENABLED_CADENCES) if (m.expiry % c.periodMs === 0) return c.name;
+  return ENABLED_CADENCES[ENABLED_CADENCES.length - 1]?.name ?? '1m';
 }
 
 /**

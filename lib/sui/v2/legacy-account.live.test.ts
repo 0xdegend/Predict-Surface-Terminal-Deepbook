@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { predictV2Config, ACTIVE_V2_DEPLOYMENT, PREVIOUS_V2_DEPLOYMENT } from '@/config/predict';
-import { readLegacyFunds, buildLegacyWithdrawTx } from './legacy-account';
+import { readLegacyFunds, buildLegacyWithdrawTx, buildLegacyMoveTx } from './legacy-account';
 import { readWrapper, type SimulateCapableClient } from './account';
 
 const RUN = process.env.RUN_LIVE === '1';
@@ -83,4 +83,40 @@ describe.skipIf(!RUN)(`legacy account reads from ${ACTIVE_V2_DEPLOYMENT} (live)`
     console.log(`active ${ACTIVE_V2_DEPLOYMENT}, previous ${PREVIOUS_V2_DEPLOYMENT ?? 'none'}`);
     expect(PREVIOUS_V2_DEPLOYMENT).not.toBe(ACTIVE_V2_DEPLOYMENT);
   });
+
+  it('moves the whole balance to the new account in ONE transaction', async () => {
+    // The claim the banner's single signature rests on. A PTB may call into more than one
+    // package, and the DUSDC `withdraw_funds` returns on the old package is just a Coin, so
+    // it can be handed straight to `deposit_funds` on the new one. When there is no account
+    // on the new release yet the create rides along too, because the registry returns the
+    // wrapper BY VALUE — it is deposited into first and shared last.
+    //
+    // Simulated at the FULL balance, never submitted. An arity or ordering mistake here
+    // does not fail to build, it aborts a signed transaction carrying everything the trader
+    // has on the old release.
+    if (PREVIOUS_V2_DEPLOYMENT === null) return;
+    const funds = await readLegacyFunds(core, OWNER, PREVIOUS_V2_DEPLOYMENT);
+    if (!funds.wrapperId || funds.balanceBase === 0n) {
+      console.log(`nothing on ${PREVIOUS_V2_DEPLOYMENT} for this wallet — move shape not exercised`);
+      return;
+    }
+    const target = await readWrapper(core, OWNER);
+    const tx = buildLegacyMoveTx({
+      from: PREVIOUS_V2_DEPLOYMENT,
+      oldWrapperId: funds.wrapperId,
+      newWrapperId: target.wrapperId,
+      amount: funds.balanceBase,
+      createAccount: !target.exists,
+    });
+    tx.setSender(OWNER);
+    const res = await (client.core as unknown as {
+      simulateTransaction: (o: unknown) => Promise<{ Transaction?: { status?: { success?: boolean; error?: unknown } } }>;
+    }).simulateTransaction({ transaction: tx, include: { commandResults: true }, checksEnabled: false });
+    const status = res.Transaction?.status;
+    console.log(
+      `move ${Number(funds.balanceBase) / 1e6} DUSDC from ${PREVIOUS_V2_DEPLOYMENT} -> ${ACTIVE_V2_DEPLOYMENT}` +
+        ` (${target.exists ? 'existing account' : 'creating account'}) → success=${status?.success}`,
+    );
+    expect(status?.success, `move would abort: ${JSON.stringify(status?.error ?? {})}`).toBe(true);
+  }, 60_000);
 });

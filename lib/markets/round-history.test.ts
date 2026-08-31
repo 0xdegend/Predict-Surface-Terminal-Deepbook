@@ -69,11 +69,13 @@ describe('settledOutcome', () => {
 });
 
 describe('pickHistoryRounds', () => {
-  const NOW = 1_700_000_000_000;
   const MIN = 60_000;
+  /** A midnight, so it sits on the 1-minute, 5-minute and hourly grid at once. Cadence is
+   *  read off the expiry (the longest ladder that divides it), so fixtures have to be
+   *  aligned the way the scheduler aligns real markets. */
+  const NOW = 19_675 * 86_400_000; // 2023-11-14T00:00:00Z
 
-  /** A market of a given cadence, expiring `agoMin` minutes ago. `cadenceOf` reads the
-   *  creation TENOR, so the fixture sets a real one rather than a label. */
+  /** A finished round expiring `agoMin` minutes before NOW. */
   function round(id: string, tenorMin: number, agoMin: number): V2Market {
     const expiry = NOW - agoMin * MIN;
     return {
@@ -86,7 +88,11 @@ describe('pickHistoryRounds', () => {
     } as V2Market;
   }
 
-  const oneMin = (n: number) => Array.from({ length: n }, (_, i) => round(`m${i}`, 3, i + 1));
+  // 1-minute rounds must land on minutes that are NOT multiples of five, or they would be
+  // 5-minute markets — which is not a fixture detail but how the venue works: one market
+  // serves every ladder its expiry divides into.
+  const notFive = (i: number) => i + 1 + Math.floor(i / 4); // 1,2,3,4,6,7,8,9,11,…
+  const oneMin = (n: number) => Array.from({ length: n }, (_, i) => round(`m${i}`, 3, notFive(i)));
   const fiveMin = (n: number) => Array.from({ length: n }, (_, i) => round(`f${i}`, 15, (i + 1) * 5));
 
   it('returns the asked-for cadence when it has enough history', () => {

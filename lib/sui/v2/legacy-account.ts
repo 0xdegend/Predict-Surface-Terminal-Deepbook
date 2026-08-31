@@ -13,17 +13,24 @@
  * can read one release while trading on another. That is the whole difference; the calls
  * themselves are the same ones account.ts makes.
  *
- * WITHDRAW ONLY, deliberately. There is no "move to the new account" here, because that
- * cannot be one transaction: the two accounts live in different packages with different
- * registries, and a PTB cannot hold both custody objects meaningfully. The honest shape is
- * to withdraw into the trader's own wallet, which they hold either way, and let the normal
- * deposit path take it from there (the first trade auto-deposits the shortfall). It also
- * fails safe: if the second half never happens, the money is in their wallet rather than in
- * limbo.
+ * ONE TRANSACTION, not three. A PTB is not restricted to a single package, and the DUSDC
+ * that `withdraw_funds` returns on the old package is just a `Coin` — it can be handed
+ * straight to `deposit_funds` on the new one without ever landing in the wallet. When the
+ * trader has no account on the new release yet, the create goes in the same PTB: the
+ * registry hands back the AccountWrapper BY VALUE, so it can be deposited into and only
+ * then shared, which is why the usual "you cannot use a shared object in the transaction
+ * that creates it" rule does not bite here.
+ *
+ * That makes the move atomic, which is the real win. The alternative was three signatures
+ * with two states in between where the money is somewhere the trader did not ask for, and
+ * a half-finished move to explain. Here it either happens or nothing happens.
+ *
+ * Both shapes are verified against the live chain by simulation, at the full balance, not
+ * a test amount — see legacy-account.live.test.ts.
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictConfigFor, type PredictDeployment } from '@/config/predict';
+import { predictConfigFor, predictV2Config, type PredictDeployment } from '@/config/predict';
 import { SIM_SENDER, simulate, type SimulateCapableClient } from './account';
 
 /** What a trader still has on a deployment we have left. */
@@ -125,5 +132,70 @@ export function buildLegacyWithdrawTx(
     ],
   });
   tx.transferObjects([coin], tx.pure.address(owner));
+  return tx;
+}
+
+/**
+ * Move everything from the old account into the new one, in a single transaction.
+ *
+ * `createAccount` decides whether the new account has to be made first. Pass what
+ * `readWrapper` reported rather than guessing: calling `account_registry::new` for a
+ * wallet that already has an account aborts, and skipping it for one that does not aborts
+ * on the deposit. Either way the whole transaction reverts and nothing moves, so this is a
+ * failed move rather than a lost one — but it is still a signature spent on nothing.
+ *
+ * `amount` is read before building rather than inside the PTB: the balance was already
+ * fetched to decide whether to offer the move at all, and re-reading mid-transaction would
+ * let a concurrent settlement change the number underneath. Too small leaves dust, which
+ * the banner offers again; too large would abort.
+ */
+export function buildLegacyMoveTx(p: {
+  from: PredictDeployment;
+  oldWrapperId: string;
+  newWrapperId: string;
+  amount: bigint;
+  createAccount: boolean;
+}): Transaction {
+  const from = predictConfigFor(p.from);
+  const to = predictV2Config;
+  const oldAcc = (m: string, f: string) => `${from.packages.account}::${m}::${f}` as const;
+  const newAcc = (m: string, f: string) => `${to.packages.account}::${m}::${f}` as const;
+
+  const tx = new Transaction();
+
+  // Out of the old account. The Auth is a hot potato minted per gated call, so the new
+  // package needs its own below rather than reusing this one.
+  const oldAuth = tx.moveCall({ target: oldAcc('account', 'generate_auth') });
+  const coin = tx.moveCall({
+    target: oldAcc('account', 'withdraw_funds'),
+    typeArguments: [from.quote.coinType],
+    arguments: [
+      tx.object(p.oldWrapperId),
+      oldAuth,
+      tx.pure.u64(p.amount),
+      tx.object(from.accumulatorRootId),
+      tx.object(from.clockId),
+    ],
+  });
+
+  // The wrapper to deposit into: either the shared one that already exists, or a brand new
+  // one still held by value in this PTB.
+  const wrapper = p.createAccount
+    ? tx.moveCall({
+        target: newAcc('account_registry', 'new'),
+        arguments: [tx.object(to.shared.accountRegistry)],
+      })
+    : tx.object(p.newWrapperId);
+
+  const newAuth = tx.moveCall({ target: newAcc('account', 'generate_auth') });
+  tx.moveCall({
+    target: newAcc('account', 'deposit_funds'),
+    typeArguments: [to.quote.coinType],
+    arguments: [wrapper, newAuth, coin, tx.object(to.accumulatorRootId), tx.object(to.clockId)],
+  });
+
+  // Share LAST. Sharing first would make the wrapper a shared input to a transaction that
+  // created it, which is exactly the thing that is not allowed.
+  if (p.createAccount) tx.moveCall({ target: newAcc('account', 'share'), arguments: [wrapper] });
   return tx;
 }

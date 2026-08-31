@@ -3,7 +3,10 @@ import { resolveRecipe, SHARE_MIN_RUNWAY_MS } from './resolve-recipe';
 import type { TradeRecipe } from './trade-link';
 import type { V2Market } from '@/lib/api/v2/types';
 
-const NOW = 1_700_000_000_000;
+/** A midnight, so it lies on the 1-minute, 5-minute and hourly grid at once. Cadence is
+ *  a function of the expiry (the longest ladder whose period divides it), so a fixture
+ *  has to be aligned the way the scheduler aligns real markets. */
+const NOW = 19_675 * 86_400_000; // 2023-11-14T00:00:00Z
 
 /** A V2Market with sane defaults; override only what a test cares about. */
 function mkMarket(o: Partial<V2Market> & { expiry_market_id: string }): V2Market {
@@ -31,17 +34,22 @@ function mkMarket(o: Partial<V2Market> & { expiry_market_id: string }): V2Market
   };
 }
 
-// Cadence is derived from (expiry - created); build each family with the right tenor.
+// Each family sits on its own grid. The 1-minute helper keeps the requested runway to
+// the second, because the runway rules are what most of these tests are about; the longer
+// families round UP to their next boundary, so `secsLeft` there is a floor rather than an
+// exact figure — those tests only need the market to be live and pickable.
+const snapUp = (ms: number, grid: number) => Math.ceil(ms / grid) * grid;
+
 const oneM = (id: string, secsLeft: number, over: Partial<V2Market> = {}) => {
   const expiry = NOW + secsLeft * 1000;
   return mkMarket({ expiry_market_id: id, expiry, checkpoint_timestamp_ms: expiry - 180_000, ...over });
 };
 const fiveM = (id: string, secsLeft: number, over: Partial<V2Market> = {}) => {
-  const expiry = NOW + secsLeft * 1000;
+  const expiry = snapUp(NOW + secsLeft * 1000, 300_000);
   return mkMarket({ expiry_market_id: id, expiry, checkpoint_timestamp_ms: expiry - 900_000, ...over });
 };
 const oneH = (id: string, secsLeft: number, over: Partial<V2Market> = {}) => {
-  const expiry = NOW + secsLeft * 1000;
+  const expiry = snapUp(NOW + secsLeft * 1000, 3_600_000);
   return mkMarket({
     expiry_market_id: id,
     expiry,
@@ -114,8 +122,13 @@ describe('resolveRecipe — share runway gate', () => {
     expect(res.ok && res.trade.marketId).toBe('1m-90s');
   });
 
-  it('returns no_market when every live market has under a minute left', () => {
-    const res = resolveRecipe(binary(), [oneM('1m-30s', 30), fiveM('5m-45s', 45)], NOW);
+  it('returns no_market when nothing on the board has a usable minute left', () => {
+    // One nearly-over market and one already gone. Deliberately NOT a short 1-minute
+    // market plus a short 5-minute one: a market is keyed by its expiry alone, so when a
+    // 5-minute expiry is under a minute away it IS the 1-minute market, the same object.
+    // That pair cannot exist at one instant on a real board.
+    const now = NOW + 15_000; // 45s before the next minute boundary
+    const res = resolveRecipe(binary(), [oneM('1m-45s-left', 60), oneM('1m-gone', 0)], now);
     expect(res).toEqual({ ok: false, reason: 'no_market' });
   });
 });

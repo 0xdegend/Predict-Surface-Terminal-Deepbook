@@ -13,17 +13,17 @@
  * nobody who has already reclaimed, ever sees it. It is also dismissable per wallet, because
  * a trader may reasonably want to deal with it later and should not be nagged every visit.
  *
- * The button is presented as one action but is up to three transactions: withdraw from the
- * old account, create the new one if it does not exist yet, then deposit. It runs in that
- * order on purpose. The withdraw comes FIRST so that if anything afterwards fails the money
- * is already sitting in the trader's own wallet rather than in limbo, and the banner can
- * simply offer the remaining steps again.
+ * The button is ONE transaction, and one signature. Withdrawing from the old account,
+ * creating the new one when there isn't one yet, and depositing all ride in a single PTB
+ * (see buildLegacyMoveTx). That is not just fewer prompts: it is atomic, so there is no
+ * in-between state where the money has left the old account but has not arrived, and no
+ * half-finished move to explain to someone whose balance is briefly nowhere.
  */
 import { useState } from 'react';
 import { LuArrowRightLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useLegacyFunds, qkLegacyFunds } from '@/lib/hooks/use-legacy-funds';
-import { buildLegacyWithdrawTx } from '@/lib/sui/v2/legacy-account';
+import { buildLegacyMoveTx } from '@/lib/sui/v2/legacy-account';
 import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
@@ -41,13 +41,22 @@ type Phase = 'idle' | 'moving' | 'done' | 'error';
  */
 const MIN_RECLAIM_BASE = 10_000n;
 
-/** Dismissals are per wallet and persisted: "later" should mean later, not until reload. */
-const dismissKey = (owner: string) => `skew.legacy-funds.dismissed.${owner.toLowerCase()}`;
+/**
+ * Dismissals are per wallet AND per move: "later" should mean later, not until reload, but
+ * it must not mean forever.
+ *
+ * The key carries which release the funds are being moved FROM. Without that, someone who
+ * dismissed the 7-29 banner while the app ran on 8-06 would never be shown the 8-06 one
+ * after the cutover — a second, larger pile of their own money, silently suppressed by a
+ * click they made about something else. Every redeploy is a new question to ask.
+ */
+const dismissKey = (owner: string, from: string) =>
+  `skew.legacy-funds.dismissed.${from}.${owner.toLowerCase()}`;
 
-function readDismissed(owner: string | null): boolean {
-  if (!owner) return false;
+function readDismissed(owner: string | null, from: string | null): boolean {
+  if (!owner || !from) return false;
   try {
-    return localStorage.getItem(dismissKey(owner)) === '1';
+    return localStorage.getItem(dismissKey(owner, from)) === '1';
   } catch {
     return false; // private mode / blocked storage: show it rather than hide it
   }
@@ -63,7 +72,7 @@ export function LegacyFundsBanner() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   // Read once into state rather than on every render, so the value is stable across the
   // move and the banner cannot vanish mid-flow.
-  const [dismissed, setDismissed] = useState(() => readDismissed(owner));
+  const [dismissed, setDismissed] = useState(() => readDismissed(owner, legacy.deployment));
 
   const amount = legacy.balanceBase;
   const hasFunds = amount >= MIN_RECLAIM_BASE && !!legacy.wrapperId && !!legacy.deployment;
@@ -74,7 +83,7 @@ export function LegacyFundsBanner() {
   function dismiss() {
     if (phase === 'moving') return;
     try {
-      if (owner) localStorage.setItem(dismissKey(owner), '1');
+      if (owner && legacy.deployment) localStorage.setItem(dismissKey(owner, legacy.deployment), '1');
     } catch {
       /* storage blocked — dismissing for this session only is fine */
     }
@@ -83,38 +92,34 @@ export function LegacyFundsBanner() {
 
   async function move() {
     if (!owner || !legacy.wrapperId || !legacy.deployment) return;
+    // Only act on a wrapper state we actually READ. `wrapperExists` defaults to false, so
+    // acting while the read is still in flight could ask the chain to create an account
+    // that already exists — which aborts the whole move.
+    if (!acct.wrapperKnown) return;
+    // If the read says an account exists it must also have told us which one. Bailing is
+    // better than depositing into a guessed address.
+    if (acct.wrapperExists && !acct.wrapperId) return;
     setErrMsg(null);
     setPhase('moving');
 
-    // 1) Out of the old account and into the wallet. First, so a later failure leaves the
-    //    money somewhere the trader controls outright.
-    const withdrew = await acct.runTx(
-      'legacy-withdraw',
-      buildLegacyWithdrawTx(legacy.wrapperId, amount, owner, legacy.deployment),
+    const ok = await acct.runTx(
+      'legacy-move',
+      buildLegacyMoveTx({
+        from: legacy.deployment,
+        oldWrapperId: legacy.wrapperId,
+        newWrapperId: acct.wrapperId ?? '',
+        amount,
+        createAccount: !acct.wrapperExists,
+      }),
       [qkLegacyFunds(owner, legacy.deployment)],
     );
-    if (!withdrew) {
-      setErrMsg(`We couldn't move your ${sym} just now. Nothing was taken from the old account.`);
+    legacy.refetch();
+    if (!ok) {
+      // Atomic, so there is exactly one true thing to say: nothing moved.
+      setErrMsg(`We couldn't move your ${sym} just now. It is still in your old account.`);
       setPhase('error');
       return;
     }
-
-    // 2) Make sure there is somewhere to put it.
-    if (!acct.wrapperExists) {
-      const created = await acct.createAccount();
-      if (!created) {
-        // The money is in their wallet, which is the important part. Say so plainly rather
-        // than reporting a failure that sounds like it was lost.
-        setErrMsg(`Your ${sym} is in your wallet. Create your trading account to finish.`);
-        setPhase('error');
-        legacy.refetch();
-        return;
-      }
-    }
-
-    // 3) Deposit. Best-effort: if it does not land, the first trade auto-deposits anyway.
-    await acct.deposit(amount);
-    legacy.refetch();
     setPhase('done');
   }
 
@@ -140,7 +145,8 @@ export function LegacyFundsBanner() {
               <span className="font-medium text-text-1">
                 Predict moved to a new version, and you have {label} in your old account.
               </span>{' '}
-              Your funds are safe. Move them across and you can trade with them again.
+              Your funds are safe. Moving them sets up your new trading account at the same
+              time, in one step.
             </>
           )}
         </p>

@@ -12,11 +12,15 @@ import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
 
 const POS_INF = 1073741823;
 
+/** An hour-aligned expiry, which is what makes these markets classify as '1h'. Real
+ *  expiries always sit on their cadence boundary from the epoch, and cadenceOf reads the
+ *  cadence off the expiry alone. */
+const HOURLY_EXPIRY = 2 * 3_600_000;
+
 const mkt = (id: string, expiry: number): V2Market =>
   ({
     expiry_market_id: id,
     expiry,
-    // cadenceOf reads the tenor from expiry − created; a ~1h gap → '1h'.
     checkpoint_timestamp_ms: expiry - 3_600_000,
     tick_size: '10000000',
   }) as unknown as V2Market;
@@ -70,7 +74,7 @@ describe('sentimentFromOrders', () => {
 
 describe('flowRows', () => {
   it('maps every mint to a row, newest-first, tagged with its market cadence', () => {
-    const markets = [mkt('0xA', 5_000_000), mkt('0xB', 5_000_000)];
+    const markets = [mkt('0xA', HOURLY_EXPIRY), mkt('0xB', HOURLY_EXPIRY)];
     const byMarket = new Map<string, V2OrderEvent[]>([
       ['0xA', [mint({ order_id: '1', checkpoint_timestamp_ms: 100 }), mint({ order_id: '2', checkpoint_timestamp_ms: 300 })]],
       ['0xB', [mint({ expiry_market_id: '0xB', order_id: '3', checkpoint_timestamp_ms: 200 })]],
@@ -87,7 +91,7 @@ describe('flowRows', () => {
   it('skips redeems and mints with no owner', () => {
     const rows = flowRows(
       new Map([['0xA', [{ kind: 'live_order_redeemed', owner: '0xx' } as V2OrderEvent, mint({ owner: undefined })]]]),
-      [mkt('0xA', 5_000_000)],
+      [mkt('0xA', HOURLY_EXPIRY)],
     );
     expect(rows).toEqual([]);
   });
@@ -111,7 +115,7 @@ describe('marketVolumeFromOrders', () => {
 });
 
 describe('marketCell / marketCells', () => {
-  const market = mkt('0xA', 5_000_000);
+  const market = mkt('0xA', HOURLY_EXPIRY);
   // Volume + sentiment both come from the ORDERS feed now (no activity rollups).
   const inputs = {
     orders: [
@@ -141,7 +145,7 @@ describe('marketCell / marketCells', () => {
 
   it('ranks markets by volume desc', () => {
     const cells = marketCells(
-      [mkt('0xA', 5_000_000), mkt('0xB', 5_000_000)],
+      [mkt('0xA', HOURLY_EXPIRY), mkt('0xB', HOURLY_EXPIRY)],
       new Map([
         ['0xA', { orders: [mint({ net_premium: '50000000' })] }],
         ['0xB', { orders: [mint({ expiry_market_id: '0xB', net_premium: '90000000' })] }],

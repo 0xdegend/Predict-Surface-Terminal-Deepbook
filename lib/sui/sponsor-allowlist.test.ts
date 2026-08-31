@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Transaction } from '@mysten/sui/transactions';
 import { toBase64, normalizeSuiAddress } from '@mysten/sui/utils';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, predictConfigFor, PREVIOUS_V2_DEPLOYMENT } from '@/config/predict';
 import { ownedPackages, sponsoredTargets } from './sponsor-allowlist';
 
 /** Build the kind bytes for a PTB of bare move-calls (targets only — the allowlist
@@ -82,5 +82,56 @@ describe('sponsor-allowlist', () => {
   it('still refuses a framework call outside the address-balance set (allowlist is exact, not all of 0x2)', async () => {
     const kind = await kindOf('0x2::coin::burn');
     expect(() => sponsoredTargets(kind)).toThrow(/Refusing to sponsor a call outside the Predict packages/);
+  });
+});
+
+describe('the stranded-funds move', () => {
+  // The move spans TWO deployments' account packages in one PTB. Its targets are listed
+  // here rather than built from buildLegacyMoveTx, because that transaction references
+  // shared objects and so cannot be built offline — the allowlist reads only
+  // package::module::function, which is exactly what these are.
+  const moveTargets = () => {
+    const from = predictConfigFor(PREVIOUS_V2_DEPLOYMENT!).packages.account;
+    const to = predictV2Config.packages.account;
+    return [
+      `${from}::account::generate_auth`,
+      `${from}::account::withdraw_funds`,
+      `${to}::account_registry::new`,
+      `${to}::account::generate_auth`,
+      `${to}::account::deposit_funds`,
+      `${to}::account::share`,
+    ] as `${string}::${string}::${string}`[];
+  };
+
+  it('owns the PREVIOUS deployment account package, not just the active one', () => {
+    // Without this a Google/Enoki trader, who never holds SUI, is refused sponsorship on
+    // the single transaction that recovers their own money — and it surfaces as a sponsor
+    // error saying nothing about the old release.
+    if (PREVIOUS_V2_DEPLOYMENT === null) return;
+    const owned = ownedPackages();
+    const prev = normalizeSuiAddress(predictConfigFor(PREVIOUS_V2_DEPLOYMENT).packages.account);
+    expect(owned.has(prev), `previous deployment account package not sponsorable: ${prev}`).toBe(true);
+  });
+
+  it('does NOT own the previous deployment predict package', () => {
+    // Deliberately narrow: recovering custody is not the same as being allowed to keep
+    // trading a retired release on our gas.
+    if (PREVIOUS_V2_DEPLOYMENT === null) return;
+    const prevPredict = normalizeSuiAddress(predictConfigFor(PREVIOUS_V2_DEPLOYMENT).packages.predict);
+    if (prevPredict === normalizeSuiAddress(predictV2Config.packages.predict)) return; // same pkg, nothing to assert
+    expect(ownedPackages().has(prevPredict)).toBe(false);
+  });
+
+  it('sponsors every call in the one-transaction move', async () => {
+    if (PREVIOUS_V2_DEPLOYMENT === null) return;
+    const targets = sponsoredTargets(await kindOf(...moveTargets()));
+    expect(targets).toHaveLength(moveTargets().length);
+  });
+
+  it('needs no framework coin plumbing', () => {
+    // The withdrawn Coin goes straight into deposit_funds, so it never becomes an address
+    // balance and the SDK injects none of the 0x2::coin::* helpers. Those were a past
+    // source of sponsor refusals, so it is worth pinning that this path avoids them.
+    expect(moveTargets().some((t) => t.startsWith(normalizeSuiAddress('0x2')))).toBe(false);
   });
 });
