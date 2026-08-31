@@ -15,6 +15,7 @@
  * route via the cache), so the scan never runs in the browser.
  */
 import { predictV2Config } from '@/config/predict';
+import { normalizeOrderEvent } from '@/lib/api/v2/event-compat';
 import { aggregateV2Leaderboard } from './v2-aggregate';
 import type { V2LeaderboardRow } from './v2';
 import type { V2OrderEvent } from '@/lib/api/v2/types';
@@ -112,7 +113,9 @@ async function pageEvents(structName: string, signal?: AbortSignal): Promise<V2O
     for (const node of events.nodes ?? []) {
       const j = node.contents?.json;
       if (!j) continue;
-      out.push({ ...j, kind, checkpoint_timestamp_ms: toMs(node.timestamp) } as V2OrderEvent);
+      // 8-21 renamed the stake to `premium` and the stamp to `onchain_timestamp_ms`.
+      // Normalize before the row is scored, or every point on the board reads as 0.
+      out.push({ ...normalizeOrderEvent(j, kind), kind, checkpoint_timestamp_ms: toMs(node.timestamp) } as V2OrderEvent);
     }
 
     if (!events.pageInfo?.hasPreviousPage || events.pageInfo.startCursor == null) break;
@@ -148,14 +151,23 @@ export function filterSkewEvents(all: V2OrderEvent[], builderCodeId: string): V2
  * Server-only. Empty when no builder code is configured. (7-29 serves the Skew board
  * from the accumulating indexer instead — see lib/leaderboard/v2-indexer.ts.)
  */
+/**
+ * Every order event in the scan window, from all four streams, unfiltered.
+ *
+ * Split out from `fetchSkewEvents` so the GraphQL reader can be exercised WITHOUT a builder
+ * code configured. That matters on a fresh deployment: until the code is registered,
+ * `fetchSkewEvents` correctly returns nothing, which makes it useless for proving the
+ * reader itself still parses the new event shape.
+ */
+export async function fetchAllOrderEvents(signal?: AbortSignal): Promise<V2OrderEvent[]> {
+  return (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)))).flat();
+}
+
 /** Every Skew-attributed order event in the scan window, unaggregated. */
 export async function fetchSkewEvents(signal?: AbortSignal): Promise<V2OrderEvent[]> {
   const builderCodeId = predictV2Config.builderCodeId;
   if (!builderCodeId) return [];
-  return filterSkewEvents(
-    (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)))).flat(),
-    builderCodeId,
-  );
+  return filterSkewEvents(await fetchAllOrderEvents(signal), builderCodeId);
 }
 
 /**

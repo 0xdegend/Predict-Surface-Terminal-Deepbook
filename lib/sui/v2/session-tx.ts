@@ -23,6 +23,7 @@
  * read-only `load_live_pricer` the owner path uses.
  */
 import { Transaction } from '@mysten/sui/transactions';
+import type { TransactionArgument } from '@mysten/sui/transactions';
 import { V2_IS_821_PLUS, predictV2Config, v2SessionTarget } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import type { MintParams, MintBudgetParams, RedeemParams } from './predict-tx';
@@ -34,6 +35,23 @@ const SESS = (fn: string) => v2SessionTarget('sessions', fn);
 
 /** u64 max — the "no added cost cap" sentinel (the `amount` budget already bounds spend). */
 const U64_MAX = 18446744073709551615n;
+
+/**
+ * The 8-21 sessions package takes a shared `SessionsConfig` as its FOURTH argument, on every
+ * entry point. It is a pure insertion: nothing was renamed and nothing else moved, so every
+ * argument after it shifts one place right. That is the failure this returns a hard error
+ * for rather than an empty string — a zero address in an object slot does not fail to build,
+ * it aborts a signed, unattended session trade with an object-not-found that names nothing.
+ *
+ * Returns the arguments to splice in at position 3, so each builder reads as one line and
+ * the older deployments keep their exact previous shape.
+ */
+function sessionConfigArg(tx: Transaction): TransactionArgument[] {
+  if (!V2_IS_821_PLUS) return [];
+  const id = c().shared.sessionsConfig;
+  if (!id) throw new Error('sessions: shared.sessionsConfig is required on 8-21 and is not configured');
+  return [tx.object(id)];
+}
 
 /** The `deposit`/`attachBuilderCode` fields never apply to a session trade. */
 type SessionMint = Omit<MintParams, 'deposit' | 'attachBuilderCode'>;
@@ -53,15 +71,15 @@ export function buildSessionMintTx(p: SessionMint): Transaction {
       tx.object(p.marketId),
       tx.object(c().shared.accountRegistry),
       tx.object(p.wrapperId),
+      ...sessionConfigArg(tx),
       tx.object(c().shared.protocolConfig),
       pricer,
       tx.pure.u64(p.lowerTick),
       tx.pure.u64(p.higherTick),
       tx.pure.u64(p.quantity),
-      // Leverage was REMOVED from the protocol in 8-21 (#1236): `mint_exact_quantity`
-      // and `mint_exact_amount` each dropped this argument, 14 params down to 13. The
-      // caller still passes a leverage so the older deployments keep working unchanged;
-      // it is simply not sent to a chain that no longer has the concept.
+      // Leverage was REMOVED from the protocol in 8-21. On the SESSION path the arity is
+      // unchanged at 14, because the same release inserted `SessionsConfig` above — one
+      // argument out, one in. Verified against the live package ABI, not the count.
       ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.leverage)]),
       tx.pure.u64(p.maxCost),
       tx.pure.u64(p.maxProbability),
@@ -83,16 +101,16 @@ export function buildSessionMintBudgetTx(p: SessionMintBudget): Transaction {
       tx.object(p.marketId),
       tx.object(c().shared.accountRegistry),
       tx.object(p.wrapperId),
+      ...sessionConfigArg(tx),
       tx.object(c().shared.protocolConfig),
       pricer,
       tx.pure.u64(p.lowerTick),
       tx.pure.u64(p.higherTick),
       tx.pure.u64(p.amount),
       tx.pure.u64(p.minQuantity),
-      // Leverage was REMOVED from the protocol in 8-21 (#1236): `mint_exact_quantity`
-      // and `mint_exact_amount` each dropped this argument, 14 params down to 13. The
-      // caller still passes a leverage so the older deployments keep working unchanged;
-      // it is simply not sent to a chain that no longer has the concept.
+      // Leverage was REMOVED from the protocol in 8-21. On the SESSION path the arity is
+      // unchanged at 14, because the same release inserted `SessionsConfig` above — one
+      // argument out, one in. Verified against the live package ABI, not the count.
       ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.leverage)]),
       tx.pure.u64(p.maxCost ?? U64_MAX),
       tx.object(c().accumulatorRootId),
@@ -112,6 +130,7 @@ export function buildSessionRedeemLiveTx(p: RedeemParams): Transaction {
       tx.object(p.marketId),
       tx.object(c().shared.accountRegistry),
       tx.object(p.wrapperId),
+      ...sessionConfigArg(tx),
       tx.object(c().shared.protocolConfig),
       pricer,
       tx.pure.u256(p.orderId),
@@ -135,10 +154,11 @@ export function buildSessionRedeemSettledTx(p: RedeemParams): Transaction {
       tx.object(p.marketId),
       tx.object(c().shared.accountRegistry),
       tx.object(p.wrapperId),
+      ...sessionConfigArg(tx),
       tx.object(c().shared.protocolConfig),
       tx.pure.u256(p.orderId),
-      // 8-21 dropped `close_quantity` from `redeem_settled` (9 params down to 8): a
-      // settled claim is all-or-nothing there, so there is no partial amount to name.
+      // 8-21 dropped `close_quantity` (a settled claim is all-or-nothing) and added
+      // `SessionsConfig` above, so this stays 9 params on chain and only the SHAPE moved.
       ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.closeQuantity)]),
       tx.object(c().accumulatorRootId),
       tx.object(c().clockId),

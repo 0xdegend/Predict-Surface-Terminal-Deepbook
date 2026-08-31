@@ -18,10 +18,11 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { grpcRead, activeGrpcUrl } from '@/lib/sui/grpc-core';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, V2_IS_821_PLUS } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
+import { normalizeOrderEvent, normalizeMarketCreated, oracleReadTimestamp, isFullSettledClose } from './event-compat';
 import type { ClosedRootsGuard } from '@/lib/portfolio/closed-roots-guard';
 import type {
   V2Market,
@@ -238,10 +239,13 @@ const s = (v: unknown): string => String(v ?? '0');
 /* -------------------------------- markets -------------------------------- */
 
 function toMarket(e: SuiEvent): V2Market | null {
-  const p = e.parsedJson;
-  if (!p || typeof p.expiry_market_id !== 'string') return null;
+  const raw = e.parsedJson;
+  if (!raw || typeof raw.expiry_market_id !== 'string') return null;
+  // 8-21 dropped the leverage/liquidation knobs from MarketCreated; fill the no-op
+  // defaults before reading so `toFloat` never sees undefined (see event-compat).
+  const p = normalizeMarketCreated(raw);
   return {
-    expiry_market_id: p.expiry_market_id,
+    expiry_market_id: raw.expiry_market_id,
     pool_vault_id: s(p.pool_vault_id),
     propbook_underlying_id: n(p.propbook_underlying_id),
     expiry: n(p.expiry),
@@ -385,7 +389,7 @@ export async function onchainPythLatest(opts?: GetOptions): Promise<PythObservat
     exponent_magnitude: n(value.exponent_magnitude),
     exponent_is_negative: Boolean(value.exponent_is_negative),
     source_timestamp_ms: n(latest.source_timestamp_ms),
-    checkpoint_timestamp_ms: n(latest.update_timestamp_ms),
+    checkpoint_timestamp_ms: oracleReadTimestamp(latest),
   };
 }
 
@@ -460,13 +464,34 @@ const TEMPLATE = {
   initial_expiry_cash: '10000000000',
 } as const;
 
-// Getter order: value getters (u64) then flags/options. Mirrors expiry_market.move.
-const STATE_FNS = [
-  'expiry', 'tick_size', 'admission_tick_size', 'max_admission_leverage',
-  'liquidation_ltv', 'backing_buffer_lambda', 'expiry_fee_window_ms',
-  'expiry_fee_max_multiplier', 'trading_loss_rebate_rate', // 0..8 = u64
-  'mint_paused', 'reference_tick', 'is_settled', 'try_settlement_price', // 9..12
-] as const;
+/**
+ * The view getters this state read simulates, in call order.
+ *
+ * 8-21 deleted `max_admission_leverage`, `liquidation_ltv` and `trading_loss_rebate_rate`
+ * along with leverage itself. A PTB naming a function that does not exist fails to resolve,
+ * so leaving them in does not misread three numbers, it makes the WHOLE read throw — and
+ * this is the only path that can describe an EXPIRED market, so every settled position on
+ * the rail would lose its strike.
+ *
+ * Results are looked up BY NAME below rather than by a hardcoded index, so dropping an entry
+ * here cannot silently shift the remaining values (the previous version read
+ * `liquidation_ltv` from slot 4 and `max_admission_leverage` from slot 3 — the exact kind of
+ * off-by-one this republish would have introduced).
+ */
+const STATE_FNS: readonly string[] = [
+  'expiry',
+  'tick_size',
+  'admission_tick_size',
+  ...(V2_IS_821_PLUS ? [] : ['max_admission_leverage', 'liquidation_ltv']),
+  'backing_buffer_lambda',
+  'expiry_fee_window_ms',
+  'expiry_fee_max_multiplier',
+  ...(V2_IS_821_PLUS ? [] : ['trading_loss_rebate_rate']),
+  'mint_paused',
+  'reference_tick',
+  'is_settled',
+  'try_settlement_price',
+];
 
 /**
  * Full per-market state via on-chain view getters (works for EXPIRED markets a
@@ -480,38 +505,44 @@ export async function onchainMarketState(marketId: string): Promise<V2MarketStat
     tx.moveCall({ target: `${pkg}::expiry_market::${fn}`, arguments: [tx.object(marketId)] });
   }
   const cmds = await inspectReturns(tx);
-  const at = (i: number) => cmds[i][0];
+  // By NAME, not by position: STATE_FNS differs per deployment, so an index would drift.
+  const slot = (fn: string) => cmds[STATE_FNS.indexOf(fn)]?.[0] ?? new Uint8Array();
+  const u64Of = (fn: string) => (STATE_FNS.includes(fn) ? Number(u64LE(slot(fn))) : 0);
   const market: V2Market = {
     expiry_market_id: marketId,
     pool_vault_id: predictV2Config.shared.poolVault,
     propbook_underlying_id: predictV2Config.asset.propbookUnderlyingId,
-    expiry: Number(u64LE(at(0))),
+    expiry: u64Of('expiry'),
     checkpoint_timestamp_ms: 0, // creation time isn't a getter; unused by state consumers
-    tick_size: u64LE(at(1)).toString(),
-    admission_tick_size: u64LE(at(2)).toString(),
+    tick_size: u64LE(slot('tick_size')).toString(),
+    admission_tick_size: u64LE(slot('admission_tick_size')).toString(),
     max_expiry_allocation: TEMPLATE.max_expiry_allocation,
     initial_expiry_cash: TEMPLATE.initial_expiry_cash,
-    liquidation_ltv: Number(u64LE(at(4))),
-    max_admission_leverage: Number(u64LE(at(3))),
-    backing_buffer_lambda: Number(u64LE(at(5))),
+    // Absent on 8-21 (no leverage, no liquidation). normalizeMarketCreated supplies the
+    // no-op values the ticket and discovery layers expect, so nothing downstream sees NaN.
+    ...(normalizeMarketCreated({
+      liquidation_ltv: V2_IS_821_PLUS ? undefined : u64Of('liquidation_ltv'),
+      max_admission_leverage: V2_IS_821_PLUS ? undefined : u64Of('max_admission_leverage'),
+      trading_loss_rebate_rate: V2_IS_821_PLUS ? undefined : u64Of('trading_loss_rebate_rate'),
+    }) as Pick<V2Market, 'liquidation_ltv' | 'max_admission_leverage' | 'trading_loss_rebate_rate'>),
+    backing_buffer_lambda: u64Of('backing_buffer_lambda'),
     base_fee: TEMPLATE.base_fee,
     min_fee: TEMPLATE.min_fee,
     min_entry_probability: TEMPLATE.min_entry_probability,
     max_entry_probability: TEMPLATE.max_entry_probability,
-    expiry_fee_window_ms: Number(u64LE(at(6))),
-    expiry_fee_max_multiplier: Number(u64LE(at(7))),
-    trading_loss_rebate_rate: Number(u64LE(at(8))),
+    expiry_fee_window_ms: u64Of('expiry_fee_window_ms'),
+    expiry_fee_max_multiplier: u64Of('expiry_fee_max_multiplier'),
     kind: 'market_created',
   };
-  const referenceTick = optU64(at(10));
-  const settlementPrice = boolAt(at(11)) ? optU64(at(12)) : null;
+  const referenceTick = optU64(slot('reference_tick'));
+  const settlementPrice = boolAt(slot('is_settled')) ? optU64(slot('try_settlement_price')) : null;
   const settlement: V2Settlement | null =
     settlementPrice != null ? { settlement_price: settlementPrice.toString() } : null;
   return {
     expiry_market_id: marketId,
     market,
     reference_tick: referenceTick != null ? referenceTick.toString() : null,
-    mint_paused: boolAt(at(9)),
+    mint_paused: boolAt(slot('mint_paused')),
     settlement,
   };
 }
@@ -562,7 +593,8 @@ async function scanOrderEvents(
     for (const e of scans[i]) {
       const p = e.parsedJson;
       if (!p || !match(p)) continue;
-      rows.push({ ...(p as Record<string, unknown>), kind: ORDER_EVENTS[evt], checkpoint_timestamp_ms: n(e.timestampMs) });
+      const kind = ORDER_EVENTS[evt];
+      rows.push({ ...normalizeOrderEvent(p as Record<string, unknown>, kind), kind, checkpoint_timestamp_ms: n(e.timestampMs) });
     }
   });
   rows.sort((a, b) => (b.checkpoint_timestamp_ms ?? 0) - (a.checkpoint_timestamp_ms ?? 0));
@@ -635,6 +667,7 @@ export function foldOpenPositions(orders: V2OrderEvent[], guard?: ClosedRootsGua
   const minted = new Map<string, bigint>();
   const mintedPremium = new Map<string, bigint>();
   const closed = new Map<string, bigint>();
+  const fullyClosed = new Set<string>(); // 8-21 settled claims — quantity-less, all-or-nothing
   for (const o of orders) {
     const root = String(o.position_root_id ?? o.order_id ?? '');
     if (!root) continue;
@@ -642,6 +675,14 @@ export function foldOpenPositions(orders: V2OrderEvent[], guard?: ClosedRootsGua
       minted.set(root, (minted.get(root) ?? 0n) + big(o.quantity));
       mintedPremium.set(root, (mintedPremium.get(root) ?? 0n) + big(o.net_premium));
       if (!terms.has(root)) terms.set(root, o);
+    } else if (isFullSettledClose(String(o.kind ?? ''), o.quantity_closed)) {
+      // 8-21 made a settled claim all-or-nothing: SettledOrderRedeemed no longer carries a
+      // quantity, because there is never a partial one. Without this the redeem subtracts 0
+      // and the position stays "open" forever — a paid, settled bet that never leaves the
+      // rail. Recorded as a root to close rather than subtracted here: this loop runs
+      // NEWEST-FIRST, so the redeem is reached before its own mint and the minted total is
+      // not known yet.
+      fullyClosed.add(root);
     } else {
       closed.set(root, (closed.get(root) ?? 0n) + big(o.quantity_closed));
     }
@@ -649,7 +690,7 @@ export function foldOpenPositions(orders: V2OrderEvent[], guard?: ClosedRootsGua
   const positions: V2Position[] = [];
   for (const [root, mint] of terms) {
     const totalMinted = minted.get(root) ?? 0n;
-    const remaining = totalMinted - (closed.get(root) ?? 0n);
+    const remaining = fullyClosed.has(root) ? 0n : totalMinted - (closed.get(root) ?? 0n);
     if (remaining <= 0n) {
       // Fully closed → not an open position. Record the CONFIRMED close (mint present)
       // so a later scan that fails to see this redeem can't resurrect the paid position.
@@ -724,7 +765,8 @@ export async function scanOrderEventsSince(
     for (const e of results[i].events) {
       const p = e.parsedJson;
       if (!p) continue;
-      events.push({ ...(p as Record<string, unknown>), kind: ORDER_EVENTS[evt], checkpoint_timestamp_ms: n(e.timestampMs) });
+      const kind = ORDER_EVENTS[evt];
+      events.push({ ...normalizeOrderEvent(p as Record<string, unknown>, kind), kind, checkpoint_timestamp_ms: n(e.timestampMs) });
     }
     next[evt] = results[i].cursor;
   });
@@ -1114,7 +1156,8 @@ async function scanMarketRedeems(
       // redeems of the same root are all captured; `remaining` only drives the early-break.
       if (!wantRoots.has(root)) continue; // one of OUR open roots in this market (any account)
       if (String(p.expiry_market_id ?? '') !== marketId) continue;
-      out.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.redeemed_at_ms ?? p.minted_at_ms) });
+      const q = normalizeOrderEvent(p, ORDER_EVENTS[struct]);
+      out.push({ ...q, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(q.redeemed_at_ms ?? q.minted_at_ms) });
       remaining.delete(root);
     }
     if (remaining.size === 0) break; // every open root here is accounted for — stop early
@@ -1174,7 +1217,8 @@ async function scanSenderOrders(sender: string, maxTx: number, opts?: GetOptions
       const struct = orderStructOf(ev.type);
       if (struct) {
         const p = ev.parsedJson ?? {};
-        orders.push({ ...p, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(p.minted_at_ms ?? p.redeemed_at_ms) });
+        const q = normalizeOrderEvent(p, ORDER_EVENTS[struct]);
+        orders.push({ ...q, kind: ORDER_EVENTS[struct], checkpoint_timestamp_ms: n(q.minted_at_ms ?? q.redeemed_at_ms) });
       } else if (ev.type && SESSION_AUTHORIZED_RE.test(ev.type)) {
         const p = ev.parsedJson ?? {};
         learnedSessionAuthType ??= ev.type; // warm the by-account backstop's type

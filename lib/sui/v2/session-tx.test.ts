@@ -5,7 +5,7 @@ import {
   buildSessionRedeemLiveTx,
   buildSessionRedeemSettledTx,
 } from './session-tx';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, V2_IS_821_PLUS } from '@/config/predict';
 
 const MARKET = '0x2222222222222222222222222222222222222222222222222222222222222222';
 const WRAPPER = '0x3333333333333333333333333333333333333333333333333333333333333333';
@@ -73,7 +73,7 @@ describe('session trade builders target the sessions package', () => {
     expect(moveCalls(tx).some((m) => m.function === 'load_live_pricer')).toBe(true);
   });
 
-  it('redeem_live: sessions module, right fn, 11 args, with a Pricer', () => {
+  it('redeem_live: sessions module, right fn, with a Pricer', () => {
     const tx = buildSessionRedeemLiveTx({
       marketId: MARKET,
       wrapperId: WRAPPER,
@@ -82,9 +82,11 @@ describe('session trade builders target the sessions package', () => {
     });
     const c = sessionCall(tx);
     expect(c.function).toBe('redeem_live');
-    // market, registry, wrapper, config, pricer, order_id, close_quantity,
-    // min_probability, min_proceeds, root, clock
-    expect(c.arguments).toHaveLength(11);
+    // market, registry, wrapper, [sessions_config], protocol_config, pricer, order_id,
+    // close_quantity, min_probability, min_proceeds, root, clock.
+    // The ONE session entry point 8-21 genuinely lengthened: it inserted SessionsConfig and
+    // removed nothing, so unlike the mint and settled-redeem paths the arity actually moves.
+    expect(c.arguments).toHaveLength(V2_IS_821_PLUS ? 12 : 11);
     expect(moveCalls(tx).some((m) => m.function === 'load_live_pricer')).toBe(true);
   });
 

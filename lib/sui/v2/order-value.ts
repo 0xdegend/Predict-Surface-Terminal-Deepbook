@@ -2,7 +2,8 @@
  * order-value.ts — the on-chain "what is this order worth at settlement?" read, used as the
  * settled-LOSS backstop for the portfolio.
  *
- * `expiry_market::order_value(market, Option<Pricer>, order_id): u64` returns the DUSDC
+ * `expiry_market::order_value(market, Option<Pricer>, order_id): u64` — on 8-21,
+ * `settled_order_payout(market, order_id): u64` — returns the DUSDC
  * (base units) an order is worth. On a SETTLED market that is its INTRINSIC settlement
  * payout, NOT its unredeemed balance: a LOSER reads 0, a WINNER reads its full payout
  * whether or not the keeper has already paid it out. (Correction to a 2026-08-18 note that
@@ -21,7 +22,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2Target } from '@/config/predict';
+import { predictV2Config, v2Target, V2_IS_821_PLUS } from '@/config/predict';
 import { SIM_SENDER, simulate, type SimulateCapableClient } from './account';
 
 /** `Option<Pricer>` type-arg for `option::none` — the settled read needs no live pricer. */
@@ -53,12 +54,23 @@ export async function readSettledOrderValues(
   const tx = new Transaction();
   tx.setSender(SIM_SENDER);
   for (const e of batch) {
-    // Each order_value consumes its own Option::None (passed by value), so one none per call.
-    const none = tx.moveCall({ target: '0x1::option::none', typeArguments: [PRICER_TYPE()] });
-    tx.moveCall({
-      target: v2Target('expiry_market', 'order_value'),
-      arguments: [tx.object(e.marketId), none, tx.pure.u256(e.orderId)],
-    });
+    if (V2_IS_821_PLUS) {
+      // 8-21 split `order_value` in two: `live_order_value(market, &Pricer, id)` for an open
+      // market, and `settled_order_payout(market, id)` for a settled one. This read is only
+      // ever about SETTLED orders, so the settled half is the exact match — and it needs no
+      // Option and no Pricer, which halves the commands in the batched simulate.
+      tx.moveCall({
+        target: v2Target('expiry_market', 'settled_order_payout'),
+        arguments: [tx.object(e.marketId), tx.pure.u256(e.orderId)],
+      });
+    } else {
+      // Each order_value consumes its own Option::None (passed by value), so one none per call.
+      const none = tx.moveCall({ target: '0x1::option::none', typeArguments: [PRICER_TYPE()] });
+      tx.moveCall({
+        target: v2Target('expiry_market', 'order_value'),
+        arguments: [tx.object(e.marketId), none, tx.pure.u256(e.orderId)],
+      });
+    }
   }
 
   let res;
@@ -68,9 +80,12 @@ export async function readSettledOrderValues(
     return out; // transport failure → fail-open (no entries, so nothing is dropped)
   }
   const cmds = res.commandResults ?? [];
-  // Commands interleave none(2k), order_value(2k+1); read each order_value's return.
+  // 8-06 interleaves none(2k), order_value(2k+1); 8-21 emits one command per entry because
+  // `settled_order_payout` takes no Option. Index accordingly or every value reads off by one.
+  const stride = V2_IS_821_PLUS ? 1 : 2;
+  const offset = V2_IS_821_PLUS ? 0 : 1;
   batch.forEach((e, k) => {
-    const rv = cmds[2 * k + 1]?.returnValues?.[0]?.bcs;
+    const rv = cmds[stride * k + offset]?.returnValues?.[0]?.bcs;
     if (!rv) return;
     try {
       out.set(e.orderId.toString(), BigInt(bcs.u64().parse(new Uint8Array(rv))));

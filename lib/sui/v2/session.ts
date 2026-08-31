@@ -19,12 +19,19 @@
 import { WebCryptoSigner, type ExportedWebCryptoKeypair } from '@mysten/webcrypto-signer';
 import { Transaction, coinWithBalance } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2SessionTarget } from '@/config/predict';
+import { predictV2Config, v2SessionTarget, V2_IS_821_PLUS } from '@/config/predict';
 import { addDeposit, simulate, SIM_SENDER, type SimulateCapableClient } from './account';
 import { addSetBuilderCode } from './builder-code';
 
 /** `${sessions_pkg}::sessions::<fn>` (the module inside is `sessions`). */
 const SESS = (fn: string) => v2SessionTarget('sessions', fn);
+
+/** The 8-21 shared `SessionsConfig`, or a loud failure. See addAuthorizeSession. */
+function mustSessionsConfig(): string {
+  const id = predictV2Config.shared.sessionsConfig;
+  if (!id) throw new Error('sessions: shared.sessionsConfig is required on 8-21 and is not configured');
+  return id;
+}
 
 /**
  * The stored session. `keypair` holds a live, non-extractable `CryptoKey` — it is
@@ -298,6 +305,11 @@ export function addAuthorizeSession(tx: Transaction, p: AddAuthorizeSessionParam
     target: SESS('authorize_session'),
     arguments: [
       tx.object(p.wrapperId),
+      // 8-21 inserted the shared `SessionsConfig` as the SECOND argument. Everything after
+      // it shifts one right, so an unpatched call passes the session address where the
+      // config belongs and the authorize aborts. Thrown rather than defaulted: an empty
+      // object id here would fail at signing time with an error that names nothing.
+      ...(V2_IS_821_PLUS ? [tx.object(mustSessionsConfig())] : []),
       tx.pure.address(p.sessionAddress),
       tx.pure.u64(p.durationMs),
       tx.object(predictV2Config.clockId),

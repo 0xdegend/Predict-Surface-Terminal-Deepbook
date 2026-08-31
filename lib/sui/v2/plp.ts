@@ -13,7 +13,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2Target } from '@/config/predict';
+import { predictV2Config, v2Target, V2_IS_821_PLUS } from '@/config/predict';
 import { addGenerateAuth, addDeposit, type SimulateCapableClient } from './account';
 
 const c = () => predictV2Config;
@@ -104,16 +104,23 @@ export interface VaultState {
 
 const SIM_SENDER = '0x43a5782881f7ae4584fb7a3d9d9b3cd3440ed634a67301de5e45f734505e8e7d';
 
-// View functions (all take &PoolVault, return u64), called in this order.
-const VAULT_VIEWS = [
+/**
+ * View functions (all take &PoolVault, return u64), called in this order.
+ *
+ * `staked_deep` and the `PoolVault.staked_deep` field it read were both removed in 8-21.
+ * A PTB that names a missing function does not return a zero, it fails to resolve, so
+ * leaving it in would take the ENTIRE vault panel down rather than blanking one figure.
+ * Results are read by NAME below so a shorter list cannot shift the others.
+ */
+const VAULT_VIEWS: readonly string[] = [
   'idle_balance',
   'plp_total_supply',
   'supply_requests_pending',
   'withdraw_requests_pending',
   'protocol_reserve_balance',
   'fee_incentive_reserve',
-  'staked_deep',
-] as const;
+  ...(V2_IS_821_PLUS ? [] : ['staked_deep']),
+];
 
 /** Read the vault's on-chain state via a single simulate of the view functions. */
 export async function readVaultState(client: SimulateCapableClient): Promise<VaultState> {
@@ -129,14 +136,19 @@ export async function readVaultState(client: SimulateCapableClient): Promise<Vau
   })) as { $kind: string; commandResults?: { returnValues: { bcs: Uint8Array }[] }[] };
   const cmds = res.commandResults ?? [];
   if (cmds.length < VAULT_VIEWS.length) throw new Error('readVaultState: simulate returned too few values');
-  const u = (i: number) => BigInt(bcs.u64().parse(new Uint8Array(cmds[i].returnValues[0].bcs)));
+  const u = (fn: string) => {
+    const i = VAULT_VIEWS.indexOf(fn);
+    if (i < 0) return 0n; // not read on this deployment
+    return BigInt(bcs.u64().parse(new Uint8Array(cmds[i].returnValues[0].bcs)));
+  };
   return {
-    idleBalance: u(0),
-    plpTotalSupply: u(1),
-    supplyPending: u(2),
-    withdrawPending: u(3),
-    protocolReserve: u(4),
-    feeIncentiveReserve: u(5),
-    stakedDeep: u(6),
+    idleBalance: u('idle_balance'),
+    plpTotalSupply: u('plp_total_supply'),
+    supplyPending: u('supply_requests_pending'),
+    withdrawPending: u('withdraw_requests_pending'),
+    protocolReserve: u('protocol_reserve_balance'),
+    feeIncentiveReserve: u('fee_incentive_reserve'),
+    // 0 on 8-21: the vault no longer stakes DEEP at all, so there is nothing to show.
+    stakedDeep: u('staked_deep'),
   };
 }
