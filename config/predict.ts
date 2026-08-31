@@ -699,6 +699,29 @@ function selectV2Config(network: SuiNetwork): PredictV2Config {
   return V2_MAINNET;
 }
 
+/**
+ * A specific deployment's config, whichever one we are running.
+ *
+ * Needed because a redeploy STRANDS money. Accounts are per deployment: the custody object,
+ * the registry that derives it, and the coin sitting in it all belong to the release that
+ * created them. Cutting over to 8-21 does not move a trader's DUSDC, it just stops the app
+ * from ever looking at where the DUSDC is. So the app has to be able to read, and withdraw
+ * from, a deployment it is not otherwise using.
+ */
+export function predictConfigFor(deployment: PredictDeployment): PredictV2Config {
+  return V2_TESTNET_BY_DEPLOYMENT[deployment];
+}
+
+/**
+ * The deployment we migrated FROM, or null when there is nothing behind us.
+ *
+ * Only the immediately previous one. Funds could in principle be stranded further back, but
+ * 6-24 and 7-29 are long dead and their balances were already swept forward, so offering to
+ * check them would be a prompt about nothing for every trader who ever sees it.
+ */
+export const PREVIOUS_V2_DEPLOYMENT: PredictDeployment | null =
+  ACTIVE_V2_DEPLOYMENT === '8-21' ? '8-06' : ACTIVE_V2_DEPLOYMENT === '8-06' ? '7-29' : null;
+
 export const predictV2Config: PredictV2Config = selectV2Config(ACTIVE_NETWORK);
 
 export function getPredictV2Config(network: SuiNetwork = ACTIVE_NETWORK): PredictV2Config {

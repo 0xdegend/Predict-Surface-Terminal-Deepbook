@@ -14,6 +14,7 @@
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { GlassError } from '../ui/glass-error';
+import { LegacyFundsBanner } from './legacy-funds-banner';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
 import {
@@ -246,6 +247,9 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       {/* Founding Traders reward — a claim card for an eligible, not-yet-claimed
           wallet. Self-gates to null when off / ineligible / already claimed. */}
       <RewardBanner variant="card" />
+      {/* Funds left behind by a redeploy. Self-gates to null unless THIS wallet actually
+          has a balance on the previous release; dismissable per wallet. */}
+      <LegacyFundsBanner />
       {/* Sample-data notice — shown only while the indexer has nothing to report. */}
       {demoActive && (
         <div className="glass-inset mb-4 flex items-center gap-3 px-4 py-3">

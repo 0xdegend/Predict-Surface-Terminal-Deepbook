@@ -10,7 +10,7 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { fromBase64, normalizeSuiAddress } from '@mysten/sui/utils';
-import { predictConfig, predictV2Config } from '@/config/predict';
+import { predictConfig, predictV2Config, predictConfigFor, PREVIOUS_V2_DEPLOYMENT } from '@/config/predict';
 
 /** Package IDs the sponsor is willing to pay gas for — our own deployments only.
  *  Normalized to canonical 0x-form so comparison against a tx's targets is exact.
@@ -32,6 +32,16 @@ export function ownedPackages(): Set<string> {
     // a sponsored `sessions::revoke_session`. Both ride the Enoki sponsor, so the
     // sessions package must be sponsorable or arming refuses. See sessions-delegated-trading.
     predictV2Config.packages.sessions,
+    // Reclaiming funds stranded by a redeploy. Accounts are per deployment, so cutting over
+    // leaves a trader's DUSDC in the OLD account package, which is not the active one and so
+    // is not in any of the ids above. Without this a Google user, who never holds SUI for
+    // gas, is refused sponsorship on the one transaction that gets their own money back —
+    // and the failure appears as a sponsor refusal, not as anything about the old release.
+    //
+    // Only the ACCOUNT package of the immediately previous deployment, never its predict
+    // package: this buys back custody calls (withdraw), not the ability to keep trading a
+    // retired release on our gas.
+    PREVIOUS_V2_DEPLOYMENT ? predictConfigFor(PREVIOUS_V2_DEPLOYMENT).packages.account : '',
   ];
   return new Set(ids.filter(Boolean).map((id) => normalizeSuiAddress(id)));
 }

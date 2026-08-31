@@ -62,10 +62,16 @@ export function OnboardFundModal() {
   // which is fine — the modal only ever shows for a wallet with no account yet.
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
 
-  // First-timer = connected, the wrapper query has resolved, and there's no
-  // trading account yet. (A wallet WITH an account that's just low on DUSDC is a
-  // top-up, handled by the ticket's own grant CTA — not this onboarding modal.)
-  const firstTimer = !!owner && !acct.isLoading && !acct.wrapperExists;
+  // First-timer = connected, the wrapper read SUCCEEDED, and it told us there is no trading
+  // account. (A wallet WITH an account that's just low on DUSDC is a top-up, handled by the
+  // ticket's own grant CTA, not this modal.)
+  //
+  // `wrapperKnown` is the load-bearing part. `readWrapper` throws on a transport failure, so
+  // an errored query leaves `wrapperExists` false with `isLoading` already false — and the
+  // old `!isLoading && !wrapperExists` test read a brief RPC failure as "never traded here".
+  // A returning trader with a funded account was shown first-run onboarding offering to set
+  // up an account they already had. Failing to CHECK is not the same as knowing.
+  const firstTimer = !!owner && acct.wrapperKnown && !acct.wrapperExists;
   const busy = phase === 'funding' || phase === 'creating';
 
   // Derived, so there's no setState-in-effect: open for an un-dismissed first-timer,
@@ -117,7 +123,13 @@ export function OnboardFundModal() {
   }
 
   const grantLabel = `${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym}`;
-  const canFund = starterGrant.enabled;
+  // Whether the grant will actually be paid. `fundAndStart` skips it when the trader already
+  // holds enough, so promising "2.00 DUSDC added to your wallet" to someone who is already
+  // funded is a bullet that quietly does not happen. Undefined balances (still loading) are
+  // treated as 0, which errs toward offering the grant rather than hiding it.
+  const alreadyFunded =
+    acct.balanceBase + (acct.walletDusdcBase ?? 0n) >= STARTER_GRANT_BALANCE_CEILING;
+  const canFund = starterGrant.enabled && !alreadyFunded;
 
   const title =
     phase === 'done' ? 'You’re ready to trade' : phase === 'error' ? 'Almost there' : 'Get set up to trade';

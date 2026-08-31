@@ -141,6 +141,17 @@ export function usePredictAccountV2() {
   });
   const wrapperId = wrapperQ.data?.wrapperId;
   const wrapperExists = wrapperQ.data?.exists ?? false;
+  /**
+   * Whether we actually KNOW the answer, as opposed to defaulting to false.
+   *
+   * `readWrapper` throws on a transport failure, so an errored query leaves `data`
+   * undefined and `wrapperExists` falls back to false while `isLoading` is already false.
+   * A caller testing `!isLoading && !wrapperExists` therefore reads a five-second RPC
+   * hiccup as "this wallet has never traded here" — which is how a long-time trader with a
+   * funded account got shown the first-run onboarding modal. Anything that changes what a
+   * returning trader SEES must test this, not just the boolean.
+   */
+  const wrapperKnown = wrapperQ.isSuccess && wrapperQ.data !== undefined;
 
   // The internal account id — the key the indexer files positions/orders under
   // (NOT the wallet owner, NOT the wrapper object). Resolved on-chain from the
@@ -688,6 +699,9 @@ export function usePredictAccountV2() {
      *  not the wallet owner). Undefined until the wrapper exists + is resolved. */
     accountId,
     wrapperExists,
+    /** True only when the wrapper read SUCCEEDED. `wrapperExists === false` on its own can
+     *  mean "no account" or "we could not check" — see above. */
+    wrapperKnown,
     balanceBase,
     plpBalanceBase,
     /** Wallet-held DUSDC (base units) — undefined while the first read is in flight. */
