@@ -1,0 +1,4836 @@
+{
+  "deployment": "8-06",
+  "capturedAt": "2026-08-31T14:08:41.259Z",
+  "rows": [
+    {
+      "owner": "0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4",
+      "points": 88802.79462809389,
+      "volume": 62505.64201900003,
+      "trades": 121,
+      "netPnl": 12963.940749999965,
+      "skewVolume": 62505.64201900003,
+      "skewTrades": 121,
+      "lastActiveMs": 1787772900139
+    },
+    {
+      "owner": "0x22cc7ef79881b98152d9a7c2a50fefe42a468434ddff07e14b08562774a1940f",
+      "points": 29839.115133168198,
+      "volume": 18425.928849000004,
+      "trades": 26,
+      "netPnl": 4570.776431999999,
+      "skewVolume": 18425.928849000004,
+      "skewTrades": 26,
+      "lastActiveMs": 1786878654857
+    },
+    {
+      "owner": "0x068341e7b6986ce9b463678e6c52d8bf483693541eb08793b422d4e7cd34dab8",
+      "points": 7538.963032165875,
+      "volume": 6344.8553329999995,
+      "trades": 36,
+      "netPnl": 583.794667000001,
+      "skewVolume": 6344.8553329999995,
+      "skewTrades": 36,
+      "lastActiveMs": 1787944119483
+    },
+    {
+      "owner": "0xc9c40e7a6e8fc27e69a56eba66882fe352cd9ed745774baa9cdfd01ba8524240",
+      "points": 3646.9379969106335,
+      "volume": 3124.917123,
+      "trades": 18,
+      "netPnl": 259.61287699999957,
+      "skewVolume": 3124.917123,
+      "skewTrades": 18,
+      "lastActiveMs": 1787281714299
+    },
+    {
+      "owner": "0xd962a895e3aeb8a317c55d06c5beb6a451ccd1c72723104beefaa72f9e4642a1",
+      "points": 379.95404870258994,
+      "volume": 379.92121900000006,
+      "trades": 20,
+      "netPnl": -22.3812190000001,
+      "skewVolume": 379.92121900000006,
+      "skewTrades": 20,
+      "lastActiveMs": 1787612855201
+    },
+    {
+      "owner": "0x11a8eae8cbc5f6f2b4a73989fd82f6d307634a1b9fe8926691cd4b685bb4d039",
+      "points": 26.996226615477156,
+      "volume": 3.493816,
+      "trades": 3,
+      "netPnl": 11.746184,
+      "skewVolume": 3.493816,
+      "skewTrades": 3,
+      "lastActiveMs": 1788148233626
+    },
+    {
+      "owner": "0x6beaba2546273654dc1bbea383979818ed204e4e88708e70d8254778ac8b1e4e",
+      "points": 23.99487422784867,
+      "volume": 22.010181,
+      "trades": 4,
+      "netPnl": 0.9898190000000007,
+      "skewVolume": 22.010181,
+      "skewTrades": 4,
+      "lastActiveMs": 1787840138552
+    },
+    {
+      "owner": "0x050fab3f4468b70b5577f1896bf357928bb486c6cc96f3f5789e940dd876cbb9",
+      "points": 19.99085251006785,
+      "volume": 3.357789,
+      "trades": 3,
+      "netPnl": 8.112211,
+      "skewVolume": 3.357789,
+      "skewTrades": 3,
+      "lastActiveMs": 1787977378441
+    },
+    {
+      "owner": "0x92e4e05a91a498fae896ee304e58c811d604bf05e21d3d610e7290660cf64695",
+      "points": 19.909508708621836,
+      "volume": 2.373845,
+      "trades": 2,
+      "netPnl": 8.766155000000001,
+      "skewVolume": 2.373845,
+      "skewTrades": 2,
+      "lastActiveMs": 1787840619310
+    },
+    {
+      "owner": "0x7b752bfc116d2bd13f07f5d7dff74ee46e642a7939a9a28c80ed1a60accb0237",
+      "points": 19.561939092905178,
+      "volume": 2.318431,
+      "trades": 2,
+      "netPnl": 8.621569,
+      "skewVolume": 2.318431,
+      "skewTrades": 2,
+      "lastActiveMs": 1788122900607
+    },
+    {
+      "owner": "0x656721833ef278c153f8734e49a4455efddd27ddcb349cc80af54804bf3f3a37",
+      "points": 19.012613496413998,
+      "volume": 4.508646,
+      "trades": 4,
+      "netPnl": 7.251354000000002,
+      "skewVolume": 4.508646,
+      "skewTrades": 4,
+      "lastActiveMs": 1788146673789
+    },
+    {
+      "owner": "0x58887f71f800e771e9aeba1dd41a002e5beb378e865273ffd13e3e73aa6a8836",
+      "points": 18.896242844394553,
+      "volume": 3.4441799999999994,
+      "trades": 3,
+      "netPnl": 7.725820000000001,
+      "skewVolume": 3.4441799999999994,
+      "skewTrades": 3,
+      "lastActiveMs": 1787970174097
+    },
+    {
+      "owner": "0x757f886b4832bd0e3f81707ecd3eb45638d75e4d57b0482aef33e38638e8cebf",
+      "points": 18.77323011715223,
+      "volume": 3.414384,
+      "trades": 3,
+      "netPnl": 6.833437999999999,
+      "skewVolume": 3.414384,
+      "skewTrades": 3,
+      "lastActiveMs": 1788025525935
+    },
+    {
+      "owner": "0x9147653562dd4624ac5f4dd76feeb4ee8819648a21f6e85c66cd86030c31b01d",
+      "points": 18.215747349132528,
+      "volume": 3.364584,
+      "trades": 3,
+      "netPnl": 7.425415999999999,
+      "skewVolume": 3.364584,
+      "skewTrades": 3,
+      "lastActiveMs": 1787897772207
+    },
+    {
+      "owner": "0xdfc516961b775a3c1cf57d0b62f9cf26765ee141ac7976f0d557bdd3d960340f",
+      "points": 17.476468613300305,
+      "volume": 3.4919340000000005,
+      "trades": 3,
+      "netPnl": 6.798066,
+      "skewVolume": 3.4919340000000005,
+      "skewTrades": 3,
+      "lastActiveMs": 1788010396974
+    },
+    {
+      "owner": "0xd80aa42f09fe907c1bf52d248f7ffc8c7dcbd8c418accf007529a33e47422c2c",
+      "points": 17.000804232672714,
+      "volume": 5.691274,
+      "trades": 5,
+      "netPnl": 4.635732,
+      "skewVolume": 5.691274,
+      "skewTrades": 5,
+      "lastActiveMs": 1788070790672
+    },
+    {
+      "owner": "0x88b0990cc7a49c1b68f4e95e05fe81ba85f1585a88def63e515f7318ec0bebd1",
+      "points": 15.383476608906197,
+      "volume": 3.357735,
+      "trades": 3,
+      "netPnl": 5.122005,
+      "skewVolume": 3.357735,
+      "skewTrades": 3,
+      "lastActiveMs": 1787981820951
+    },
+    {
+      "owner": "0x17522c8b062427b8ea53b0d4bdc9586ac26f5a9d2f18f0d7adb7c215a2312296",
+      "points": 14.990269945863803,
+      "volume": 2.21706,
+      "trades": 2,
+      "netPnl": 6.38294,
+      "skewVolume": 2.21706,
+      "skewTrades": 2,
+      "lastActiveMs": 1788086158784
+    },
+    {
+      "owner": "0x3cfbc37d61c049d83be304a31e194a286f7453f974b90e49531a173655a9f839",
+      "points": 14.813133711936741,
+      "volume": 4.5705610000000005,
+      "trades": 4,
+      "netPnl": 4.175507,
+      "skewVolume": 4.5705610000000005,
+      "skewTrades": 4,
+      "lastActiveMs": 1788177652640
+    },
+    {
+      "owner": "0x0df88c4988ff7f0bcc42ed5b59e0b09fbea2e34b4dadb0f480f745d3fc8db448",
+      "points": 14.337960354485148,
+      "volume": 5.722189,
+      "trades": 5,
+      "netPnl": 3.2876640000000004,
+      "skewVolume": 5.722189,
+      "skewTrades": 5,
+      "lastActiveMs": 1788042814676
+    },
+    {
+      "owner": "0x0c9b79e61ac0feb1188d4f8aa334ba62d86d576822c7c6f928dded82940cb724",
+      "points": 13.945249597119563,
+      "volume": 5.830640000000001,
+      "trades": 5,
+      "netPnl": 2.9683780000000004,
+      "skewVolume": 5.830640000000001,
+      "skewTrades": 5,
+      "lastActiveMs": 1787981579741
+    },
+    {
+      "owner": "0xc1abf381e67d61fbb2312b990e6314f3c30638d66fab0dec5c9e5297ac77d237",
+      "points": 13.321366689879648,
+      "volume": 4.579317,
+      "trades": 4,
+      "netPnl": 4.370683,
+      "skewVolume": 4.579317,
+      "skewTrades": 4,
+      "lastActiveMs": 1788073313424
+    },
+    {
+      "owner": "0x5f3ca36504a40dce2cdaf88c3cd13237e263195e94f851bb9f4feb648b6028db",
+      "points": 12.516027887748683,
+      "volume": 3.3643039999999997,
+      "trades": 3,
+      "netPnl": 4.5756960000000015,
+      "skewVolume": 3.3643039999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788149075049
+    },
+    {
+      "owner": "0x1e84f7a09df1c25b194985036d269606e709539b9abc6dbdcbc2cbd05cdc8159",
+      "points": 12.144820272629994,
+      "volume": 3.4356,
+      "trades": 3,
+      "netPnl": 4.3544,
+      "skewVolume": 3.4356,
+      "skewTrades": 3,
+      "lastActiveMs": 1788114136296
+    },
+    {
+      "owner": "0xf3a51e96d3f9df4305821901d9789d0b2de5f1d648a426d9d4ba44dfb8971d12",
+      "points": 12.11928154350478,
+      "volume": 3.441053,
+      "trades": 3,
+      "netPnl": 4.338947,
+      "skewVolume": 3.441053,
+      "skewTrades": 3,
+      "lastActiveMs": 1787884444474
+    },
+    {
+      "owner": "0x653910df7607bb7b3009437c07b35e9c46466fa6b4feaf6f0d2bbf0b5fac12f4",
+      "points": 11.872471676146262,
+      "volume": 3.413443,
+      "trades": 3,
+      "netPnl": 3.3044830000000003,
+      "skewVolume": 3.413443,
+      "skewTrades": 3,
+      "lastActiveMs": 1787919625658
+    },
+    {
+      "owner": "0xdcc2acfd3dfff2173e0bf1af047a20cda6b11aa98fcf0caf3f40a42796d2f029",
+      "points": 11.850300582539909,
+      "volume": 1.169753,
+      "trades": 1,
+      "netPnl": 5.340247,
+      "skewVolume": 1.169753,
+      "skewTrades": 1,
+      "lastActiveMs": 1788103933928
+    },
+    {
+      "owner": "0xeec2e1f364109a55c758a42144615778ed0a9545f0da4fe0bb1ccb4b3b7b2b5b",
+      "points": 11.787619128433072,
+      "volume": 5.774009,
+      "trades": 5,
+      "netPnl": 3.005990999999999,
+      "skewVolume": 5.774009,
+      "skewTrades": 5,
+      "lastActiveMs": 1787924668192
+    },
+    {
+      "owner": "0x51fa9ba0edbb6c26e86aa2d0a54b9f13e293220318ed7153009a03712a828589",
+      "points": 11.784432809466784,
+      "volume": 4.5289399999999995,
+      "trades": 4,
+      "netPnl": 3.5110599999999996,
+      "skewVolume": 4.5289399999999995,
+      "skewTrades": 4,
+      "lastActiveMs": 1788106931410
+    },
+    {
+      "owner": "0xf5ba415ded407c3e72caac4a9acc4f92f63b9a54cdd12ce5a060d8d518699e64",
+      "points": 11.672697766464271,
+      "volume": 3.461341,
+      "trades": 3,
+      "netPnl": 3.057038,
+      "skewVolume": 3.461341,
+      "skewTrades": 3,
+      "lastActiveMs": 1788037771760
+    },
+    {
+      "owner": "0xcc2a94769ff230814bfcfc93203cb5adbb8e4503ff21b78d5fb099b96adae508",
+      "points": 11.176882909270402,
+      "volume": 2.30694,
+      "trades": 2,
+      "netPnl": 4.43306,
+      "skewVolume": 2.30694,
+      "skewTrades": 2,
+      "lastActiveMs": 1787848783320
+    },
+    {
+      "owner": "0xb27707e1d923083336ed7f3a5d4d383aa79f69194b02c29f0a0d5cdb78ff80f8",
+      "points": 10.966341042205073,
+      "volume": 3.3341730000000003,
+      "trades": 3,
+      "netPnl": 3.815827,
+      "skewVolume": 3.3341730000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788061784810
+    },
+    {
+      "owner": "0xbfaef0be3c1dbb52a5cb22280ad5980b3e8a731f440aa675aebb1787649bf124",
+      "points": 10.823136169189901,
+      "volume": 2.257098,
+      "trades": 2,
+      "netPnl": 4.282902,
+      "skewVolume": 2.257098,
+      "skewTrades": 2,
+      "lastActiveMs": 1788088080844
+    },
+    {
+      "owner": "0x73af8c97ad2c179bd5a0f48f100b9f93c6486be6821b9fa76782d391774ea2c1",
+      "points": 10.744763318348436,
+      "volume": 2.235632,
+      "trades": 2,
+      "netPnl": 4.254368,
+      "skewVolume": 2.235632,
+      "skewTrades": 2,
+      "lastActiveMs": 1788120139853
+    },
+    {
+      "owner": "0xfc5cbc86b55880227889887918ff90a72edd0237255ad640dedf06f660190a06",
+      "points": 10.694723574884613,
+      "volume": 2.3086,
+      "trades": 2,
+      "netPnl": 4.0614,
+      "skewVolume": 2.3086,
+      "skewTrades": 2,
+      "lastActiveMs": 1788088320787
+    },
+    {
+      "owner": "0x0a73bf4705bdda73e6291fece2e339b1000fe826831c5bcff972390359d413c6",
+      "points": 10.44375491089551,
+      "volume": 4.5683739999999995,
+      "trades": 4,
+      "netPnl": 2.098636,
+      "skewVolume": 4.5683739999999995,
+      "skewTrades": 4,
+      "lastActiveMs": 1788024204424
+    },
+    {
+      "owner": "0x363e9abc75bd552159839ce5d65d8f76aa72535b9d921049ef677d8f82353fc6",
+      "points": 10.32444157421656,
+      "volume": 3.3957330000000003,
+      "trades": 3,
+      "netPnl": 3.464266999999999,
+      "skewVolume": 3.3957330000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1787993227407
+    },
+    {
+      "owner": "0xeffe80d2c5dbe6bdcc1bab4fd84319e813867629c2584ededd7f1c1a9b09cb9b",
+      "points": 10.278543713603892,
+      "volume": 3.395974,
+      "trades": 3,
+      "netPnl": 2.391647,
+      "skewVolume": 3.395974,
+      "skewTrades": 3,
+      "lastActiveMs": 1787982060745
+    },
+    {
+      "owner": "0xc7c35536b9573a6e7881c3023ea8318ff0aa9954734586410378fd9fbbbe882b",
+      "points": 10.26886933080467,
+      "volume": 3.3916829999999996,
+      "trades": 3,
+      "netPnl": 3.4383169999999996,
+      "skewVolume": 3.3916829999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788043535270
+    },
+    {
+      "owner": "0x6c4ad45f80122f289c1346581826cc24306720b1a96a32b966c78fc58eb13a00",
+      "points": 10.105965655609733,
+      "volume": 6.817023,
+      "trades": 6,
+      "netPnl": 0.9126289999999999,
+      "skewVolume": 6.817023,
+      "skewTrades": 6,
+      "lastActiveMs": 1788104772371
+    },
+    {
+      "owner": "0xed33363be57224902debc07557d53615d63e589287fdfd7ce77adcad2a086c7c",
+      "points": 9.93926626295851,
+      "volume": 4.436896,
+      "trades": 4,
+      "netPnl": 2.563104,
+      "skewVolume": 4.436896,
+      "skewTrades": 4,
+      "lastActiveMs": 1788019404672
+    },
+    {
+      "owner": "0x1ce2b5f8cbb4f7500a690de35654fe241e0c188bc754c1dd55b17afbed3ac78e",
+      "points": 9.840537418471909,
+      "volume": 4.600195,
+      "trades": 4,
+      "netPnl": 2.6198050000000004,
+      "skewVolume": 4.600195,
+      "skewTrades": 4,
+      "lastActiveMs": 1788084238673
+    },
+    {
+      "owner": "0xbadff96b3e9d40a03f6a6f57b5fffd70679b6bee02b1615f40e0db3eee371990",
+      "points": 9.744531175900994,
+      "volume": 3.400079,
+      "trades": 3,
+      "netPnl": 2.9899210000000007,
+      "skewVolume": 3.400079,
+      "skewTrades": 3,
+      "lastActiveMs": 1788026847040
+    },
+    {
+      "owner": "0x008dc1e3d06094a14b0f776ae825bec0a9fb8845c2b36178ba7c26ea30ea009f",
+      "points": 9.63507284156546,
+      "volume": 6.780654,
+      "trades": 6,
+      "netPnl": 1.249346000000001,
+      "skewVolume": 6.780654,
+      "skewTrades": 6,
+      "lastActiveMs": 1788050259034
+    },
+    {
+      "owner": "0x78d2b76d503858717ad1e425837a602e6b95a33ff37f83c4bfcfbbf884d9d5f7",
+      "points": 9.575668246820507,
+      "volume": 4.440491,
+      "trades": 4,
+      "netPnl": 2.449509000000001,
+      "skewVolume": 4.440491,
+      "skewTrades": 4,
+      "lastActiveMs": 1788105490890
+    },
+    {
+      "owner": "0x0da7e9931b8c8ff6f0f08fc9bd44476d7f315c082bbddff6704d19516f67b6ab",
+      "points": 9.365345973375609,
+      "volume": 2.294787,
+      "trades": 2,
+      "netPnl": 3.535213,
+      "skewVolume": 2.294787,
+      "skewTrades": 2,
+      "lastActiveMs": 1788050018590
+    },
+    {
+      "owner": "0xd86b4673df64263cc8b8b3954ca421b2fa354dade0849d59f46c8188ba075829",
+      "points": 9.299178380488838,
+      "volume": 4.5304400000000005,
+      "trades": 4,
+      "netPnl": 2.3795599999999997,
+      "skewVolume": 4.5304400000000005,
+      "skewTrades": 4,
+      "lastActiveMs": 1787916622413
+    },
+    {
+      "owner": "0xbee9511c6995ba3b9d5718fd312fbee32b3a014052aeb011648bf9fd9ce968fb",
+      "points": 9.272062130970022,
+      "volume": 1.167969,
+      "trades": 1,
+      "netPnl": 4.0520309999999995,
+      "skewVolume": 1.167969,
+      "skewTrades": 1,
+      "lastActiveMs": 1788012678227
+    },
+    {
+      "owner": "0x4335626a23454e0955005921f1e6ee017ca8737597f67cadc77df2f08c291753",
+      "points": 9.252241297002884,
+      "volume": 4.500993,
+      "trades": 4,
+      "netPnl": 2.359007000000001,
+      "skewVolume": 4.500993,
+      "skewTrades": 4,
+      "lastActiveMs": 1787991546412
+    },
+    {
+      "owner": "0x53d824387d59f88c4b4f33b8329ad26f529a617c76f58e918ff1d88b640e2536",
+      "points": 9.007282295036628,
+      "volume": 3.4268270000000003,
+      "trades": 3,
+      "netPnl": 1.8028909999999998,
+      "skewVolume": 3.4268270000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788067668634
+    },
+    {
+      "owner": "0x39caf74941bbe910319a049d431d74455065b3c185f86d493a59dac2ad54a2e0",
+      "points": 8.986622029039923,
+      "volume": 3.4137200000000005,
+      "trades": 3,
+      "netPnl": 2.7862799999999988,
+      "skewVolume": 3.4137200000000005,
+      "skewTrades": 3,
+      "lastActiveMs": 1788126862319
+    },
+    {
+      "owner": "0x53274342ffb89c751f9e545dc135b3e6da4623ee46bda4801f2efb7e5116d733",
+      "points": 8.977738094129448,
+      "volume": 3.442538,
+      "trades": 3,
+      "netPnl": 2.767462000000001,
+      "skewVolume": 3.442538,
+      "skewTrades": 3,
+      "lastActiveMs": 1787895490845
+    },
+    {
+      "owner": "0x0276a6008739c06c072c00584f5e6aa1fb6bbf9e4e4640590b92c506162a507b",
+      "points": 8.962909066529892,
+      "volume": 4.653972,
+      "trades": 4,
+      "netPnl": 1.9760279999999995,
+      "skewVolume": 4.653972,
+      "skewTrades": 4,
+      "lastActiveMs": 1788050499398
+    },
+    {
+      "owner": "0x8939d423c50f6c30ee0081a61b1a57ac7776a5505cd613c83c005f71f31b1658",
+      "points": 8.883363705223362,
+      "volume": 4.512218000000001,
+      "trades": 4,
+      "netPnl": 1.2261689999999996,
+      "skewVolume": 4.512218000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1787810962501
+    },
+    {
+      "owner": "0x1928676c05b28e8c996af3535cc2175202eecfe5ae97dbb6b33bb3c051753a49",
+      "points": 8.877235636371566,
+      "volume": 2.326348,
+      "trades": 2,
+      "netPnl": 2.282408,
+      "skewVolume": 2.326348,
+      "skewTrades": 2,
+      "lastActiveMs": 1788111616566
+    },
+    {
+      "owner": "0xae444245dce78630ca19c6c389668954c222862f1c70595fd09a8958b986e23e",
+      "points": 8.55450523992833,
+      "volume": 3.426296,
+      "trades": 3,
+      "netPnl": 2.5637040000000004,
+      "skewVolume": 3.426296,
+      "skewTrades": 3,
+      "lastActiveMs": 1788157119846
+    },
+    {
+      "owner": "0x6288db6ca894554457e95d61c3438f60f2f5389432a9a403f01e19889202f9c9",
+      "points": 8.542574842862573,
+      "volume": 1.157896,
+      "trades": 1,
+      "netPnl": 3.6921039999999996,
+      "skewVolume": 1.157896,
+      "skewTrades": 1,
+      "lastActiveMs": 1788133106363
+    },
+    {
+      "owner": "0x40a8a4926cff0391b055479fb2703737c11de6d7b7cb71f3c5591970f9a01b07",
+      "points": 8.389481640935726,
+      "volume": 4.578692,
+      "trades": 4,
+      "netPnl": 1.0078250000000004,
+      "skewVolume": 4.578692,
+      "skewTrades": 4,
+      "lastActiveMs": 1788026366132
+    },
+    {
+      "owner": "0x07c6aa045a06c24f3b544fd2d00898043e9ec0c4c0b0bc441e914f5b26a40c1e",
+      "points": 8.387066495498123,
+      "volume": 3.353243,
+      "trades": 3,
+      "netPnl": 2.5167569999999992,
+      "skewVolume": 3.353243,
+      "skewTrades": 3,
+      "lastActiveMs": 1788138512603
+    },
+    {
+      "owner": "0xcd86d8ee23fba9530f823d7767d11c087e6e11cef469f83bea4cadcc1e0d14b3",
+      "points": 8.268261484876657,
+      "volume": 3.5120509999999996,
+      "trades": 3,
+      "netPnl": 2.377949000000001,
+      "skewVolume": 3.5120509999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787986622794
+    },
+    {
+      "owner": "0x5d972447836f7eab1fc0286eaf2acdbedda02fa52b827ff251d0792d5a5cb480",
+      "points": 8.205647487540308,
+      "volume": 3.398198,
+      "trades": 3,
+      "netPnl": 2.271802,
+      "skewVolume": 3.398198,
+      "skewTrades": 3,
+      "lastActiveMs": 1788089281965
+    },
+    {
+      "owner": "0xa1517bcf09afb24300b7b6e8ae4ca1b9eb6fa87e92710f80d7da30657a581864",
+      "points": 8.18440731982441,
+      "volume": 2.335768,
+      "trades": 2,
+      "netPnl": 2.924232,
+      "skewVolume": 2.335768,
+      "skewTrades": 2,
+      "lastActiveMs": 1787906177674
+    },
+    {
+      "owner": "0x13861551c049994ef9dd53c3ed115b7859a43d37d32bc0ee1f0536e764869fe4",
+      "points": 8.063869834105093,
+      "volume": 4.5305599999999995,
+      "trades": 4,
+      "netPnl": 1.7494400000000008,
+      "skewVolume": 4.5305599999999995,
+      "skewTrades": 4,
+      "lastActiveMs": 1787991065811
+    },
+    {
+      "owner": "0xecc3ca92b279c63846a001be8afe38799e2b73e2f687100790b3e87671292bd2",
+      "points": 8.061413275221126,
+      "volume": 4.606699000000001,
+      "trades": 4,
+      "netPnl": 1.7133009999999995,
+      "skewVolume": 4.606699000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1788181855663
+    },
+    {
+      "owner": "0xa23b6f57403a37a208dcae542eb641098dbe3c92aa1f6732e5518dccf42eebb1",
+      "points": 7.944359691373404,
+      "volume": 2.236011,
+      "trades": 2,
+      "netPnl": 2.853989,
+      "skewVolume": 2.236011,
+      "skewTrades": 2,
+      "lastActiveMs": 1787909779818
+    },
+    {
+      "owner": "0x525fc735617005024dbfdffa9f31b400a568c0a365cfa94c90930fb5a5d298e4",
+      "points": 7.923792614226333,
+      "volume": 5.6286760000000005,
+      "trades": 5,
+      "netPnl": 0.19953299999999974,
+      "skewVolume": 5.6286760000000005,
+      "skewTrades": 5,
+      "lastActiveMs": 1788127583710
+    },
+    {
+      "owner": "0x4e03da9a046b86f8ef7c5e8099bdf266aa65d49fb6a861e97eadfb2256a3662d",
+      "points": 7.921868030194284,
+      "volume": 4.659533,
+      "trades": 4,
+      "netPnl": 0.6478220000000001,
+      "skewVolume": 4.659533,
+      "skewTrades": 4,
+      "lastActiveMs": 1788159160593
+    },
+    {
+      "owner": "0x1f7ce61b3d6b8e3ac0c7a49f5dde3ff5b2caf97ecaae2c78c115b048e761503e",
+      "points": 7.86459820235339,
+      "volume": 4.636096,
+      "trades": 4,
+      "netPnl": 1.6139039999999998,
+      "skewVolume": 4.636096,
+      "skewTrades": 4,
+      "lastActiveMs": 1788164083107
+    },
+    {
+      "owner": "0x772e1d88d758a2f388b842c37e367ae08c9670105f30223cc0d03e3180ebcb65",
+      "points": 7.847355843135138,
+      "volume": 4.502846000000001,
+      "trades": 4,
+      "netPnl": 0.6809139999999996,
+      "skewVolume": 4.502846000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1788067189094
+    },
+    {
+      "owner": "0x7759b44f19f47b47848f328114eb0d4b3bd0aacb136bbfdb97a6237946b2b5cb",
+      "points": 7.842363866256099,
+      "volume": 4.543893000000001,
+      "trades": 4,
+      "netPnl": 0.6944659999999994,
+      "skewVolume": 4.543893000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1788092282657
+    },
+    {
+      "owner": "0xc4a9e7487d48d688c90aa4eaa4e7950c950c1755c781a968c4527898347ab101",
+      "points": 7.8293373399344155,
+      "volume": 3.38985,
+      "trades": 3,
+      "netPnl": 2.07015,
+      "skewVolume": 3.38985,
+      "skewTrades": 3,
+      "lastActiveMs": 1788082678969
+    },
+    {
+      "owner": "0x4e88cfe37207ccaf846e7777f22910046e81248cde37560093c3da5939c6a041",
+      "points": 7.809759858324644,
+      "volume": 4.551635,
+      "trades": 4,
+      "netPnl": 1.4583649999999997,
+      "skewVolume": 4.551635,
+      "skewTrades": 4,
+      "lastActiveMs": 1788046777593
+    },
+    {
+      "owner": "0xee41f063aeca7a5b41f83a19849b591f5ca0a07c743b44ff65bebb604b4f8776",
+      "points": 7.714606654154349,
+      "volume": 5.78284,
+      "trades": 5,
+      "netPnl": -2.693688,
+      "skewVolume": 5.78284,
+      "skewTrades": 5,
+      "lastActiveMs": 1788130827550
+    },
+    {
+      "owner": "0x4384b899511dff327d5ecf32b8d4cd99a127eb527d3009605013651cc19c9757",
+      "points": 7.674299376716499,
+      "volume": 5.6483039999999995,
+      "trades": 5,
+      "netPnl": -2.2629099999999998,
+      "skewVolume": 5.6483039999999995,
+      "skewTrades": 5,
+      "lastActiveMs": 1788077635735
+    },
+    {
+      "owner": "0xe02c4957cd587f6ae2ace049c11e5f3359f23f08d26f0a2cb8e95a1d13fb4512",
+      "points": 7.564578742202303,
+      "volume": 2.275611,
+      "trades": 2,
+      "netPnl": 2.644389,
+      "skewVolume": 2.275611,
+      "skewTrades": 2,
+      "lastActiveMs": 1788175611678
+    },
+    {
+      "owner": "0xe0488ab2e91ed88f3a9ff266eee43472cb04b2e832405f21cd9ad667b23c1bfe",
+      "points": 7.392858990733966,
+      "volume": 3.431699,
+      "trades": 3,
+      "netPnl": 1.978301,
+      "skewVolume": 3.431699,
+      "skewTrades": 3,
+      "lastActiveMs": 1787806161750
+    },
+    {
+      "owner": "0x1b042b236283633122c271497b91e9d87a877662e7bcd0c367dfb3ce8434306b",
+      "points": 7.367386397208371,
+      "volume": 2.284934,
+      "trades": 2,
+      "netPnl": 1.47038,
+      "skewVolume": 2.284934,
+      "skewTrades": 2,
+      "lastActiveMs": 1788042335193
+    },
+    {
+      "owner": "0x3cacb36e3aaf5f0408f9f2328182d8ac0295e76b536f6daa7e81a956b96a1eda",
+      "points": 7.302232794205154,
+      "volume": 3.393623,
+      "trades": 3,
+      "netPnl": 1.012444,
+      "skewVolume": 3.393623,
+      "skewTrades": 3,
+      "lastActiveMs": 1788158080174
+    },
+    {
+      "owner": "0x784357030271e155678ecc3be261cb65a0c7950f5535808745ede7430669bdf0",
+      "points": 7.270996038824699,
+      "volume": 7.269539,
+      "trades": 3,
+      "netPnl": -5.019539,
+      "skewVolume": 7.269539,
+      "skewTrades": 3,
+      "lastActiveMs": 1787923105951
+    },
+    {
+      "owner": "0x65daeb81bab222ea2a62beb933ef0630f4df77a0fc55e20f8d6cf85cd6d71c2a",
+      "points": 7.102664729642308,
+      "volume": 1.117463,
+      "trades": 1,
+      "netPnl": 2.9925370000000004,
+      "skewVolume": 1.117463,
+      "skewTrades": 1,
+      "lastActiveMs": 1788135627791
+    },
+    {
+      "owner": "0x8220693a475921f4c8c088069d73fded6c9810d494cf0ae643021f391609c046",
+      "points": 7.0137874012555095,
+      "volume": 2.346318,
+      "trades": 2,
+      "netPnl": 2.3336819999999996,
+      "skewVolume": 2.346318,
+      "skewTrades": 2,
+      "lastActiveMs": 1787897412770
+    },
+    {
+      "owner": "0xd41ba62f1e36cefe7aec780043942b215dbcd359370523c02d2dd5c4a9632257",
+      "points": 6.971951711700305,
+      "volume": 2.248219,
+      "trades": 2,
+      "netPnl": 2.3617809999999992,
+      "skewVolume": 2.248219,
+      "skewTrades": 2,
+      "lastActiveMs": 1787998870421
+    },
+    {
+      "owner": "0x89866bba9ba7e45d7df925905e23c1a299aaf34803a603968f84b6d9fa24b8f5",
+      "points": 6.9328074304169105,
+      "volume": 2.267371,
+      "trades": 2,
+      "netPnl": 2.332629,
+      "skewVolume": 2.267371,
+      "skewTrades": 2,
+      "lastActiveMs": 1787998631238
+    },
+    {
+      "owner": "0x3565112ef75443a6002173cceb8c583016bfd62a6b19a1ba976c9b3206a509d8",
+      "points": 6.887177565220235,
+      "volume": 3.423668,
+      "trades": 3,
+      "netPnl": 0.6338400000000002,
+      "skewVolume": 3.423668,
+      "skewTrades": 3,
+      "lastActiveMs": 1787979779481
+    },
+    {
+      "owner": "0x86fb354d5da8b7bf3b7e7bd5e07560fee3a07ebb13773dce26bf0edd0506433d",
+      "points": 6.848176483871316,
+      "volume": 2.2929139999999997,
+      "trades": 2,
+      "netPnl": 2.2770860000000006,
+      "skewVolume": 2.2929139999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788042574423
+    },
+    {
+      "owner": "0xe755513f6ea9d9e8bbe7c1fb8b2b9dc67a9a2da0da8edc0b219f3f2cf523a96a",
+      "points": 6.847466239145627,
+      "volume": 2.332843,
+      "trades": 2,
+      "netPnl": 2.257157,
+      "skewVolume": 2.332843,
+      "skewTrades": 2,
+      "lastActiveMs": 1788043775483
+    },
+    {
+      "owner": "0x71f5861f7afb1f0a71f00a8d1e9713754f38e982bf8aad86a4afe290566e014e",
+      "points": 6.83782849105458,
+      "volume": 4.6236820000000005,
+      "trades": 4,
+      "netPnl": -0.9841910000000005,
+      "skewVolume": 4.6236820000000005,
+      "skewTrades": 4,
+      "lastActiveMs": 1787983380706
+    },
+    {
+      "owner": "0x3b156919f0981efd2d2d50862a67822598d85590dadacd7d5e22e3a9110dcba6",
+      "points": 6.733987550360981,
+      "volume": 2.366296,
+      "trades": 2,
+      "netPnl": 2.1837039999999996,
+      "skewVolume": 2.366296,
+      "skewTrades": 2,
+      "lastActiveMs": 1788074752866
+    },
+    {
+      "owner": "0x5c8eb43b5e3142551eb315fffe3bfec11908aee811d4c43fcbfc334016a682c1",
+      "points": 6.714974922790402,
+      "volume": 2.3256,
+      "trades": 2,
+      "netPnl": 2.1943999999999995,
+      "skewVolume": 2.3256,
+      "skewTrades": 2,
+      "lastActiveMs": 1788178732933
+    },
+    {
+      "owner": "0x437723c4c6be220269811f0a4c163ae1fbae8eac244280bcc0998a7153b0c112",
+      "points": 6.70193146612502,
+      "volume": 2.29833,
+      "trades": 2,
+      "netPnl": 2.20167,
+      "skewVolume": 2.29833,
+      "skewTrades": 2,
+      "lastActiveMs": 1788139109352
+    },
+    {
+      "owner": "0x847c5c4f7f384a49d6516475392ded76a050efee98dcad2502ee98c21a4a1a6a",
+      "points": 6.686070260811694,
+      "volume": 3.374143,
+      "trades": 3,
+      "netPnl": 1.6558570000000001,
+      "skewVolume": 3.374143,
+      "skewTrades": 3,
+      "lastActiveMs": 1788019641771
+    },
+    {
+      "owner": "0xed750f8d923839810bfaf5cf23ae29dfe27ba7aaf2522569c6e5e6b8141f963c",
+      "points": 6.647111447166672,
+      "volume": 2.3554690000000003,
+      "trades": 2,
+      "netPnl": 2.1445309999999997,
+      "skewVolume": 2.3554690000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1788053984354
+    },
+    {
+      "owner": "0x9d3352e497efa5ee0520848867ecd67dc58a07b7d4ae7704de46482a7ad0a1b8",
+      "points": 6.565930088213272,
+      "volume": 3.3750109999999998,
+      "trades": 3,
+      "netPnl": 1.5949890000000009,
+      "skewVolume": 3.3750109999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1787915301986
+    },
+    {
+      "owner": "0x386b1b2f994b5d5a5255efdf05fc77ae545a32e1eaf56b1a7d96a29d631bae70",
+      "points": 6.561759463356576,
+      "volume": 2.3641579999999998,
+      "trades": 2,
+      "netPnl": 1.134073,
+      "skewVolume": 2.3641579999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1787909539642
+    },
+    {
+      "owner": "0xf5e024e5f05c62c4899c35e7bd0768c9013a359f385100765994a6191261824c",
+      "points": 6.538925548090952,
+      "volume": 6.537991,
+      "trades": 6,
+      "netPnl": -1.2879909999999999,
+      "skewVolume": 6.537991,
+      "skewTrades": 6,
+      "lastActiveMs": 1787923350402
+    },
+    {
+      "owner": "0x73126f62f7bd026c7010a3e64697f55521ccfeeafd74f83b8e7aaa1cd82bb3a7",
+      "points": 6.5293651965478725,
+      "volume": 4.524143,
+      "trades": 4,
+      "netPnl": -1.4773969999999998,
+      "skewVolume": 4.524143,
+      "skewTrades": 4,
+      "lastActiveMs": 1788109697920
+    },
+    {
+      "owner": "0xfee4cc3fc7d776e9a13db0b2f58f3fdd8a88ea960b9e22cfc61497b5ff937615",
+      "points": 6.485061378738078,
+      "volume": 2.215705,
+      "trades": 2,
+      "netPnl": 2.134295,
+      "skewVolume": 2.215705,
+      "skewTrades": 2,
+      "lastActiveMs": 1787835455870
+    },
+    {
+      "owner": "0xa1a8150b5cce36c12b8d396d414214b54f9c1f87437c453096f443b9bf2b5823",
+      "points": 6.476921342955434,
+      "volume": 4.508819000000001,
+      "trades": 4,
+      "netPnl": -1.6595590000000005,
+      "skewVolume": 4.508819000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1788091563093
+    },
+    {
+      "owner": "0xaa777b284083d2e35c92d4e5b4c4f64159f7b622af911506ad681fae8afdf4e6",
+      "points": 6.414573811216211,
+      "volume": 2.2456940000000003,
+      "trades": 2,
+      "netPnl": 2.0843059999999998,
+      "skewVolume": 2.2456940000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1787963210919
+    },
+    {
+      "owner": "0xca32aa638a15ec71e6b71aa553aa24b41cf927132b0b96c3088d5d818173d51b",
+      "points": 6.396131966432276,
+      "volume": 2.3246409999999997,
+      "trades": 2,
+      "netPnl": 2.0353590000000006,
+      "skewVolume": 2.3246409999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788035010973
+    },
+    {
+      "owner": "0x7b139f6fa82adc244516a5f4b0c963594c9fc2711c36c09b7383f346cb66478e",
+      "points": 6.35382436841539,
+      "volume": 3.5443670000000003,
+      "trades": 3,
+      "netPnl": 0.3935719999999998,
+      "skewVolume": 3.5443670000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1787808800211
+    },
+    {
+      "owner": "0x051ab1fed335d6931ea7af226b8033362fc5268ffd23014246a1d4cb47ff8de8",
+      "points": 6.328255434698449,
+      "volume": 5.672415,
+      "trades": 5,
+      "netPnl": 0.327585,
+      "skewVolume": 5.672415,
+      "skewTrades": 5,
+      "lastActiveMs": 1788038493047
+    },
+    {
+      "owner": "0x83f9cf8a54a39a16bc8e569ef18f2c1edca78f0ad94add17cea2b134278eb036",
+      "points": 6.265748804548009,
+      "volume": 2.234477,
+      "trades": 2,
+      "netPnl": 2.015523,
+      "skewVolume": 2.234477,
+      "skewTrades": 2,
+      "lastActiveMs": 1788132026747
+    },
+    {
+      "owner": "0x24036459fd6dc4bdf45212b601ce290199618142bd37ef950a5900cedbda8f12",
+      "points": 6.254786231325959,
+      "volume": 2.305469,
+      "trades": 2,
+      "netPnl": 1.9745309999999994,
+      "skewVolume": 2.305469,
+      "skewTrades": 2,
+      "lastActiveMs": 1788007035399
+    },
+    {
+      "owner": "0x5bef12c838ed6c2266a7a50ad887aac7db2fa23f839104f4c3ef7393f43ed29f",
+      "points": 6.224551356186533,
+      "volume": 2.295605,
+      "trades": 2,
+      "netPnl": 1.9643949999999997,
+      "skewVolume": 2.295605,
+      "skewTrades": 2,
+      "lastActiveMs": 1788148474078
+    },
+    {
+      "owner": "0x39e04d270450dc43285fcc2b581f050dab8cc57e4e35ee8919730d03c79df777",
+      "points": 6.215580671541331,
+      "volume": 3.466226,
+      "trades": 3,
+      "netPnl": 1.373774,
+      "skewVolume": 3.466226,
+      "skewTrades": 3,
+      "lastActiveMs": 1788083157463
+    },
+    {
+      "owner": "0x96ab33a24c2254e6a76172067a3b2a433744d626f357bf2246538fb10f385838",
+      "points": 6.212112490857905,
+      "volume": 3.46831,
+      "trades": 3,
+      "netPnl": 1.37169,
+      "skewVolume": 3.46831,
+      "skewTrades": 3,
+      "lastActiveMs": 1788083997580
+    },
+    {
+      "owner": "0x928bb2c9fe1f000cecb8b239463613787d5395cb3c43708c9ef88f1ab511f14a",
+      "points": 6.200520753578528,
+      "volume": 2.299752,
+      "trades": 2,
+      "netPnl": 1.9502480000000002,
+      "skewVolume": 2.299752,
+      "skewTrades": 2,
+      "lastActiveMs": 1788104772371
+    },
+    {
+      "owner": "0xa67a52d0ffed361843c834698b853046e32c9e29164a9f78862fb1c01e0af893",
+      "points": 6.1973477088637665,
+      "volume": 4.502756,
+      "trades": 4,
+      "netPnl": -1.6077070000000002,
+      "skewVolume": 4.502756,
+      "skewTrades": 4,
+      "lastActiveMs": 1787984702265
+    },
+    {
+      "owner": "0xf4ed3a18b50cf9e4bb4d6d50dc58faadecb231899a8196c271ecf07cf56a57b4",
+      "points": 6.18812905658885,
+      "volume": 5.764688,
+      "trades": 5,
+      "netPnl": -0.2546879999999998,
+      "skewVolume": 5.764688,
+      "skewTrades": 5,
+      "lastActiveMs": 1787989025432
+    },
+    {
+      "owner": "0x6131efd602086c7961543381484a403dcd0ee05c44fdf4ee052fd01680c6c932",
+      "points": 6.183268714107938,
+      "volume": 2.297029,
+      "trades": 2,
+      "netPnl": 1.942971,
+      "skewVolume": 2.297029,
+      "skewTrades": 2,
+      "lastActiveMs": 1788071511081
+    },
+    {
+      "owner": "0xb7bbe0f6e29e0e3d85c05659e3b5de1b3b6d7f10a0be2217b0080816a2d57466",
+      "points": 6.182813948097873,
+      "volume": 3.4849229999999998,
+      "trades": 3,
+      "netPnl": 0.3229650000000004,
+      "skewVolume": 3.4849229999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1788045096141
+    },
+    {
+      "owner": "0x445ee81bcab62dddc1629357e942c2ef18fbf6a2c1e7456c07f923f35de4d1c2",
+      "points": 6.139586286198887,
+      "volume": 4.523482,
+      "trades": 4,
+      "netPnl": 0.8065180000000005,
+      "skewVolume": 4.523482,
+      "skewTrades": 4,
+      "lastActiveMs": 1788030088241
+    },
+    {
+      "owner": "0xe33e561a829ee10fced0c332c1ef5069e02ed55760f359404219287d8cc8637d",
+      "points": 6.078242136314447,
+      "volume": 2.301984,
+      "trades": 2,
+      "netPnl": 1.8880159999999995,
+      "skewVolume": 2.301984,
+      "skewTrades": 2,
+      "lastActiveMs": 1788035970998
+    },
+    {
+      "owner": "0xd6d1f82f9f4c52eb2fabc89ff855fa2a2c2dec6b01dc1fd43715b259f40fe0f9",
+      "points": 6.057752509900473,
+      "volume": 2.262932,
+      "trades": 2,
+      "netPnl": 1.897068,
+      "skewVolume": 2.262932,
+      "skewTrades": 2,
+      "lastActiveMs": 1787917702606
+    },
+    {
+      "owner": "0xad6aa04c477a0233a53a0bba986bbc85342c4cc279749d3e9c070e53dfa3be58",
+      "points": 6.04777091567923,
+      "volume": 2.252548,
+      "trades": 2,
+      "netPnl": 1.8974520000000004,
+      "skewVolume": 2.252548,
+      "skewTrades": 2,
+      "lastActiveMs": 1788043055448
+    },
+    {
+      "owner": "0x1724bca1aee69778c2c568be519bdccd04cd3025acb9c860d8af96f93c40fcae",
+      "points": 6.037370248071302,
+      "volume": 3.4353730000000002,
+      "trades": 3,
+      "netPnl": 0.18199999999999994,
+      "skewVolume": 3.4353730000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1787977139901
+    },
+    {
+      "owner": "0x4b5bb5de497b66ea28d96aed232062cf3e82b4724c9df1d81ee4d236fe27ed56",
+      "points": 6.034151874170405,
+      "volume": 2.2946549999999997,
+      "trades": 2,
+      "netPnl": 1.8553450000000007,
+      "skewVolume": 2.2946549999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1787994308601
+    },
+    {
+      "owner": "0xa60a8719ab192c2394287e7cd7de9a4e2104bda71a791a047c6c10016b1142f0",
+      "points": 6.030694782590339,
+      "volume": 2.33146,
+      "trades": 2,
+      "netPnl": 1.8485399999999998,
+      "skewVolume": 2.33146,
+      "skewTrades": 2,
+      "lastActiveMs": 1788082678495
+    },
+    {
+      "owner": "0x2f31ddae5e8c332f5f708032c326d2e3a543d036b5d0d56353679a79d86c991f",
+      "points": 6.017556283988004,
+      "volume": 2.296017,
+      "trades": 2,
+      "netPnl": 0.790125,
+      "skewVolume": 2.296017,
+      "skewTrades": 2,
+      "lastActiveMs": 1788044015399
+    },
+    {
+      "owner": "0x3198f0225647a3761b0fd378b14c620f0742d1721bc596e8aa51112988e9bd3d",
+      "points": 5.997260206997444,
+      "volume": 2.323052,
+      "trades": 2,
+      "netPnl": 1.836948,
+      "skewVolume": 2.323052,
+      "skewTrades": 2,
+      "lastActiveMs": 1788163003091
+    },
+    {
+      "owner": "0x0ddaaedbfd0aec510fc85a652855161cdc2718be56236e1ae86b4aeda91db842",
+      "points": 5.994867201335589,
+      "volume": 4.621943,
+      "trades": 4,
+      "netPnl": 0.6780569999999999,
+      "skewVolume": 4.621943,
+      "skewTrades": 4,
+      "lastActiveMs": 1788099367733
+    },
+    {
+      "owner": "0x606a353f04abf170d88fe0682896137cbde2176f7c8dd26e81c32ee24ee3f23b",
+      "points": 5.960978866660524,
+      "volume": 2.359601,
+      "trades": 2,
+      "netPnl": 1.800399,
+      "skewVolume": 2.359601,
+      "skewTrades": 2,
+      "lastActiveMs": 1788127102678
+    },
+    {
+      "owner": "0x8c2fdf1f86be85de5404f44f49cd9ff38cab65b6ba6df8a9c5ee87c10ef9e3e2",
+      "points": 5.943003741445317,
+      "volume": 3.421062,
+      "trades": 3,
+      "netPnl": 1.2589379999999997,
+      "skewVolume": 3.421062,
+      "skewTrades": 3,
+      "lastActiveMs": 1787920224861
+    },
+    {
+      "owner": "0xc5276f6e3bab6d038338adafb6d93abf8ccd38a14129b3a8c304811f6b5f87fa",
+      "points": 5.907930895444757,
+      "volume": 2.26816,
+      "trades": 2,
+      "netPnl": 1.6218400000000002,
+      "skewVolume": 2.26816,
+      "skewTrades": 2,
+      "lastActiveMs": 1788003194004
+    },
+    {
+      "owner": "0x5854bffbc3df2a9ea9baad21ff795f5957cabb9a7630159195cb23146786949e",
+      "points": 5.901800007363074,
+      "volume": 2.238735,
+      "trades": 2,
+      "netPnl": 1.8312650000000001,
+      "skewVolume": 2.238735,
+      "skewTrades": 2,
+      "lastActiveMs": 1788096484644
+    },
+    {
+      "owner": "0x7a73d8a5b50594fa74d0ef0f05979d2c7acd9459bea908e4f57641abf2b5491a",
+      "points": 5.893476119506474,
+      "volume": 2.2926149999999996,
+      "trades": 2,
+      "netPnl": 0.834821,
+      "skewVolume": 2.2926149999999996,
+      "skewTrades": 2,
+      "lastActiveMs": 1787894170533
+    },
+    {
+      "owner": "0x7a3ee1d92da9b6639f0ae5017fe55f462968692f5e97f5d2959223f485103608",
+      "points": 5.829108331719815,
+      "volume": 2.33126,
+      "trades": 2,
+      "netPnl": 1.7487400000000002,
+      "skewVolume": 2.33126,
+      "skewTrades": 2,
+      "lastActiveMs": 1788068149562
+    },
+    {
+      "owner": "0x334d4b19f3b9265e1ca018c2e0ca410f79c28cbd1ef1fe89e628ef8768be9eb9",
+      "points": 5.823796343561884,
+      "volume": 3.479289,
+      "trades": 3,
+      "netPnl": 1.0707110000000006,
+      "skewVolume": 3.479289,
+      "skewTrades": 3,
+      "lastActiveMs": 1787839659921
+    },
+    {
+      "owner": "0x39c92eef30750d1a87f8cc80c80a821f88b9d53fcaf8d11d6a39d0eaebb1a4ff",
+      "points": 5.804919849620953,
+      "volume": 2.295216,
+      "trades": 2,
+      "netPnl": 1.754784,
+      "skewVolume": 2.295216,
+      "skewTrades": 2,
+      "lastActiveMs": 1788119658213
+    },
+    {
+      "owner": "0xa66f56bf70851f66c03d9076ed1287e334b050fc5c4763875d371df552e52fd9",
+      "points": 5.776466901804522,
+      "volume": 2.32385,
+      "trades": 2,
+      "netPnl": 1.7261500000000005,
+      "skewVolume": 2.32385,
+      "skewTrades": 2,
+      "lastActiveMs": 1787917702606
+    },
+    {
+      "owner": "0x0d876be3c79471c3ec8cda6b9b7e0d679ca32b2f86810653f5f914aaec236077",
+      "points": 5.757615514567298,
+      "volume": 2.282629,
+      "trades": 2,
+      "netPnl": 1.7373709999999996,
+      "skewVolume": 2.282629,
+      "skewTrades": 2,
+      "lastActiveMs": 1788057343358
+    },
+    {
+      "owner": "0x315ae09f0b697dc7d91852f7c60a3800d3dd12d00991f974056165b9700f6537",
+      "points": 5.757305145478876,
+      "volume": 5.746942000000001,
+      "trades": 5,
+      "netPnl": -1.196942,
+      "skewVolume": 5.746942000000001,
+      "skewTrades": 5,
+      "lastActiveMs": 1787941480946
+    },
+    {
+      "owner": "0x6eab9784e6e5d4d0b6e87d525ef016502ec51696509d126fcc81ca6cc075c945",
+      "points": 5.756916833589559,
+      "volume": 2.3335090000000003,
+      "trades": 2,
+      "netPnl": 0.7440529999999999,
+      "skewVolume": 2.3335090000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1788170688511
+    },
+    {
+      "owner": "0x1afd3fa9f51ba81cdf2146dd7c37167de4a1c49c38de042fb13620726d9afd6f",
+      "points": 5.719129137767411,
+      "volume": 4.6013649999999995,
+      "trades": 4,
+      "netPnl": 0.5586350000000007,
+      "skewVolume": 4.6013649999999995,
+      "skewTrades": 4,
+      "lastActiveMs": 1788085198910
+    },
+    {
+      "owner": "0xaac1ebfcfd18db972b5304d1ddf5a80c6bca09bd0b376019cdd5f3fb97008e35",
+      "points": 5.7057225379983985,
+      "volume": 3.470478,
+      "trades": 3,
+      "netPnl": 0.989522,
+      "skewVolume": 3.470478,
+      "skewTrades": 3,
+      "lastActiveMs": 1788103932961
+    },
+    {
+      "owner": "0x945cc8f03ff298938a65a3befa7bf34a5c21cf21908d1e07572ff080363816d8",
+      "points": 5.696671201850173,
+      "volume": 3.3837200000000003,
+      "trades": 3,
+      "netPnl": 1.1562799999999998,
+      "skewVolume": 3.3837200000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788065387892
+    },
+    {
+      "owner": "0xdcc1ba308156e38847b70223540a99da91165bed77a767f7d06e0a71fdb3c51d",
+      "points": 5.684961895736645,
+      "volume": 5.682631,
+      "trades": 5,
+      "netPnl": -1.2726309999999996,
+      "skewVolume": 5.682631,
+      "skewTrades": 5,
+      "lastActiveMs": 1788130827550
+    },
+    {
+      "owner": "0x899a0705a37579ed8e57978df4eba814788c2674544f5b92b9cb95858084ca6d",
+      "points": 5.672531110101833,
+      "volume": 2.276792,
+      "trades": 2,
+      "netPnl": 1.603208,
+      "skewVolume": 2.276792,
+      "skewTrades": 2,
+      "lastActiveMs": 1788140189548
+    },
+    {
+      "owner": "0x477fc870db170f681e8a8807f2f82b7443609b5dbdd2f9d90a4c8b4bbb50328c",
+      "points": 5.633866070412365,
+      "volume": 5.6316749999999995,
+      "trades": 5,
+      "netPnl": -3.8616749999999995,
+      "skewVolume": 5.6316749999999995,
+      "skewTrades": 5,
+      "lastActiveMs": 1788069830358
+    },
+    {
+      "owner": "0x53d6b60e631dd9f2198cdc492b63da1f87d30428a995733d8e50627d0b5b3aa9",
+      "points": 5.630842583566762,
+      "volume": 3.452037,
+      "trades": 3,
+      "netPnl": 0.9579630000000003,
+      "skewVolume": 3.452037,
+      "skewTrades": 3,
+      "lastActiveMs": 1788096006644
+    },
+    {
+      "owner": "0x7bdad2da47cba6de1d1b34df239185312f21463fc7010371b25e92892235d829",
+      "points": 5.627918649072526,
+      "volume": 3.412325,
+      "trades": 3,
+      "netPnl": 1.1076749999999995,
+      "skewVolume": 3.412325,
+      "skewTrades": 3,
+      "lastActiveMs": 1787836901589
+    },
+    {
+      "owner": "0x227a35a1db6e7e7c5a0a73f16ec1d15d3d86c2be6ff473b4deffc3dff5d89ff1",
+      "points": 5.59378521555409,
+      "volume": 2.306297,
+      "trades": 2,
+      "netPnl": 1.6437030000000004,
+      "skewVolume": 2.306297,
+      "skewTrades": 2,
+      "lastActiveMs": 1787994548608
+    },
+    {
+      "owner": "0x279271eaca5abd72ac688d657072e759af3ffa940326105b919ad3b3fa21cdb5",
+      "points": 5.591288086176444,
+      "volume": 3.4846320000000004,
+      "trades": 3,
+      "netPnl": -0.4052450000000003,
+      "skewVolume": 3.4846320000000004,
+      "skewTrades": 3,
+      "lastActiveMs": 1788075833442
+    },
+    {
+      "owner": "0xf6478af07dd32e4465766702d71e9e87f38e1c4101502cfcbf36057738b2f3fc",
+      "points": 5.572039071251304,
+      "volume": 3.461992,
+      "trades": 3,
+      "netPnl": 0.8980079999999995,
+      "skewVolume": 3.461992,
+      "skewTrades": 3,
+      "lastActiveMs": 1788079554734
+    },
+    {
+      "owner": "0x44280bd4872c92eb286e72d93eb914c17058f5064b5917f5a146ae6da007a718",
+      "points": 5.567803349808248,
+      "volume": 3.419618,
+      "trades": 3,
+      "netPnl": 0.9603820000000001,
+      "skewVolume": 3.419618,
+      "skewTrades": 3,
+      "lastActiveMs": 1787818526819
+    },
+    {
+      "owner": "0xe79927f9a79ec0c78d0a6959ce833949af09a8d6afc077bb4b7a7fbf21c8743f",
+      "points": 5.5665699203158185,
+      "volume": 3.3806540000000003,
+      "trades": 3,
+      "netPnl": 0.9693459999999994,
+      "skewVolume": 3.3806540000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788099367733
+    },
+    {
+      "owner": "0xf20d0b4ac10334b2649070b9e15528c1abab1446db448d6972429399e5f44592",
+      "points": 5.555971330018748,
+      "volume": 3.439081,
+      "trades": 3,
+      "netPnl": -2.280322,
+      "skewVolume": 3.439081,
+      "skewTrades": 3,
+      "lastActiveMs": 1788037292013
+    },
+    {
+      "owner": "0x2d24eeedbffa65815988fad96b24eb9e5f210104193ffa02cd8b3d4903d57629",
+      "points": 5.555180348617324,
+      "volume": 2.267551,
+      "trades": 2,
+      "netPnl": 1.642449,
+      "skewVolume": 2.267551,
+      "skewTrades": 2,
+      "lastActiveMs": 1788109696564
+    },
+    {
+      "owner": "0xd70f156fd353144192b633af0b72d9cf6b5c53f009732d05abab6e2dd7c7e895",
+      "points": 5.509382718332324,
+      "volume": 3.4372670000000003,
+      "trades": 3,
+      "netPnl": -0.44838200000000006,
+      "skewVolume": 3.4372670000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788023484363
+    },
+    {
+      "owner": "0x1eb782dba05f3c38f5fd5dfc3117f1d36c10c93d79822919c057349d5f9eed1c",
+      "points": 5.4982863868274325,
+      "volume": 3.5540839999999996,
+      "trades": 3,
+      "netPnl": -2.3647169999999997,
+      "skewVolume": 3.5540839999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787899574588
+    },
+    {
+      "owner": "0xe8140765267b8d50021801d5d838bf4e46ea4343db63312cbaa1ebfb022270fa",
+      "points": 5.476913308452189,
+      "volume": 2.263213,
+      "trades": 2,
+      "netPnl": 1.6067870000000002,
+      "skewVolume": 2.263213,
+      "skewTrades": 2,
+      "lastActiveMs": 1787980740289
+    },
+    {
+      "owner": "0x19e1c9b584bc484718e8cbce9020522ec17e900dbe73fd3b5b133fe5162b6794",
+      "points": 5.476683431867302,
+      "volume": 3.412993,
+      "trades": 3,
+      "netPnl": -2.296243,
+      "skewVolume": 3.412993,
+      "skewTrades": 3,
+      "lastActiveMs": 1788025045421
+    },
+    {
+      "owner": "0x129575f3ccf5bb124ea0ef0002dd9b142260c2e6018df3deb1f31f80b6d06c49",
+      "points": 5.465768958721327,
+      "volume": 3.47452,
+      "trades": 3,
+      "netPnl": 0.9954799999999997,
+      "skewVolume": 3.47452,
+      "skewTrades": 3,
+      "lastActiveMs": 1787960329436
+    },
+    {
+      "owner": "0xff5e96b3c60ee3cfaa2836bcb68e285109bbcf63413739ad13ad51d5711ec57a",
+      "points": 5.430212404288692,
+      "volume": 3.444057,
+      "trades": 3,
+      "netPnl": 0.005804000000000364,
+      "skewVolume": 3.444057,
+      "skewTrades": 3,
+      "lastActiveMs": 1788120979774
+    },
+    {
+      "owner": "0x82ee67dd453e8f641ded5ca1097c0aedee0d3ecec2884ef6a89f9929b26ba3bb",
+      "points": 5.424796553998959,
+      "volume": 3.414802,
+      "trades": 3,
+      "netPnl": -0.3658150000000002,
+      "skewVolume": 3.414802,
+      "skewTrades": 3,
+      "lastActiveMs": 1788095525740
+    },
+    {
+      "owner": "0x429fb94f328f7f240993ac57ba1b17979e63d3ac4598cce4874e6fc8bf66af23",
+      "points": 5.422118500234187,
+      "volume": 3.3841200000000002,
+      "trades": 3,
+      "netPnl": -0.03712300000000024,
+      "skewVolume": 3.3841200000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1788070310367
+    },
+    {
+      "owner": "0x4857e1f3cee806151defb23523b6dd0905e888bbfd3f220f7540feb9f906f932",
+      "points": 5.375560065572192,
+      "volume": 3.42286,
+      "trades": 3,
+      "netPnl": 0.78714,
+      "skewVolume": 3.42286,
+      "skewTrades": 3,
+      "lastActiveMs": 1788033690343
+    },
+    {
+      "owner": "0xe4bdfab91629e3709bff22a3ccf55eb8052927f42618dd77ac36b18fbb0a7ce0",
+      "points": 5.368668231266996,
+      "volume": 3.471654,
+      "trades": 3,
+      "netPnl": 0.9483459999999999,
+      "skewVolume": 3.471654,
+      "skewTrades": 3,
+      "lastActiveMs": 1788064907694
+    },
+    {
+      "owner": "0xf78efc5b62b80e2402d766a7afea849e371e86ace66eaa323291e744244eedf4",
+      "points": 5.314905468798241,
+      "volume": 2.285429,
+      "trades": 2,
+      "netPnl": 1.5145709999999997,
+      "skewVolume": 2.285429,
+      "skewTrades": 2,
+      "lastActiveMs": 1788054342692
+    },
+    {
+      "owner": "0xf72f30bcf953c0d0753c895ea035d042b27bce6c7dbcc95ac59140f6591ec53a",
+      "points": 5.285329796802747,
+      "volume": 3.486452,
+      "trades": 3,
+      "netPnl": -0.317777,
+      "skewVolume": 3.486452,
+      "skewTrades": 3,
+      "lastActiveMs": 1788025886159
+    },
+    {
+      "owner": "0x94ebc5ad25bf696093e36469db0c6da767683b9ecf64bf4d67d05d19d3f20881",
+      "points": 5.272002908219379,
+      "volume": 3.4315370000000005,
+      "trades": 3,
+      "netPnl": -0.024334000000000078,
+      "skewVolume": 3.4315370000000005,
+      "skewTrades": 3,
+      "lastActiveMs": 1787981340172
+    },
+    {
+      "owner": "0xbe9528dbb4835015773ca2bdbec5225efb9838d4a7130f9f964e46724561349b",
+      "points": 5.236413029711343,
+      "volume": 3.434421,
+      "trades": 3,
+      "netPnl": -2.338422,
+      "skewVolume": 3.434421,
+      "skewTrades": 3,
+      "lastActiveMs": 1788170688511
+    },
+    {
+      "owner": "0xaf663e943177b41c576964b80c3edf45349c78b706490450029564e3a0938497",
+      "points": 5.232462418969402,
+      "volume": 2.307742,
+      "trades": 2,
+      "netPnl": 1.4622579999999998,
+      "skewVolume": 2.307742,
+      "skewTrades": 2,
+      "lastActiveMs": 1787995148016
+    },
+    {
+      "owner": "0xdd6d0bd671244c4534b8175080d86b5670b9511dd0b89607ffc830c8b79acaf1",
+      "points": 5.230385001208829,
+      "volume": 3.374656,
+      "trades": 3,
+      "netPnl": -2.2550549999999996,
+      "skewVolume": 3.374656,
+      "skewTrades": 3,
+      "lastActiveMs": 1787869075300
+    },
+    {
+      "owner": "0x4a0925bbd60f70b5ddeab5dd4178c216479c27c9cf10eb89f6ff7cd5625aae1a",
+      "points": 5.193627707251538,
+      "volume": 2.246639,
+      "trades": 2,
+      "netPnl": 1.4733609999999997,
+      "skewVolume": 2.246639,
+      "skewTrades": 2,
+      "lastActiveMs": 1787992146907
+    },
+    {
+      "owner": "0x46216f0be624a13fd0e02e5dc66685d9e39b853b8f8459391f38e095b01eb8f0",
+      "points": 5.189832933962247,
+      "volume": 3.4324900000000005,
+      "trades": 3,
+      "netPnl": 0.87751,
+      "skewVolume": 3.4324900000000005,
+      "skewTrades": 3,
+      "lastActiveMs": 1788103933448
+    },
+    {
+      "owner": "0x3dfa49e2c7cad94520fb8ee30f9060c379efdc66c3ba2dc1c3be7ddf3d90303b",
+      "points": 5.182688214707963,
+      "volume": 1.097368,
+      "trades": 1,
+      "netPnl": 2.0426320000000002,
+      "skewVolume": 1.097368,
+      "skewTrades": 1,
+      "lastActiveMs": 1787904137792
+    },
+    {
+      "owner": "0x3357c88db2ccee5e6d19fcd8609a29579a998ca6fc0663e0960f2d558f865fb7",
+      "points": 5.173223069521179,
+      "volume": 3.414752,
+      "trades": 3,
+      "netPnl": -0.4657140000000002,
+      "skewVolume": 3.414752,
+      "skewTrades": 3,
+      "lastActiveMs": 1788022404518
+    },
+    {
+      "owner": "0xaec3dca39f93f5a1a0d7d29169832924a1def4964e25d924449c9ccbed0ed8ea",
+      "points": 5.171746489150285,
+      "volume": 3.4174860000000002,
+      "trades": 3,
+      "netPnl": -0.008342000000000294,
+      "skewVolume": 3.4174860000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1787978097621
+    },
+    {
+      "owner": "0x63d603801c24ad0dbd61daa1311aaefb1a516f96177140426bbd07c8d4013051",
+      "points": 5.164993468788887,
+      "volume": 2.215069,
+      "trades": 2,
+      "netPnl": 1.4749309999999998,
+      "skewVolume": 2.215069,
+      "skewTrades": 2,
+      "lastActiveMs": 1788114735905
+    },
+    {
+      "owner": "0x8ac3c2692ed57413688e9a2640a3e1fbb26098f5e7bde8810f15aa2be9ce107a",
+      "points": 5.16429457191801,
+      "volume": 3.416933,
+      "trades": 3,
+      "netPnl": -2.287833,
+      "skewVolume": 3.416933,
+      "skewTrades": 3,
+      "lastActiveMs": 1787984462366
+    },
+    {
+      "owner": "0x8e02f5816ed5da01fa5ce0a18b54522cd33d013cae62245b40ecf865d95c176a",
+      "points": 5.15973597995993,
+      "volume": 3.3730659999999997,
+      "trades": 3,
+      "netPnl": 0.8569340000000008,
+      "skewVolume": 3.3730659999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788145953143
+    },
+    {
+      "owner": "0xb59c77d55b82cf1daf4c9ba6b21ee3f6ad8ac62b01b814f224a680f78042374e",
+      "points": 5.15040016565938,
+      "volume": 2.2498139999999998,
+      "trades": 2,
+      "netPnl": 1.4501860000000004,
+      "skewVolume": 2.2498139999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1788105251654
+    },
+    {
+      "owner": "0x4d98fc991d7e77b60968188adfc35899d1d67da3c9aa70222e02b48e38cd2139",
+      "points": 5.118772853266826,
+      "volume": 3.481691,
+      "trades": 3,
+      "netPnl": 0.8183090000000006,
+      "skewVolume": 3.481691,
+      "skewTrades": 3,
+      "lastActiveMs": 1788084720732
+    },
+    {
+      "owner": "0x70843d24f7fe0d84dd0222e9f929226cfeee61d3be4b2111fd40058c610822a6",
+      "points": 5.107858456143114,
+      "volume": 4.612667,
+      "trades": 4,
+      "netPnl": 0.24733300000000025,
+      "skewVolume": 4.612667,
+      "skewTrades": 4,
+      "lastActiveMs": 1788016640413
+    },
+    {
+      "owner": "0x4fdd2849501dae8504f09a27b514c1119dc448be615aa5c1d75099aec303e9f5",
+      "points": 5.093044418668112,
+      "volume": 3.372898,
+      "trades": 3,
+      "netPnl": 0.8571020000000003,
+      "skewVolume": 3.372898,
+      "skewTrades": 3,
+      "lastActiveMs": 1788133346492
+    },
+    {
+      "owner": "0x65188d06f74d7e868f8feb29f9aceecc755722882021e09f001a40519509f4d9",
+      "points": 5.091188633203086,
+      "volume": 2.269119,
+      "trades": 2,
+      "netPnl": 1.4108810000000003,
+      "skewVolume": 2.269119,
+      "skewTrades": 2,
+      "lastActiveMs": 1788047257580
+    },
+    {
+      "owner": "0xc52202d0ebbf58d9baa1e5da65124700600b2bd70c60d38537be20c97647c516",
+      "points": 5.085839282673824,
+      "volume": 3.351287,
+      "trades": 3,
+      "netPnl": -2.204945,
+      "skewVolume": 3.351287,
+      "skewTrades": 3,
+      "lastActiveMs": 1788026126208
+    },
+    {
+      "owner": "0x0aded056dca322b816929f0a55bc01f1d9138da778d948f5fb2c5b649f65dcc5",
+      "points": 5.058899974131238,
+      "volume": 4.650704,
+      "trades": 4,
+      "netPnl": 0.1792959999999999,
+      "skewVolume": 4.650704,
+      "skewTrades": 4,
+      "lastActiveMs": 1788163603364
+    },
+    {
+      "owner": "0x18a0ffd179ba0d468fc206d41a0c6ad9339912dad851ddd908518555ec152a61",
+      "points": 5.045152621636965,
+      "volume": 3.395691,
+      "trades": 3,
+      "netPnl": 0.8243090000000008,
+      "skewVolume": 3.395691,
+      "skewTrades": 3,
+      "lastActiveMs": 1788102011685
+    },
+    {
+      "owner": "0x20a5bcdfc2437482c188f58c67fb255de22e88cd954d30fcda140080f2e88987",
+      "points": 5.0090356407298025,
+      "volume": 4.599589,
+      "trades": 4,
+      "netPnl": -0.31958900000000057,
+      "skewVolume": 4.599589,
+      "skewTrades": 4,
+      "lastActiveMs": 1788013279752
+    },
+    {
+      "owner": "0xee9090e8622446dffe5246afb7b54cd755eca5d8a80a9f2226fe6285bc16b022",
+      "points": 4.981433778578464,
+      "volume": 3.452413,
+      "trades": 3,
+      "netPnl": -0.15520099999999992,
+      "skewVolume": 3.452413,
+      "skewTrades": 3,
+      "lastActiveMs": 1788100927971
+    },
+    {
+      "owner": "0xc3a77dd078a128e44b2f68ed4f987526790ac804cf2c3b5f46bb97f2fd4200b9",
+      "points": 4.877159073568237,
+      "volume": 3.4832289999999997,
+      "trades": 3,
+      "netPnl": 0.696771,
+      "skewVolume": 3.4832289999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788120258960
+    },
+    {
+      "owner": "0x966cd175ef8d67e4560c05a2041e06f4fe8a6fd0c426e7db396cc84ed502183a",
+      "points": 4.87038030996036,
+      "volume": 3.4099549999999996,
+      "trades": 3,
+      "netPnl": 0.730045,
+      "skewVolume": 3.4099549999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788174051424
+    },
+    {
+      "owner": "0x21a8c70186dcb2825e3598dbb059b68c58cd1f99fda08756bb1a5bc9dcffa63c",
+      "points": 4.8476336199970715,
+      "volume": 4.5809239999999996,
+      "trades": 4,
+      "netPnl": -2.1809239999999996,
+      "skewVolume": 4.5809239999999996,
+      "skewTrades": 4,
+      "lastActiveMs": 1788097087218
+    },
+    {
+      "owner": "0x68f409e95dead6bdae1a73438dc81c4e020b839a2efbdbba6345ec740e4d4646",
+      "points": 4.8444945748800485,
+      "volume": 2.2959069999999997,
+      "trades": 2,
+      "netPnl": 1.2740930000000001,
+      "skewVolume": 2.2959069999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1787939556126
+    },
+    {
+      "owner": "0x3dc7d3df9d11a1c41a92a8f5c00d6fcea394080d23ffcbe620684ea841898297",
+      "points": 4.840861783556323,
+      "volume": 1.119287,
+      "trades": 1,
+      "netPnl": 1.860713,
+      "skewVolume": 1.119287,
+      "skewTrades": 1,
+      "lastActiveMs": 1787819487123
+    },
+    {
+      "owner": "0x91aead9da47ec635347b33b4b5644984ba51d324ec9f6ff517385bc519834086",
+      "points": 4.831326542480329,
+      "volume": 4.604755,
+      "trades": 4,
+      "netPnl": -2.794755,
+      "skewVolume": 4.604755,
+      "skewTrades": 4,
+      "lastActiveMs": 1788116297046
+    },
+    {
+      "owner": "0xed9086fe8941b470bdded5eb6e93997e8c4a84be267cac76dc2a6136677f23b7",
+      "points": 4.828423726707669,
+      "volume": 3.468181,
+      "trades": 3,
+      "netPnl": 0.5218190000000003,
+      "skewVolume": 3.468181,
+      "skewTrades": 3,
+      "lastActiveMs": 1788082678969
+    },
+    {
+      "owner": "0x88b39f5bedec579685662d75736721cc972f61667de5c8530b2df735f42608bf",
+      "points": 4.802305704907748,
+      "volume": 4.513288,
+      "trades": 4,
+      "netPnl": -4.513288,
+      "skewVolume": 4.513288,
+      "skewTrades": 4,
+      "lastActiveMs": 1788084958652
+    },
+    {
+      "owner": "0x272beaa35d577d749bc82f7691841aed2ca3f0a847059fdd96ea55c83d7f7ce1",
+      "points": 4.778781235359738,
+      "volume": 3.321616,
+      "trades": 3,
+      "netPnl": 0.7283839999999997,
+      "skewVolume": 3.321616,
+      "skewTrades": 3,
+      "lastActiveMs": 1788071030478
+    },
+    {
+      "owner": "0x64a333c3493a8c60ea7ad165af32dd0765bef4eadd32c97f3d27ea12051e9d33",
+      "points": 4.777067114235662,
+      "volume": 4.546126,
+      "trades": 4,
+      "netPnl": -0.8361260000000001,
+      "skewVolume": 4.546126,
+      "skewTrades": 4,
+      "lastActiveMs": 1787817084559
+    },
+    {
+      "owner": "0x8232f52f53fed6f5c59603c38cd185d63ce60a48a664fcd74dffd07302419c9f",
+      "points": 4.753674037065992,
+      "volume": 3.370292,
+      "trades": 3,
+      "netPnl": 0.6897079999999995,
+      "skewVolume": 3.370292,
+      "skewTrades": 3,
+      "lastActiveMs": 1788040293297
+    },
+    {
+      "owner": "0x82c7ffb454cd9cd7ad3773f94d5cb91449ee92a8148a427f9f1b9ca4ba20b51c",
+      "points": 4.738962630845095,
+      "volume": 4.495122,
+      "trades": 4,
+      "netPnl": -0.27512199999999964,
+      "skewVolume": 4.495122,
+      "skewTrades": 4,
+      "lastActiveMs": 1788103933928
+    },
+    {
+      "owner": "0x3a34e73f6b13bf8f290d5ec8ff64d9b1a134fc29a3fc8f460ec8811c06399f2e",
+      "points": 4.688654393965727,
+      "volume": 4.634062999999999,
+      "trades": 4,
+      "netPnl": -0.7640629999999993,
+      "skewVolume": 4.634062999999999,
+      "skewTrades": 4,
+      "lastActiveMs": 1788160721674
+    },
+    {
+      "owner": "0x42c7ae729f3f734ce4223cf785d65a48bce72bc23dff28d5b2ae6dd371f4f28a",
+      "points": 4.688211022628929,
+      "volume": 4.62795,
+      "trades": 4,
+      "netPnl": -2.7279500000000003,
+      "skewVolume": 4.62795,
+      "skewTrades": 4,
+      "lastActiveMs": 1788162402854
+    },
+    {
+      "owner": "0x7d16136f63075c137ff0838aad25c469bd8644c375aa723cc79f4f46e1bd1e2d",
+      "points": 4.686020866843453,
+      "volume": 4.685367,
+      "trades": 4,
+      "netPnl": -2.045367,
+      "skewVolume": 4.685367,
+      "skewTrades": 4,
+      "lastActiveMs": 1788095044464
+    },
+    {
+      "owner": "0x7007bbdbf8951923d74fe998d24ac51c926cdc73a721bfa3be77fdc4851e0035",
+      "points": 4.683981653429082,
+      "volume": 4.682955,
+      "trades": 4,
+      "netPnl": -1.2002769999999998,
+      "skewVolume": 4.682955,
+      "skewTrades": 4,
+      "lastActiveMs": 1787924668192
+    },
+    {
+      "owner": "0xe6d9685b394f285081ae402c995506f2dba403d5d223fce7947e8bdbc9e175d9",
+      "points": 4.647952067833152,
+      "volume": 4.437815,
+      "trades": 4,
+      "netPnl": -4.437815,
+      "skewVolume": 4.437815,
+      "skewTrades": 4,
+      "lastActiveMs": 1788120498735
+    },
+    {
+      "owner": "0x53060b2708e9678f47e40e91bf878b64e3b731e3068f6639359264fda5f3a7f1",
+      "points": 4.629123269166861,
+      "volume": 3.4564280000000003,
+      "trades": 3,
+      "netPnl": -2.311256,
+      "skewVolume": 3.4564280000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788152197431
+    },
+    {
+      "owner": "0x25b505e081d99ab34123c8b25b7d755f1ba433627f8d9c73b4e8c9a144063bb8",
+      "points": 4.591130043608107,
+      "volume": 4.590222,
+      "trades": 4,
+      "netPnl": -2.400222,
+      "skewVolume": 4.590222,
+      "skewTrades": 4,
+      "lastActiveMs": 1788083758079
+    },
+    {
+      "owner": "0x9d02f3ff084c2248e5aad4e7bc251b21b9e810ea0bd439a745b80bfdd325fc71",
+      "points": 4.569468585741498,
+      "volume": 4.568522,
+      "trades": 4,
+      "netPnl": -2.7385219999999997,
+      "skewVolume": 4.568522,
+      "skewTrades": 4,
+      "lastActiveMs": 1787869675143
+    },
+    {
+      "owner": "0x5308bb6b8f4c367a0658609f09ce497deafe2d7718d64b4ccca508ec15db8c47",
+      "points": 4.566216125979839,
+      "volume": 4.56553,
+      "trades": 4,
+      "netPnl": -2.50553,
+      "skewVolume": 4.56553,
+      "skewTrades": 4,
+      "lastActiveMs": 1788144274518
+    },
+    {
+      "owner": "0x82abc83c918c12d6b0463b20c2714648dc376175de5e94a806890e5e1ad374e1",
+      "points": 4.5515354639086745,
+      "volume": 4.5468980000000006,
+      "trades": 4,
+      "netPnl": -0.7068980000000007,
+      "skewVolume": 4.5468980000000006,
+      "skewTrades": 4,
+      "lastActiveMs": 1788141390793
+    },
+    {
+      "owner": "0x0bb1fc1a1e9f2a6bc8b0355a95ce63a7ec00459ff98ada577353c71a5c18dd0b",
+      "points": 4.543939642077945,
+      "volume": 4.542654000000001,
+      "trades": 4,
+      "netPnl": -2.6826540000000003,
+      "skewVolume": 4.542654000000001,
+      "skewTrades": 4,
+      "lastActiveMs": 1788116776967
+    },
+    {
+      "owner": "0x500a11ab9ce81d875d622d01e17478f22aac761d96c918649c0f0f1e036ae04b",
+      "points": 4.538361674123149,
+      "volume": 4.537821,
+      "trades": 4,
+      "netPnl": -4.537821,
+      "skewVolume": 4.537821,
+      "skewTrades": 4,
+      "lastActiveMs": 1788062025190
+    },
+    {
+      "owner": "0xac35a861b1562689a3a3637d6ad5aac0ca99212b1f57c1e1e9b40f7c76c896ab",
+      "points": 4.520189940326842,
+      "volume": 4.492984,
+      "trades": 4,
+      "netPnl": -0.45298399999999983,
+      "skewVolume": 4.492984,
+      "skewTrades": 4,
+      "lastActiveMs": 1787901854627
+    },
+    {
+      "owner": "0xe3cb96158adb26432bb7d68a099d90162f5b214d708533157b97dd8f7ff91ac7",
+      "points": 4.474066296087732,
+      "volume": 1.186055,
+      "trades": 1,
+      "netPnl": 1.643945,
+      "skewVolume": 1.186055,
+      "skewTrades": 1,
+      "lastActiveMs": 1788183055067
+    },
+    {
+      "owner": "0x010f7c3597547082f333edadaa281d2c36d09a8f4017a11e509c77bb3ac09824",
+      "points": 4.459557257235537,
+      "volume": 4.457918,
+      "trades": 4,
+      "netPnl": -0.3779180000000002,
+      "skewVolume": 4.457918,
+      "skewTrades": 4,
+      "lastActiveMs": 1788143191220
+    },
+    {
+      "owner": "0xc0f7f5e100cb7c1f9934514767feec0c3054df8131eb34045daa4466802b4a67",
+      "points": 4.404005975835585,
+      "volume": 2.296446,
+      "trades": 2,
+      "netPnl": 1.053554,
+      "skewVolume": 2.296446,
+      "skewTrades": 2,
+      "lastActiveMs": 1787910859076
+    },
+    {
+      "owner": "0xea4a7d2e125f6f7a7a1690b491e5d5c600c161c326ecc79fb8cd5aba524ae2c5",
+      "points": 4.336643447680143,
+      "volume": 3.3310330000000006,
+      "trades": 3,
+      "netPnl": 0.47896699999999903,
+      "skewVolume": 3.3310330000000006,
+      "skewTrades": 3,
+      "lastActiveMs": 1787875679951
+    },
+    {
+      "owner": "0x758ae9d6848c0f63a1aaa76d0712f2a01ecc4d85db8c4d22f87bb85e0e299227",
+      "points": 4.304092045490425,
+      "volume": 1.155959,
+      "trades": 1,
+      "netPnl": 1.574041,
+      "skewVolume": 1.155959,
+      "skewTrades": 1,
+      "lastActiveMs": 1787814564707
+    },
+    {
+      "owner": "0x849c3b3f186170e67fe5c16f207ae920f82992acfe69c04529b4458862d25cd8",
+      "points": 4.280939337717278,
+      "volume": 1.179093,
+      "trades": 1,
+      "netPnl": 1.550907,
+      "skewVolume": 1.179093,
+      "skewTrades": 1,
+      "lastActiveMs": 1788116537641
+    },
+    {
+      "owner": "0x73c57ec7ac099d6ba22d8eefa47a6b04b7b547404d5bb4bd33f23a447fc33766",
+      "points": 4.275037661560143,
+      "volume": 2.356148,
+      "trades": 2,
+      "netPnl": -1.186963,
+      "skewVolume": 2.356148,
+      "skewTrades": 2,
+      "lastActiveMs": 1787893329661
+    },
+    {
+      "owner": "0x0a4c5ab2afc55bd6929cbaae08d0fe5c959c9d666e134d2cb3d4360797cabb6e",
+      "points": 4.270445610417014,
+      "volume": 1.129695,
+      "trades": 1,
+      "netPnl": 1.5703050000000003,
+      "skewVolume": 1.129695,
+      "skewTrades": 1,
+      "lastActiveMs": 1787890328911
+    },
+    {
+      "owner": "0x6e0cf2b838d196a2d1252ed1e5e31ef8c6e8baf69a72be2cfca23e1518365d03",
+      "points": 4.220310124589768,
+      "volume": 3.440096,
+      "trades": 3,
+      "netPnl": 0.38990400000000003,
+      "skewVolume": 3.440096,
+      "skewTrades": 3,
+      "lastActiveMs": 1788024805074
+    },
+    {
+      "owner": "0x832034cd4e195211f0140763355ac8a7fb14e1e57a77ab0690324a7073c4de6e",
+      "points": 4.201826574615756,
+      "volume": 3.482537,
+      "trades": 3,
+      "netPnl": 0.35746299999999964,
+      "skewVolume": 3.482537,
+      "skewTrades": 3,
+      "lastActiveMs": 1787919984399
+    },
+    {
+      "owner": "0xc7e02cc36a11c0335660e8f59bc93a5f75b3e1e1111810ea016a1f43802dea4b",
+      "points": 4.129443097852147,
+      "volume": 2.251249,
+      "trades": 2,
+      "netPnl": -1.096186,
+      "skewVolume": 2.251249,
+      "skewTrades": 2,
+      "lastActiveMs": 1787907618927
+    },
+    {
+      "owner": "0xac3c513108cfd0b778bef6f04887bc36358d5738ae8d02ca3ea5b5f71bd5a425",
+      "points": 4.099319148043555,
+      "volume": 3.382817,
+      "trades": 3,
+      "netPnl": 0.35718300000000003,
+      "skewVolume": 3.382817,
+      "skewTrades": 3,
+      "lastActiveMs": 1788105971585
+    },
+    {
+      "owner": "0xb7cae446e22640baf205f795dfac045915b9dd404584becc7e8c70d836d61e03",
+      "points": 4.094719809009025,
+      "volume": 3.425633,
+      "trades": 3,
+      "netPnl": 0.33436699999999986,
+      "skewVolume": 3.425633,
+      "skewTrades": 3,
+      "lastActiveMs": 1788027090316
+    },
+    {
+      "owner": "0x8659e73abe0bf9c321378f5762d8ef22abee484dfa8f3238147b1ca18458d616",
+      "points": 4.093139514305553,
+      "volume": 1.166983,
+      "trades": 1,
+      "netPnl": 1.4630169999999998,
+      "skewVolume": 1.166983,
+      "skewTrades": 1,
+      "lastActiveMs": 1787916141917
+    },
+    {
+      "owner": "0x9fdfad803573ab112d3b50bb2a141969090d7c8bf6c684d7af85029c67d599ab",
+      "points": 4.090443638566499,
+      "volume": 1.109639,
+      "trades": 1,
+      "netPnl": 1.490361,
+      "skewVolume": 1.109639,
+      "skewTrades": 1,
+      "lastActiveMs": 1787855507733
+    },
+    {
+      "owner": "0xaaa88b6031b369c4f6166a6e94930eab2bfeca6f65afd721a2527bd0d90ed422",
+      "points": 4.0829472755183565,
+      "volume": 2.23452,
+      "trades": 2,
+      "netPnl": -1.097579,
+      "skewVolume": 2.23452,
+      "skewTrades": 2,
+      "lastActiveMs": 1787907858685
+    },
+    {
+      "owner": "0x56e9d8645453a6b83b2d2c840d624a93f777503f9700cb0001080b665c15cc8f",
+      "points": 4.081856836056164,
+      "volume": 3.472199,
+      "trades": 3,
+      "netPnl": 0.29780099999999976,
+      "skewVolume": 3.472199,
+      "skewTrades": 3,
+      "lastActiveMs": 1787912900793
+    },
+    {
+      "owner": "0x354514c64d38c4f73231c18dbd407d62d78030addba3ba01d22c9b4972883c8c",
+      "points": 4.041873133003739,
+      "volume": 2.205513,
+      "trades": 2,
+      "netPnl": -1.098891,
+      "skewVolume": 2.205513,
+      "skewTrades": 2,
+      "lastActiveMs": 1787866433403
+    },
+    {
+      "owner": "0x4b5a04e1d3b8337da6458756a5a946bf6401156300812bbca0439f9f845925e6",
+      "points": 4.033781389746056,
+      "volume": 2.25098,
+      "trades": 2,
+      "netPnl": -1.155224,
+      "skewVolume": 2.25098,
+      "skewTrades": 2,
+      "lastActiveMs": 1787906897966
+    },
+    {
+      "owner": "0xf5660a820f0d4f69fc101b73cf42e7dbac8bdd6887c3141a226f649d02e75650",
+      "points": 4.007315517803795,
+      "volume": 3.453087,
+      "trades": 3,
+      "netPnl": 0.2769130000000004,
+      "skewVolume": 3.453087,
+      "skewTrades": 3,
+      "lastActiveMs": 1788079075516
+    },
+    {
+      "owner": "0xdf0ad881cabb6a261f9d328135c580cde7fdac5e5da18bd5796852395f328d8f",
+      "points": 3.9043520349029306,
+      "volume": 1.175834,
+      "trades": 1,
+      "netPnl": 1.364166,
+      "skewVolume": 1.175834,
+      "skewTrades": 1,
+      "lastActiveMs": 1788075593546
+    },
+    {
+      "owner": "0xddf45967d85ed143405ac60e20c6db3870c97b37e8db513a151b4d98091661e7",
+      "points": 3.895094553619373,
+      "volume": 2.267933,
+      "trades": 2,
+      "netPnl": 0.8120669999999999,
+      "skewVolume": 2.267933,
+      "skewTrades": 2,
+      "lastActiveMs": 1788109696134
+    },
+    {
+      "owner": "0x1e580b60c2e9ac8056fca6c07c495d74cc50fee5516c15bfb477a320c4353e6e",
+      "points": 3.8546146857107146,
+      "volume": 3.453798,
+      "trades": 3,
+      "netPnl": 0.18620199999999976,
+      "skewVolume": 3.453798,
+      "skewTrades": 3,
+      "lastActiveMs": 1787996229570
+    },
+    {
+      "owner": "0xbd710096b4cc424ca3e75167fd7f5ba02a5e3801b8a1d1721e2178f95a208e5c",
+      "points": 3.8519378249671057,
+      "volume": 3.4265120000000002,
+      "trades": 3,
+      "netPnl": -3.4265120000000002,
+      "skewVolume": 3.4265120000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1787978337974
+    },
+    {
+      "owner": "0x9d5cb9ed6662dba27af47b3a1508f48a206438dc84df9a0999dcce52ce37e448",
+      "points": 3.85159359213156,
+      "volume": 2.308574,
+      "trades": 2,
+      "netPnl": 0.771426,
+      "skewVolume": 2.308574,
+      "skewTrades": 2,
+      "lastActiveMs": 1788142710611
+    },
+    {
+      "owner": "0x5c9aec371469183d97044a5370cfcae52a4b48fbe041c583e1d25a348861d109",
+      "points": 3.843453981667283,
+      "volume": 1.096604,
+      "trades": 1,
+      "netPnl": 1.3733960000000003,
+      "skewVolume": 1.096604,
+      "skewTrades": 1,
+      "lastActiveMs": 1788007756049
+    },
+    {
+      "owner": "0xa540b0ce62f8834da30befc4c8a23a99c892de09656fd4cec376e9a777f18e18",
+      "points": 3.765466258433066,
+      "volume": 3.502205,
+      "trades": 3,
+      "netPnl": -1.352205,
+      "skewVolume": 3.502205,
+      "skewTrades": 3,
+      "lastActiveMs": 1788088801507
+    },
+    {
+      "owner": "0x95e0fd7d64c2b18aab527d8e2890d11d8d7157d6558807b579a1f1bf470ce4a9",
+      "points": 3.7648483034694697,
+      "volume": 3.41289,
+      "trades": 3,
+      "netPnl": -1.4028900000000002,
+      "skewVolume": 3.41289,
+      "skewTrades": 3,
+      "lastActiveMs": 1788032129348
+    },
+    {
+      "owner": "0x909be572cec99f131c86ea74226f2f80e78f66826b43201c3cc3f5d267a9df2e",
+      "points": 3.7409914747257753,
+      "volume": 3.4348729999999996,
+      "trades": 3,
+      "netPnl": -1.0948729999999998,
+      "skewVolume": 3.4348729999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788085918737
+    },
+    {
+      "owner": "0x1b873c2f59d6451b6ab78147f088bf7f5d77f1873535bad299bad88df8aae1bb",
+      "points": 3.7343141505828568,
+      "volume": 3.373705,
+      "trades": 3,
+      "netPnl": -0.7437050000000003,
+      "skewVolume": 3.373705,
+      "skewTrades": 3,
+      "lastActiveMs": 1788033332025
+    },
+    {
+      "owner": "0x5e126f560f7312da45bbfd9086fef5e44710e6aad5f7756cb25005e6624a5b7a",
+      "points": 3.7176410764758576,
+      "volume": 3.451245,
+      "trades": 3,
+      "netPnl": -1.3212450000000002,
+      "skewVolume": 3.451245,
+      "skewTrades": 3,
+      "lastActiveMs": 1788089762535
+    },
+    {
+      "owner": "0x2cfae466573306da7f375b25b270770f88ff9679721e3710f3112be06a138539",
+      "points": 3.7147762356255165,
+      "volume": 2.3254789999999996,
+      "trades": 2,
+      "netPnl": 0.6945210000000004,
+      "skewVolume": 2.3254789999999996,
+      "skewTrades": 2,
+      "lastActiveMs": 1787965972223
+    },
+    {
+      "owner": "0x69cd9d3d590f4006ddf6635de5ba45d410fb14e384a2ea488bbd379251b68240",
+      "points": 3.710786809530149,
+      "volume": 1.149697,
+      "trades": 1,
+      "netPnl": 1.2803030000000002,
+      "skewVolume": 1.149697,
+      "skewTrades": 1,
+      "lastActiveMs": 1788054342196
+    },
+    {
+      "owner": "0x5398b4b44253e3e7181616787ec9f89e44b5b7ba5aafaca06ad32d2d698f9ed4",
+      "points": 3.7011927748275,
+      "volume": 1.17887,
+      "trades": 1,
+      "netPnl": 1.2611299999999999,
+      "skewVolume": 1.17887,
+      "skewTrades": 1,
+      "lastActiveMs": 1787910019795
+    },
+    {
+      "owner": "0x91819f74d95a48ceb6e33d19a0ef96c8a3ec86e587f0e3798b1e1504cd320ac5",
+      "points": 3.694486370421947,
+      "volume": 3.445484,
+      "trades": 3,
+      "netPnl": -1.495484,
+      "skewVolume": 3.445484,
+      "skewTrades": 3,
+      "lastActiveMs": 1787805678292
+    },
+    {
+      "owner": "0xbead51b547da05c20de769cc512a5e22ff5f5ec1185f7f9f91c3cbb11c5c73d2",
+      "points": 3.6735034546549237,
+      "volume": 3.3889180000000003,
+      "trades": 3,
+      "netPnl": 0.14108199999999993,
+      "skewVolume": 3.3889180000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788105730932
+    },
+    {
+      "owner": "0x3a6ab8e56c4f2901eb48c7d252fee4a1840d95625e998e3fe1076421cec0e5b2",
+      "points": 3.644955927503611,
+      "volume": 1.175244,
+      "trades": 1,
+      "netPnl": 1.2347560000000002,
+      "skewVolume": 1.175244,
+      "skewTrades": 1,
+      "lastActiveMs": 1788067909310
+    },
+    {
+      "owner": "0x860ae86abe41c3b4879e3891a186b67810f1407d38e22589d4bdffd62b9d8280",
+      "points": 3.6334727910123266,
+      "volume": 1.146675,
+      "trades": 1,
+      "netPnl": 1.243325,
+      "skewVolume": 1.146675,
+      "skewTrades": 1,
+      "lastActiveMs": 1787905456807
+    },
+    {
+      "owner": "0x3ca0dc6018a8360655b1cadf96a8c541735d60f461031e4728158f945d9918f7",
+      "points": 3.6229006802452037,
+      "volume": 1.157188,
+      "trades": 1,
+      "netPnl": 1.232812,
+      "skewVolume": 1.157188,
+      "skewTrades": 1,
+      "lastActiveMs": 1788070550505
+    },
+    {
+      "owner": "0x6a4df8673e72bf01fc839bc23eeded1179bdc594dfe3e5b7ecc1ade5e48a7a73",
+      "points": 3.6106987865907354,
+      "volume": 1.149396,
+      "trades": 1,
+      "netPnl": 1.2306039999999998,
+      "skewVolume": 1.149396,
+      "skewTrades": 1,
+      "lastActiveMs": 1787863311286
+    },
+    {
+      "owner": "0xc21dbd70e3ddf125a19e4866201a9c8b8a61c1f97811c8b382efbf1994797cd7",
+      "points": 3.5921636246191375,
+      "volume": 1.167949,
+      "trades": 1,
+      "netPnl": 1.212051,
+      "skewVolume": 1.167949,
+      "skewTrades": 1,
+      "lastActiveMs": 1788175852708
+    },
+    {
+      "owner": "0x578b9c5c484fc0b745a1765313e869452e471028ff4e0ecb5c6a7633ea95d064",
+      "points": 3.572029321833175,
+      "volume": 3.353539,
+      "trades": 3,
+      "netPnl": -3.353539,
+      "skewVolume": 3.353539,
+      "skewTrades": 3,
+      "lastActiveMs": 1787817325404
+    },
+    {
+      "owner": "0x58d002f29a52bcf3159d0b713362c3d25c049413a2b09df890038d0001dee637",
+      "points": 3.561685475809241,
+      "volume": 1.178509,
+      "trades": 1,
+      "netPnl": 1.191491,
+      "skewVolume": 1.178509,
+      "skewTrades": 1,
+      "lastActiveMs": 1788074993006
+    },
+    {
+      "owner": "0xfa3b2b1a5570c0c346b017943f1f8d0bc41876228dfe4bb29a1befc149ebad2f",
+      "points": 3.559665173628963,
+      "volume": 3.4874400000000003,
+      "trades": 3,
+      "netPnl": -0.9374400000000005,
+      "skewVolume": 3.4874400000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1788147274021
+    },
+    {
+      "owner": "0xfbb369fe01919d89e3285bea416967db5931ed88888af5a3d070d12a95443abd",
+      "points": 3.546019340904619,
+      "volume": 3.534836,
+      "trades": 3,
+      "netPnl": -3.534836,
+      "skewVolume": 3.534836,
+      "skewTrades": 3,
+      "lastActiveMs": 1788162163134
+    },
+    {
+      "owner": "0x5998a24e4e28dd83d7c938cc9045e9073cd292875acc928485bdde333a61e7d2",
+      "points": 3.5400163835484943,
+      "volume": 3.539745,
+      "trades": 3,
+      "netPnl": -3.539745,
+      "skewVolume": 3.539745,
+      "skewTrades": 3,
+      "lastActiveMs": 1788141511006
+    },
+    {
+      "owner": "0xe8b81b1be11bb1a5d9723e7ce01890eb1ec1e480993d3943d00ddb3d5f02d1ce",
+      "points": 3.532796194364398,
+      "volume": 3.531039,
+      "trades": 3,
+      "netPnl": -3.531039,
+      "skewVolume": 3.531039,
+      "skewTrades": 3,
+      "lastActiveMs": 1788087599599
+    },
+    {
+      "owner": "0x86b0912eacba21d4bfa0df995eafa072a52d845e91fcfb42959e6a23df444f4c",
+      "points": 3.5240705644279373,
+      "volume": 2.285409,
+      "trades": 2,
+      "netPnl": -1.156622,
+      "skewVolume": 2.285409,
+      "skewTrades": 2,
+      "lastActiveMs": 1788105131464
+    },
+    {
+      "owner": "0xbbbf98f1a5f5d963836c97a21aa4ae169f4482fbd494eb794e0c89b52c6b2762",
+      "points": 3.522016998333114,
+      "volume": 3.5215569999999996,
+      "trades": 3,
+      "netPnl": -3.5215569999999996,
+      "skewVolume": 3.5215569999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787925508513
+    },
+    {
+      "owner": "0xaacf73ab756cff8dc1d6b8b00227562da1b230312ece73b4d98124c132864d70",
+      "points": 3.5202491678225147,
+      "volume": 1.159909,
+      "trades": 1,
+      "netPnl": 1.1800909999999998,
+      "skewVolume": 1.159909,
+      "skewTrades": 1,
+      "lastActiveMs": 1788047737829
+    },
+    {
+      "owner": "0x1159e666b8274a9786eea1f953619bc2ccfa24262af120bbf6a281ee80694f9b",
+      "points": 3.5153910962169466,
+      "volume": 3.5149369999999998,
+      "trades": 3,
+      "netPnl": -1.6049369999999998,
+      "skewVolume": 3.5149369999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1787869435151
+    },
+    {
+      "owner": "0x57c1acf6cabae42f94c9e7393c79782641d4b96d2aac9c21f2c71cb7ba93bb51",
+      "points": 3.5108844413929545,
+      "volume": 3.5091279999999996,
+      "trades": 3,
+      "netPnl": -0.7291279999999998,
+      "skewVolume": 3.5091279999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788101287970
+    },
+    {
+      "owner": "0xb1a17193f4d4b024527c4e4f32dd0de1bd7b5bf9f5138e446bb9d1fb76ce2e7d",
+      "points": 3.5094430783009187,
+      "volume": 3.4639119999999997,
+      "trades": 3,
+      "netPnl": -3.4639119999999997,
+      "skewVolume": 3.4639119999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788168526661
+    },
+    {
+      "owner": "0xe56e25df969c7d9819d6ce58e77353be2aa174d953af4d616b1208ac86f58629",
+      "points": 3.507648706392802,
+      "volume": 3.50222,
+      "trades": 3,
+      "netPnl": -1.57222,
+      "skewVolume": 3.50222,
+      "skewTrades": 3,
+      "lastActiveMs": 1788062506620
+    },
+    {
+      "owner": "0xca94da141234f85ddf098e5e2fdc126b2409a9360d236759c96c83d260e36f82",
+      "points": 3.4921242944624002,
+      "volume": 3.491892,
+      "trades": 3,
+      "netPnl": -0.9218920000000002,
+      "skewVolume": 3.491892,
+      "skewTrades": 3,
+      "lastActiveMs": 1788144752352
+    },
+    {
+      "owner": "0x4b12852f74e1aa948df07dfb9049bc3b498fae96f89099fae6b268dbea11046f",
+      "points": 3.485905696784554,
+      "volume": 3.4849309999999996,
+      "trades": 3,
+      "netPnl": -1.5549309999999996,
+      "skewVolume": 3.4849309999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787825491569
+    },
+    {
+      "owner": "0xc4250bb7c718aa4375a73ef6b7e9e1ffb460cb9ec0bf7c17db3ad313115992ce",
+      "points": 3.48368919587479,
+      "volume": 3.483459,
+      "trades": 3,
+      "netPnl": -0.8234589999999997,
+      "skewVolume": 3.483459,
+      "skewTrades": 3,
+      "lastActiveMs": 1788150516005
+    },
+    {
+      "owner": "0xe387e477ee382b6c2489965325eba3a2de7a244ff71d7b48cbddaef1f0d6e888",
+      "points": 3.480983031729167,
+      "volume": 1.09908,
+      "trades": 1,
+      "netPnl": 1.19092,
+      "skewVolume": 1.09908,
+      "skewTrades": 1,
+      "lastActiveMs": 1788123380888
+    },
+    {
+      "owner": "0x360cc56fda2dfb2a901b33a544eaf8490a56e48bd86d391d27ed2348ef34b4be",
+      "points": 3.475391708465367,
+      "volume": 3.475027,
+      "trades": 3,
+      "netPnl": -1.4850269999999999,
+      "skewVolume": 3.475027,
+      "skewTrades": 3,
+      "lastActiveMs": 1788050859857
+    },
+    {
+      "owner": "0xc262b62a7e1b799f821d590231d5675fdf528d5911a8aecb03c9f391a2da0c4f",
+      "points": 3.4668058239033335,
+      "volume": 3.466367,
+      "trades": 3,
+      "netPnl": -3.466367,
+      "skewVolume": 3.466367,
+      "skewTrades": 3,
+      "lastActiveMs": 1788172489612
+    },
+    {
+      "owner": "0xe15c7b766cdaab3a01ca0ce14bcf2f603ab0faf4596dbdae1ff33c1e6753326a",
+      "points": 3.464070682650788,
+      "volume": 3.462757,
+      "trades": 3,
+      "netPnl": -1.182757,
+      "skewVolume": 3.462757,
+      "skewTrades": 3,
+      "lastActiveMs": 1788087840319
+    },
+    {
+      "owner": "0xde2d2fdf574c3f94f86f6c99b223c0dd82bfdc7442fd5d87873d5ddf84c15173",
+      "points": 3.462773456903354,
+      "volume": 2.277552,
+      "trades": 2,
+      "netPnl": 0.5924480000000001,
+      "skewVolume": 2.277552,
+      "skewTrades": 2,
+      "lastActiveMs": 1788047016764
+    },
+    {
+      "owner": "0x836f83c02ab66aa2deb4d014a0ea50efda7771cf441dea87009606957d5f44bc",
+      "points": 3.4614639583283173,
+      "volume": 3.460961,
+      "trades": 3,
+      "netPnl": -1.050961,
+      "skewVolume": 3.460961,
+      "skewTrades": 3,
+      "lastActiveMs": 1787991546412
+    },
+    {
+      "owner": "0x282a76d30a451a3d2e09cd46be5e0d42701997cb1ee1b97f650129300dd35c57",
+      "points": 3.4564764575997637,
+      "volume": 3.456085,
+      "trades": 3,
+      "netPnl": -3.456085,
+      "skewVolume": 3.456085,
+      "skewTrades": 3,
+      "lastActiveMs": 1787934876128
+    },
+    {
+      "owner": "0x82833dc45559b33c8dbdd7c5436addd3a0ae57412a7a87aec6d4104cdb6eced2",
+      "points": 3.4560672693390937,
+      "volume": 3.452429,
+      "trades": 3,
+      "netPnl": -0.29242899999999983,
+      "skewVolume": 3.452429,
+      "skewTrades": 3,
+      "lastActiveMs": 1787806640017
+    },
+    {
+      "owner": "0xcafccb504570d2238e27008d325ff6a5c54b9e63604b6cbef6415f785fc655ce",
+      "points": 3.4513582559419365,
+      "volume": 3.440553,
+      "trades": 3,
+      "netPnl": -1.1005530000000001,
+      "skewVolume": 3.440553,
+      "skewTrades": 3,
+      "lastActiveMs": 1787940397488
+    },
+    {
+      "owner": "0xa581caf5e3034d5c780a17856e6bf2e8a0a40bbe0f85cdcb28295efe3f4721c0",
+      "points": 3.4513416196777453,
+      "volume": 3.425611,
+      "trades": 3,
+      "netPnl": -1.655611,
+      "skewVolume": 3.425611,
+      "skewTrades": 3,
+      "lastActiveMs": 1787997790156
+    },
+    {
+      "owner": "0x6db9a745c04b619aeaff1f7d19833655d8b0147655b58b4b1e900182578ff9c0",
+      "points": 3.4500018095191596,
+      "volume": 3.447926,
+      "trades": 3,
+      "netPnl": -3.447926,
+      "skewVolume": 3.447926,
+      "skewTrades": 3,
+      "lastActiveMs": 1788103933928
+    },
+    {
+      "owner": "0xb3c941d0f49a61de4ed5786025ce88070c8c405623e50d64b60d94ffccc92c35",
+      "points": 3.4499869940830923,
+      "volume": 3.4421039999999996,
+      "trades": 3,
+      "netPnl": -3.4421039999999996,
+      "skewVolume": 3.4421039999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787858149855
+    },
+    {
+      "owner": "0x25abdf86034aa0119aae2c30e819361431045a43094a5cf3e7cd9e0f1c40e444",
+      "points": 3.446971790682538,
+      "volume": 3.372814,
+      "trades": 3,
+      "netPnl": -3.372814,
+      "skewVolume": 3.372814,
+      "skewTrades": 3,
+      "lastActiveMs": 1788145472732
+    },
+    {
+      "owner": "0x564067640c58803847e47b018363160130e53490bb4ddfea57beb04fd02cecf9",
+      "points": 3.4455805890767635,
+      "volume": 1.155084,
+      "trades": 1,
+      "netPnl": 1.1449159999999998,
+      "skewVolume": 1.155084,
+      "skewTrades": 1,
+      "lastActiveMs": 1788155319773
+    },
+    {
+      "owner": "0xa0391399c64940060eeb351f7e79afdc966c2e7e572590b84afe5e21bd9c0d59",
+      "points": 3.44547762633954,
+      "volume": 3.444952,
+      "trades": 3,
+      "netPnl": -1.124952,
+      "skewVolume": 3.444952,
+      "skewTrades": 3,
+      "lastActiveMs": 1787999471631
+    },
+    {
+      "owner": "0xaafe9df212786a2cbbbcb96212dc4340e15060f9e0473e012ea07dc559107d1e",
+      "points": 3.44547162940378,
+      "volume": 3.445056,
+      "trades": 3,
+      "netPnl": -3.445056,
+      "skewVolume": 3.445056,
+      "skewTrades": 3,
+      "lastActiveMs": 1787810721399
+    },
+    {
+      "owner": "0x01ba646f14d3e0b31b7dbbd033091c01e1d64a4a27343112ee3ee4918e28d209",
+      "points": 3.445011395635093,
+      "volume": 3.4445309999999996,
+      "trades": 3,
+      "netPnl": -1.2045309999999994,
+      "skewVolume": 3.4445309999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788163243351
+    },
+    {
+      "owner": "0xbfe1046a3dac0165d1493fb1eb8f7fcb99be8345b246cda5f0a1ad7d179048db",
+      "points": 3.4432816783845026,
+      "volume": 3.439261,
+      "trades": 3,
+      "netPnl": -1.069261,
+      "skewVolume": 3.439261,
+      "skewTrades": 3,
+      "lastActiveMs": 1788033089874
+    },
+    {
+      "owner": "0xfae0e5c20155441b8884caedab759424361bad834b3062c738e0e4bf5b9b62e1",
+      "points": 3.4410773043677914,
+      "volume": 3.4409069999999997,
+      "trades": 3,
+      "netPnl": -1.3609069999999996,
+      "skewVolume": 3.4409069999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1787863551957
+    },
+    {
+      "owner": "0xe99dacfbcb9df4725063f812945a43d1ca28bf9f176301f9c12d1228d2d6c69a",
+      "points": 3.4385301735576905,
+      "volume": 3.3621109999999996,
+      "trades": 3,
+      "netPnl": -1.4521109999999997,
+      "skewVolume": 3.3621109999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788143792163
+    },
+    {
+      "owner": "0x7ba2ff069a50b90a2c58a6f33d278b947a90f76ef3649e04fc45e408852d727a",
+      "points": 3.434704775370067,
+      "volume": 3.4343049999999997,
+      "trades": 3,
+      "netPnl": -3.4343049999999997,
+      "skewVolume": 3.4343049999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788048458904
+    },
+    {
+      "owner": "0xa3acb1b60417416252d75951cdf70578c7c61c15313415871bc6382fcf22ba69",
+      "points": 3.4324407335803913,
+      "volume": 3.431664,
+      "trades": 3,
+      "netPnl": -1.221664,
+      "skewVolume": 3.431664,
+      "skewTrades": 3,
+      "lastActiveMs": 1787949641663
+    },
+    {
+      "owner": "0x262331c870e90ce49241799e5ed3738595663f5cb35cffdfe172c53bb104dddd",
+      "points": 3.4278879468318872,
+      "volume": 3.4276099999999996,
+      "trades": 3,
+      "netPnl": -1.2076099999999994,
+      "skewVolume": 3.4276099999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788085438880
+    },
+    {
+      "owner": "0x83d759bec9a29773a5794a206f31217987c1cd1ce7cafe8b26af68c4cfba7fbc",
+      "points": 3.4271979242637003,
+      "volume": 3.426507,
+      "trades": 3,
+      "netPnl": -0.8965070000000002,
+      "skewVolume": 3.426507,
+      "skewTrades": 3,
+      "lastActiveMs": 1788076433433
+    },
+    {
+      "owner": "0x9fe4d6c89979b4ceebb27c8c5829ba5d7c2e1f8103120e2034f08ba558b7e170",
+      "points": 3.4202589738021114,
+      "volume": 3.419716,
+      "trades": 3,
+      "netPnl": -1.5897160000000001,
+      "skewVolume": 3.419716,
+      "skewTrades": 3,
+      "lastActiveMs": 1788178253005
+    },
+    {
+      "owner": "0x1985c8ba44d63e770beb2d435bbff99409b8abf34a8c76f7da1c099cdee601b2",
+      "points": 3.419517299214278,
+      "volume": 3.4191570000000002,
+      "trades": 3,
+      "netPnl": -1.199157,
+      "skewVolume": 3.4191570000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1788036811446
+    },
+    {
+      "owner": "0x87b83b32ebd738f719fc4bc8eee486e0b5a3cd771485887d00a7e98885b171fe",
+      "points": 3.4187977610289537,
+      "volume": 3.414338,
+      "trades": 3,
+      "netPnl": -3.414338,
+      "skewVolume": 3.414338,
+      "skewTrades": 3,
+      "lastActiveMs": 1788088564495
+    },
+    {
+      "owner": "0x3709c08b387a8684dd3436e9026db2c76cbb64c62bceb95d61af585c7591ee66",
+      "points": 3.4154117345513666,
+      "volume": 3.4148549999999998,
+      "trades": 3,
+      "netPnl": -1.4948549999999998,
+      "skewVolume": 3.4148549999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1787992627860
+    },
+    {
+      "owner": "0xce19d9a7b5230ec4109041e1890d977442c3ea8df90f144991b3467193340429",
+      "points": 3.410873521647495,
+      "volume": 1.169278,
+      "trades": 1,
+      "netPnl": 1.120722,
+      "skewVolume": 1.169278,
+      "skewTrades": 1,
+      "lastActiveMs": 1787829692687
+    },
+    {
+      "owner": "0xa5775f40a0bd6c3eeb4520994fec9ff214f8f5e4587b0d5ca7d6669313d1fc01",
+      "points": 3.4063003763017132,
+      "volume": 3.4050380000000002,
+      "trades": 3,
+      "netPnl": -1.4150380000000002,
+      "skewVolume": 3.4050380000000002,
+      "skewTrades": 3,
+      "lastActiveMs": 1788053984833
+    },
+    {
+      "owner": "0xbc0b4a49e86c53cf14c5722f20d81b11da64c3ae67c528c6450d7c5bb225642e",
+      "points": 3.40471854907886,
+      "volume": 3.39485,
+      "trades": 3,
+      "netPnl": -3.39485,
+      "skewVolume": 3.39485,
+      "skewTrades": 3,
+      "lastActiveMs": 1788100567695
+    },
+    {
+      "owner": "0x0c30c2e2ec2eb479192effa04ab3315e08de1dabb7e7a936a01f49bef07dc496",
+      "points": 3.4041711020833243,
+      "volume": 3.403766,
+      "trades": 3,
+      "netPnl": -3.403766,
+      "skewVolume": 3.403766,
+      "skewTrades": 3,
+      "lastActiveMs": 1788066708854
+    },
+    {
+      "owner": "0x5a103ae2662b4d84d9ea9d10b35619383459f03a5922b75dc2982ad17bc9bb63",
+      "points": 3.40326930298087,
+      "volume": 3.3609669999999996,
+      "trades": 3,
+      "netPnl": -0.7109669999999997,
+      "skewVolume": 3.3609669999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1787887326546
+    },
+    {
+      "owner": "0x8318b8967e68ee77ffa0790646d540c2bf2b7038abc0fad28fae627dff6c31c1",
+      "points": 3.3979780328726132,
+      "volume": 3.3960809999999997,
+      "trades": 3,
+      "netPnl": -3.3960809999999997,
+      "skewVolume": 3.3960809999999997,
+      "skewTrades": 3,
+      "lastActiveMs": 1788082678969
+    },
+    {
+      "owner": "0x5e385dfe8cbded656844d5b1c9361d26baef36139deafdff7c505100aebebcc7",
+      "points": 3.396638837901188,
+      "volume": 3.3960920000000003,
+      "trades": 3,
+      "netPnl": -1.1360920000000005,
+      "skewVolume": 3.3960920000000003,
+      "skewTrades": 3,
+      "lastActiveMs": 1787939796466
+    },
+    {
+      "owner": "0x20a46f33628a4bf2ec781a7abc5a32223078499a798c1d2f356b6fa9e7e7a129",
+      "points": 3.396140678354672,
+      "volume": 3.3461999999999996,
+      "trades": 3,
+      "netPnl": 0.023800000000000487,
+      "skewVolume": 3.3461999999999996,
+      "skewTrades": 3,
+      "lastActiveMs": 1788109697058
+    },
+    {
+      "owner": "0xddf6a92c0bc768f5500bdc2cccc62d30102fe81a43efc3115d604289ab7ffc4f",
+      "points": 3.3957360646532697,
+      "volume": 3.393581,
+      "trades": 3,
+      "netPnl": -3.393581,
+      "skewVolume": 3.393581,
+      "skewTrades": 3,
+      "lastActiveMs": 1788142950819
+    },
+    {
+      "owner": "0xba4493e8d78a06206c91de60a308399bbbe57022205c26780aa81aa33230e1a6",
+      "points": 3.3916627761082774,
+      "volume": 3.3818779999999995,
+      "trades": 3,
+      "netPnl": -1.0918779999999995,
+      "skewVolume": 3.3818779999999995,
+      "skewTrades": 3,
+      "lastActiveMs": 1788059623810
+    },
+    {
+      "owner": "0x7b927b93542b68648870fdd8f4303e911cb7c41d8518b78e5b150e35652d7f37",
+      "points": 3.387773852383145,
+      "volume": 3.3833680000000004,
+      "trades": 3,
+      "netPnl": -1.2833680000000003,
+      "skewVolume": 3.3833680000000004,
+      "skewTrades": 3,
+      "lastActiveMs": 1788155319773
+    },
+    {
+      "owner": "0xd77c7cbd59910db73c39c21aea0a23178f493636cead260a8a16913202a1ea7b",
+      "points": 3.3872109025460015,
+      "volume": 3.38635,
+      "trades": 3,
+      "netPnl": -1.53635,
+      "skewVolume": 3.38635,
+      "skewTrades": 3,
+      "lastActiveMs": 1788103933928
+    },
+    {
+      "owner": "0xbdb212e9e06e5d35e1ab300c8a24f25e939ef971b2b00791dd1b56803055669e",
+      "points": 3.3844494051692258,
+      "volume": 3.384036,
+      "trades": 3,
+      "netPnl": -1.0440360000000002,
+      "skewVolume": 3.384036,
+      "skewTrades": 3,
+      "lastActiveMs": 1788078835203
+    },
+    {
+      "owner": "0xc834ce976922be3f31a4e0d052064c04cf67000edcbf39f61ec57d2cef3982a5",
+      "points": 3.381821943883445,
+      "volume": 3.3799989999999998,
+      "trades": 3,
+      "netPnl": -1.7199989999999998,
+      "skewVolume": 3.3799989999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1788042094741
+    },
+    {
+      "owner": "0xa0bd8e4380fe70600e6f978c5e95988ce4dc32112d2bf756f717926ee4cc9b0e",
+      "points": 3.3812735034754478,
+      "volume": 3.380468,
+      "trades": 3,
+      "netPnl": -0.7604679999999999,
+      "skewVolume": 3.380468,
+      "skewTrades": 3,
+      "lastActiveMs": 1787863911949
+    },
+    {
+      "owner": "0xf277aa17dadf1da062b7ea1f5d865fba80c6d7f98501519ca70dd024389c920b",
+      "points": 3.372229417382258,
+      "volume": 3.371743,
+      "trades": 3,
+      "netPnl": -0.5417429999999999,
+      "skewVolume": 3.371743,
+      "skewTrades": 3,
+      "lastActiveMs": 1787923827270
+    },
+    {
+      "owner": "0x7b4826b5fbbc1957ae4c51d7c08174ca75f4d9ab2c9a1041b288cf3d6b451c78",
+      "points": 3.3695469807829896,
+      "volume": 3.366043,
+      "trades": 3,
+      "netPnl": -0.8960429999999997,
+      "skewVolume": 3.366043,
+      "skewTrades": 3,
+      "lastActiveMs": 1788068629397
+    },
+    {
+      "owner": "0xf5fc1b8ef6fb1bacba2702292a9e7b8bb1c6ad3a17dff56a411fb5c62f582845",
+      "points": 3.344911893443319,
+      "volume": 3.3446569999999998,
+      "trades": 3,
+      "netPnl": -3.3446569999999998,
+      "skewVolume": 3.3446569999999998,
+      "skewTrades": 3,
+      "lastActiveMs": 1788010638478
+    },
+    {
+      "owner": "0xea46b33f42359492ff81ff4facefca03519ad53a6c7508c755d4cf66b0ef67b2",
+      "points": 3.3406391102817827,
+      "volume": 1.159565,
+      "trades": 1,
+      "netPnl": 1.090435,
+      "skewVolume": 1.159565,
+      "skewTrades": 1,
+      "lastActiveMs": 1788082918042
+    },
+    {
+      "owner": "0x83929a2e7069673a38bd7f841c44cfcbe5fe88c2a330140a2403e3084b3014c3",
+      "points": 3.3348179806464175,
+      "volume": 3.334376,
+      "trades": 3,
+      "netPnl": -1.2743759999999997,
+      "skewVolume": 3.334376,
+      "skewTrades": 3,
+      "lastActiveMs": 1788047497680
+    },
+    {
+      "owner": "0xa25c42e002ad353efd3040a92ca053cdd13ee3ee8725ce9ef289a8f33d25f757",
+      "points": 3.3300237298255317,
+      "volume": 3.3296150000000004,
+      "trades": 3,
+      "netPnl": -1.0896150000000002,
+      "skewVolume": 3.3296150000000004,
+      "skewTrades": 3,
+      "lastActiveMs": 1788076914209
+    },
+    {
+      "owner": "0x71b2c0fe998f4ac34c1119377a1d3ecdff3e5ad75a29ec92f2a6dc6deddb2450",
+      "points": 3.290715375337986,
+      "volume": 1.109478,
+      "trades": 1,
+      "netPnl": 1.0905220000000002,
+      "skewVolume": 1.109478,
+      "skewTrades": 1,
+      "lastActiveMs": 1787918546719
+    },
+    {
+      "owner": "0xd7ca9b787d70557580c6a9f06b6f58ea711b65f46b3ae7a6a541efe845b08c31",
+      "points": 3.2823678020757807,
+      "volume": 1.137825,
+      "trades": 1,
+      "netPnl": 1.0721749999999999,
+      "skewVolume": 1.137825,
+      "skewTrades": 1,
+      "lastActiveMs": 1787971854516
+    },
+    {
+      "owner": "0x878d9d6f5611a3b79c9ba9fcd538e2b104fe74f0c45f8be4a8140b3bf165589d",
+      "points": 3.26251329228625,
+      "volume": 1.09764,
+      "trades": 1,
+      "netPnl": 1.0823600000000002,
+      "skewVolume": 1.09764,
+      "skewTrades": 1,
+      "lastActiveMs": 1788047978905
+    },
+    {
+      "owner": "0xd20bc480af78c3aca0e767f0cc9c2c54603b0968c2b3b763da9ef54fb1025d96",
+      "points": 3.260554442837845,
+      "volume": 1.119622,
+      "trades": 1,
+      "netPnl": 1.070378,
+      "skewVolume": 1.119622,
+      "skewTrades": 1,
+      "lastActiveMs": 1788055302914
+    },
+    {
+      "owner": "0x7f444d3802794f6a89e90f646c0b848acf439da116a80b34fa41e0f513cea483",
+      "points": 3.2241587296776295,
+      "volume": 1.156016,
+      "trades": 1,
+      "netPnl": 1.033984,
+      "skewVolume": 1.156016,
+      "skewTrades": 1,
+      "lastActiveMs": 1788162643075
+    },
+    {
+      "owner": "0x0bfd6648dfb2d6b797caff00f8e60ae4c41fcdb37f6775db6c1ee8dcf4855d07",
+      "points": 3.1882189048734095,
+      "volume": 2.314388,
+      "trades": 2,
+      "netPnl": 0.4356119999999999,
+      "skewVolume": 2.314388,
+      "skewTrades": 2,
+      "lastActiveMs": 1788170449276
+    },
+    {
+      "owner": "0xbdef3fc9391431071f95732158ffab3ff48f261c61540e2fdd1f0e73d0a59d84",
+      "points": 3.145584363646813,
+      "volume": 1.134834,
+      "trades": 1,
+      "netPnl": 1.0051660000000002,
+      "skewVolume": 1.134834,
+      "skewTrades": 1,
+      "lastActiveMs": 1787895971050
+    },
+    {
+      "owner": "0x6f9691d1f274c0ed9e172cc94be37b6d67cf3c5da71d4c8912b641d716e2511a",
+      "points": 3.101726881324945,
+      "volume": 1.098344,
+      "trades": 1,
+      "netPnl": 1.001656,
+      "skewVolume": 1.098344,
+      "skewTrades": 1,
+      "lastActiveMs": 1788011357739
+    },
+    {
+      "owner": "0x7b39484fc28daf073f9cdb520127fa9181b5712506631b7384378c57d6602375",
+      "points": 3.084907967640287,
+      "volume": 1.095244,
+      "trades": 1,
+      "netPnl": 0.9947559999999998,
+      "skewVolume": 1.095244,
+      "skewTrades": 1,
+      "lastActiveMs": 1787839898816
+    },
+    {
+      "owner": "0xbdce59c1f9f052b1f8624d71dc5da32a29eea48a27305d3b94d5e43e89f07bf6",
+      "points": 3.082947910312306,
+      "volume": 2.277282,
+      "trades": 2,
+      "netPnl": 0.40271800000000013,
+      "skewVolume": 2.277282,
+      "skewTrades": 2,
+      "lastActiveMs": 1788037531615
+    },
+    {
+      "owner": "0x51339f618a6bee6334a746d7757f8b1426ef588d8c231b07e0f10f90d83fca26",
+      "points": 3.0313182289515925,
+      "volume": 1.148744,
+      "trades": 1,
+      "netPnl": 0.9412559999999999,
+      "skewVolume": 1.148744,
+      "skewTrades": 1,
+      "lastActiveMs": 1787914340992
+    },
+    {
+      "owner": "0x10f96c0e13eebd83a100662aab9277d364e2526ab52bd50fe4e7599473069fe6",
+      "points": 3.0024760889078888,
+      "volume": 1.158031,
+      "trades": 1,
+      "netPnl": 0.921969,
+      "skewVolume": 1.158031,
+      "skewTrades": 1,
+      "lastActiveMs": 1788055302914
+    },
+    {
+      "owner": "0x22020be86ee498beea4105a11d7ae8edcf5a29600867aa2644b6f2e5b62ee0cc",
+      "points": 2.9923982768305732,
+      "volume": 1.167795,
+      "trades": 1,
+      "netPnl": 0.9122050000000002,
+      "skewVolume": 1.167795,
+      "skewTrades": 1,
+      "lastActiveMs": 1788059384518
+    },
+    {
+      "owner": "0x2dd66e69760ccbb534b981a9b268dbfa354b1dad54ddef57a4095c304ca16f17",
+      "points": 2.943011437844423,
+      "volume": 1.157118,
+      "trades": 1,
+      "netPnl": 0.8928819999999997,
+      "skewVolume": 1.157118,
+      "skewTrades": 1,
+      "lastActiveMs": 1787994068405
+    },
+    {
+      "owner": "0x62be7a61c0763e0ec166b74458fd2ec45dc3bc2db97c9abce354f880b946c0b6",
+      "points": 2.8710649514234072,
+      "volume": 1.149068,
+      "trades": 1,
+      "netPnl": 0.8609319999999998,
+      "skewVolume": 1.149068,
+      "skewTrades": 1,
+      "lastActiveMs": 1788126622833
+    },
+    {
+      "owner": "0x9c4028f8757d2aa26f8f2aaa65e24aed71e27aee2eb74d5860a20a7d42bd3023",
+      "points": 2.819046759887171,
+      "volume": 2.2824419999999996,
+      "trades": 2,
+      "netPnl": 0.2675580000000002,
+      "skewVolume": 2.2824419999999996,
+      "skewTrades": 2,
+      "lastActiveMs": 1788109697920
+    },
+    {
+      "owner": "0x6b3e9f1f173d7dde31c28d32d1f9448b074dd6d022cee967c14e170e6c76f8dc",
+      "points": 2.8155072442234443,
+      "volume": 1.164634,
+      "trades": 1,
+      "netPnl": 0.825366,
+      "skewVolume": 1.164634,
+      "skewTrades": 1,
+      "lastActiveMs": 1787907138194
+    },
+    {
+      "owner": "0x6085b4380a07acdac8cb607fca239fe8603f1fd12116c31534df4b748be0a5f6",
+      "points": 2.8114559719428716,
+      "volume": 1.189369,
+      "trades": 1,
+      "netPnl": 0.8106310000000001,
+      "skewVolume": 1.189369,
+      "skewTrades": 1,
+      "lastActiveMs": 1788113175644
+    },
+    {
+      "owner": "0x36bc4fda8f1ccb22fc53e43e780e473465a85b55f0374ab067687360e1c2c5b9",
+      "points": 2.799026656471012,
+      "volume": 2.241256,
+      "trades": 2,
+      "netPnl": 0.2787440000000001,
+      "skewVolume": 2.241256,
+      "skewTrades": 2,
+      "lastActiveMs": 1788074272368
+    },
+    {
+      "owner": "0x68d81176c99b53e0d14e471c22503b67fb97d661ee3a32ae298798f90c0299d6",
+      "points": 2.7327099232232013,
+      "volume": 1.107402,
+      "trades": 1,
+      "netPnl": 0.8125979999999999,
+      "skewVolume": 1.107402,
+      "skewTrades": 1,
+      "lastActiveMs": 1787992746800
+    },
+    {
+      "owner": "0xe366a95b7636c6aa036dc7da83e3c7f275a6c1d6dd6255d208d15c6e2bb24b4b",
+      "points": 2.672360017389958,
+      "volume": 1.167714,
+      "trades": 1,
+      "netPnl": 0.752286,
+      "skewVolume": 1.167714,
+      "skewTrades": 1,
+      "lastActiveMs": 1787810480636
+    },
+    {
+      "owner": "0xdac7adea8e6e792558e5ed469ed543f4372a68a54b6902ef1e714eea5704426a",
+      "points": 2.65030747364819,
+      "volume": 2.3126119999999997,
+      "trades": 2,
+      "netPnl": 0.16738800000000031,
+      "skewVolume": 2.3126119999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788082678081
+    },
+    {
+      "owner": "0xebcb4eadf06f2aba81dbd8eae9ad55e429a079280177941beec18e3ea75134a4",
+      "points": 2.6407964831716724,
+      "volume": 2.285972,
+      "trades": 2,
+      "netPnl": 0.17402799999999985,
+      "skewVolume": 2.285972,
+      "skewTrades": 2,
+      "lastActiveMs": 1787879762065
+    },
+    {
+      "owner": "0xdbc15e82d88da444b3973504954ec232105dc3babc65015c61d812c5abf49246",
+      "points": 2.63936405631153,
+      "volume": 2.257346,
+      "trades": 2,
+      "netPnl": -2.257346,
+      "skewVolume": 2.257346,
+      "skewTrades": 2,
+      "lastActiveMs": 1788002832528
+    },
+    {
+      "owner": "0x021fe2b041c069daf65df05dc61d4ed60be94b7b0fdc7bbb5b0f2b3b5e47c185",
+      "points": 2.625760504811465,
+      "volume": 2.2857849999999997,
+      "trades": 2,
+      "netPnl": -2.2857849999999997,
+      "skewVolume": 2.2857849999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788062506620
+    },
+    {
+      "owner": "0x6ce0a6158d3e119e032a526d324c5e11733729dd6a9b2ec8d9ceb4c4a04c49c0",
+      "points": 2.6068518478880116,
+      "volume": 2.243296,
+      "trades": 2,
+      "netPnl": -0.0032959999999997436,
+      "skewVolume": 2.243296,
+      "skewTrades": 2,
+      "lastActiveMs": 1788022404518
+    },
+    {
+      "owner": "0x0cff2750a66097cdf410e011f0a827769996da0024f96eda3fce700518a6e8aa",
+      "points": 2.6041825942875745,
+      "volume": 2.336676,
+      "trades": 2,
+      "netPnl": 0.133324,
+      "skewVolume": 2.336676,
+      "skewTrades": 2,
+      "lastActiveMs": 1788131906469
+    },
+    {
+      "owner": "0xacde1c3312febcbbe4237de169517f914d9cd160e08008d9fa83e96cad46b43a",
+      "points": 2.562892884609574,
+      "volume": 2.265232,
+      "trades": 2,
+      "netPnl": -2.265232,
+      "skewVolume": 2.265232,
+      "skewTrades": 2,
+      "lastActiveMs": 1788086399113
+    },
+    {
+      "owner": "0x5446d669657c734d9830e6ba31a347f6af20e46731a88ca823b86eea6497d48e",
+      "points": 2.5186320312862223,
+      "volume": 2.29582,
+      "trades": 2,
+      "netPnl": -2.29582,
+      "skewVolume": 2.29582,
+      "skewTrades": 2,
+      "lastActiveMs": 1787812643834
+    },
+    {
+      "owner": "0x02f5b0fa4e39ac231aea1737f37ddbd484e1f080ade63eb732d4b77dcbca20dc",
+      "points": 2.5167654456699258,
+      "volume": 2.283373,
+      "trades": 2,
+      "netPnl": 0.11662699999999981,
+      "skewVolume": 2.283373,
+      "skewTrades": 2,
+      "lastActiveMs": 1787899814552
+    },
+    {
+      "owner": "0xac7b57bcefdd2393762428d07e8a6f76d3ac4988f1f869fea8a67ed45b0d6813",
+      "points": 2.5143425218684903,
+      "volume": 2.2058590000000002,
+      "trades": 2,
+      "netPnl": 0.15414099999999964,
+      "skewVolume": 2.2058590000000002,
+      "skewTrades": 2,
+      "lastActiveMs": 1788064547283
+    },
+    {
+      "owner": "0x9f51db57ab873717f3c105ad47db2fc457da965cf88fa34e8681215d5100d8df",
+      "points": 2.5077571670813517,
+      "volume": 2.212421,
+      "trades": 2,
+      "netPnl": 0.1475789999999999,
+      "skewVolume": 2.212421,
+      "skewTrades": 2,
+      "lastActiveMs": 1788020482136
+    },
+    {
+      "owner": "0x7730fe0adc0d867aed46498889521efc5ee2e65b1a04f781ff008eda2790b790",
+      "points": 2.4914741103248255,
+      "volume": 2.288837,
+      "trades": 2,
+      "netPnl": 0.10116300000000011,
+      "skewVolume": 2.288837,
+      "skewTrades": 2,
+      "lastActiveMs": 1788075354450
+    },
+    {
+      "owner": "0xcc5f8b2e180e2c75c13390d721bd294c7c1e1efcb8a596aa4ea7b31f7b840e3c",
+      "points": 2.484560062155286,
+      "volume": 2.257315,
+      "trades": 2,
+      "netPnl": -0.32731500000000024,
+      "skewVolume": 2.257315,
+      "skewTrades": 2,
+      "lastActiveMs": 1787817565955
+    },
+    {
+      "owner": "0x2d11ebcbb6a4dc4e2700bd4d94f56f6b93920a9f85e28f51251c36fc8928aae8",
+      "points": 2.4717051744215244,
+      "volume": 1.108353,
+      "trades": 1,
+      "netPnl": 0.6816470000000001,
+      "skewVolume": 1.108353,
+      "skewTrades": 1,
+      "lastActiveMs": 1788049779136
+    },
+    {
+      "owner": "0xb2ee736fa3ba6a0c0403d7fb9d68bb5f2bea5f4321119922e2bb5150cfd69775",
+      "points": 2.4598514522413217,
+      "volume": 2.238419,
+      "trades": 2,
+      "netPnl": -2.238419,
+      "skewVolume": 2.238419,
+      "skewTrades": 2,
+      "lastActiveMs": 1787814203884
+    },
+    {
+      "owner": "0xfef303a7ec13459de391fb78d0803b9ce2d7657367ed410e84fc529a77ec0f21",
+      "points": 2.4441137906135553,
+      "volume": 2.356102,
+      "trades": 2,
+      "netPnl": 0.04389799999999999,
+      "skewVolume": 2.356102,
+      "skewTrades": 2,
+      "lastActiveMs": 1787858388369
+    },
+    {
+      "owner": "0x681bddbd6e33cb7dad4fb5041319e728abb145bf9d5f77466446c81430ee46f8",
+      "points": 2.436001800646811,
+      "volume": 2.284312,
+      "trades": 2,
+      "netPnl": 0.07568799999999998,
+      "skewVolume": 2.284312,
+      "skewTrades": 2,
+      "lastActiveMs": 1788074512077
+    },
+    {
+      "owner": "0x18ffd2b1074b71783c04bf8ba9c4cc722e28564d7c281c66ac486571977a77b5",
+      "points": 2.4164580974092513,
+      "volume": 2.243842,
+      "trades": 2,
+      "netPnl": 0.08615800000000018,
+      "skewVolume": 2.243842,
+      "skewTrades": 2,
+      "lastActiveMs": 1788018921488
+    },
+    {
+      "owner": "0x647964020f6877e897b2f318dfb76ae68ad50db231403cc2f934b2eb59c018ad",
+      "points": 2.402836945794419,
+      "volume": 2.257453,
+      "trades": 2,
+      "netPnl": 0.07254700000000014,
+      "skewVolume": 2.257453,
+      "skewTrades": 2,
+      "lastActiveMs": 1788008115933
+    },
+    {
+      "owner": "0xb4d4fd5b5b49d5a71e6d887bfed958aa0a7a0014c4e7af5ca767f8fb35ae26ed",
+      "points": 2.395612916669507,
+      "volume": 2.224704,
+      "trades": 2,
+      "netPnl": 0.08529600000000004,
+      "skewVolume": 2.224704,
+      "skewTrades": 2,
+      "lastActiveMs": 1788066468244
+    },
+    {
+      "owner": "0x2e6b9e72500b6679e093611609e38c5aebff694480b6f5b1c40cb2face7bc3a3",
+      "points": 2.3909159317652438,
+      "volume": 2.2822750000000003,
+      "trades": 2,
+      "netPnl": 0.017724999999999547,
+      "skewVolume": 2.2822750000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1787855868449
+    },
+    {
+      "owner": "0x6c00f23e8fe1f13e5f90a5928375edc8982cf98f3b9be78d3394eb32bea94e55",
+      "points": 2.370543165654049,
+      "volume": 2.3696599999999997,
+      "trades": 2,
+      "netPnl": 0.00034000000000045105,
+      "skewVolume": 2.3696599999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1787898612486
+    },
+    {
+      "owner": "0x79befc4bdec5f60fb402ebdbdd97b780e881703382af363b7040fecf23904b6e",
+      "points": 2.363900356749021,
+      "volume": 2.296302,
+      "trades": 2,
+      "netPnl": 0.03369800000000023,
+      "skewVolume": 2.296302,
+      "skewTrades": 2,
+      "lastActiveMs": 1788046536722
+    },
+    {
+      "owner": "0xea7bfdf6d2e8672a2ea933d18933da7575c1c282c060ce2cffbcb07cec1b7aa0",
+      "points": 2.357035239079009,
+      "volume": 2.3462959999999997,
+      "trades": 2,
+      "netPnl": -0.11629599999999973,
+      "skewVolume": 2.3462959999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788059143955
+    },
+    {
+      "owner": "0x8c1d92524d5eca63e658b65b05b7c3448a7423bbdf907d7d97f49ddbc88e63f5",
+      "points": 2.3531161882763656,
+      "volume": 2.3272909999999998,
+      "trades": 2,
+      "netPnl": -2.3272909999999998,
+      "skewVolume": 2.3272909999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1788182815582
+    },
+    {
+      "owner": "0xfec49d879f55e9998d9a59948c1fed9cf6da0866b1213b2050fbd226ff926c25",
+      "points": 2.3530720907896203,
+      "volume": 1.107119,
+      "trades": 1,
+      "netPnl": 0.622881,
+      "skewVolume": 1.107119,
+      "skewTrades": 1,
+      "lastActiveMs": 1788078114331
+    },
+    {
+      "owner": "0x5f63ea4cad4048fd77a7b6fa940f60984d67212638c7160721e2469a3f62359d",
+      "points": 2.3526537991992047,
+      "volume": 2.3524599999999998,
+      "trades": 2,
+      "netPnl": -2.3524599999999998,
+      "skewVolume": 2.3524599999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1787887687110
+    },
+    {
+      "owner": "0xc33e9914d673f3590ee288d5ba7d534ade30501d5f2e13daa3a794c407f0a4f0",
+      "points": 2.339667098261571,
+      "volume": 2.339287,
+      "trades": 2,
+      "netPnl": -0.04928700000000008,
+      "skewVolume": 2.339287,
+      "skewTrades": 2,
+      "lastActiveMs": 1788159400928
+    },
+    {
+      "owner": "0x3f0d291cf6b0f3c11e6279b4b0c819b7413f2cb44f82aa5686dbc50f64682eae",
+      "points": 2.336227973036095,
+      "volume": 2.3359579999999998,
+      "trades": 2,
+      "netPnl": -2.3359579999999998,
+      "skewVolume": 2.3359579999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1787867637327
+    },
+    {
+      "owner": "0x8d83c6275faff2a74adef4385f9adf4e5b96ee2c1e4bbc1946cac26ef36f29f3",
+      "points": 2.3350718685552594,
+      "volume": 2.299401,
+      "trades": 2,
+      "netPnl": -2.299401,
+      "skewVolume": 2.299401,
+      "skewTrades": 2,
+      "lastActiveMs": 1787989745123
+    },
+    {
+      "owner": "0xb727db1dd87b6bce5dd686c16abe40e379444d4af9d2f51a1f0d753423592fd8",
+      "points": 2.3331283773069105,
+      "volume": 2.332851,
+      "trades": 2,
+      "netPnl": -2.332851,
+      "skewVolume": 2.332851,
+      "skewTrades": 2,
+      "lastActiveMs": 1788141030942
+    },
+    {
+      "owner": "0x827b58ac03a0679d0b181ba16eb1afcc4fba5451586ba5a570b50059e6579251",
+      "points": 2.332948139421831,
+      "volume": 2.332663,
+      "trades": 2,
+      "netPnl": -0.6026630000000002,
+      "skewVolume": 2.332663,
+      "skewTrades": 2,
+      "lastActiveMs": 1788065627568
+    },
+    {
+      "owner": "0x1f8ab8a6645042fa110a390cd22d22e845cbea922cd166373e7799e35d884954",
+      "points": 2.3295823155111366,
+      "volume": 2.329298,
+      "trades": 2,
+      "netPnl": -0.13929800000000014,
+      "skewVolume": 2.329298,
+      "skewTrades": 2,
+      "lastActiveMs": 1788073551963
+    },
+    {
+      "owner": "0xe240d01ea54bcfee2f7a999bb49d417b73cf137953f746e9eccbeedb6191d255",
+      "points": 2.329261674247125,
+      "volume": 2.328252,
+      "trades": 2,
+      "netPnl": -2.328252,
+      "skewVolume": 2.328252,
+      "skewTrades": 2,
+      "lastActiveMs": 1788055302403
+    },
+    {
+      "owner": "0x78d3f5e6bb7eefa61aa9c46ac21997f53e79025db3f35e35d9b4b75f5668ca12",
+      "points": 2.3280161435498647,
+      "volume": 2.2551810000000003,
+      "trades": 2,
+      "netPnl": -2.2551810000000003,
+      "skewVolume": 2.2551810000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1788145712743
+    },
+    {
+      "owner": "0xd24707048474ded6d1c6175937e65d17a63279bdb8eea05dac7958e51142379b",
+      "points": 2.326177555430669,
+      "volume": 2.32594,
+      "trades": 2,
+      "netPnl": -2.32594,
+      "skewVolume": 2.32594,
+      "skewTrades": 2,
+      "lastActiveMs": 1787916862112
+    },
+    {
+      "owner": "0x2dc6645468fe37f3d5942bc3d5f02322d0a33af044799fb993acc33630c7aadf",
+      "points": 2.325746208215803,
+      "volume": 2.3252949999999997,
+      "trades": 2,
+      "netPnl": -2.3252949999999997,
+      "skewVolume": 2.3252949999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788071390665
+    },
+    {
+      "owner": "0xe9797fe06ac174e8d504fd6b1a030582fe2afe50f0b2186ccfb7b16f8a4139d1",
+      "points": 2.3247700136877083,
+      "volume": 2.324527,
+      "trades": 2,
+      "netPnl": -2.324527,
+      "skewVolume": 2.324527,
+      "skewTrades": 2,
+      "lastActiveMs": 1788069469835
+    },
+    {
+      "owner": "0xa4cc3a603ca373c8e8445498438e059683d68573635d1da2585c78cc28a465c1",
+      "points": 2.322856838641237,
+      "volume": 2.297402,
+      "trades": 2,
+      "netPnl": -0.4874019999999999,
+      "skewVolume": 2.297402,
+      "skewTrades": 2,
+      "lastActiveMs": 1787903895644
+    },
+    {
+      "owner": "0x170bfecb814584723b1576819da74002fdbaca9ae365d93e888c2785cc78a495",
+      "points": 2.320680214275713,
+      "volume": 2.267501,
+      "trades": 2,
+      "netPnl": -0.13750100000000032,
+      "skewVolume": 2.267501,
+      "skewTrades": 2,
+      "lastActiveMs": 1787872797155
+    },
+    {
+      "owner": "0x70fbe89cde481a8609b7e22022062db72830a1f0e001dc0c23026e604c5d141d",
+      "points": 2.3197401175366195,
+      "volume": 2.287255,
+      "trades": 2,
+      "netPnl": 0.0027449999999999974,
+      "skewVolume": 2.287255,
+      "skewTrades": 2,
+      "lastActiveMs": 1787903415489
+    },
+    {
+      "owner": "0x15d686c78f78f2f0ed9d4981440e25d6276ec02eaf0cc919a68aea77a29e1bb6",
+      "points": 2.317841441938101,
+      "volume": 2.317416,
+      "trades": 2,
+      "netPnl": -2.317416,
+      "skewVolume": 2.317416,
+      "skewTrades": 2,
+      "lastActiveMs": 1788138389573
+    },
+    {
+      "owner": "0x497728478a0286c81519418d54375110102cfddd7938eeebf1c56fac0714e0f3",
+      "points": 2.3174072852294825,
+      "volume": 2.3163489999999998,
+      "trades": 2,
+      "netPnl": -2.3163489999999998,
+      "skewVolume": 2.3163489999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1787912181567
+    },
+    {
+      "owner": "0x0f79af542053259d08054104fb49f1d5a685f0f4beb2581181d84ba482d5e3e6",
+      "points": 2.3173006504637015,
+      "volume": 2.316928,
+      "trades": 2,
+      "netPnl": -2.316928,
+      "skewVolume": 2.316928,
+      "skewTrades": 2,
+      "lastActiveMs": 1787966572964
+    },
+    {
+      "owner": "0xb21437433d5383a097cedeeb6f2571acc189892fca2a7d88b7134238cc1e4e3d",
+      "points": 2.317034333077399,
+      "volume": 2.316779,
+      "trades": 2,
+      "netPnl": -0.06677899999999992,
+      "skewVolume": 2.316779,
+      "skewTrades": 2,
+      "lastActiveMs": 1788085679234
+    },
+    {
+      "owner": "0x407ca20fb765ede7dac482ec655a56cdaf2a3aeb26b3ee435bf101acc42cb050",
+      "points": 2.316938382626707,
+      "volume": 2.3167429999999998,
+      "trades": 2,
+      "netPnl": -0.3267429999999998,
+      "skewVolume": 2.3167429999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1787998390467
+    },
+    {
+      "owner": "0x4d37496513fc59f3c06c7d6db99801555283cfa37dea7132fea56eee9817df98",
+      "points": 2.3123563168112904,
+      "volume": 2.3115319999999997,
+      "trades": 2,
+      "netPnl": -0.22153199999999984,
+      "skewVolume": 2.3115319999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788053985319
+    },
+    {
+      "owner": "0xae925ac50466d7a44d2b258482707dd1e91a43b9ada1177fc95b6c1a0b95d59b",
+      "points": 2.3120535066433194,
+      "volume": 2.310994,
+      "trades": 2,
+      "netPnl": -0.24099400000000015,
+      "skewVolume": 2.310994,
+      "skewTrades": 2,
+      "lastActiveMs": 1788156880316
+    },
+    {
+      "owner": "0x103dbc238ba37a37b5b354879faf833c4061d2dd2aad1523b2afea7fc5c7a5e6",
+      "points": 2.3090176547648684,
+      "volume": 2.308187,
+      "trades": 2,
+      "netPnl": -2.308187,
+      "skewVolume": 2.308187,
+      "skewTrades": 2,
+      "lastActiveMs": 1787834015378
+    },
+    {
+      "owner": "0x2250625ee2d1cfc36bc41b0203f42c226a332a0db5e8e3c017562ea72d4374e4",
+      "points": 2.306990890424081,
+      "volume": 2.306771,
+      "trades": 2,
+      "netPnl": -0.08677099999999971,
+      "skewVolume": 2.306771,
+      "skewTrades": 2,
+      "lastActiveMs": 1788065148480
+    },
+    {
+      "owner": "0x3862e422db60da747d24c6c68f0252b79a5dcc1b59bc999acf561fc9e266e933",
+      "points": 2.3067350829803623,
+      "volume": 2.306527,
+      "trades": 2,
+      "netPnl": -2.306527,
+      "skewVolume": 2.306527,
+      "skewTrades": 2,
+      "lastActiveMs": 1788143431125
+    },
+    {
+      "owner": "0xdc6a652b20b43dac8bac1dba2ecd619cf084b6aa7f78ff8225af3ac783e4d2d2",
+      "points": 2.3065664614616317,
+      "volume": 2.306418,
+      "trades": 2,
+      "netPnl": -2.306418,
+      "skewVolume": 2.306418,
+      "skewTrades": 2,
+      "lastActiveMs": 1787901613995
+    },
+    {
+      "owner": "0x50658fb8ce7fe1cbc9fe73c9b29c67562f730bb963e522c17e57eb4089a43858",
+      "points": 2.3054761089965483,
+      "volume": 2.305185,
+      "trades": 2,
+      "netPnl": -2.305185,
+      "skewVolume": 2.305185,
+      "skewTrades": 2,
+      "lastActiveMs": 1787883723923
+    },
+    {
+      "owner": "0x3a0458a0cca330808ad506ed4cc0c4404dce798dc31276325844e946c96b6f1d",
+      "points": 2.2983825551793666,
+      "volume": 2.2960589999999996,
+      "trades": 2,
+      "netPnl": -0.4060589999999997,
+      "skewVolume": 2.2960589999999996,
+      "skewTrades": 2,
+      "lastActiveMs": 1787819006755
+    },
+    {
+      "owner": "0xb1a53f113c94136cf446c4f404ab9f805cada446e2294cb335a998d035972597",
+      "points": 2.2976515317911654,
+      "volume": 2.297441,
+      "trades": 2,
+      "netPnl": -0.047441000000000066,
+      "skewVolume": 2.297441,
+      "skewTrades": 2,
+      "lastActiveMs": 1788170928492
+    },
+    {
+      "owner": "0xcaa9ddde77d61feaf66df4427cddb61c3d5f894bdef8a806935ccb3afdfaf899",
+      "points": 2.2975094284497963,
+      "volume": 2.297152,
+      "trades": 2,
+      "netPnl": -2.297152,
+      "skewVolume": 2.297152,
+      "skewTrades": 2,
+      "lastActiveMs": 1787853826835
+    },
+    {
+      "owner": "0xb1b99242f8b8c4a4b77238e52bfc96c66d92333f739bad6bceb055a9261385d6",
+      "points": 2.297466034454638,
+      "volume": 2.297035,
+      "trades": 2,
+      "netPnl": -2.297035,
+      "skewVolume": 2.297035,
+      "skewTrades": 2,
+      "lastActiveMs": 1788048338738
+    },
+    {
+      "owner": "0x8d229f502c63b9b6217b01593506cbc95b14eab4b89077e45f2b65525362671d",
+      "points": 2.2972448345716843,
+      "volume": 2.2970750000000004,
+      "trades": 2,
+      "netPnl": -2.2970750000000004,
+      "skewVolume": 2.2970750000000004,
+      "skewTrades": 2,
+      "lastActiveMs": 1788100090970
+    },
+    {
+      "owner": "0xd8bd5dee7064580656a6fa82e39e26e366fdc3b4e4f0b4faf2b1271904597fb3",
+      "points": 2.296681820429262,
+      "volume": 2.296406,
+      "trades": 2,
+      "netPnl": -0.10640600000000022,
+      "skewVolume": 2.296406,
+      "skewTrades": 2,
+      "lastActiveMs": 1787915902142
+    },
+    {
+      "owner": "0x8cda1af4b167d38a21cec45f81da2fc43c6d628ec7a2e47c96a580e95db9b453",
+      "points": 2.2956201027051524,
+      "volume": 2.294046,
+      "trades": 2,
+      "netPnl": -2.294046,
+      "skewVolume": 2.294046,
+      "skewTrades": 2,
+      "lastActiveMs": 1788146433572
+    },
+    {
+      "owner": "0xe4155c0d0cd4effbf30aa9dc2cb81bf4c7fd17cf7b40fd63db854c24c65c9c7c",
+      "points": 2.2955367567377647,
+      "volume": 2.295298,
+      "trades": 2,
+      "netPnl": -2.295298,
+      "skewVolume": 2.295298,
+      "skewTrades": 2,
+      "lastActiveMs": 1788138029424
+    },
+    {
+      "owner": "0x5148640e13b5558d2f35e30bb06f2db64c51c02b8337b0a0f6f1b75544a2ba93",
+      "points": 2.2954954176529805,
+      "volume": 2.2952570000000003,
+      "trades": 2,
+      "netPnl": -0.10525700000000038,
+      "skewVolume": 2.2952570000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1788067431444
+    },
+    {
+      "owner": "0x389b425a487e7fbc8cd55242c130adec36d1847203b84301128d9f7d9138c5f1",
+      "points": 2.2948830717451725,
+      "volume": 2.294086,
+      "trades": 2,
+      "netPnl": -2.294086,
+      "skewVolume": 2.294086,
+      "skewTrades": 2,
+      "lastActiveMs": 1788109697920
+    },
+    {
+      "owner": "0xcc53501b14c9b7e75a2a7c0462ba2782bd950a780b5a0e67dbffaf3bfc31dd0d",
+      "points": 2.2933880989846456,
+      "volume": 2.2926919999999997,
+      "trades": 2,
+      "netPnl": -0.4926919999999997,
+      "skewVolume": 2.2926919999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788083758079
+    },
+    {
+      "owner": "0xdddbb682444b21e60f13079e5e3458c8220edd88250b169c45848896fa937272",
+      "points": 2.2930033171861575,
+      "volume": 2.225474,
+      "trades": 2,
+      "netPnl": -2.225474,
+      "skewVolume": 2.225474,
+      "skewTrades": 2,
+      "lastActiveMs": 1788148713974
+    },
+    {
+      "owner": "0x19c36db66c08a4a0b476216a9ed21fc569ef4349aa2bf208d3d1551a6d6f2d8c",
+      "points": 2.2896406952916006,
+      "volume": 2.275941,
+      "trades": 2,
+      "netPnl": -2.275941,
+      "skewVolume": 2.275941,
+      "skewTrades": 2,
+      "lastActiveMs": 1787913621089
+    },
+    {
+      "owner": "0x5c4b85457f83482e8baf62286c1a2fb304d24b5fe45772696a93ee334033a080",
+      "points": 2.2889125795873606,
+      "volume": 2.2886879999999996,
+      "trades": 2,
+      "netPnl": -0.0486879999999994,
+      "skewVolume": 2.2886879999999996,
+      "skewTrades": 2,
+      "lastActiveMs": 1787907378373
+    },
+    {
+      "owner": "0x26d51d4e91c121de2a9703776f21f30f0566ab83aea06577a6f2cab6c1de7edb",
+      "points": 2.28877175589587,
+      "volume": 2.2885299999999997,
+      "trades": 2,
+      "netPnl": -0.3785299999999998,
+      "skewVolume": 2.2885299999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1787911340235
+    },
+    {
+      "owner": "0xdecb84467fcccaa75f2f866d2f48323bf7861b6d7e64de686a74cf248ea07adc",
+      "points": 2.288104845474359,
+      "volume": 2.287834,
+      "trades": 2,
+      "netPnl": -2.287834,
+      "skewVolume": 2.287834,
+      "skewTrades": 2,
+      "lastActiveMs": 1787872076860
+    },
+    {
+      "owner": "0xcae22620a3ee7a02b107fe3ca8452c0442cc37fa516eace7fd35c951d4a91eb4",
+      "points": 2.2865577187934396,
+      "volume": 2.273641,
+      "trades": 2,
+      "netPnl": 0.0063589999999997815,
+      "skewVolume": 2.273641,
+      "skewTrades": 2,
+      "lastActiveMs": 1788090001457
+    },
+    {
+      "owner": "0xfc18dc45cfb7667139a5322c4621896a8a5b819db5a899295ebe1d338807a495",
+      "points": 2.286317334020009,
+      "volume": 2.286129,
+      "trades": 2,
+      "netPnl": -0.036128999999999856,
+      "skewVolume": 2.286129,
+      "skewTrades": 2,
+      "lastActiveMs": 1788063706699
+    },
+    {
+      "owner": "0xea7414621cf469c195b6e72f9a6fcae0c608d8dc467d4a6baaa2e2e751919887",
+      "points": 2.2861540206548914,
+      "volume": 2.285829,
+      "trades": 2,
+      "netPnl": -2.285829,
+      "skewVolume": 2.285829,
+      "skewTrades": 2,
+      "lastActiveMs": 1787993107107
+    },
+    {
+      "owner": "0xd64e6ef5deb1a9895c8ca32e6bae678dae3377ef501cff2fcf6cee9ac86b8acb",
+      "points": 2.2861280368797567,
+      "volume": 2.28598,
+      "trades": 2,
+      "netPnl": -2.28598,
+      "skewVolume": 2.28598,
+      "skewTrades": 2,
+      "lastActiveMs": 1787980983219
+    },
+    {
+      "owner": "0x51d65a167df3e35fa65a88697536be0fcb63e3687dc76626c90d187efdec9743",
+      "points": 2.277217083335639,
+      "volume": 2.277022,
+      "trades": 2,
+      "netPnl": -0.3570220000000002,
+      "skewVolume": 2.277022,
+      "skewTrades": 2,
+      "lastActiveMs": 1787813964221
+    },
+    {
+      "owner": "0x580f114af1603bda328ec98a2108076816e9b52cfaeb742c4fe2f13d70ee11df",
+      "points": 2.275589443670056,
+      "volume": 2.275405,
+      "trades": 2,
+      "netPnl": -2.275405,
+      "skewVolume": 2.275405,
+      "skewTrades": 2,
+      "lastActiveMs": 1788013518451
+    },
+    {
+      "owner": "0xb1402d169fe6f3bdc3759f2e49a497cb46a83e7f9340a48b45d4097cfd04860c",
+      "points": 2.2753276322579152,
+      "volume": 2.274161,
+      "trades": 2,
+      "netPnl": -2.274161,
+      "skewVolume": 2.274161,
+      "skewTrades": 2,
+      "lastActiveMs": 1787825251573
+    },
+    {
+      "owner": "0x7d66e00955279a416c73bf069ccdddcb307e5dc4560c4300b3082c070c6fd652",
+      "points": 2.2747240244913995,
+      "volume": 2.274429,
+      "trades": 2,
+      "netPnl": -2.274429,
+      "skewVolume": 2.274429,
+      "skewTrades": 2,
+      "lastActiveMs": 1788123740304
+    },
+    {
+      "owner": "0xccdb8a039a6abc73675802137d981a9991f462e3ec0ecd292516ffa9ea6eebc1",
+      "points": 2.2727479578453194,
+      "volume": 2.2723459999999998,
+      "trades": 2,
+      "netPnl": -0.22234599999999993,
+      "skewVolume": 2.2723459999999998,
+      "skewTrades": 2,
+      "lastActiveMs": 1788037051472
+    },
+    {
+      "owner": "0x78aee0c89a2dffe21ec43769bd39dab5be533618812c843e5956b31df1d86a21",
+      "points": 2.272726429550083,
+      "volume": 2.272446,
+      "trades": 2,
+      "netPnl": -2.272446,
+      "skewVolume": 2.272446,
+      "skewTrades": 2,
+      "lastActiveMs": 1788066949588
+    },
+    {
+      "owner": "0xe243e21244e2b217baf5ea5c29d6b828d2d52fe7000db550a3c0396c313f455b",
+      "points": 2.272607467589146,
+      "volume": 2.272357,
+      "trades": 2,
+      "netPnl": -0.42235699999999987,
+      "skewVolume": 2.272357,
+      "skewTrades": 2,
+      "lastActiveMs": 1787809280760
+    },
+    {
+      "owner": "0x5e33c7ebe1aec0eefdb0838d9bd7f9e70e8e5af3e7c2ffb086903dcff2dc6e13",
+      "points": 2.2716243734615267,
+      "volume": 2.2712250000000003,
+      "trades": 2,
+      "netPnl": -0.6212250000000004,
+      "skewVolume": 2.2712250000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1787976177058
+    },
+    {
+      "owner": "0x758955f49fa5f352ade0ae549a3d214639cba161f816dd8084dd72c25ed84def",
+      "points": 2.2696658989627188,
+      "volume": 2.267457,
+      "trades": 2,
+      "netPnl": -2.267457,
+      "skewVolume": 2.267457,
+      "skewTrades": 2,
+      "lastActiveMs": 1788170450232
+    },
+    {
+      "owner": "0x96e8b94da116eb440a831370e4d53202e473831eacd788ccded1a9b544abb707",
+      "points": 2.2666533410748753,
+      "volume": 2.263656,
+      "trades": 2,
+      "netPnl": -2.263656,
+      "skewVolume": 2.263656,
+      "skewTrades": 2,
+      "lastActiveMs": 1787849382533
+    },
+    {
+      "owner": "0x73c18caba5c77909bf796c5b9f8ff9ea50e1db4ae51b595d60d9b6d5949bcf4c",
+      "points": 2.2648831576937676,
+      "volume": 2.264603,
+      "trades": 2,
+      "netPnl": -2.264603,
+      "skewVolume": 2.264603,
+      "skewTrades": 2,
+      "lastActiveMs": 1788070069872
+    },
+    {
+      "owner": "0x973e2eb1b8184e2676411b16f7b21b76d9421082ca267be4d02a2bda99345232",
+      "points": 2.263896699949667,
+      "volume": 2.2635870000000002,
+      "trades": 2,
+      "netPnl": -2.2635870000000002,
+      "skewVolume": 2.2635870000000002,
+      "skewTrades": 2,
+      "lastActiveMs": 1788168046111
+    },
+    {
+      "owner": "0x04fe7efddaa2b537eee3a4218b1ead89711a6d0211e5b90bf01fcd55094393eb",
+      "points": 2.2602452873006147,
+      "volume": 2.247904,
+      "trades": 2,
+      "netPnl": -0.5079040000000001,
+      "skewVolume": 2.247904,
+      "skewTrades": 2,
+      "lastActiveMs": 1787914101181
+    },
+    {
+      "owner": "0xc498f89d1f81545887e098f4d4f52c9ba62f22e1d7555a43a71d7dd6a27ef41f",
+      "points": 2.256524167993514,
+      "volume": 2.256208,
+      "trades": 2,
+      "netPnl": -2.256208,
+      "skewVolume": 2.256208,
+      "skewTrades": 2,
+      "lastActiveMs": 1787938235099
+    },
+    {
+      "owner": "0x28fe7613d7773c904ea906a91987e703bab04db5a5243998635eb5cf342d6f69",
+      "points": 2.255914109306493,
+      "volume": 2.2554499999999997,
+      "trades": 2,
+      "netPnl": -2.2554499999999997,
+      "skewVolume": 2.2554499999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788103933928
+    },
+    {
+      "owner": "0x6ec5ad0cf61acf30c0a19ab20105fdd01418e1087d6b33284b86a4d31a863410",
+      "points": 2.251533532417067,
+      "volume": 2.251391,
+      "trades": 2,
+      "netPnl": -0.40139099999999983,
+      "skewVolume": 2.251391,
+      "skewTrades": 2,
+      "lastActiveMs": 1787837259795
+    },
+    {
+      "owner": "0xb8ea935c6e122c72f40c94ff4631683f79f06f98f8abbf25042608f47f1a7582",
+      "points": 2.246869848767124,
+      "volume": 2.2442070000000003,
+      "trades": 2,
+      "netPnl": -0.43420700000000023,
+      "skewVolume": 2.2442070000000003,
+      "skewTrades": 2,
+      "lastActiveMs": 1788099367733
+    },
+    {
+      "owner": "0x8a514eda4d0088107e3d9cd90b078997a83df48782e1995f1e381c2c9b3aa036",
+      "points": 2.246121476307433,
+      "volume": 2.245852,
+      "trades": 2,
+      "netPnl": -2.245852,
+      "skewVolume": 2.245852,
+      "skewTrades": 2,
+      "lastActiveMs": 1787980260050
+    },
+    {
+      "owner": "0x8d502a49b69a3fb38b6a7a353a43bf2ef963197fd58ea71ab451825ff0a7576b",
+      "points": 2.2395773545893056,
+      "volume": 2.234276,
+      "trades": 2,
+      "netPnl": -0.39427599999999985,
+      "skewVolume": 2.234276,
+      "skewTrades": 2,
+      "lastActiveMs": 1788137789188
+    },
+    {
+      "owner": "0x3e161037fff9cddc5e6ecb0ebc2c946dc237047b1caa520cbfb1e23018aeeada",
+      "points": 2.2353104670276576,
+      "volume": 2.235004,
+      "trades": 2,
+      "netPnl": -0.3450040000000001,
+      "skewVolume": 2.235004,
+      "skewTrades": 2,
+      "lastActiveMs": 1788176332719
+    },
+    {
+      "owner": "0x965d0761871b9f16ee94be1199b0638d4d73410385f0b46c301f844d229a3a36",
+      "points": 2.2350918429156743,
+      "volume": 2.2349189999999997,
+      "trades": 2,
+      "netPnl": -2.2349189999999997,
+      "skewVolume": 2.2349189999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788039093116
+    },
+    {
+      "owner": "0x7e99ccdb49d75fb1f64bf59c26ca0d6bcb218c3137bdb8f25b12d62f51425c73",
+      "points": 2.234454898505524,
+      "volume": 2.234121,
+      "trades": 2,
+      "netPnl": -0.3741209999999999,
+      "skewVolume": 2.234121,
+      "skewTrades": 2,
+      "lastActiveMs": 1788155438840
+    },
+    {
+      "owner": "0x37c994e652c99d4bd9196d229ad60bee56fbfe58d1b68d329ba49bdfec9fc51c",
+      "points": 2.228241106559083,
+      "volume": 2.2279739999999997,
+      "trades": 2,
+      "netPnl": -2.2279739999999997,
+      "skewVolume": 2.2279739999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788038251730
+    },
+    {
+      "owner": "0x066f21ec02fad74a42f497fa0a4ab8fd4c3b68e1ca0a6a2325d991a88bb001a3",
+      "points": 2.2278045168064757,
+      "volume": 2.227231,
+      "trades": 2,
+      "netPnl": -0.3972310000000001,
+      "skewVolume": 2.227231,
+      "skewTrades": 2,
+      "lastActiveMs": 1788104772371
+    },
+    {
+      "owner": "0x2198ecf8780cc9546dc4c86f12351a89a0237f0877f67ae0297e9f315c9665ca",
+      "points": 2.2248020096176875,
+      "volume": 2.224558,
+      "trades": 2,
+      "netPnl": -2.224558,
+      "skewVolume": 2.224558,
+      "skewTrades": 2,
+      "lastActiveMs": 1787976537743
+    },
+    {
+      "owner": "0xd58346f3e7be6223a71440db87111a26bdd43a4dc1132d7b1c3e53bd88f19327",
+      "points": 2.22450961940175,
+      "volume": 2.224259,
+      "trades": 2,
+      "netPnl": -0.15425900000000015,
+      "skewVolume": 2.224259,
+      "skewTrades": 2,
+      "lastActiveMs": 1788068389563
+    },
+    {
+      "owner": "0x9bc2ef22ef9e02133c8d56e843ee48fdfa87e3ee5aa574cde69fc4f77bd1438b",
+      "points": 2.22201166975582,
+      "volume": 2.218584,
+      "trades": 2,
+      "netPnl": 0.001416000000000306,
+      "skewVolume": 2.218584,
+      "skewTrades": 2,
+      "lastActiveMs": 1787900413723
+    },
+    {
+      "owner": "0x749d7beb41a78eed822f5494c3fdaae704b8fd4543a4fa916188fc6e7c9a5e35",
+      "points": 2.215696567949595,
+      "volume": 2.215456,
+      "trades": 2,
+      "netPnl": -2.215456,
+      "skewVolume": 2.215456,
+      "skewTrades": 2,
+      "lastActiveMs": 1787805919757
+    },
+    {
+      "owner": "0x7e852a0a99935dcf9aa59a6835592bd7eb60156921b49d57307b2a6446af0c0e",
+      "points": 2.2155233475941354,
+      "volume": 2.215261,
+      "trades": 2,
+      "netPnl": -0.045260999999999996,
+      "skewVolume": 2.215261,
+      "skewTrades": 2,
+      "lastActiveMs": 1787913861578
+    },
+    {
+      "owner": "0x0db136e87510046fef9b2e5317d14be3599f04b57439e90a6c4d69e3a0340054",
+      "points": 2.2141870121466365,
+      "volume": 2.2138869999999997,
+      "trades": 2,
+      "netPnl": -0.053886999999999574,
+      "skewVolume": 2.2138869999999997,
+      "skewTrades": 2,
+      "lastActiveMs": 1788074031975
+    },
+    {
+      "owner": "0x699ab6b122138de580d161f1ab16b35b8af7978c470d0d793586c02c331102d7",
+      "points": 2.206995227754509,
+      "volume": 2.206673,
+      "trades": 2,
+      "netPnl": -0.25667299999999993,
+      "skewVolume": 2.206673,
+      "skewTrades": 2,
+      "lastActiveMs": 1788156399145
+    },
+    {
+      "owner": "0xe2b835b632d3077bc62b0cb7ccac23983d4f8637fed63c3ff2ab714ddcb956a5",
+      "points": 2.2064056817722166,
+      "volume": 2.206115,
+      "trades": 2,
+      "netPnl": -0.17611500000000024,
+      "skewVolume": 2.206115,
+      "skewTrades": 2,
+      "lastActiveMs": 1787818767289
+    },
+    {
+      "owner": "0x1a34e42cdf6a389cc10dcb01ed3d415ca7485f75f725cc06c000be1db2d62ea9",
+      "points": 1.1898540715490278,
+      "volume": 1.18966,
+      "trades": 1,
+      "netPnl": -1.18966,
+      "skewVolume": 1.18966,
+      "skewTrades": 1,
+      "lastActiveMs": 1787833295937
+    },
+    {
+      "owner": "0x01596a29f4a1b83365fd91c81ef621923141540c7dc0d385e4feae317a1a705a",
+      "points": 1.1898016563550904,
+      "volume": 1.189669,
+      "trades": 1,
+      "netPnl": -1.189669,
+      "skewVolume": 1.189669,
+      "skewTrades": 1,
+      "lastActiveMs": 1788135867438
+    },
+    {
+      "owner": "0xe75a2826bc7ff38d04c120d6a201290e716eba6f1ab32249812c728c79e2cc2f",
+      "points": 1.1878170026385393,
+      "volume": 1.187722,
+      "trades": 1,
+      "netPnl": -1.187722,
+      "skewVolume": 1.187722,
+      "skewTrades": 1,
+      "lastActiveMs": 1787870875935
+    },
+    {
+      "owner": "0x87763dcda263adcf914550e0f867e98c612331ea2d92a89833a6be52b523d165",
+      "points": 1.187535306103632,
+      "volume": 1.187346,
+      "trades": 1,
+      "netPnl": -1.187346,
+      "skewVolume": 1.187346,
+      "skewTrades": 1,
+      "lastActiveMs": 1788076073124
+    },
+    {
+      "owner": "0x020cc8db4428d3528d0286cd30915df0dca23a35fe876961645173cc6a4284aa",
+      "points": 1.1859197097234375,
+      "volume": 1.185786,
+      "trades": 1,
+      "netPnl": -1.185786,
+      "skewVolume": 1.185786,
+      "skewTrades": 1,
+      "lastActiveMs": 1787990345345
+    },
+    {
+      "owner": "0xb732408f006b1debb3c1635fecf5e5033b8ca41c039c074bfa82160562bdcab2",
+      "points": 1.1797256957641922,
+      "volume": 1.179557,
+      "trades": 1,
+      "netPnl": -1.179557,
+      "skewVolume": 1.179557,
+      "skewTrades": 1,
+      "lastActiveMs": 1788155919083
+    },
+    {
+      "owner": "0xcfa8bf9b35785ad7ff07ed06b7fb2c56b3185d71de3eb74a2e7870964782b54b",
+      "points": 1.1791920149546817,
+      "volume": 1.179143,
+      "trades": 1,
+      "netPnl": -1.179143,
+      "skewVolume": 1.179143,
+      "skewTrades": 1,
+      "lastActiveMs": 1788008595781
+    },
+    {
+      "owner": "0xc5e6a42f2ec37a8b78e9c673ed681615e46eda5ae6c0ec8cf7b4bd045dd097a0",
+      "points": 1.1788927817686758,
+      "volume": 1.178858,
+      "trades": 1,
+      "netPnl": -1.178858,
+      "skewVolume": 1.178858,
+      "skewTrades": 1,
+      "lastActiveMs": 1787892969227
+    },
+    {
+      "owner": "0x5e7ba9af58c4620a54702ce354d2aac4e882d778af3b26863956c564f3d35333",
+      "points": 1.1774729987982824,
+      "volume": 1.177414,
+      "trades": 1,
+      "netPnl": -1.177414,
+      "skewVolume": 1.177414,
+      "skewTrades": 1,
+      "lastActiveMs": 1788036211313
+    },
+    {
+      "owner": "0xfa9cc5a5b397d247503568371b1d6c7b08c40a9a987298d6f4d13b1117c25df7",
+      "points": 1.1770882182323705,
+      "volume": 1.176881,
+      "trades": 1,
+      "netPnl": -1.176881,
+      "skewVolume": 1.176881,
+      "skewTrades": 1,
+      "lastActiveMs": 1788077873930
+    },
+    {
+      "owner": "0x95b1c1ec3a0c4353de447b0f463dd3a94d9cdbf603c260f49c7d02777a4b4d62",
+      "points": 1.167536352133999,
+      "volume": 1.167467,
+      "trades": 1,
+      "netPnl": -1.167467,
+      "skewVolume": 1.167467,
+      "skewTrades": 1,
+      "lastActiveMs": 1788027567290
+    },
+    {
+      "owner": "0x0e61659bc1a56239205fc5d3a331dad4950add2eaedeab5c519907c6715c8ffe",
+      "points": 1.166779930639778,
+      "volume": 1.166624,
+      "trades": 1,
+      "netPnl": -1.166624,
+      "skewVolume": 1.166624,
+      "skewTrades": 1,
+      "lastActiveMs": 1788017721553
+    },
+    {
+      "owner": "0xe9ad4856cd1ca1d23221226f903297bde9733aa9fc1eda6ed4462583d8c6550a",
+      "points": 1.166118956151236,
+      "volume": 1.166046,
+      "trades": 1,
+      "netPnl": -1.166046,
+      "skewVolume": 1.166046,
+      "skewTrades": 1,
+      "lastActiveMs": 1788061185522
+    },
+    {
+      "owner": "0xbae1f7b3938e9b84967d409cbb5aeeae2f9f0be0bd8c4a09b476ccd2bf4ebf72",
+      "points": 1.1586762809296356,
+      "volume": 1.158535,
+      "trades": 1,
+      "netPnl": -1.158535,
+      "skewVolume": 1.158535,
+      "skewTrades": 1,
+      "lastActiveMs": 1788018082345
+    },
+    {
+      "owner": "0x0f1b37969843fed46a1e1361b4532afdf5d4a714da493177da715d13b22cd233",
+      "points": 1.1577257715950346,
+      "volume": 1.157619,
+      "trades": 1,
+      "netPnl": -1.157619,
+      "skewVolume": 1.157619,
+      "skewTrades": 1,
+      "lastActiveMs": 1787996589166
+    },
+    {
+      "owner": "0x87c447e77c4564cba6b07ddf61e2e64ccff791e8214ab4181bc86f17b554f35e",
+      "points": 1.1567840241028888,
+      "volume": 1.156704,
+      "trades": 1,
+      "netPnl": -1.156704,
+      "skewVolume": 1.156704,
+      "skewTrades": 1,
+      "lastActiveMs": 1788038733084
+    },
+    {
+      "owner": "0x326ae0bc1868d7b52c9d8efbea8fa3c83fffdf4fa967f0195f94b394b47c3f74",
+      "points": 1.1504502975893958,
+      "volume": 1.149967,
+      "trades": 1,
+      "netPnl": -1.149967,
+      "skewVolume": 1.149967,
+      "skewTrades": 1,
+      "lastActiveMs": 1788022764182
+    },
+    {
+      "owner": "0x6942d153bb853a9d8b4313c68f2ce277bd12d2cc10f60bb30c7faeac030447cb",
+      "points": 1.1502250072762776,
+      "volume": 1.149908,
+      "trades": 1,
+      "netPnl": -1.149908,
+      "skewVolume": 1.149908,
+      "skewTrades": 1,
+      "lastActiveMs": 1788167445794
+    },
+    {
+      "owner": "0xdfe9e92a5fd0409b201fbebcaf87fbbd04fe61e1d7af70d389ad94969877683f",
+      "points": 1.1495653227573588,
+      "volume": 1.149454,
+      "trades": 1,
+      "netPnl": -1.149454,
+      "skewVolume": 1.149454,
+      "skewTrades": 1,
+      "lastActiveMs": 1787860670340
+    },
+    {
+      "owner": "0x84c6734237540a566878f19320b5746070fdde735dba4532e5cff726bdf77c50",
+      "points": 1.1476625808952325,
+      "volume": 1.147497,
+      "trades": 1,
+      "netPnl": -1.147497,
+      "skewVolume": 1.147497,
+      "skewTrades": 1,
+      "lastActiveMs": 1788058783798
+    },
+    {
+      "owner": "0xbe9f9a979220997700f9eda32c3df8bef02a39f8752526cc73c7fd02c978c71f",
+      "points": 1.1471998078260766,
+      "volume": 1.14711,
+      "trades": 1,
+      "netPnl": -1.14711,
+      "skewVolume": 1.14711,
+      "skewTrades": 1,
+      "lastActiveMs": 1788176571805
+    },
+    {
+      "owner": "0x7b18954a2dc42e84818ef79f97f0a7c829281940959bf8bbab55f7a00648592e",
+      "points": 1.1390961599791818,
+      "volume": 1.138771,
+      "trades": 1,
+      "netPnl": -1.138771,
+      "skewVolume": 1.138771,
+      "skewTrades": 1,
+      "lastActiveMs": 1788157479895
+    },
+    {
+      "owner": "0xc5c5341cd2a279029aa43e250f13a4f374578ea13c5b28b6317f9aca2ab6a8a9",
+      "points": 1.1389720982274074,
+      "volume": 1.13893,
+      "trades": 1,
+      "netPnl": -1.13893,
+      "skewVolume": 1.13893,
+      "skewTrades": 1,
+      "lastActiveMs": 1787908818865
+    },
+    {
+      "owner": "0xa3c6f7c40927b9f3f703362fb5d3bd43282e90b16dbcfe56353e8bdb814da7a8",
+      "points": 1.138968010183023,
+      "volume": 1.138804,
+      "trades": 1,
+      "netPnl": -1.138804,
+      "skewVolume": 1.138804,
+      "skewTrades": 1,
+      "lastActiveMs": 1787862351108
+    },
+    {
+      "owner": "0xdadd925c60d78b4a89c48e680602fb4b21f4e94e090397e92d077dbb541b0bb0",
+      "points": 1.1372589523990115,
+      "volume": 1.136921,
+      "trades": 1,
+      "netPnl": -1.136921,
+      "skewVolume": 1.136921,
+      "skewTrades": 1,
+      "lastActiveMs": 1788099848171
+    },
+    {
+      "owner": "0xd9b0ee80d2903ec7ecfc2f50f200780ca86dde4e3981ddc6bad31600bc7e539a",
+      "points": 1.1275623497996146,
+      "volume": 1.127487,
+      "trades": 1,
+      "netPnl": -1.127487,
+      "skewVolume": 1.127487,
+      "skewTrades": 1,
+      "lastActiveMs": 1788027326981
+    },
+    {
+      "owner": "0xd32a9e66c62c69c1ed4605251e509f793d815e6f87ea7d38494837f6e7999832",
+      "points": 1.1173078202631979,
+      "volume": 1.117119,
+      "trades": 1,
+      "netPnl": -1.117119,
+      "skewVolume": 1.117119,
+      "skewTrades": 1,
+      "lastActiveMs": 1788078354618
+    },
+    {
+      "owner": "0x7b56562121d937fd136f84df28d02ad837e6a498de079e24873c8a3e36537c6d",
+      "points": 1.1150562438816596,
+      "volume": 1.114739,
+      "trades": 1,
+      "netPnl": -1.114739,
+      "skewVolume": 1.114739,
+      "skewTrades": 1,
+      "lastActiveMs": 1788053985319
+    },
+    {
+      "owner": "0x5d5616b66838ef757e77f3ba861eae4823da5b081a9162189d435438d26760e8",
+      "points": 1.110741952408926,
+      "volume": 1.109792,
+      "trades": 1,
+      "netPnl": -1.109792,
+      "skewVolume": 1.109792,
+      "skewTrades": 1,
+      "lastActiveMs": 1788099367733
+    },
+    {
+      "owner": "0x16474bea99629fb48427853a0498580838edb3dbbb57039ea6e803c99ffba636",
+      "points": 1.1089615446878993,
+      "volume": 1.108903,
+      "trades": 1,
+      "netPnl": -1.108903,
+      "skewVolume": 1.108903,
+      "skewTrades": 1,
+      "lastActiveMs": 1787911099874
+    },
+    {
+      "owner": "0x9d922d21333355fcdb13202cb43dbe2546bd545f347594a8360f0867ad8c9d6e",
+      "points": 1.108602238778632,
+      "volume": 1.108554,
+      "trades": 1,
+      "netPnl": -1.108554,
+      "skewVolume": 1.108554,
+      "skewTrades": 1,
+      "lastActiveMs": 1787892370433
+    },
+    {
+      "owner": "0xe10f35009aab2d39218e26238e5211c9afe256a710f44d7d9f3a5b8dc4196961",
+      "points": 1.10835698057339,
+      "volume": 1.108201,
+      "trades": 1,
+      "netPnl": -1.108201,
+      "skewVolume": 1.108201,
+      "skewTrades": 1,
+      "lastActiveMs": 1788155679006
+    },
+    {
+      "owner": "0xb4ab32aa4fe7b13698b82cb26cf175e307219e951eb572030c0640d4b857ca90",
+      "points": 1.10632051868367,
+      "volume": 1.106229,
+      "trades": 1,
+      "netPnl": -1.106229,
+      "skewVolume": 1.106229,
+      "skewTrades": 1,
+      "lastActiveMs": 1787856110693
+    },
+    {
+      "owner": "0x39ce61bb77f2c39ec16e21f091d7db31c16c3937d84e099191b0fd54084c2b59",
+      "points": 1.1058740869155843,
+      "volume": 1.105835,
+      "trades": 1,
+      "netPnl": -1.105835,
+      "skewVolume": 1.105835,
+      "skewTrades": 1,
+      "lastActiveMs": 1787989985558
+    },
+    {
+      "owner": "0xf0b9b9b7d7af759d8654d26899bce5908df047034f66711f774c9c9f89b0083d",
+      "points": 1.0997426934544654,
+      "volume": 1.099623,
+      "trades": 1,
+      "netPnl": -1.099623,
+      "skewVolume": 1.099623,
+      "skewTrades": 1,
+      "lastActiveMs": 1788125781907
+    },
+    {
+      "owner": "0xf35e1740617a5dddc210927d753a857d1a4ced70e3f5205ce2ce6c7ed5858d6e",
+      "points": 1.0997153587706574,
+      "volume": 1.097462,
+      "trades": 1,
+      "netPnl": -1.097462,
+      "skewVolume": 1.097462,
+      "skewTrades": 1,
+      "lastActiveMs": 1788082678495
+    },
+    {
+      "owner": "0x515d22b03bc622db10621d5811991047dded3509b724ac71dd225266cfab5d02",
+      "points": 1.09962963406897,
+      "volume": 1.09951,
+      "trades": 1,
+      "netPnl": -1.09951,
+      "skewVolume": 1.09951,
+      "skewTrades": 1,
+      "lastActiveMs": 1788134671128
+    },
+    {
+      "owner": "0x1d09dcff92df10dbf20a4bb85158058a6d57355f8504e14f65de14ecbe1440ce",
+      "points": 1.099584347954456,
+      "volume": 1.09945,
+      "trades": 1,
+      "netPnl": -1.09945,
+      "skewVolume": 1.09945,
+      "skewTrades": 1,
+      "lastActiveMs": 1787986142858
+    },
+    {
+      "owner": "0x2e889a5cc3afa044a74debbda11d54b70e5b095117bec4325095504c3f621538",
+      "points": 1.099146483134375,
+      "volume": 1.098981,
+      "trades": 1,
+      "netPnl": -1.098981,
+      "skewVolume": 1.098981,
+      "skewTrades": 1,
+      "lastActiveMs": 1788131546880
+    },
+    {
+      "owner": "0xdd9e97aa2c1b2928cd51b94905253960b2086bb2465d251407fc675365688577",
+      "points": 1.0988703107404247,
+      "volume": 1.095521,
+      "trades": 1,
+      "netPnl": -1.095521,
+      "skewVolume": 1.095521,
+      "skewTrades": 1,
+      "lastActiveMs": 1788130827550
+    },
+    {
+      "owner": "0x8c76217154ef5281ae23bd0ea26084a89373c3815db3bd4f414219edd011d6c1",
+      "points": 1.0976605215843427,
+      "volume": 1.096756,
+      "trades": 1,
+      "netPnl": -1.096756,
+      "skewVolume": 1.096756,
+      "skewTrades": 1,
+      "lastActiveMs": 1788137789188
+    },
+    {
+      "owner": "0xa4a37f3f71c8f69ee20fc7ee771a3dc9e61ff829bab940ca63882d9fc748b2d1",
+      "points": 1.0968815202053472,
+      "volume": 1.096395,
+      "trades": 1,
+      "netPnl": -1.096395,
+      "skewVolume": 1.096395,
+      "skewTrades": 1,
+      "lastActiveMs": 1788118578396
+    },
+    {
+      "owner": "0x8662d83c93f0e497ebbd1599148292ba29e99d92ce4b67416fd1fe73c3e017ae",
+      "points": 1.096502550123412,
+      "volume": 1.096484,
+      "trades": 1,
+      "netPnl": -1.096484,
+      "skewVolume": 1.096484,
+      "skewTrades": 1,
+      "lastActiveMs": 1787898012213
+    }
+  ]
+}

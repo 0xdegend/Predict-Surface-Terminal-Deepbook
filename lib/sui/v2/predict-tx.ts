@@ -11,7 +11,7 @@
  * by mint and consumed by redeem. `Auth` is consumed per call — see account.ts.
  */
 import { Transaction } from '@mysten/sui/transactions';
-import { predictV2Config, v2Target, V2_IS_729_PLUS } from '@/config/predict';
+import { V2_IS_729_PLUS, V2_IS_821_PLUS, predictV2Config, v2Target } from '@/config/predict';
 import { buildLoadPricerCall } from './pricer';
 import { addGenerateAuth, addDeposit } from './account';
 import { addSetBuilderCode } from './builder-code';
@@ -86,7 +86,11 @@ export function buildMintTx(p: MintParams): Transaction {
       tx.pure.u64(p.lowerTick),
       tx.pure.u64(p.higherTick),
       tx.pure.u64(p.quantity),
-      tx.pure.u64(p.leverage),
+      // Leverage was REMOVED from the protocol in 8-21 (#1236): `mint_exact_quantity`
+      // and `mint_exact_amount` each dropped this argument, 14 params down to 13. The
+      // caller still passes a leverage so the older deployments keep working unchanged;
+      // it is simply not sent to a chain that no longer has the concept.
+      ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.leverage)]),
       tx.pure.u64(p.maxCost),
       tx.pure.u64(p.maxProbability),
       tx.object(c().accumulatorRootId),
@@ -150,7 +154,11 @@ export function buildMintBudgetTx(p: MintBudgetParams): Transaction {
       tx.pure.u64(p.higherTick),
       tx.pure.u64(p.amount),
       tx.pure.u64(p.minQuantity),
-      tx.pure.u64(p.leverage),
+      // Leverage was REMOVED from the protocol in 8-21 (#1236): `mint_exact_quantity`
+      // and `mint_exact_amount` each dropped this argument, 14 params down to 13. The
+      // caller still passes a leverage so the older deployments keep working unchanged;
+      // it is simply not sent to a chain that no longer has the concept.
+      ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.leverage)]),
       // 7-29 inserted an all-in cost cap here; 6-24 has no such arg. Default U64_MAX
       // (no cap) keeps 6-24 behavior parity — the `amount` budget already bounds spend.
       ...(V2_IS_729_PLUS ? [tx.pure.u64(p.maxCost ?? U64_MAX)] : []),
@@ -226,7 +234,9 @@ export function buildRedeemSettledTx(p: RedeemParams): Transaction {
         auth,
         tx.object(c().shared.protocolConfig),
         tx.pure.u256(p.orderId),
-        tx.pure.u64(p.closeQuantity),
+        // 8-21 dropped `close_quantity` from `redeem_settled` (9 params down to 8): a
+        // settled claim is all-or-nothing there, so there is no partial amount to name.
+        ...(V2_IS_821_PLUS ? [] : [tx.pure.u64(p.closeQuantity)]),
         tx.object(c().accumulatorRootId),
         tx.object(c().clockId),
       ],

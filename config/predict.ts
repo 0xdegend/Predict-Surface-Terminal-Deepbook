@@ -163,12 +163,14 @@ export const V2_READY = true;
  * '7-29' are permanently DEAD (frozen feeds, no mints). They remain here only for
  * reference / rollback-diagnosis. See the predict-refresh-8-06 notes for the full plan.
  */
-export type PredictDeployment = '6-24' | '7-29' | '8-06';
+export type PredictDeployment = '6-24' | '7-29' | '8-06' | '8-21';
 const _DEPLOYMENT_ENV = process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT;
-export const ACTIVE_V2_DEPLOYMENT: PredictDeployment =
-  _DEPLOYMENT_ENV === '8-06' || _DEPLOYMENT_ENV === '7-29' || _DEPLOYMENT_ENV === '6-24'
-    ? _DEPLOYMENT_ENV
-    : '8-06';
+const _KNOWN_DEPLOYMENTS: PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21'];
+export const ACTIVE_V2_DEPLOYMENT: PredictDeployment = _KNOWN_DEPLOYMENTS.includes(
+  _DEPLOYMENT_ENV as PredictDeployment,
+)
+  ? (_DEPLOYMENT_ENV as PredictDeployment)
+  : '8-06';
 
 /**
  * True for the newer protocol shape shipped from the 7-29 deployment onward (7-29 and
@@ -180,6 +182,26 @@ export const ACTIVE_V2_DEPLOYMENT: PredictDeployment =
  */
 export const V2_IS_729_PLUS: boolean = ACTIVE_V2_DEPLOYMENT !== '6-24';
 
+/**
+ * True from the 8-21 deployment on. A SECOND shape flag is needed because 8-21 is not
+ * another same-shape republish the way 8-06 was; two things changed under it that
+ * `V2_IS_729_PLUS` cannot express:
+ *
+ *  1. LEVERAGE IS GONE protocol-side. `expiry_market::mint_exact_quantity` and
+ *     `mint_exact_amount` each dropped their `leverage` argument (14 params → 13), and
+ *     `redeem_settled_permissionless` dropped `close_quantity` (9 → 8). Verified by
+ *     diffing the Move sources on the `predict-testnet-7-29` and `predict-testnet-8-21`
+ *     branches; `redeem_live` and `redeem_settled` are byte-for-byte the same.
+ *  2. HTTP INDEXERS EXIST AGAIN. 7-29 and 8-06 shipped none, so everything reads
+ *     on-chain over gRPC. 8-21 has three (predict / propbook / account, all `-v4`),
+ *     which reopens read paths that were closed for two deployments.
+ *
+ * Guard behaviour on this rather than on `ACTIVE_V2_DEPLOYMENT === '8-21'` so the next
+ * same-shape republish is a config block and nothing else, which is exactly what
+ * `V2_IS_729_PLUS` bought us when 8-06 landed.
+ */
+export const V2_IS_821_PLUS: boolean = ACTIVE_V2_DEPLOYMENT === '8-21';
+
 export interface PredictV2Config {
   network: SuiNetwork;
   deployment: 'v2';
@@ -188,6 +210,9 @@ export interface PredictV2Config {
   serverUrl: string;
   /** Optional propbook oracle indexer (Pyth/Block-Scholes observation history). */
   oracleServerUrl: string;
+  /** Optional account indexer (custody, balances, activity, portfolio, app auth).
+   *  New in 8-21; empty on every earlier deployment. */
+  accountServerUrl?: string;
   packages: {
     predict: string;
     account: string;
@@ -204,6 +229,11 @@ export interface PredictV2Config {
      *  discover an account's session keys even when no authorize is in the recent tx
      *  window. Optional; falls back to a type learned at runtime from a piggyback. */
     sessionsEventOrigin?: string;
+    /** `deepbook_core_account` — the external-authorization app type that lets a Predict
+     *  account act on DeepBook spot. New in 8-21, recorded for completeness; nothing
+     *  reads it yet and `externalAuthorizations.deepbookCoreAccount.authorized` is
+     *  false on the deployment as shipped. */
+    deepbookCoreAccount?: string;
   };
   /** Shared objects passed into entry functions. */
   shared: {
@@ -212,6 +242,11 @@ export interface PredictV2Config {
     registry: string; // predict::registry::Registry
     oracleRegistry: string; // propbook::registry::OracleRegistry
     accountRegistry: string; // account::account_registry::AccountRegistry
+    /** `deepbook_sessions::config::SessionsConfig`. Broken out as its own shared object
+     *  in 8-21; earlier deployments carried the same settings inside the package. */
+    sessionsConfig?: string;
+    /** DeepBook core's own registry, needed only by the external-authorization flow. */
+    deepbookRegistry?: string;
   };
   /**
    * Our registered `builder_code::BuilderCode` (shared). Empty = not registered
@@ -544,12 +579,119 @@ const V2_MAINNET: PredictV2Config = {
   featuredWallets: [],
 };
 
-/** Testnet has three deployments via NEXT_PUBLIC_PREDICT_DEPLOYMENT; 8-06 is the live
- *  default (6-24 + 7-29 are dead, kept for reference/rollback). Mainnet has one. */
+/**
+ * 8-21 — the deployment recorded on the `predict-testnet-8-21` branch (manifest
+ * schemaVersion 6, sourceCommit 1f79fe87). IDs are verbatim from
+ * `packages/predict/deployment/deployment.testnet.json` on that branch.
+ *
+ * UNLIKE EVERY PRIOR REPUBLISH, THIS ONE DID NOT KILL ITS PREDECESSOR. 6-24 → 7-29 →
+ * 8-06 each turned the old writers off; 8-21 has run alongside a fully live 8-06 for
+ * ten days (both registries and both pyth feeds writing seconds apart, verified
+ * 2026-08-31). So there is no forced cutover here and rollback is one env var.
+ *
+ * WHAT IT BRINGS: the ladder. 1d and 1w cadences are `enabled: true` with real tick
+ * sizes, and the live market list runs from one minute out to nine and a half days.
+ * 8-06 tops out around twelve minutes.
+ */
+const V2_TESTNET_821: PredictV2Config = {
+  network: 'testnet',
+  deployment: 'v2',
+  grpcUrl: 'https://fullnode.testnet.sui.io:443',
+  // Three HTTP indexers again, after two deployments with none. Documented in
+  // packages/predict/deployment/INTEGRATION.md; all three answered `status: OK` when
+  // this block was written. They are operational endpoints, NOT part of the audited
+  // manifest, so treat them as a convenience over the chain rather than an authority.
+  serverUrl: 'https://predict-server-v4.testnet.mystenlabs.com',
+  oracleServerUrl: 'https://propbook-server-v4.testnet.mystenlabs.com',
+  accountServerUrl: 'https://account-server-v4.testnet.mystenlabs.com',
+  packages: {
+    predict: '0x421041754244cf0e985fb9c9f5e1f49428caf3df4cde3a7b266d8e18ea63597b',
+    account: '0xa94ec89b6cbb3e2609c7ca65bd77885b7513f852922ebdf8e766851fb6f85259',
+    propbook: '0xd8b402609b1728f60cf20bfaaec5255701df54350ec13e93aac39463b00bf97b',
+    // writers.priceUpdater.blockScholesOraclePackage — unchanged from 8-06, and still
+    // read by nothing in the app.
+    blockScholesOracle: '0x9d2cf38611d971a0e918b93fc0113d279f5c923f43e62c407a9ad0f9d82f6698',
+    fixedMath: '0xa55ad273d714c0688354cfe057073b64cd7e89ca1807f570a1505b8ee6c1abe3',
+    sessions: '0xb74170443d6d2d37cbe95c7e530dd4a1605ef714ff4f9e88e27a7ac1455451db',
+    // Freshly published rather than upgraded, so published-at IS the type origin here.
+    // (On 8-06 they differ, which is why the field exists at all.)
+    sessionsEventOrigin: '0xb74170443d6d2d37cbe95c7e530dd4a1605ef714ff4f9e88e27a7ac1455451db',
+    deepbookCoreAccount: '0xcc9cf1029127e7bda6da4c2ab90164d7bef751783ff13c21c2bb804cec69ebec',
+  },
+  shared: {
+    protocolConfig: '0x7ef1ac99c2f0a77e7aa2602b5ea7bff68750cff0d80f09bdf827bfb345128f33',
+    poolVault: '0x2a31f592d8fd3d0781e2233770d02d67797890ac82c3d18796d7eb0997896602',
+    registry: '0x3d486bd50bb5bb5450ddbcb4f74776b6135f416c09024a6674ac266e77e1870a',
+    oracleRegistry: '0x715f5ae4aac0078f4d0c6bf9ea2815614e799e909a90b577aeb8de9ad8bab142',
+    accountRegistry: '0x5682c73d657de1546374e632369a25c82744c8a20e9b4f47e6558e3d4bde88d3',
+    sessionsConfig: '0xdfb8e23246678649cfdd6f3f6610057d5cadd6a8911a21dbe8e34788abbfab93',
+    deepbookRegistry: '0x7c256edbda983a2cd6f946655f4bf3f00a41043993781f8674a7046e8c0e11d1',
+  },
+  // A BuilderCode is bound to the registry that created it, so 8-06's code does NOT
+  // carry over. Re-register from the founder wallet at /v2/admin and set
+  // NEXT_PUBLIC_BUILDER_CODE_ID_821. Until then mints fall back to no-fee, which is why
+  // this deliberately does NOT fall back to the 8-06 env var: a stale id would attach a
+  // code this registry has never heard of. See the builder-code-every-deployment rule.
+  builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID_821 || '',
+  // skew_fee_v2 is framework-only (it moves DUSDC between accounts and never calls into
+  // the predict package), so the SAME published package works across redeploys. Its
+  // FeeConfig / AdminCap are per-object, not per-deployment, so they carry over too.
+  // Both still get re-verified on chain during cutover rather than assumed.
+  skewFeeV2PackageId:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID ||
+    '0xd3f63b410046b5fa709174f319eac07c1728bcdb192771aad89d79afc44adc71',
+  feeConfigV2Id:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID ||
+    '0xe791646b2e5761d650c0ddd3e4db656430e4d31863ccc13613c845572a6520fb',
+  // 0 because leverage no longer exists on this protocol (#1236). The window was the
+  // ceiling on a feature that has been removed, not a setting that went to zero.
+  noLeverageWindowMs: 0,
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x6',
+  quote: {
+    // DUSDC is unchanged across every deployment so far.
+    coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
+    currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
+    decimals: 6,
+    symbol: 'DUSDC',
+  },
+  plpCoinType: '0x421041754244cf0e985fb9c9f5e1f49428caf3df4cde3a7b266d8e18ea63597b::plp::PLP',
+  deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0xea8fd4624002516b28b495051c838b2c9a34a4f22ae281d328e1bec47f54cd24',
+    // Same two-feed shape as 7-29 / 8-06: value store, then svi store.
+    bsFeedIds: [
+      '0x9b64cc860ac09e6dcd675fc579c1048792ddce51cc018f2ca16aeb4a1a5684a3',
+      '0xd5bc586e99c8d595e0ba5e0a2ef2295e652db8934ffbeda630d60e207bedab8f',
+    ],
+  },
+  // FIVE enabled cadences, not three. 1d and 1w are live here with a $100 admission
+  // grid (admissionTickSize 1e11) against the $1 grid the sub-hour ones use. 1mo is
+  // still shipped disabled with tick 0, so it stays out. Verbatim from
+  // initialConfiguration.cadences.BTC.
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '2' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '50000000000', initialExpiryCash: '10000000000', windowSize: '2' },
+    { id: 2, name: '1h', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '2' },
+    { id: 3, name: '1d', tickSize: '10000000', admissionTickSize: '100000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '2' },
+    { id: 4, name: '1w', tickSize: '10000000', admissionTickSize: '100000000000', maxExpiryAllocation: '250000000000', initialExpiryCash: '50000000000', windowSize: '2' },
+  ],
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+  faucetUrl: 'https://tally.so/r/Xx102L',
+};
+
+/** Testnet deployments, selected with NEXT_PUBLIC_PREDICT_DEPLOYMENT. 8-06 is still the
+ *  default: 8-21 is wired and selectable but not yet cut over. 6-24 and 7-29 are dead
+ *  and kept only for reference and rollback diagnosis. Mainnet has one. */
 const V2_TESTNET_BY_DEPLOYMENT: Record<PredictDeployment, PredictV2Config> = {
   '6-24': V2_TESTNET,
   '7-29': V2_TESTNET_729,
   '8-06': V2_TESTNET_806,
+  '8-21': V2_TESTNET_821,
 };
 
 function selectV2Config(network: SuiNetwork): PredictV2Config {

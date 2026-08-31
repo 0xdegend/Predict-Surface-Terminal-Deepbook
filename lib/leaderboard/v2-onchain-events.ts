@@ -65,6 +65,31 @@ const toMs = (iso?: string | null): number => {
   return Number.isFinite(t) ? t : 0;
 };
 
+/**
+ * One POST to the public GraphQL endpoint, retrying a 429.
+ *
+ * This walk is four event types deep and up to forty pages each, so a full scan is
+ * ~160 requests in a burst and the public endpoint rate-limits it. Without a retry the
+ * whole board read fails on the first throttled page, which is a bad trade: the data is
+ * there, we just asked for it too quickly. Backoff is exponential from 400ms and gives
+ * up after four tries so a genuinely down endpoint still fails fast rather than hanging
+ * a request for minutes.
+ */
+async function postWithBackoff(body: string, signal?: AbortSignal): Promise<Response> {
+  let wait = 400;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(graphqlUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      signal,
+      body,
+    });
+    if (res.status !== 429 || attempt >= 3) return res;
+    await new Promise((r) => setTimeout(r, wait));
+    wait *= 2;
+  }
+}
+
 /** Walk one event type newest-first, normalizing each node into the V2OrderEvent
  *  shape the shared aggregator understands (the Move struct json + a derived `kind`
  *  + the event timestamp). */
@@ -75,12 +100,10 @@ async function pageEvents(structName: string, signal?: AbortSignal): Promise<V2O
   let cursor: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await fetch(graphqlUrl(), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+    const res = await postWithBackoff(
+      JSON.stringify({ query: EVENTS_QUERY, variables: { type, last: PAGE, before: cursor } }),
       signal,
-      body: JSON.stringify({ query: EVENTS_QUERY, variables: { type, last: PAGE, before: cursor } }),
-    });
+    );
     if (!res.ok) throw new Error(`order-events query ${res.status}`);
     const json = (await res.json()) as GraphQLResponse;
     if (json.errors?.length) throw new Error(json.errors[0]?.message ?? 'order-events query failed');
@@ -125,24 +148,42 @@ export function filterSkewEvents(all: V2OrderEvent[], builderCodeId: string): V2
  * Server-only. Empty when no builder code is configured. (7-29 serves the Skew board
  * from the accumulating indexer instead — see lib/leaderboard/v2-indexer.ts.)
  */
-export async function fetchSkewLeaderboardRows(signal?: AbortSignal): Promise<V2LeaderboardRow[]> {
+/** Every Skew-attributed order event in the scan window, unaggregated. */
+export async function fetchSkewEvents(signal?: AbortSignal): Promise<V2OrderEvent[]> {
   const builderCodeId = predictV2Config.builderCodeId;
   if (!builderCodeId) return [];
-
-  const skew = filterSkewEvents(
+  return filterSkewEvents(
     (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)))).flat(),
     builderCodeId,
   );
+}
 
+/**
+ * The scan's rows. Split from the scan itself so a caller that wants the raw events
+ * (the redeploy seed capture, which derives per-wallet history from them) does not have
+ * to walk all four event streams a second time.
+ */
+/** Score an already-scanned Skew event set into board rows. Pure. */
+export function skewRowsFromEvents(events: V2OrderEvent[]): V2LeaderboardRow[] {
+  const builderCodeId = predictV2Config.builderCodeId;
   // The aggregator folds a Map<marketId, events[]>; group by market so its holding
   // time / redeem-join logic behaves exactly as it does on the fan-out board.
   const byMarket = new Map<string, V2OrderEvent[]>();
-  for (const e of skew) {
+  for (const e of events) {
     const mid = (e.expiry_market_id as string | undefined) ?? '_';
     const list = byMarket.get(mid);
     if (list) list.push(e);
     else byMarket.set(mid, [e]);
   }
-
   return aggregateV2Leaderboard(byMarket, builderCodeId, Date.now());
+}
+
+/**
+ * The scan's rows. Scan and score are split so a caller that also wants the raw events
+ * (the redeploy seed capture, which derives per-wallet history from them) can do both
+ * off ONE walk instead of paging all four event streams twice.
+ */
+export async function fetchSkewLeaderboardRows(signal?: AbortSignal): Promise<V2LeaderboardRow[]> {
+  if (!predictV2Config.builderCodeId) return [];
+  return skewRowsFromEvents(await fetchSkewEvents(signal));
 }
