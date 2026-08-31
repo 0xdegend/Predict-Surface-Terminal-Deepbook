@@ -16,7 +16,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getV2Markets, getV2MarketState } from '@/lib/api/v2/client';
-import { recentMarkets, cadenceOf, CADENCE_ORDER } from '@/lib/markets/v2-discovery';
+import { recentMarkets, cadenceOf } from '@/lib/markets/v2-discovery';
+import { SIMPLE_CADENCES } from '@/lib/markets/round-pick';
 import { pickHistoryRounds, settledOutcome, upCount } from './round-history';
 
 const RUN = process.env.RUN_LIVE === '1';
@@ -40,7 +41,7 @@ d('round history (live)', () => {
 
     // State reads are a devInspect each, so read the union ONCE and share it across the
     // three tabs rather than fanning out per tab.
-    const picks = CADENCE_ORDER.map((c) => ({ c, ...pickHistoryRounds(recent, c, now, COUNT) }));
+    const picks = SIMPLE_CADENCES.map((c) => ({ c, ...pickHistoryRounds(recent, c, now, COUNT) }));
     const ids = [...new Set(picks.flatMap((p) => p.picked.map((m) => m.expiry_market_id)))];
     const states = new Map(
       await Promise.all(

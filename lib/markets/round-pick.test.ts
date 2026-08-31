@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { bandCandidates, pickRound, pickAllRounds, otherBandRounds, HORIZON_MS } from './round-pick';
-import { CADENCE_ORDER } from './v2-discovery';
+import { SIMPLE_CADENCES } from './round-pick';
 import type { V2Market } from '@/lib/api/v2/types';
 
 const NOW = 1_700_000_000_000;
@@ -23,7 +23,7 @@ function m(id: string, leftS: number, tenorMin = 3): V2Market {
 describe('bandCandidates', () => {
   it('bands are disjoint, so no market can appear under two tabs', () => {
     const all = [m('a', 30), m('b', 90), m('c', 240), m('d', 600), m('e', 4000), m('f', 9600)];
-    const seen = CADENCE_ORDER.flatMap((c) => bandCandidates(all, c, NOW).map((x) => x.expiry_market_id));
+    const seen = SIMPLE_CADENCES.flatMap((c) => bandCandidates(all, c, NOW).map((x) => x.expiry_market_id));
     expect(new Set(seen).size).toBe(seen.length);
   });
 
@@ -53,7 +53,7 @@ describe('bandCandidates', () => {
 describe('pickRound', () => {
   it('never returns a round that outlives its own tab', () => {
     const all = [m('a', 30), m('b', 118), m('c', 290), m('d', 890), m('e', 9600, 180)];
-    for (const c of CADENCE_ORDER) {
+    for (const c of SIMPLE_CADENCES) {
       const got = pickRound(all, c, NOW);
       if (got) expect(got.expiry - NOW).toBeLessThanOrEqual(HORIZON_MS[c]);
     }
@@ -107,7 +107,7 @@ describe('pickAllRounds', () => {
   it('gives every tab a different round', () => {
     const all = [m('a', 30), m('b', 200), m('c', 900)];
     const picks = pickAllRounds(all, NOW, {});
-    const ids = CADENCE_ORDER.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
+    const ids = SIMPLE_CADENCES.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });

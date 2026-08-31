@@ -32,7 +32,8 @@ import { useMounted } from '@/lib/hooks/use-mounted';
 import { getPythLatest, pythSpot, qkV2 } from '@/lib/api/v2/client';
 import { RollingNumber } from '@/app/_components/ui/rolling-number';
 import { momentumOf, type Momentum } from '@/lib/charts/simple-series';
-import { isTooCloseToExpiry, CADENCE_ORDER, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import { SIMPLE_CADENCES, type SimpleCadence } from '@/lib/markets/round-pick';
 import { pickAllRounds, otherBandRounds, type HeldPicks } from '@/lib/markets/round-pick';
 import { type SideQuote } from '@/lib/sui/v2/simple-round';
 import { leverageScaled } from '@/lib/sui/v2/ticks';
@@ -99,7 +100,7 @@ export function SimpleScreen({
   // Only a BEHAVIOUR switch (bet straight away vs ask for the amount first); the layout
   // itself is CSS, so this never gates what renders.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const [cadence, setCadence] = useState<V2Cadence>('1m');
+  const [cadence, setCadence] = useState<SimpleCadence>('1m');
   // The amount lives as text so the box shows exactly what was typed (see sanitizeAmount);
   // everything downstream reads the derived number.
   const [stakeText, setStakeText] = useState(String(STARTER_DEFAULT_STAKE));
@@ -144,7 +145,7 @@ export function SimpleScreen({
     '5m': picks['5m']?.expiry_market_id,
     '1h': picks['1h']?.expiry_market_id,
   };
-  if (CADENCE_ORDER.some((c) => pickIds[c] !== heldPicks[c])) setHeldPicks(pickIds);
+  if (SIMPLE_CADENCES.some((c) => pickIds[c] !== heldPicks[c])) setHeldPicks(pickIds);
 
   const active = picks[cadence];
   // In its last few seconds a mint can no longer land, so the round is shown (the

@@ -21,12 +21,12 @@ import { useRoundHistory } from '@/lib/hooks/use-round-history';
 import { upCount } from '@/lib/markets/round-history';
 import { CADENCE_META } from './cadence';
 import { price } from '@/lib/format';
-import type { V2Cadence } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 
 /** Enough marks to read a pattern, few enough to stay one row on a phone. */
 const COUNT = 12;
 
-export function ResultsTape({ cadence, now }: { cadence: V2Cadence; now: number }) {
+export function ResultsTape({ cadence, now }: { cadence: SimpleCadence; now: number }) {
   const { cadence: shown, outcomes, loading } = useRoundHistory(cadence, now, COUNT);
 
   // Nothing to say yet → say nothing, rather than holding an empty frame open.

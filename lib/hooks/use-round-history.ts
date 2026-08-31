@@ -24,7 +24,8 @@
 import { useMemo } from 'react';
 import { useQueries, useQuery, keepPreviousData, type Query } from '@tanstack/react-query';
 import { getV2Markets, getV2MarketState, qkV2 } from '@/lib/api/v2/client';
-import { recentMarkets, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { recentMarkets } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 import { pickHistoryRounds, settledOutcome, type RoundOutcome } from '@/lib/markets/round-history';
 import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
 
@@ -34,14 +35,14 @@ const LOOKBACK_MS = 3 * 60 * 60_000;
 
 export interface RoundHistory {
   /** The cadence the outcomes actually came from — NOT necessarily the one asked for. */
-  cadence: V2Cadence;
+  cadence: SimpleCadence;
   /** Oldest first, so the tape reads left to right like time. */
   outcomes: RoundOutcome[];
   /** True while the first fetch is in flight (the tape holds its space rather than popping in). */
   loading: boolean;
 }
 
-export function useRoundHistory(cadence: V2Cadence, now: number, count = 10): RoundHistory {
+export function useRoundHistory(cadence: SimpleCadence, now: number, count = 10): RoundHistory {
   const listQ = useQuery({
     // Its own key: the pickers' active-only list has already dropped these markets.
     queryKey: [...qkV2.markets, 'history'] as const,

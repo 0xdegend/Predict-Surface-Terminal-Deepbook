@@ -2,11 +2,17 @@
  * lib/markets/v2-discovery.ts — turn the raw `/markets` event stream into the set
  * of live, tradeable ExpiryMarkets, grouped by cadence.
  *
- * Cadence isn't in the event, so we derive it. Every market enters the rolling
- * window exactly `windowSize` periods before its expiry, so the creation tenor
- * (expiry − created) is ~constant per cadence: 1m≈3min, 5m≈15min, 1h≈3h. The 1h
- * cadence is also uniquely identifiable by its larger expiry allocation, which we
- * use as a robust tiebreak. Pure + deterministic.
+ * Cadence isn't in the event, so we derive it. Every market enters the rolling window
+ * exactly `windowSize` periods before its expiry, so the creation tenor (expiry − created)
+ * is ~constant per cadence. Measured on 8-21, where windowSize is 2: 1m≈2min, 5m≈10min,
+ * 1h≈2h, 1d≈48h, 1w≈336h. (It was 3 periods on the older deployments, hence 1m≈3min there;
+ * the classifier's bounds are wide enough to cover both.)
+ *
+ * The larger expiry allocation used to identify the 1h cadence on its own. It no longer
+ * can: 8-21's 1d and 1w cadences carry the same allocation, so it now only separates those
+ * three from the 1m/5m pair, and tenor does the rest. See cadenceOf.
+ *
+ * Pure + deterministic.
  */
 import type { V2Market } from '@/lib/api/v2/types';
 import { toFloat } from '@/config/scale';
@@ -19,19 +25,48 @@ export type V2Cadence = '1m' | '5m' | '1h' | '1d' | '1w';
  *  `current_time_ms` when available; use this only as a fallback. */
 export const wallClockMs = (): number => Date.now();
 
-export const CADENCE_ORDER: V2Cadence[] = ['1m', '5m', '1h'];
+export const CADENCE_ORDER: V2Cadence[] = ['1m', '5m', '1h', '1d', '1w'];
 export const CADENCE_LABEL: Record<V2Cadence, string> = {
   '1m': '1-minute',
   '5m': '5-minute',
   '1h': 'Hourly',
+  '1d': 'Daily',
+  '1w': 'Weekly',
 };
 
-/** The 1h cadence's distinctive max expiry allocation (1e9 string). */
+/** The max expiry allocation shared by the 1h, 1d and 1w cadences (1e9 string). It separates
+ *  those three from the 1m/5m pair, but NOT from each other — on 8-21 all three carry
+ *  250000000000 — so it cannot be the whole test any more. Tenor does the rest. */
 const HOURLY_ALLOCATION = '250000000000';
 
-/** Classify a market into its cadence from creation tenor + allocation. */
+/**
+ * Upper bound (ms) on a cadence's CREATION tenor, i.e. `expiry - created`, which is
+ * `windowSize` cadence periods rather than one.
+ *
+ * Measured against the live 8-21 board on 2026-08-31, where windowSize is 2:
+ *
+ *   1m    0.03h      5m    0.17h      1h    2.00h      1d   48.00h      1w   336.00h
+ *
+ * The bounds sit well clear of those, because windowSize is protocol config and can change
+ * without warning: a 1h market at windowSize 3 is 3h, and must not start reading as daily.
+ * One observed 1w market came in at 290h rather than 336h, so the daily bound has to be far
+ * below a week rather than just above two days.
+ */
+const CADENCE_MAX_TENOR_MS = { hour: 12 * 3_600_000, day: 7 * 24 * 3_600_000 } as const;
+
+/**
+ * Classify a market into its cadence from creation tenor + allocation.
+ *
+ * The long branches come FIRST and are tenor-only. Before 8-21 every listed market settled
+ * within the hour, so `tenorMs > 40min` meaning hourly was true by construction. On 8-21 it
+ * is not: a 1-week market satisfies that test, and without these branches a bet settling
+ * nine days out was labelled "Hourly" everywhere it appeared. The short-market logic below
+ * is untouched, so nothing a trader already recognises moves.
+ */
 export function cadenceOf(m: V2Market): V2Cadence {
   const tenorMs = m.expiry - m.checkpoint_timestamp_ms;
+  if (tenorMs > CADENCE_MAX_TENOR_MS.day) return '1w';
+  if (tenorMs > CADENCE_MAX_TENOR_MS.hour) return '1d';
   if (m.max_expiry_allocation === HOURLY_ALLOCATION || tenorMs > 40 * 60_000) return '1h';
   return tenorMs < 4 * 60_000 ? '1m' : '5m';
 }
@@ -72,7 +107,7 @@ export function recentMarkets(markets: V2Market[], lookbackMs: number, now: numb
 
 /** Group active markets by cadence, preserving soonest-first order within each. */
 export function groupByCadence(markets: V2Market[]): Record<V2Cadence, V2Market[]> {
-  const out: Record<V2Cadence, V2Market[]> = { '1m': [], '5m': [], '1h': [] };
+  const out: Record<V2Cadence, V2Market[]> = { '1m': [], '5m': [], '1h': [], '1d': [], '1w': [] };
   for (const m of markets) out[cadenceOf(m)].push(m);
   return out;
 }
@@ -123,6 +158,12 @@ const EXPIRY_THRESHOLDS: Record<V2Cadence, { closingSoonSecs: number; tooCloseSe
   '1m': { closingSoonSecs: 10, tooCloseSecs: 4 },
   '5m': { closingSoonSecs: 10, tooCloseSecs: 5 },
   '1h': { closingSoonSecs: 10, tooCloseSecs: 5 },
+  // Same seconds for the long cadences, deliberately. These are about whether a transaction
+  // can still LAND before settlement, which depends on block time, not on how long the market
+  // has been running. A 1-week market in its last five seconds is exactly as unmintable as a
+  // 1-minute one.
+  '1d': { closingSoonSecs: 10, tooCloseSecs: 5 },
+  '1w': { closingSoonSecs: 10, tooCloseSecs: 5 },
 };
 
 /*

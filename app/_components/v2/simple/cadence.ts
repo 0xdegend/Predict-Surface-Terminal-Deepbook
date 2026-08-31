@@ -10,7 +10,7 @@
  * are capped by what the rolling tape holds (~150s), so nothing here claims history the
  * buffer doesn't have.
  */
-import type { V2Cadence } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 
 export interface CadenceMeta {
   /** Compact label for chips and cards. */
@@ -21,13 +21,13 @@ export interface CadenceMeta {
   sparkWindowS: number;
 }
 
-export const CADENCE_META: Record<V2Cadence, CadenceMeta> = {
+export const CADENCE_META: Record<SimpleCadence, CadenceMeta> = {
   '1m': { short: '1 min', label: '1 min', sparkWindowS: 60 },
   '5m': { short: '5 min', label: '5 min', sparkWindowS: 110 },
   '1h': { short: '1 hour', label: '1 hour', sparkWindowS: 150 },
 };
 
-export const CADENCE_TABS: { id: V2Cadence; label: string }[] = [
+export const CADENCE_TABS: { id: SimpleCadence; label: string }[] = [
   { id: '1m', label: CADENCE_META['1m'].label },
   { id: '5m', label: CADENCE_META['5m'].label },
   { id: '1h', label: CADENCE_META['1h'].label },

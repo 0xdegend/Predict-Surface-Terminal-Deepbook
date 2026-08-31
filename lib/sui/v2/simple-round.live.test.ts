@@ -27,8 +27,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getV2Markets, getV2MarketState } from '@/lib/api/v2/client';
-import { activeMarkets, CADENCE_ORDER } from '@/lib/markets/v2-discovery';
-import { pickAllRounds, type HeldPicks } from '@/lib/markets/round-pick';
+import { activeMarkets } from '@/lib/markets/v2-discovery';
+import { pickAllRounds, SIMPLE_CADENCES, type HeldPicks } from '@/lib/markets/round-pick';
 import { simulateLivePricer, v2GrpcClient, fairUp } from '@/lib/sui/v2/pricer';
 import { snapStrikeToAdmission } from '@/lib/sui/v2/ticks';
 import { toFloat, fromFloat } from '@/config/scale';
@@ -68,7 +68,7 @@ d('simple round dead zone (live)', () => {
       };
 
       const cells: string[] = [];
-      for (const c of CADENCE_ORDER) {
+      for (const c of SIMPLE_CADENCES) {
         const m = picks[c];
         if (!m) {
           cells.push(`${c}=none`);

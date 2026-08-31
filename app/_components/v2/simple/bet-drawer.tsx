@@ -25,7 +25,8 @@ import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { useMobileSheetStore } from '@/lib/store/mobile-sheet-store';
 import { quoteSide } from '@/lib/sui/v2/simple-round';
 import { toFloat } from '@/config/scale';
-import { isTooCloseToExpiry, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 import { CADENCE_META } from './cadence';
 import { sanitizeAmount } from './amount';
 import { price } from '@/lib/format';
@@ -40,7 +41,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
  * so a second, independently-held copy drifts from the first and the sheet ends up
  * offering a bet against a different number than the chart is drawing.
  */
-export type BetIntent = { market: V2Market; cadence: V2Cadence; isUp: boolean; lineScaled: bigint };
+export type BetIntent = { market: V2Market; cadence: SimpleCadence; isUp: boolean; lineScaled: bigint };
 
 export function SimpleBetDrawer({
   intent,

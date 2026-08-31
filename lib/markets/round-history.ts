@@ -18,7 +18,8 @@
  */
 import { toFloat } from '@/config/scale';
 import { roundLineScaled } from '@/lib/sui/v2/simple-round';
-import { cadenceOf, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { cadenceOf } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 import type { V2Market, V2MarketState } from '@/lib/api/v2/types';
 
 export interface RoundOutcome {
@@ -64,7 +65,7 @@ export function upCount(outcomes: RoundOutcome[]): number {
 /** Below this many finished rounds a cadence has no story to tell, so fall back. */
 export const MIN_FOR_TAPE = 3;
 /** The fallback: the fastest cadence, and so always the one with the most history. */
-export const FALLBACK_CADENCE: V2Cadence = '1m';
+export const FALLBACK_CADENCE: SimpleCadence = '1m';
 
 /**
  * WHICH finished rounds the tape should resolve, and which cadence they came from.
@@ -82,12 +83,12 @@ export const FALLBACK_CADENCE: V2Cadence = '1m';
  */
 export function pickHistoryRounds(
   markets: V2Market[],
-  cadence: V2Cadence,
+  cadence: SimpleCadence,
   now: number,
   count: number,
-): { picked: V2Market[]; from: V2Cadence } {
+): { picked: V2Market[]; from: SimpleCadence } {
   const finished = markets.filter((m) => m.expiry <= now).sort((a, b) => b.expiry - a.expiry);
-  const of = (c: V2Cadence) => finished.filter((m) => cadenceOf(m) === c).slice(0, count);
+  const of = (c: SimpleCadence) => finished.filter((m) => cadenceOf(m) === c).slice(0, count);
 
   const own = of(cadence);
   if (own.length >= MIN_FOR_TAPE) return { picked: own, from: cadence };

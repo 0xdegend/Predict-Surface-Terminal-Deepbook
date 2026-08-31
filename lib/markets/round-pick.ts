@@ -35,24 +35,39 @@
 import type { V2Cadence } from '@/lib/markets/v2-discovery';
 import type { V2Market } from '@/lib/api/v2/types';
 
+/**
+ * The cadences SIMPLE MODE offers, which is deliberately not every cadence the venue lists.
+ *
+ * 8-21 added 1-day and 1-week markets, and they are tradeable on the terminal. They are kept
+ * out of here on purpose. Simple mode is the beginner screen: one round, a live pinned line,
+ * a countdown you watch resolve. A week-long round has no countdown worth watching and no
+ * line worth pinning, so it would be a different product wearing this screen's clothes.
+ *
+ * Typing the picker to this subset rather than to `V2Cadence` is what makes that a decision
+ * instead of an oversight: adding a cadence to the venue no longer silently adds a tab here,
+ * and adding one here is a one-line, deliberate edit.
+ */
+export const SIMPLE_CADENCES = ['1m', '5m', '1h'] as const;
+export type SimpleCadence = Extract<V2Cadence, (typeof SIMPLE_CADENCES)[number]>;
+
 /** Upper bound (ms) of each tab's band. The lower bound is the previous tab's upper. */
-export const HORIZON_MS: Record<V2Cadence, number> = {
+export const HORIZON_MS: Record<SimpleCadence, number> = {
   '1m': 60_000,
   '5m': 5 * 60_000,
   '1h': 60 * 60_000,
 };
 
 /** Bands in order, as [lower exclusive, upper inclusive]. */
-export const HORIZON_BAND: Record<V2Cadence, [number, number]> = {
+export const HORIZON_BAND: Record<SimpleCadence, [number, number]> = {
   '1m': [0, HORIZON_MS['1m']],
   '5m': [HORIZON_MS['1m'], HORIZON_MS['5m']],
   '1h': [HORIZON_MS['5m'], HORIZON_MS['1h']],
 };
 
-export type HeldPicks = Partial<Record<V2Cadence, string>>;
+export type HeldPicks = Partial<Record<SimpleCadence, string>>;
 
 /** Live markets whose time remaining falls in this tab's band, longest first. */
-export function bandCandidates(markets: V2Market[], cadence: V2Cadence, now: number): V2Market[] {
+export function bandCandidates(markets: V2Market[], cadence: SimpleCadence, now: number): V2Market[] {
   const [lo, hi] = HORIZON_BAND[cadence];
   return markets
     .filter((m) => {
@@ -70,7 +85,7 @@ export function bandCandidates(markets: V2Market[], cadence: V2Cadence, now: num
  */
 export function pickRound(
   markets: V2Market[],
-  cadence: V2Cadence,
+  cadence: SimpleCadence,
   now: number,
   heldId?: string,
 ): V2Market | null {
@@ -85,7 +100,7 @@ export function pickAllRounds(
   markets: V2Market[],
   now: number,
   held: HeldPicks,
-): Record<V2Cadence, V2Market | null> {
+): Record<SimpleCadence, V2Market | null> {
   return {
     '1m': pickRound(markets, '1m', now, held['1m']),
     '5m': pickRound(markets, '5m', now, held['5m']),
@@ -95,7 +110,7 @@ export function pickAllRounds(
 
 /** A round together with the band it is being offered under. */
 export interface BandRound {
-  cadence: V2Cadence;
+  cadence: SimpleCadence;
   market: V2Market;
 }
 
@@ -126,7 +141,7 @@ export function otherBandRounds(
   max: number,
 ): BandRound[] {
   const out: BandRound[] = [];
-  for (const cadence of ['1m', '5m', '1h'] as const) {
+  for (const cadence of SIMPLE_CADENCES) {
     for (const market of bandCandidates(markets, cadence, now)) {
       if (market.expiry_market_id !== heroId) out.push({ cadence, market });
     }

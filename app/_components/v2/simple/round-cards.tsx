@@ -15,7 +15,8 @@
  * trade. Cards never place anything on their own. See [[simple-mode]].
  */
 import { useRoundQuote } from '@/lib/hooks/use-round-quote';
-import { isTooCloseToExpiry, type V2Cadence } from '@/lib/markets/v2-discovery';
+import { isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
+import type { SimpleCadence } from '@/lib/markets/round-pick';
 import { CADENCE_META, clock } from './cadence';
 import { RoundSpark } from './round-spark';
 import { SideButton } from './side-button';
@@ -31,7 +32,7 @@ import type { SideQuote } from '@/lib/sui/v2/simple-round';
  *  with 58 seconds left belongs under "1 min", and labelling it "5 MIN" would recreate
  *  the exact mismatch the horizon rule exists to remove. */
 export interface HorizonRound {
-  cadence: V2Cadence;
+  cadence: SimpleCadence;
   market: V2Market;
 }
 
@@ -39,7 +40,7 @@ export interface RoundPick {
   market: V2Market;
   /** The tab this round was offered under — carried through to the confirm dialog so a
    *  bet is never described by a label the trader never saw. */
-  cadence: V2Cadence;
+  cadence: SimpleCadence;
   /** The line as a float, for display. */
   line: number;
   /** The SAME line, 1e9-scaled — what the trade is actually built against. Carried so a
@@ -125,7 +126,7 @@ function RoundCard({
   disabled,
 }: {
   market: V2Market;
-  cadence: V2Cadence;
+  cadence: SimpleCadence;
   series: SpotPoint[];
   stake: number;
   spot: number | null;

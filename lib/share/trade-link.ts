@@ -20,8 +20,17 @@
 /** Bump when the wire shape changes; decode rejects any other version. */
 export const RECIPE_VERSION = 1;
 
-/** Market cadence families (must match config/predict.ts cadence `name`s). */
-export const RECIPE_TENORS = ['1m', '5m', '1h'] as const;
+/**
+ * Market cadence families (must match config/predict.ts cadence `name`s).
+ *
+ * Widened for 8-21, which lists 1-day and 1-week markets. This is a WIRE format: a recipe is
+ * serialized into a share URL and re-resolved by whoever opens it, so the direction of the
+ * change matters. Adding values is safe, because every link already in the wild names one of
+ * the original three and still parses. A link naming '1w' opened against an older build
+ * fails the parse and falls back, which is the correct outcome rather than a mis-resolved
+ * trade on the wrong horizon. Removing or renaming a value would break live links.
+ */
+export const RECIPE_TENORS = ['1m', '5m', '1h', '1d', '1w'] as const;
 export type RecipeTenor = (typeof RECIPE_TENORS)[number];
 export type RecipeMode = 'binary' | 'range';
 

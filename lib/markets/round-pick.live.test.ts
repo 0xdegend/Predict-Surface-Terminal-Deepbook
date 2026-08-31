@@ -16,7 +16,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { getV2Markets } from '@/lib/api/v2/client';
-import { activeMarkets, CADENCE_ORDER } from '@/lib/markets/v2-discovery';
+import { activeMarkets } from '@/lib/markets/v2-discovery';
+import { SIMPLE_CADENCES } from '@/lib/markets/round-pick';
 import { pickAllRounds, otherBandRounds, HORIZON_MS, type HeldPicks } from './round-pick';
 
 const RUN = process.env.RUN_LIVE === '1';
@@ -44,13 +45,13 @@ d('round pick (live)', () => {
         '1h': picks['1h']?.expiry_market_id,
       };
 
-      const lefts = CADENCE_ORDER.map((c) => (picks[c] ? picks[c]!.expiry - now : null));
+      const lefts = SIMPLE_CADENCES.map((c) => (picks[c] ? picks[c]!.expiry - now : null));
       console.log(
         `${new Date(now).toISOString().slice(11, 19)}  ` +
-          CADENCE_ORDER.map((c, k) => `${c}=${lefts[k] == null ? 'none' : mmss(lefts[k]!)}`).join('  '),
+          SIMPLE_CADENCES.map((c, k) => `${c}=${lefts[k] == null ? 'none' : mmss(lefts[k]!)}`).join('  '),
       );
 
-      CADENCE_ORDER.forEach((c, k) => {
+      SIMPLE_CADENCES.forEach((c, k) => {
         const left = lefts[k];
         if (left == null) return;
         // THE invariant: a tab never offers a round longer than the tab promises.
@@ -64,7 +65,7 @@ d('round pick (live)', () => {
       }
 
       // And no two tabs may offer the SAME market.
-      const ids = CADENCE_ORDER.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
+      const ids = SIMPLE_CADENCES.map((c) => picks[c]?.expiry_market_id).filter(Boolean);
       expect(new Set(ids).size).toBe(ids.length);
 
       // EVERY EXTRA CARD gets the same guarantee as a tab. This is the rule that lets us
