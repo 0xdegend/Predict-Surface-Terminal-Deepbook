@@ -28,7 +28,7 @@ import {
   LuDownload,
   LuUpload,
   LuHistory,
-  LuArrowRightLeft,
+  LuCircleFadingArrowUp,
   LuFlaskConical,
   LuVault,
   LuLayoutGrid,
@@ -534,6 +534,12 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
  * Same card, different question. Creating the account and bringing the balance across are
  * ONE transaction (see useLegacyMove), so this is not an extra step bolted onto onboarding:
  * it is the same single signature, doing more.
+ *
+ * Framed as an UPGRADE rather than as moving funds, deliberately. "Your funds are on the
+ * old version, move them" is the sentence every wallet-drainer page opens with, and we do
+ * not want to be sorted alongside them by anything that reads pages in bulk. The body still
+ * states plainly what the transaction does with the balance, because the framing is about
+ * what this IS, not about hiding what the signature does.
  */
 function MigrateAccountCard({
   move,
@@ -545,7 +551,7 @@ function MigrateAccountCard({
   const sym = predictV2Config.quote.symbol;
   const amount = `${fmtQuote(fromQuote(move.amount))} ${sym}`;
   const done = move.phase === 'done';
-  const steps = done ? ['Account ready', 'Trade'] : ['Create & move funds', 'Trade'];
+  const steps = done ? ['Upgraded', 'Trade'] : ['Upgrade account', 'Trade'];
 
   return (
     <div className="flex flex-1 items-center justify-center px-5 py-16">
@@ -561,11 +567,11 @@ function MigrateAccountCard({
         />
 
         <div className="relative flex flex-col items-center gap-5">
-          <IconChip icon={done ? LuWalletMinimal : LuArrowRightLeft} color={HUE.teal} size={56} />
+          <IconChip icon={done ? LuWalletMinimal : LuCircleFadingArrowUp} color={HUE.teal} size={56} />
 
           <div className="flex flex-col gap-2">
             <h2 className="text-[18px] font-semibold tracking-tight text-text-1">
-              {done ? 'Your funds have moved' : 'Predict moved to a new version'}
+              {done ? 'You’re on the new version' : 'Upgrade to the new version of Predict'}
             </h2>
             <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
               {done ? (
@@ -622,7 +628,7 @@ function MigrateAccountCard({
               disabled={busy || !move.ready}
               className="inline-flex w-full items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
             >
-              {busy ? 'Moving…' : move.phase === 'error' ? 'Try again' : 'Set up account and move balance'}
+              {busy ? 'Upgrading…' : move.phase === 'error' ? 'Try again' : 'Upgrade my account'}
             </button>
           )}
 

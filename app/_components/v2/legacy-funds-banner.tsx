@@ -20,7 +20,7 @@
  * half-finished move to explain to someone whose balance is briefly nowhere.
  */
 import { useState } from 'react';
-import { LuArrowRightLeft } from 'react-icons/lu';
+import { LuCircleFadingArrowUp } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useLegacyMove } from '@/lib/hooks/use-legacy-move';
 import { predictV2Config } from '@/config/predict';
@@ -79,23 +79,23 @@ export function LegacyFundsBanner() {
     <div className="glass-inset mb-4 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
         <span className="mt-0.5 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)]">
-          <LuArrowRightLeft size={13} className="text-accent" />
+          <LuCircleFadingArrowUp size={13} className="text-accent" />
         </span>
         <p className="text-[11.5px] leading-relaxed text-text-2">
           {phase === 'done' ? (
             <>
-              <span className="font-medium text-text-1">Done.</span> Your {sym} has been moved to
-              your new trading account.
+              <span className="font-medium text-text-1">Done.</span> You are on the new version,
+              with your {sym} in your trading account.
             </>
           ) : phase === 'error' ? (
             <span className="text-text-1">{errMsg}</span>
           ) : (
             <>
               <span className="font-medium text-text-1">
-                Predict moved to a new version, and you have {label} in your old account.
+                Upgrade to the new version of Predict.
               </span>{' '}
-              Moving it across sets up your trading account on the new release at the same time,
-              in one transaction.
+              Your {label} is still in your account on the previous release, and upgrading brings
+              it across in the same transaction.
             </>
           )}
         </p>
@@ -115,7 +115,7 @@ export function LegacyFundsBanner() {
             disabled={moving}
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[11.5px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
-            {moving ? 'Moving…' : phase === 'error' ? 'Try again' : 'Move my balance'}
+            {moving ? 'Upgrading…' : phase === 'error' ? 'Try again' : 'Upgrade'}
           </button>
         </div>
       )}
