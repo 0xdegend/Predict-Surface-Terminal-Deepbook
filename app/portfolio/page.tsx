@@ -3,6 +3,11 @@ import { TopChrome } from '../_components/top-chrome';
 import { PortfolioPanel } from '../_components/positions/portfolio-panel';
 
 export const metadata: Metadata = {
+  // A personal, wallet-specific view: there is nothing here to rank for, and it is
+  // reachable only with a wallet connected, so indexing it has no upside. It also carries
+  // the post-redeploy "move your balance" copy, which is the shape of page a search engine
+  // is most likely to misread. /v2/admin already opts out for the same reason.
+  robots: { index: false, follow: false },
   title: 'Portfolio',
   description:
     'Your DeepBook Predict positions on Skew: live PnL marked to the current fair value, with one-click redeem for open and settled bets.',

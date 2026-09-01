@@ -15,6 +15,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { GlassError } from '../ui/glass-error';
 import { LegacyFundsBanner } from './legacy-funds-banner';
+import { useLegacyMove } from '@/lib/hooks/use-legacy-move';
 import Link from 'next/link';
 import type { IconType } from 'react-icons';
 import {
@@ -28,6 +29,7 @@ import {
   LuUpload,
   LuHistory,
   LuArrowRight,
+  LuArrowRightLeft,
   LuFlaskConical,
   LuVault,
   LuLayoutGrid,
@@ -101,6 +103,9 @@ function usePersistedView(key: string): [PosView, (v: PosView) => void] {
 
 export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   const acct = usePredictAccountV2();
+  // Also decides WHICH first-run card to show below, so it is read here rather than
+  // inside the card — a hook cannot be called after an early return.
+  const legacyMove = useLegacyMove();
   const mounted = useMounted();
   const now = useNow(serverNow);
   // Enriched real positions + the market map (shared with the trade-rail panel so
@@ -168,8 +173,28 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
     );
   }
 
-  if (!acct.wrapperExists) {
-    return <CreateAccountCard busy={acct.busy === 'create'} onCreate={() => acct.createAccount()} />;
+  // `wrapperKnown`, not a bare `!wrapperExists`. `readWrapper` throws on a transport
+  // failure, which leaves `wrapperExists` false with `isLoading` already false — so the
+  // plain test showed a returning trader the first-run card for an account they already
+  // have. Failing to CHECK is not the same as knowing.
+  if (acct.wrapperKnown && !acct.wrapperExists) {
+    // Someone arriving here after a redeploy still has DUSDC in their account on the old
+    // release, and this early return means they never reach the banner further down. Ask
+    // the old release BEFORE choosing a card rather than showing the first-run one and
+    // swapping it: the two say very different things, and a flash between them is worse
+    // than a moment's wait on a screen that is already a one-off.
+    if (legacyMove.isLoading) {
+      return (
+        <Centered>
+          <p className="text-[12px] text-text-3">Loading account…</p>
+        </Centered>
+      );
+    }
+    return legacyMove.hasFunds ? (
+      <MigrateAccountCard move={legacyMove} busy={acct.busy === 'legacy-move'} />
+    ) : (
+      <CreateAccountCard busy={acct.busy === 'create'} onCreate={() => acct.createAccount()} />
+    );
   }
 
   const live = rows.filter((p) => !p.settled && p.qty > 0);
@@ -497,6 +522,126 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
 }
 
 /* ─────────────────────────── create-account gate ─────────────────────────── */
+
+/**
+ * The first-run card a RETURNING trader gets after a redeploy.
+ *
+ * Accounts belong to the release that created them, so cutting over does not move a
+ * balance — it stops the app from looking at where the balance is. Someone who traded the
+ * old release therefore lands on the same empty portfolio as a brand-new user, and the
+ * plain create card would tell them to set up an account while saying nothing about the
+ * money they already have. That reads as "your funds are gone".
+ *
+ * Same card, different question. Creating the account and bringing the balance across are
+ * ONE transaction (see useLegacyMove), so this is not an extra step bolted onto onboarding:
+ * it is the same single signature, doing more.
+ */
+function MigrateAccountCard({
+  move,
+  busy,
+}: {
+  move: ReturnType<typeof useLegacyMove>;
+  busy: boolean;
+}) {
+  const sym = predictV2Config.quote.symbol;
+  const amount = `${fmtQuote(fromQuote(move.amount))} ${sym}`;
+  const done = move.phase === 'done';
+  const steps = done ? ['Account ready', 'Trade'] : ['Create & move funds', 'Trade'];
+
+  return (
+    <div className="flex flex-1 items-center justify-center px-5 py-16">
+      <div className="glass-card relative w-full max-w-md overflow-hidden p-8 text-center">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'radial-gradient(120% 80% at 50% 0%, var(--accent-soft), transparent 62%)' }}
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-white/15 to-transparent"
+        />
+
+        <div className="relative flex flex-col items-center gap-5">
+          <IconChip icon={done ? LuWalletMinimal : LuArrowRightLeft} color={HUE.teal} size={56} />
+
+          <div className="flex flex-col gap-2">
+            <h2 className="text-[18px] font-semibold tracking-tight text-text-1">
+              {done ? 'Your funds have moved' : 'Predict moved to a new version'}
+            </h2>
+            <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
+              {done ? (
+                <>
+                  Your account is set up on the new release with your {amount} in it. Place a bet
+                  whenever you are ready.
+                </>
+              ) : (
+                <>
+                  Your <span className="text-text-1">{amount}</span> is still in your account on the
+                  previous release. Setting up your account here brings it across in the same
+                  transaction.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div className="glass-inset flex w-full items-center justify-between gap-2 px-3.5 py-2.5">
+            {steps.map((label, i) => (
+              <Fragment key={label}>
+                {i > 0 && <span className="h-px flex-1 bg-white/10" />}
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-semibold ${
+                      i === (done ? 1 : 0) ? 'bg-accent/20 text-accent' : 'bg-white/5 text-text-3'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span
+                    className={`text-[10px] uppercase tracking-wider ${i === (done ? 1 : 0) ? 'text-text-2' : 'text-text-3'}`}
+                  >
+                    {label}
+                  </span>
+                </span>
+              </Fragment>
+            ))}
+          </div>
+
+          {move.phase === 'error' && move.errMsg && (
+            <p className="text-[12px] leading-relaxed text-text-2">{move.errMsg}</p>
+          )}
+
+          {done ? (
+            <Link
+              href="/v2"
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)]"
+            >
+              Start trading
+              <LuArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+            </Link>
+          ) : (
+            <button
+              onClick={() => void move.move()}
+              disabled={busy || !move.ready}
+              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
+            >
+              {busy ? 'Moving…' : move.phase === 'error' ? 'Try again' : 'Set up account and move balance'}
+              {!busy && (
+                <LuArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+              )}
+            </button>
+          )}
+
+          <Link
+            href="/v2"
+            className="text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
+          >
+            ← back to the markets
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** First-run card: one transaction creates the shared trading account. */
 function CreateAccountCard({ busy, onCreate }: { busy: boolean; onCreate: () => void }) {

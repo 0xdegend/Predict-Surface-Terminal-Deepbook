@@ -22,24 +22,10 @@
 import { useState } from 'react';
 import { LuArrowRightLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
-import { useLegacyFunds, qkLegacyFunds } from '@/lib/hooks/use-legacy-funds';
-import { buildLegacyMoveTx } from '@/lib/sui/v2/legacy-account';
+import { useLegacyMove } from '@/lib/hooks/use-legacy-move';
 import { predictV2Config } from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
-
-type Phase = 'idle' | 'moving' | 'done' | 'error';
-
-/**
- * Below this, leave it alone (base units — 0.01 DUSDC).
- *
- * Deliberately tiny. The floor exists only to stop a rounding remainder of a fraction of a
- * cent putting a banner on someone's portfolio forever, since a withdraw can leave dust
- * behind. It is NOT a judgment about what is worth reclaiming: a real leftover balance is
- * the trader's money whatever its size, and the first wallet checked had 3.11 DUSDC sitting
- * on a release nobody had looked at in a month.
- */
-const MIN_RECLAIM_BASE = 10_000n;
 
 /**
  * Dismissals are per wallet AND per move: "later" should mean later, not until reload, but
@@ -65,20 +51,16 @@ function readDismissed(owner: string | null, from: string | null): boolean {
 export function LegacyFundsBanner() {
   const acct = usePredictAccountV2();
   const owner = acct.owner ?? null;
-  const legacy = useLegacyFunds(owner);
+  const legacy = useLegacyMove();
   const sym = predictV2Config.quote.symbol;
+  const { phase, errMsg, amount } = legacy;
 
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [errMsg, setErrMsg] = useState<string | null>(null);
   // Read once into state rather than on every render, so the value is stable across the
   // move and the banner cannot vanish mid-flow.
   const [dismissed, setDismissed] = useState(() => readDismissed(owner, legacy.deployment));
 
-  const amount = legacy.balanceBase;
-  const hasFunds = amount >= MIN_RECLAIM_BASE && !!legacy.wrapperId && !!legacy.deployment;
-
   // Stay mounted through the flow so the trader sees it finish; otherwise hide entirely.
-  if (!owner || (!hasFunds && phase === 'idle') || (dismissed && phase === 'idle')) return null;
+  if (!owner || (!legacy.hasFunds && phase === 'idle') || (dismissed && phase === 'idle')) return null;
 
   function dismiss() {
     if (phase === 'moving') return;
@@ -88,39 +70,6 @@ export function LegacyFundsBanner() {
       /* storage blocked — dismissing for this session only is fine */
     }
     setDismissed(true);
-  }
-
-  async function move() {
-    if (!owner || !legacy.wrapperId || !legacy.deployment) return;
-    // Only act on a wrapper state we actually READ. `wrapperExists` defaults to false, so
-    // acting while the read is still in flight could ask the chain to create an account
-    // that already exists — which aborts the whole move.
-    if (!acct.wrapperKnown) return;
-    // If the read says an account exists it must also have told us which one. Bailing is
-    // better than depositing into a guessed address.
-    if (acct.wrapperExists && !acct.wrapperId) return;
-    setErrMsg(null);
-    setPhase('moving');
-
-    const ok = await acct.runTx(
-      'legacy-move',
-      buildLegacyMoveTx({
-        from: legacy.deployment,
-        oldWrapperId: legacy.wrapperId,
-        newWrapperId: acct.wrapperId ?? '',
-        amount,
-        createAccount: !acct.wrapperExists,
-      }),
-      [qkLegacyFunds(owner, legacy.deployment)],
-    );
-    legacy.refetch();
-    if (!ok) {
-      // Atomic, so there is exactly one true thing to say: nothing moved.
-      setErrMsg(`We couldn't move your ${sym} just now. It is still in your old account.`);
-      setPhase('error');
-      return;
-    }
-    setPhase('done');
   }
 
   const moving = phase === 'moving';
@@ -145,8 +94,8 @@ export function LegacyFundsBanner() {
               <span className="font-medium text-text-1">
                 Predict moved to a new version, and you have {label} in your old account.
               </span>{' '}
-              Your funds are safe. Moving them sets up your new trading account at the same
-              time, in one step.
+              Moving it across sets up your trading account on the new release at the same time,
+              in one transaction.
             </>
           )}
         </p>
@@ -162,11 +111,11 @@ export function LegacyFundsBanner() {
             Later
           </button>
           <button
-            onClick={move}
+            onClick={() => void legacy.move()}
             disabled={moving}
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[11.5px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
-            {moving ? 'Moving…' : phase === 'error' ? 'Try again' : 'Move my funds'}
+            {moving ? 'Moving…' : phase === 'error' ? 'Try again' : 'Move my balance'}
           </button>
         </div>
       )}
