@@ -28,7 +28,6 @@ import {
   LuDownload,
   LuUpload,
   LuHistory,
-  LuArrowRight,
   LuArrowRightLeft,
   LuFlaskConical,
   LuVault,
@@ -613,21 +612,17 @@ function MigrateAccountCard({
           {done ? (
             <Link
               href="/v2"
-              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)]"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)]"
             >
               Start trading
-              <LuArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
             </Link>
           ) : (
             <button
               onClick={() => void move.move()}
               disabled={busy || !move.ready}
-              className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
             >
               {busy ? 'Moving…' : move.phase === 'error' ? 'Try again' : 'Set up account and move balance'}
-              {!busy && (
-                <LuArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-              )}
             </button>
           )}
 
@@ -635,7 +630,7 @@ function MigrateAccountCard({
             href="/v2"
             className="text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
           >
-            ← back to the markets
+            back to the markets
           </Link>
         </div>
       </div>
@@ -698,19 +693,16 @@ function CreateAccountCard({ busy, onCreate }: { busy: boolean; onCreate: () => 
           <button
             onClick={onCreate}
             disabled={busy}
-            className="group inline-flex w-full items-center justify-center gap-2 rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
+            className="inline-flex w-full items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
           >
             {busy ? 'Creating…' : 'Create trading account'}
-            {!busy && (
-              <LuArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-0.5" />
-            )}
           </button>
 
           <Link
             href="/v2"
             className="text-[11px] text-text-3 underline-offset-2 transition-colors hover:text-text-2 hover:underline"
           >
-            ← back to the markets
+            back to the markets
           </Link>
         </div>
       </div>

@@ -96,3 +96,41 @@ describe('what the move does', () => {
     expect(createsAccount(false, false)).toBe(false);
   });
 });
+
+describe('the trade-screen onboarding modal', () => {
+  /** Mirrors the `open` gate in OnboardFundModal. */
+  const opens = (o: {
+    owner: boolean;
+    dismissed: boolean;
+    legacyLoading: boolean;
+    legacyBalance: bigint;
+    firstTimer: boolean;
+  }) =>
+    o.owner &&
+    !o.dismissed &&
+    !o.legacyLoading &&
+    !(o.legacyBalance >= MIN_RECLAIM_BASE) &&
+    o.firstTimer;
+
+  const base = { owner: true, dismissed: false, legacyLoading: false, legacyBalance: 0n, firstTimer: true };
+
+  it('opens for a genuine first-timer', () => {
+    expect(opens(base)).toBe(true);
+  });
+
+  it('stays shut for someone with a balance on the old release', () => {
+    // The portfolio owns that conversation. An unprompted interstitial about moving funds
+    // is not something this screen should ever raise.
+    expect(opens({ ...base, legacyBalance: 12_843_449_977n })).toBe(false);
+    expect(opens({ ...base, legacyBalance: 3_110_000n })).toBe(false);
+  });
+
+  it('waits for the old-release read instead of opening and vanishing', () => {
+    expect(opens({ ...base, legacyLoading: true })).toBe(false);
+  });
+
+  it('still opens when only dust is left behind', () => {
+    // Dust is not a migration, and it must not cost a new trader their onboarding.
+    expect(opens({ ...base, legacyBalance: MIN_RECLAIM_BASE - 1n })).toBe(true);
+  });
+});

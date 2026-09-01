@@ -17,6 +17,12 @@
  * Google/Enoki signs both gaslessly (no popups); an external wallet approves the
  * create once.
  *
+ * NOT SHOWN to someone returning after a redeploy who still has a balance on the old
+ * release. That case belongs to the portfolio, which owns the whole migration story in one
+ * place. Two reasons it does not belong here: a first-run starter grant is the wrong offer
+ * for someone who already has funds, and an interstitial that appears unprompted to talk
+ * about moving balances is a shape worth keeping off a trading screen entirely.
+ *
  * Self-contained — it runs its own account + grant hooks (deduped by query key,
  * like MobileFundBanner) and owns its open/dismiss state, so it's mounted once on
  * the trade screen and needs no props.
@@ -56,9 +62,13 @@ export function OnboardFundModal() {
     symbol: sym,
   });
   // A returning trader after a redeploy is NOT a first-timer, even though they have no
-  // account on this release. They have their own DUSDC sitting in an account on the old
-  // one, and offering them a starter grant and a fresh empty account says nothing about
-  // it — which reads as "your funds are gone". Same modal, different question.
+  // account on this release: their DUSDC is sitting in an account on the old one. This
+  // modal says NOTHING about that case and must not try to. The portfolio owns the whole
+  // migration story, in one place, where someone has gone looking for their balance.
+  //
+  // Read here only to STAY SHUT. Offering a first-run starter grant to someone who already
+  // has funds would be wrong, and an interstitial that pops up unprompted to talk about
+  // moving funds is the exact shape we do not want on a trading screen.
   const legacy = useLegacyMove();
   const returning = legacy.hasFunds;
 
@@ -84,11 +94,15 @@ export function OnboardFundModal() {
   // Derived, so there's no setState-in-effect: open for an un-dismissed first-timer,
   // and — once the flow has started — stay open through funding/creating/done/error
   // even as `wrapperExists` flips mid-create (which would otherwise close + flicker).
-  // Wait for the old-release read before opening. The two variants say very different
-  // things, so opening on the first-run copy and swapping it a moment later is worse than
-  // a brief wait on a modal that only ever appears once.
+  // Wait for the old-release read before opening, then stay shut for a returning trader.
+  // Waiting matters: without it the modal would open on first-run copy and vanish a moment
+  // later once the balance came back, which is worse than a brief pause.
   const open =
-    !!owner && dismissedFor !== owner && !legacy.isLoading && (phase !== 'intro' || firstTimer);
+    !!owner &&
+    dismissedFor !== owner &&
+    !legacy.isLoading &&
+    !returning &&
+    (phase !== 'intro' || firstTimer);
 
   function dismiss() {
     if (busy) return; // don't let ESC/backdrop interrupt a signing tx
@@ -99,21 +113,6 @@ export function OnboardFundModal() {
 
   async function fundAndStart() {
     setErrMsg(null);
-
-    // A returning trader takes the move instead: ONE transaction that creates the account
-    // here and brings their old-release balance across. No starter grant — they are not
-    // short of DUSDC, they are short of an account to hold it.
-    if (returning) {
-      setPhase('creating');
-      const ok = await legacy.move();
-      if (!ok) {
-        setErrMsg(legacy.errMsg ?? `We couldn't move your ${sym} just now.`);
-        setPhase('error');
-        return;
-      }
-      setPhase('done');
-      return;
-    }
 
     const walletBase = acct.walletDusdcBase ?? 0n;
     const needsFunding = acct.balanceBase + walletBase < STARTER_GRANT_BALANCE_CEILING;
@@ -158,25 +157,14 @@ export function OnboardFundModal() {
     acct.balanceBase + (acct.walletDusdcBase ?? 0n) >= STARTER_GRANT_BALANCE_CEILING;
   const canFund = starterGrant.enabled && !alreadyFunded;
 
-  const legacyAmount = `${fmtQuote(fromQuote(legacy.amount))} ${sym}`;
   const title =
-    phase === 'done'
-      ? 'You’re ready to trade'
-      : phase === 'error'
-        ? 'Almost there'
-        : returning
-          ? 'Predict moved to a new version'
-          : 'Get set up to trade';
+    phase === 'done' ? 'You’re ready to trade' : phase === 'error' ? 'Almost there' : 'Get set up to trade';
   const subtitle =
     phase === 'done'
-      ? returning
-        ? 'Your funds have moved across and your account is ready.'
-        : 'Your account is funded and ready.'
+      ? 'Your account is funded and ready.'
       : phase === 'error'
         ? undefined
-        : returning
-          ? 'One transaction sets up your account here and brings your balance across.'
-          : 'One tap sets up everything you need to place your first trade.';
+        : 'One tap sets up everything you need to place your first trade.';
 
   const footer =
     phase === 'done' ? (
@@ -198,15 +186,7 @@ export function OnboardFundModal() {
           Maybe later
         </button>
         <button onClick={fundAndStart} disabled={busy} className={BTN_PRIMARY}>
-          {phase === 'funding'
-            ? `Adding ${sym}…`
-            : phase === 'creating'
-              ? returning
-                ? 'Moving…'
-                : 'Setting up…'
-              : returning
-                ? 'Set up account and move balance'
-                : 'Fund & start'}
+          {phase === 'funding' ? `Adding ${sym}…` : phase === 'creating' ? 'Setting up…' : 'Fund & start'}
         </button>
       </>
     );
@@ -215,14 +195,7 @@ export function OnboardFundModal() {
     <Modal open={open} onClose={dismiss} title={title} subtitle={subtitle} variant="glass" mascot={MOOD[phase]} footer={footer}>
       {phase === 'done' ? (
         <p className="text-[13px] leading-relaxed text-text-2">
-          {returning ? (
-            <>Your {sym} is in your new trading account. Pick a price on the surface and carry on.</>
-          ) : (
-            <>
-              Pick a price on the surface and place your first trade. Your {sym} deposits
-              automatically the moment you trade.
-            </>
-          )}
+          Pick a price on the surface and place your first trade. Your {sym} deposits automatically the moment you trade.
         </p>
       ) : phase === 'error' ? (
         <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-text-2">
@@ -242,12 +215,7 @@ export function OnboardFundModal() {
           <li className="flex items-start gap-2.5">
             <Dot />
             <span>
-              {returning ? (
-                <>
-                  Your <span className="text-text-1">{legacyAmount}</span> moved from your old
-                  account
-                </>
-              ) : canFund ? (
+              {canFund ? (
                 <>
                   <span className="text-text-1">{grantLabel}</span> added to your wallet to start
                   {!acct.gasless && <span className="text-text-3">, plus a little SUI for gas</span>}
@@ -268,9 +236,7 @@ export function OnboardFundModal() {
             <span className="text-text-3">
               {acct.gasless
                 ? 'No popups, no gas. You’re signed in with Google.'
-                : returning
-                  ? 'One quick wallet approval. It all happens in a single transaction.'
-                  : 'One quick wallet approval to create your account'}
+                : 'One quick wallet approval to create your account'}
             </span>
           </li>
         </ul>
