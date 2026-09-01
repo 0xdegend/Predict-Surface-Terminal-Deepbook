@@ -92,9 +92,9 @@ export function LegacyFundsBanner() {
           ) : (
             <>
               <span className="font-medium text-text-1">
-                Upgrade to the new version of Predict.
+                A new version of Predict.
               </span>{' '}
-              Your {label} is still in your account on the previous release, and upgrading brings
+              Your {label} is still in your account on the previous release, and migrating brings
               it across in the same transaction.
             </>
           )}
@@ -115,7 +115,7 @@ export function LegacyFundsBanner() {
             disabled={moving}
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[11.5px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
-            {moving ? 'Upgrading…' : phase === 'error' ? 'Try again' : 'Upgrade'}
+            {moving ? 'Migrating…' : phase === 'error' ? 'Try again' : 'Migrate'}
           </button>
         </div>
       )}
