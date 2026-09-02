@@ -17,6 +17,23 @@ export type Rules = ReturnType<typeof useAutopilotStore.getState>['rules'];
 
 export type Limits = ReturnType<typeof useAutopilotStore.getState>['limits'];
 
+/**
+ * What happened when the trader said "start" to Kelly. The chat answers in words off
+ * this, so the reply always matches what the panel actually did.
+ */
+export type StartOutcome =
+  /** The run is armed. Nothing else to do. */
+  | { kind: 'started'; live: boolean }
+  /** Instant trading needs the wallet's approval first. `done` resolves true once the
+   *  run is armed, false if the approval failed or was cancelled. */
+  | { kind: 'signing'; done: Promise<boolean> }
+  /** Money has to move in before the budget is covered: the start screen is open so the
+   *  trader can see the amount and confirm it. */
+  | { kind: 'confirm'; why: 'top_up'; topUpUsd: number; budgetUsd: number }
+  /** A live blocker the chat cannot clear (no wallet, no trading account, sessions off):
+   *  the start screen is open, where the way past it (connect, or switch to watch) lives. */
+  | { kind: 'confirm'; why: 'blocked'; issue: string };
+
 /** Signed dollar amount, cents shown (PnL is small). e.g. +$0.84, -$5.00. */
 export function signedUsd(v: number): string {
   return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;

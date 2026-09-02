@@ -44,7 +44,7 @@ import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
 import { topUpBase } from '@/lib/autopilot/funding';
 import { buildRunTape } from '@/lib/autopilot/run-tape';
-import { type SetupMode } from './shared';
+import { type SetupMode, type StartOutcome } from './shared';
 import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs } from './setup';
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
@@ -288,16 +288,17 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     setConfirmOpen(true);
   }
 
-  async function handleArm() {
+  /** Resolves true once the run is armed; false when a wallet step failed or was cancelled. */
+  async function handleArm(): Promise<boolean> {
     if (!live) {
       // Watch spends nothing, so it arms straight from the confirm with no wallet step.
       // The close has to happen on THIS path too: an early return here is what left the
       // dialog sitting open over a running dashboard.
       arm(Date.now());
       setConfirmOpen(false);
-      return;
+      return true;
     }
-    if (!acct.sessionsEnabled || !acct.owner || !acct.wrapperExists) return;
+    if (!acct.sessionsEnabled || !acct.owner || !acct.wrapperExists) return false;
     setArming(true);
     try {
       // Recomputed here rather than read off the render, so the amount signed for is
@@ -305,13 +306,47 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
       const deposit = topUpBase(toQuote(limits.budgetUsd), acct.balanceBase);
       if (deposit > 0n || !acct.sessionCanTrade) {
         const digest = await acct.startSession({ budgetBase: deposit, duration: '24h' });
-        if (!digest) return; // cancelled or failed — acct.error explains why
+        if (!digest) return false; // cancelled or failed — acct.error explains why
       }
       arm(Date.now());
       setConfirmOpen(false);
+      return true;
     } finally {
       setArming(false);
     }
+  }
+
+  /**
+   * Start straight from Kelly's chat.
+   *
+   * Saying "start" used to open the same confirm as the button, so the shortest path to
+   * a run was: describe it, say start, then read a dialog and press Start again. The
+   * dialog exists for two decisions, the mode and the money. By the time the chat is
+   * done the mode is already on record (say "live" or "watch"; it is remembered), so the
+   * only thing left that is genuinely the trader's is money moving in, and that is the
+   * one case that still opens it. A live blocker no word in the chat can clear (no
+   * wallet, no trading account, sessions off) opens it too, because the way past those,
+   * connecting or switching to watch, lives there. Everything else arms on the spot.
+   * Instant trading that needs (re)approving is the wallet's own prompt, not ours.
+   */
+  function quickStart(): StartOutcome {
+    if (!live) {
+      arm(Date.now());
+      return { kind: 'started', live: false };
+    }
+    if (liveSetupIssue) {
+      setConfirmOpen(true);
+      return { kind: 'confirm', why: 'blocked', issue: liveSetupIssue };
+    }
+    if (topUp > 0n) {
+      setConfirmOpen(true);
+      return { kind: 'confirm', why: 'top_up', topUpUsd: fromQuote(topUp), budgetUsd: limits.budgetUsd };
+    }
+    if (acct.sessionCanTrade) {
+      arm(Date.now());
+      return { kind: 'started', live: true };
+    }
+    return { kind: 'signing', done: handleArm() };
   }
 
   function toggleTenor(t: Tenor) {
@@ -460,8 +495,9 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
                 <KellySetupCard
                   current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
                   onApply={applySetup}
-                  onStart={handleStart}
+                  onStart={quickStart}
                   startIssue={armIssue}
+                  live={live}
                 />
               ) : (
                 <>
@@ -484,9 +520,10 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             {/* Sticky because it is the read-out for the controls beside it: in Manual
                 the left column is much taller than this one, so a fixed plan would
                 scroll away exactly while you are changing what it describes.
-                `live={null}` because the mode has not been chosen yet at this point. */}
+                In Auto the mode is what "start" will use, so it is shown; in Manual it is
+                `null` because the Start button's confirm is where it gets chosen. */}
             <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
-              <PlanCard rules={rules} limits={limits} live={null} presetId={activePreset} />
+              <PlanCard rules={rules} limits={limits} live={setupMode === 'auto' ? live : null} presetId={activePreset} />
               {setupMode === 'manual' && <PlanDetails rules={rules} limits={limits} />}
             </div>
         </div>

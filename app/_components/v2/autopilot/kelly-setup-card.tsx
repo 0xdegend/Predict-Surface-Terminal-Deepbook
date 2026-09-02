@@ -16,6 +16,7 @@ import { num } from '@/lib/format';
 import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
 import { GAP_ORDER, type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
 import { readSetup } from '@/lib/autopilot/read-setup';
+import type { StartOutcome } from './shared';
 
 /**
  * The four openers were two careful ones, a bold one and a balanced one, half of them
@@ -92,25 +93,27 @@ function listWords(xs: string[]): string {
  * Now the reader (rules, plus the optional model tier) reports what it actually
  * understood, `missingFrom` reports what is still unknown, and Kelly asks for one
  * missing piece at a time with tappable answers. Nothing is applied to the panel until
- * every required piece has been stated by the trader, and even then the plan line and
- * the Start button are still the confirm.
+ * every required piece has been stated by the trader, and nothing runs until they say
+ * "start".
  */
 export function KellySetupCard({
   current,
   onApply,
   onStart,
   startIssue,
+  live,
 }: {
   current: { budgetUsd: number; perTradeUsd: number; armDurationMs: number };
   onApply: (r: ResolvedSetup) => void;
-  /** Begin the run from the conversation. Runs the SAME path as the Start button, which
-   *  ends at the arm confirm: that dialog is where watch-vs-live and the funding route
-   *  are chosen, and it is the last stop before real money, so a typed word opens it
-   *  rather than stepping around it. */
-  onStart?: () => void;
+  /** Begin the run from the conversation. "start" IS the confirm: the panel arms on the
+   *  spot and only opens the start screen when money has to move in first (or a live
+   *  blocker needs the wallet). It reports what it did so Kelly can say so. */
+  onStart?: () => StartOutcome;
   /** Why starting is blocked right now (the panel's own arm check), so Kelly can say it
    *  in words instead of the trader typing "start" into silence. */
   startIssue?: string | null;
+  /** The mode "start" will use, so it is on screen before anyone says the word. */
+  live: boolean;
 }) {
   // The conversation lives in the store, not here: local state was thrown away every
   // time the trader walked to another tab and back. See SetupChat in the store for why
@@ -169,8 +172,34 @@ export function KellySetupCard({
         push('kelly', `I can't start yet: ${lowerFirst(startIssue)}.`);
         return;
       }
-      push('kelly', "On it. Confirm the plan and I'll start.");
-      onStart?.();
+      const outcome = onStart?.();
+      if (!outcome) return;
+      if (outcome.kind === 'started') {
+        push(
+          'kelly',
+          outcome.live
+            ? 'Starting now, trading live from your trading account. Stop me any time from the top bar.'
+            : "Starting now in watch mode. No real money; I'll score every pick against the real market.",
+        );
+        return;
+      }
+      if (outcome.kind === 'signing') {
+        push('kelly', "Approve instant trading in your wallet and I'll start.");
+        const ok = await outcome.done;
+        push(
+          'kelly',
+          ok
+            ? 'Running. Stop me any time from the top bar.'
+            : 'That didn\u2019t go through. Check your wallet, then say \u201cstart\u201d to try again.',
+        );
+        return;
+      }
+      push(
+        'kelly',
+        outcome.why === 'top_up'
+          ? `One thing first: your trading account needs $${num(outcome.topUpUsd, 2)} more to cover the $${num(outcome.budgetUsd, 0)} budget. Confirm the top-up and I'll start.`
+          : `One thing first: ${lowerFirst(outcome.issue)}. I've opened the start screen; you can switch to watch mode there.`,
+      );
       return;
     }
 
@@ -349,8 +378,8 @@ export function KellySetupCard({
       {done ? (
         <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
           <LuCircleCheck size={12} className="mt-px flex-none" />
-          Settings loaded. Say &ldquo;start&rdquo; whenever you&rsquo;re ready, and nothing runs until you
-          confirm.
+          Settings loaded. Say &ldquo;start&rdquo; and I&rsquo;ll begin{' '}
+          {live ? 'trading live' : 'in watch mode, no real money'}. Say &ldquo;live&rdquo; or &ldquo;watch&rdquo; to switch.
         </p>
       ) : (
         /* Just the promise. What to say is already on screen three times over: the three
