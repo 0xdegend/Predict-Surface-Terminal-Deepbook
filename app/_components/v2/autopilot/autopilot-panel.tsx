@@ -27,7 +27,7 @@
  * numerals, teal (up) / coral (down) semantics, hairline dividers.
  */
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { LuGauge, LuHistory, LuShieldCheck, LuTrash2, LuTriangleAlert } from 'react-icons/lu';
 import { ReviewButton } from '@/app/_components/ticket/review-button';
 import { MASCOT_SRC } from '@/lib/mascot';
@@ -38,7 +38,7 @@ import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import { useAutopilotEngine } from '@/lib/hooks/use-autopilot-engine';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
-import { useAutopilotStore } from '@/lib/store/autopilot-store';
+import { useAutopilotStore, type RunResult } from '@/lib/store/autopilot-store';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets';
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
@@ -51,6 +51,7 @@ import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
 import { HeaderTape, MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
 import { ResultsView } from './results';
+import { SessionShareModal } from './session-share-modal';
 
 interface Props {
   markets: V2Market[];
@@ -90,7 +91,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const setDryRun = useAutopilotStore((s) => s.setDryRun);
   const arm = useAutopilotStore((s) => s.arm);
   const disarm = useAutopilotStore((s) => s.disarm);
-  const reset = useAutopilotStore((s) => s.reset);
   const history = useAutopilotStore((s) => s.history);
   const deleteResult = useAutopilotStore((s) => s.deleteResult);
   const clearHistory = useAutopilotStore((s) => s.clearHistory);
@@ -105,6 +105,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   // resolve off `history` (Auto for a first run, Manual once you had a track record),
   // which meant the people most able to judge the feature stopped being shown it.
   const [setupMode, setSetupMode] = useState<SetupMode>('auto');
+  /**
+   * The run being offered as a share card, and where the offer came from. `finished`
+   * is the dialog opening itself the moment a run's log clears with every trade
+   * settled; `results` is the trader asking for it from the archive.
+   */
+  const [share, setShare] = useState<{ run: RunResult; context: 'finished' | 'results' } | null>(null);
 
   // Load the persisted run + results after mount (see skipHydration in the store): a
   // reload restores an in-progress run's open trades, and _resumeAfterReload lands it
@@ -141,11 +147,29 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    * backgrounded tab catches up on return rather than stalling part-way down.
    */
   const clearAt = finished && log[0] ? log[0].at + CLEAR_QUIET_MS + CLEAR_COUNTDOWN_MS : null;
+  /**
+   * Clear the run, and when it is completely done, offer it as a card.
+   *
+   * "Completely done" is stricter than "stopped": every trade it placed has settled
+   * (the tracked list is empty), so the saved result the card paints is the whole
+   * story and not a snapshot with pending rows. A run that a reload stopped is left
+   * out too: the trader is arriving, not finishing, and a dialog over the landing is
+   * the wrong first thing to see. Read off the store rather than the render, because
+   * the auto-clear fires from a timeout. The log is dropped either way, exactly as
+   * before; nothing about the archive changes.
+   */
+  const finishRun = useCallback(() => {
+    const st = useAutopilotStore.getState();
+    const result = st.history.find((r) => r.id === st.run.id) ?? null;
+    const complete = st.status === 'stopped' && st.run.open.length === 0 && !st.interruptedByReload;
+    st.reset();
+    if (result && complete) setShare({ run: result, context: 'finished' });
+  }, []);
   useEffect(() => {
     if (clearAt == null) return;
-    const t = setTimeout(() => reset(), Math.max(0, clearAt - Date.now()));
+    const t = setTimeout(finishRun, Math.max(0, clearAt - Date.now()));
     return () => clearTimeout(t);
-  }, [clearAt, reset]);
+  }, [clearAt, finishRun]);
   // Null through the quiet pause, then counts the last ten seconds out loud.
   const msToClear = clearAt != null ? clearAt - now : null;
   const clearInSec =
@@ -361,7 +385,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           <ViewSwitch view={view} onView={setView} resultCount={history.length} running={armed} />
           {stopped && (
             <button
-              onClick={() => reset()}
+              onClick={finishRun}
               className="group glass-inset hidden items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1 sm:inline-flex"
             >
               <LuTrash2 size={12} className="transition-colors duration-200 group-hover:text-accent" /> Clear log
@@ -384,7 +408,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
       </div>
 
       {view === 'results' ? (
-        <ResultsView history={history} onDelete={deleteResult} onClear={clearHistory} />
+        <ResultsView
+          history={history}
+          onDelete={deleteResult}
+          onClear={clearHistory}
+          onShare={(r) => setShare({ run: r, context: 'results' })}
+        />
       ) : (
         <>
       {idle && armIssue && (
@@ -543,6 +572,10 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
       />
         </>
       )}
+
+      {/* The finished run as a card to post. Mounted outside the view fork so it can
+          open over either screen: the setup it just cleared back to, or Results. */}
+      <SessionShareModal run={share?.run ?? null} context={share?.context ?? 'results'} onClose={() => setShare(null)} />
     </div>
   );
 }

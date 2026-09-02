@@ -244,8 +244,9 @@ function drawEquityChart(s: Ctx, x: number, y: number, w: number, h: number) {
   drawCurve(ctx, [0, ...d.curve], x, plotY, w, plotH, accent, c);
 }
 
-/** Area + line + dashed zero reference, in logical card space. */
-function drawCurve(
+/** Area + line + dashed zero reference, in logical card space. Exported so the
+ *  Autopilot session card draws its run the same way. */
+export function drawCurve(
   ctx: CanvasRenderingContext2D,
   data: number[],
   x0: number,

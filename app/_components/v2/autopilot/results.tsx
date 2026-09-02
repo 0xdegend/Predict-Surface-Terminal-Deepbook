@@ -6,7 +6,7 @@
  * Split out of autopilot-panel.tsx.
  */
 import { useState } from 'react';
-import { LuChevronDown, LuExternalLink, LuEye, LuHistory, LuInbox, LuRadioTower, LuShare2, LuShieldCheck, LuTrash2 } from 'react-icons/lu';
+import { LuChevronDown, LuExternalLink, LuEye, LuHistory, LuImage, LuInbox, LuRadioTower, LuShare2, LuShieldCheck, LuTrash2 } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { type RunResult, type RunTradeResult, useAutopilotStore } from '@/lib/store/autopilot-store';
 import { stopReasonLabel } from '@/lib/autopilot/policy';
@@ -31,10 +31,13 @@ export function ResultsView({
   history,
   onDelete,
   onClear,
+  onShare,
 }: {
   history: RunResult[];
   onDelete: (id: string) => void;
   onClear: () => void;
+  /** Open the run as a share card (the same dialog that offers a run when it finishes). */
+  onShare: (r: RunResult) => void;
 }) {
   if (history.length === 0) {
     return (
@@ -86,7 +89,7 @@ export function ResultsView({
       {/* One card per finished run */}
       <div className="flex flex-col gap-2.5">
         {history.map((r) => (
-          <RunResultCard key={r.id} r={r} onDelete={() => onDelete(r.id)} />
+          <RunResultCard key={r.id} r={r} onDelete={() => onDelete(r.id)} onShare={() => onShare(r)} />
         ))}
       </div>
     </div>
@@ -173,7 +176,7 @@ function EquityChart({ curve }: { curve: EquityCurve }) {
   );
 }
 
-function RunResultCard({ r, onDelete }: { r: RunResult; onDelete: () => void }) {
+function RunResultCard({ r, onDelete, onShare }: { r: RunResult; onDelete: () => void; onShare: () => void }) {
   const [open, setOpen] = useState(false);
   const resolved = r.wins + r.losses;
   const stopLabel = r.stopReason === 'manual' ? 'You stopped it' : stopReasonLabel(r.stopReason);
@@ -209,12 +212,22 @@ function RunResultCard({ r, onDelete }: { r: RunResult; onDelete: () => void }) 
           )}
           <div className="flex items-center justify-between gap-2 border-t border-white/6 px-3 py-2">
             {KELLY_RECEIPTS ? <ReportControl r={r} /> : <span />}
-            <button
-              onClick={onDelete}
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-3 transition-colors hover:text-down"
-            >
-              <LuTrash2 size={11} /> Remove
-            </button>
+            <div className="flex items-center gap-1">
+              {/* The run as an image card (its own dialog). Distinct from the report
+                  control's share, which posts the signed Walrus link. */}
+              <button
+                onClick={onShare}
+                className="group inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-3 transition-colors hover:text-text-1"
+              >
+                <LuImage size={11} className="transition-colors group-hover:text-accent" /> Share card
+              </button>
+              <button
+                onClick={onDelete}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10.5px] font-medium text-text-3 transition-colors hover:text-down"
+              >
+                <LuTrash2 size={11} /> Remove
+              </button>
+            </div>
           </div>
         </div>
       )}

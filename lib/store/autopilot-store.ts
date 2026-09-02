@@ -25,7 +25,7 @@ import {
   type StopReason,
   type TradeSide,
 } from '@/lib/autopilot/policy';
-import { presetPatch, DEFAULT_PRESET } from '@/lib/autopilot/presets';
+import { presetPatch, matchPreset, DEFAULT_PRESET, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
 
 /** One line of Kelly's Auto-mode setup conversation. */
@@ -157,6 +157,11 @@ export interface RunResult {
   /** Walrus blob id of the signed, verifiable session report, once the trader mints one
    *  for this run (on demand). Absent until then. */
   reportBlobId?: string;
+  /** The style the run followed (Careful / Balanced / Bold), or null when the trader had
+   *  customized away from every preset. Captured when the run stops, so the share card
+   *  can still name it after the settings have moved on. Absent on runs saved before
+   *  this field existed. */
+  preset?: PresetId | null;
 }
 
 interface Run {
@@ -288,6 +293,7 @@ function snapshotRun(
   run: Run,
   dryRun: boolean,
   limits: AutopilotLimits,
+  preset: PresetId | null,
   stopReason: StopReason | 'manual',
   endedAt: number,
 ): RunResult {
@@ -307,6 +313,7 @@ function snapshotRun(
     pendingCount: trades.filter((t) => t.outcome === 'pending').length,
     realizedPnlUsd: run.realizedPnlUsd,
     trades,
+    preset,
   };
 }
 
@@ -485,7 +492,7 @@ export const useAutopilotStore = create<AutopilotState>()(
           // Save the run to Results the moment it ends (if it did anything). It then
           // completes in place as any late trades settle. A no-trade run isn't saved.
           history:
-            s.run.tradeCount > 0 ? upsertHistory(s.history, snapshotRun(s.run, s.dryRun, s.limits, reason, now)) : s.history,
+            s.run.tradeCount > 0 ? upsertHistory(s.history, snapshotRun(s.run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), reason, now)) : s.history,
           log: appendLog(s.log, {
             id: nextId(now),
             at: now,
@@ -511,7 +518,7 @@ export const useAutopilotStore = create<AutopilotState>()(
             run,
             history:
               s.status === 'stopped' && run.tradeCount > 0
-                ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, s.stopReason ?? 'manual', now))
+                ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), s.stopReason ?? 'manual', now))
                 : s.history,
           };
         });
@@ -576,7 +583,7 @@ export const useAutopilotStore = create<AutopilotState>()(
             // Keep the saved result in sync while a stopped run finishes settling.
             history:
               s.status === 'stopped' && run.tradeCount > 0
-                ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, s.stopReason ?? 'manual', now))
+                ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), s.stopReason ?? 'manual', now))
                 : s.history,
             log: appendLog(s.log, {
               id: nextId(now),
@@ -612,7 +619,7 @@ export const useAutopilotStore = create<AutopilotState>()(
             interruptedByReload: true,
             history:
               s.run.tradeCount > 0
-                ? upsertHistory(s.history, snapshotRun(s.run, s.dryRun, s.limits, 'manual', now))
+                ? upsertHistory(s.history, snapshotRun(s.run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), 'manual', now))
                 : s.history,
             // A logged event, not just a banner. The reload IS the thing that ended the
             // run, so it belongs in the run's own history, and it gives the panel a real
