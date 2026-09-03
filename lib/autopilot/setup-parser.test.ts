@@ -111,8 +111,9 @@ describe('resolveSetup', () => {
     // $5,001, so the third trade could never fire and the run stopped after two.
     const r = resolveSetup(parseSetup('careful, $5000 for 30 minutes'), CURRENT);
     expect(r.budgetUsd).toBe(5000);
-    expect(r.perTradeUsd).toBe(1666);
-    expect(r.perTradeUsd * 3).toBeLessThanOrEqual(r.budgetUsd);
+    // To the cent: whole dollars ($1,666 x 3 = $4,998) left $2 of the budget never placed.
+    expect(r.perTradeUsd).toBe(1666.67);
+    expect(Math.abs(r.perTradeUsd * 3 - r.budgetUsd)).toBeLessThan(0.05);
   });
 
   it('never lets the per-bet exceed the budget', () => {

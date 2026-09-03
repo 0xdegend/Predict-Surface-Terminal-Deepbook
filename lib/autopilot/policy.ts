@@ -144,7 +144,8 @@ export interface AutopilotRuntime {
   firedMarkets: Record<string, number>;
 }
 
-/** Health of the machinery Autopilot needs to trade safely. Any false = stop. */
+/** Health of the machinery Autopilot needs to trade safely. An expired key or a quiet
+ *  feed stops the run; low gas only PAUSES it (see autoPauseReason). */
 export interface AutopilotHealth {
   /** The session key is authorized and not expired. */
   sessionLive: boolean;
@@ -171,7 +172,8 @@ export interface GateResult {
   code: GateCode;
 }
 
-/** Why Autopilot disarmed itself (terminal). */
+/** Why Autopilot disarmed itself (terminal). `gas_low` is no longer produced (low gas
+ *  pauses the run now, see PauseReason) but stays so runs saved before that still label. */
 export type StopReason =
   | 'budget_spent'
   | 'trade_cap_reached'
@@ -180,6 +182,14 @@ export type StopReason =
   | 'session_expired'
   | 'gas_low'
   | 'feed_stall';
+
+/**
+ * Why Autopilot is holding rather than trading: a condition the trader can clear
+ * without ending the run. Low gas is the one so far. The run used to stop outright
+ * here, which threw away the rest of a budget over a few cents of SUI; now it waits,
+ * offers a top-up, and picks up on its own once the key can pay for a trade again.
+ */
+export type PauseReason = 'gas_low';
 
 const ALLOW: GateResult = { allow: true, code: 'ok' };
 const deny = (code: GateCode): GateResult => ({ allow: false, code });
@@ -235,9 +245,20 @@ export const MIN_TRADE_USD = 1;
  * $1,666: less than a full trade, but a third of the money the trader put up. The run
  * stopped there and called it "Budget used up". The last trade shrinks to the remainder
  * instead, so the budget is the thing that gets spent, not the rounding.
+ *
+ * The other direction too: whatever this trade would leave behind that is smaller than
+ * the chain's minimum could never be placed by anyone, so it is folded into this trade
+ * rather than stranded. That is how $1,666.67 x 3 lands on $5,000.00 exactly instead of
+ * a run that ends a few cents short of the budget it was given. Never more than that:
+ * a leftover big enough to be a trade is the trader's per-trade size holding, not dust.
  */
 export function stakeFor(limits: AutopilotLimits, runtime: AutopilotRuntime): number {
-  return Math.max(0, Math.min(limits.perTradeUsd, limits.budgetUsd - runtime.spentUsd));
+  const remaining = Math.max(0, limits.budgetUsd - runtime.spentUsd);
+  const stake = Math.min(limits.perTradeUsd, remaining);
+  const leftover = remaining - stake;
+  const sized = leftover > 0 && leftover < MIN_TRADE_USD ? remaining : stake;
+  // Cents, so a stake that came from float arithmetic is the number the log shows.
+  return Math.round(sized * 100) / 100;
 }
 
 /**
@@ -253,7 +274,6 @@ export function autoStopReason(
   now: number,
 ): StopReason | null {
   if (!health.sessionLive) return 'session_expired';
-  if (!health.gasOk) return 'gas_low';
   if (!health.feedFresh) return 'feed_stall';
   if (runtime.consecutiveLosses >= limits.maxConsecutiveLosses) return 'loss_limit';
   if (runtime.tradeCount >= limits.maxTrades) return 'trade_cap_reached';
@@ -263,6 +283,24 @@ export function autoStopReason(
   if (limits.budgetUsd - runtime.spentUsd < MIN_TRADE_USD) return 'budget_spent';
   if (now - runtime.armedAt >= limits.armDurationMs) return 'duration_elapsed';
   return null;
+}
+
+/**
+ * Decide whether Autopilot should HOLD (not stop) on this tick. Checked after
+ * autoStopReason, so a run that is out of time or out of key still ends cleanly even
+ * while it is waiting on gas. A paused run resumes the moment this returns null.
+ */
+export function autoPauseReason(health: AutopilotHealth): PauseReason | null {
+  if (!health.gasOk) return 'gas_low';
+  return null;
+}
+
+/** Plain-language reason Autopilot is holding, for the banner + log. */
+export function pauseReasonLabel(reason: PauseReason): string {
+  switch (reason) {
+    case 'gas_low':
+      return 'Trading key is low on gas';
+  }
 }
 
 /**
@@ -341,7 +379,7 @@ export function stopReasonLabel(reason: StopReason): string {
     case 'session_expired':
       return 'Trading key expired, sign in again to continue';
     case 'gas_low':
-      return 'Trading key is low on gas';
+      return 'Trading key ran low on gas';
     case 'feed_stall':
       return 'Paused: the price feed went quiet';
   }

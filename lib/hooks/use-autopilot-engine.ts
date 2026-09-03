@@ -9,6 +9,8 @@
  *      settlement (marks it won/lost, which drives the loss-limit),
  *   2. prunes finished positions (simulated at expiry; real after a grace window),
  *   3. checks the terminal stop conditions (autoStopReason) and disarms if any hold,
+ *      then the holdable ones (autoPauseReason): low gas pauses the run rather than
+ *      ending it, and the run resumes on its own once the key is topped up,
  *   4. asks Kelly for her best-value pick over the trader's allowed windows,
  *   5. runs that pick through the pure gate, and
  *   6. either SIMULATES the fire (watch mode) or PLACES it for real through the
@@ -35,6 +37,7 @@ import { useBtcInsights, type BtcInsights } from './use-btc-insights';
 import { usePredictAccountV2 } from './use-predict-account-v2';
 import { respondToIntent, type BetCandidate } from '@/lib/copilot/respond';
 import {
+  autoPauseReason,
   autoStopReason,
   classifyTenor,
   gateReasonLabel,
@@ -257,11 +260,11 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
 
     // A stopped run only finishes settling its remaining positions — no health checks,
     // no picks, no new trades.
-    if (st.status !== 'armed') return;
+    if (st.status === 'stopped') return;
 
     // Health: in watch mode (or during the post-arm warmup) the trading key isn't in
-    // play, so only the feed matters. Once live and warmed up, an expired or gas-starved
-    // session key disarms the run.
+    // play, so only the feed matters. Once live and warmed up, an expired session key
+    // disarms the run, and a gas-starved one pauses it.
     const warming = now - st.run.armedAt < HEALTH_WARMUP_MS;
     const feedFresh = now - lastLiveRef.current < FEED_STALE_MS;
     const health: AutopilotHealth =
@@ -273,6 +276,20 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     const stop = autoStopReason(limits, runtime, health, now);
     if (stop) {
       st.disarm(stop, now);
+      return;
+    }
+
+    // Low gas holds the run instead of ending it: the trader tops the key up from the
+    // banner and the next tick that reads it as funded puts the run back on. The stop
+    // checks above still run while paused, so a run that times out (or whose key
+    // expires) while it waits finishes like any other.
+    const pause = autoPauseReason(health);
+    if (st.status === 'paused') {
+      if (!pause) st.resume(now);
+      return;
+    }
+    if (pause) {
+      st.pause(pause, now);
       return;
     }
 
@@ -376,13 +393,21 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     })();
   }, []);
 
-  // Keep the loop alive while armed, and also while a STOPPED run still has open
-  // positions to settle (so its saved result completes on its own). It shuts off
-  // once a stopped run's last position resolves.
+  // Keep the loop alive while armed or paused (a paused run is still watching for its
+  // gas to come back), and also while a STOPPED run still has open positions to settle
+  // (so its saved result completes on its own). It shuts off once a stopped run's last
+  // position resolves.
+  const running = status === 'armed' || status === 'paused';
   const settling = status === 'stopped' && open.length > 0;
+  // The per-run refs reset on a NEW run only, keyed on the run id: a pause and its
+  // resume both change `status` and re-run this effect, and clearing the settled set
+  // there would let a position mid-settlement be resolved a second time.
+  const runId = useAutopilotStore((s) => s.run.id);
+  const startedRunRef = useRef<string | null>(null);
   useEffect(() => {
-    if (status !== 'armed' && !settling) return;
-    if (status === 'armed') {
+    if (!running && !settling) return;
+    if (running && startedRunRef.current !== runId) {
+      startedRunRef.current = runId;
       lastLiveRef.current = Date.now(); // start the feed-freshness clock on arm
       fireRef.current = false;
       settledRef.current.clear(); // a fresh run scores its own positions from scratch
@@ -390,7 +415,7 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     tick(); // evaluate immediately
     const h = setInterval(tick, TICK_MS);
     return () => clearInterval(h);
-  }, [status, settling, tick]);
+  }, [running, settling, runId, tick]);
 
   // Live PnL per still-open position, marked off the current pricer with the
   // terminal's own math. A position with no live pricer (expired / pending

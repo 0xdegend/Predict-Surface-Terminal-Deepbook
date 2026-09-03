@@ -17,10 +17,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
 import {
+  pauseReasonLabel,
   stopReasonLabel,
   type AutopilotRules,
   type AutopilotLimits,
   type AutopilotRuntime,
+  type PauseReason,
   type ProposedTrade,
   type StopReason,
   type TradeSide,
@@ -61,9 +63,11 @@ function freshSetupChat(): SetupChat {
   return { turns: [], intent: emptyIntent(), nextId: 1 };
 }
 
-export type AutopilotStatus = 'idle' | 'armed' | 'stopped';
+/** `paused` is a live run holding for something the trader can fix (low gas). It keeps
+ *  its budget, counters, and clock, and goes back to `armed` on its own once cleared. */
+export type AutopilotStatus = 'idle' | 'armed' | 'paused' | 'stopped';
 
-export type LogKind = 'armed' | 'placed' | 'held' | 'settled' | 'disarmed';
+export type LogKind = 'armed' | 'placed' | 'held' | 'settled' | 'paused' | 'resumed' | 'disarmed';
 
 export interface AutopilotLogEntry {
   id: string;
@@ -364,6 +368,8 @@ interface AutopilotState {
   status: AutopilotStatus;
   run: Run;
   stopReason: StopReason | null;
+  /** Why a `paused` run is holding; null in every other status. */
+  pauseReason: PauseReason | null;
   /** When the run stopped (ms epoch), or null while it has never run or is still armed.
    *  The meters need it to say how long a run ACTUALLY lasted: without it they fell back
    *  to the configured length, so a 10-minute run that hit its trade cap after four
@@ -397,6 +403,11 @@ interface AutopilotState {
   // --- run actions ---
   arm: (now: number) => void;
   disarm: (reason: StopReason | 'manual', now: number) => void;
+  /** Hold an armed run (nothing new fires; open trades still settle; the clock keeps
+   *  going). No-op unless the run is armed. */
+  pause: (reason: PauseReason, now: number) => void;
+  /** Put a paused run back to armed. No-op unless the run is paused. */
+  resume: (now: number) => void;
   reset: () => void;
   /** Drop positions we no longer track. Every position (sim or real) is kept until
    *  `expiry + graceMs` so the engine has time to read its on-chain settlement and
@@ -448,6 +459,7 @@ export const useAutopilotStore = create<AutopilotState>()(
       status: 'idle',
       run: freshRun(0),
       stopReason: null,
+      pauseReason: null,
       stoppedAt: null,
       log: [],
       interruptedByReload: false,
@@ -474,6 +486,7 @@ export const useAutopilotStore = create<AutopilotState>()(
           status: 'armed',
           run: freshRun(now),
           stopReason: null,
+          pauseReason: null,
           stoppedAt: null,
           interruptedByReload: false,
           log: appendLog(s.log, {
@@ -488,6 +501,7 @@ export const useAutopilotStore = create<AutopilotState>()(
         set((s) => ({
           status: 'stopped',
           stopReason: reason === 'manual' ? null : reason,
+          pauseReason: null,
           stoppedAt: now,
           // Save the run to Results the moment it ends (if it did anything). It then
           // completes in place as any late trades settle. A no-trade run isn't saved.
@@ -501,8 +515,41 @@ export const useAutopilotStore = create<AutopilotState>()(
           }),
         })),
 
+      pause: (reason, now) =>
+        set((s) => {
+          if (s.status !== 'armed') return {};
+          return {
+            status: 'paused',
+            pauseReason: reason,
+            log: appendLog(s.log, {
+              id: nextId(now),
+              at: now,
+              kind: 'paused',
+              text: `Autopilot paused: ${pauseReasonLabel(reason)}. Top up to keep going`,
+            }),
+          };
+        }),
+
+      resume: (now) =>
+        set((s) => {
+          if (s.status !== 'paused') return {};
+          return {
+            status: 'armed',
+            pauseReason: null,
+            log: appendLog(s.log, { id: nextId(now), at: now, kind: 'resumed', text: 'Gas topped up. Autopilot is back on' }),
+          };
+        }),
+
       reset: () =>
-        set({ status: 'idle', run: freshRun(0), stopReason: null, stoppedAt: null, log: [], interruptedByReload: false }),
+        set({
+          status: 'idle',
+          run: freshRun(0),
+          stopReason: null,
+          pauseReason: null,
+          stoppedAt: null,
+          log: [],
+          interruptedByReload: false,
+        }),
 
       pruneExpired: (now, graceMs = 0) => {
         const before = get().run.open;
@@ -607,14 +654,16 @@ export const useAutopilotStore = create<AutopilotState>()(
 
       _resumeAfterReload: () =>
         set((s) => {
-          // A run that was armed when the page unloaded must NOT resume placing trades.
-          // Land it stopped (open positions still settle + show via the engine), flag it
-          // so the UI explains, and save it to results like any other finish.
-          if (s.status !== 'armed') return {};
+          // A run that was armed (or holding for gas) when the page unloaded must NOT
+          // resume placing trades. Land it stopped (open positions still settle + show
+          // via the engine), flag it so the UI explains, and save it to results like any
+          // other finish.
+          if (s.status !== 'armed' && s.status !== 'paused') return {};
           const now = Date.now();
           return {
             status: 'stopped',
             stopReason: null,
+            pauseReason: null,
             stoppedAt: now,
             interruptedByReload: true,
             history:
@@ -679,6 +728,7 @@ export const useAutopilotStore = create<AutopilotState>()(
         status: s.status,
         run: s.run,
         stopReason: s.stopReason,
+        pauseReason: s.pauseReason,
         stoppedAt: s.stoppedAt,
         log: s.log,
         setupChat: s.setupChat,

@@ -72,8 +72,9 @@ export function WalletInstantTrading({ onTopUpGas }: { onTopUpGas?: () => void }
       {/* Session gas: the SUI the session key spends on each trade's network fee. When it
           runs low, instant trades stop submitting — so promote it to a card only then. */}
       {gasLow ? (
-        <div className="glass-inset flex items-center justify-between gap-2 rounded-xl px-3 py-2.5">
-          <span className="flex flex-col">
+        <div className="glass-inset flex items-center justify-between gap-3 rounded-xl px-3 py-2.5">
+          {/* min-w-0 so the copy is what wraps, never the button. */}
+          <span className="flex min-w-0 flex-col">
             <span className="text-[12px] text-text-1">Fees running low</span>
             <span className="text-[10.5px] leading-snug text-text-3">
               <span className="text-warn">{fmtSui(acct.sessionGasBase)} SUI</span> left. Top up or instant
@@ -82,7 +83,7 @@ export function WalletInstantTrading({ onTopUpGas }: { onTopUpGas?: () => void }
           </span>
           <button
             onClick={onTopUpGas}
-            className="rounded-md border border-warn/40 bg-(--warn-soft) px-2.5 py-1.5 text-[11px] font-medium text-warn transition-colors hover:bg-warn/15"
+            className="shrink-0 whitespace-nowrap rounded-md border border-warn/40 bg-(--warn-soft) px-2.5 py-1.5 text-[11px] font-medium text-warn transition-colors hover:bg-warn/15"
           >
             Top up
           </button>

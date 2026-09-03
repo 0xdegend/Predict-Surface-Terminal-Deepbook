@@ -56,7 +56,8 @@ function ackFor(before: SetupIntent, after: SetupIntent): string | null {
   if (before.budgetUsd == null && after.budgetUsd != null) learned.push(`$${num(after.budgetUsd, 0)} in total`);
   if (before.durationMins == null && after.durationMins != null) learned.push(durationWords(after.durationMins));
   if (before.perTradeUsd !== after.perTradeUsd && after.perTradeUsd != null) {
-    learned.push(`$${num(after.perTradeUsd, 0)} a bet`);
+    // Cents only when there are cents: "$1,666.67 a bet" for a split budget, "$10 a bet" otherwise.
+    learned.push(`$${num(after.perTradeUsd, after.perTradeUsd % 1 === 0 ? 0 : 2)} a bet`);
   }
   if (before.live !== after.live && after.live != null) learned.push(after.live ? 'trading live' : 'watch mode');
   if (learned.length === 0) return null;

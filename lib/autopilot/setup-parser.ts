@@ -154,12 +154,14 @@ export function resolveSetup(
 ): ResolvedSetup {
   const shape = PRESET_BY_ID[intent.preset].shape;
   const budgetUsd = clamp(intent.budgetUsd ?? current.budgetUsd, 1, 100_000);
-  // Rounded DOWN, never to nearest: $5,000 over three careful trades is $1,666.67, and
-  // rounding that to $1,667 made three trades cost $5,001, one dollar more than the
-  // budget, so the third could never fire. Flooring keeps every planned trade inside it.
+  // To the CENT, not the dollar: $5,000 over three careful trades is $1,666.67. Whole
+  // dollars left the budget short by the rounding ($1,666 x 3 = $4,998), and the trade
+  // cap then ended the run with $2 of the money the trader put up never placed. Cents
+  // leave at most a few cents over or under, and the engine's stakeFor() sizes the
+  // last trade to the exact remainder either way, so the budget is what gets spent.
   const proposedPer =
     intent.perTradeUsd ??
-    (intent.budgetUsd != null ? Math.max(1, Math.floor(budgetUsd / shape.maxTrades)) : current.perTradeUsd);
+    (intent.budgetUsd != null ? Math.max(1, Math.round((budgetUsd / shape.maxTrades) * 100) / 100) : current.perTradeUsd);
   const perTradeUsd = clamp(proposedPer, 1, budgetUsd);
   const durationMins = intent.durationMins ?? Math.round(current.armDurationMs / 60_000);
   return { preset: intent.preset, budgetUsd, perTradeUsd, durationMins, live: intent.live };

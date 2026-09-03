@@ -49,7 +49,8 @@ import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs }
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
-import { HeaderTape, MetersStrip, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
+import { HeaderTape, MetersStrip, PausedBanner, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
+import { SessionGasModal } from '@/app/_components/session-gas-modal';
 import { ResultsView } from './results';
 import { SessionShareModal } from './session-share-modal';
 
@@ -83,6 +84,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const run = useAutopilotStore((s) => s.run);
   const dryRun = useAutopilotStore((s) => s.dryRun);
   const stopReason = useAutopilotStore((s) => s.stopReason);
+  const pauseReason = useAutopilotStore((s) => s.pauseReason);
   const stoppedAt = useAutopilotStore((s) => s.stoppedAt);
   const interruptedByReload = useAutopilotStore((s) => s.interruptedByReload);
   const log = useAutopilotStore((s) => s.log);
@@ -99,6 +101,9 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const [view, setView] = useState<'cockpit' | 'results'>('cockpit');
   const [customizeOpen, setCustomizeOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false); // arm-time confirm (live only)
+  // The session-gas top-up, opened from the pause banner. The run resumes on its own
+  // once the engine reads the key as funded again; nothing here has to tell it.
+  const [gasOpen, setGasOpen] = useState(false);
   // Auto (tell Kelly) vs Manual (set the controls yourself). Auto is the landing tab for
   // everyone, not just first-timers: describing a run in a sentence is the shorter path
   // even when you already know the controls, and Manual is one tap away. This used to
@@ -176,6 +181,10 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     msToClear != null && msToClear <= CLEAR_COUNTDOWN_MS ? Math.max(0, Math.ceil(msToClear / 1000)) : null;
 
   const armed = status === 'armed';
+  const paused = status === 'paused';
+  /** Armed or holding for gas: the run is still on, its clock still counts, and the
+   *  header offers Stop rather than Start. Only `armed` actually places trades. */
+  const running = armed || paused;
   const stopped = status === 'stopped';
   /**
    * Setup, or a run. Never both.
@@ -190,7 +199,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    */
   const idle = status === 'idle';
   const live = !dryRun; // "live trading" vs "watch mode"
-  const timeLeftMs = armed ? Math.max(0, limits.armDurationMs - (now - run.armedAt)) : limits.armDurationMs;
+  const timeLeftMs = running ? Math.max(0, limits.armDurationMs - (now - run.armedAt)) : limits.armDurationMs;
   // Capped at the configured length so a run that overran by a second does not read past
   // its own limit, and floored at 0 for the idle state where there is no run to measure.
   const ranForMs =
@@ -408,7 +417,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         <div className="flex flex-none items-center gap-2">
           <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[18px]">Autopilot</h1>
           <StatusPill key={`${status}:${stopped && openCount > 0}`} status={status} settling={stopped && openCount > 0} />
-          {armed && <RunModePill live={live} />}
+          {running && <RunModePill live={live} />}
         </div>
 
         <HeaderTape spot={engine.spot} watching={engine.candidates.length} />
@@ -417,7 +426,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             right edge and leaving 340px of empty bar beside it. From `sm` it goes back to
             sitting at the end of the row. */}
         <div className="flex w-full flex-none items-center justify-between gap-2 sm:ml-auto sm:w-auto sm:justify-end">
-          <ViewSwitch view={view} onView={setView} resultCount={history.length} running={armed} />
+          <ViewSwitch view={view} onView={setView} resultCount={history.length} running={running} />
           {stopped && (
             <button
               onClick={finishRun}
@@ -429,7 +438,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           {/* Start is mode-neutral: it opens the confirm, and the confirm is where
               watch-vs-live and the wallet steps happen. */}
           <div className="flex w-32 flex-col sm:w-36">
-            {armed ? (
+            {running ? (
               <ReviewButton tone="down" onClick={() => disarm('manual', Date.now())}>
                 Stop Autopilot
               </ReviewButton>
@@ -475,6 +484,17 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         ) : (
           <StoppedBanner reason={stopReason} settlingCount={openCount} clearInSec={clearInSec} />
         ))}
+      {/* ── Hold banner: low gas pauses the run rather than ending it ─────────
+          The top-up opens the same modal the wallet menu uses; the engine resumes the
+          run on its own once it reads the key as funded. */}
+      {paused && (
+        <PausedBanner
+          reason={pauseReason}
+          settlingCount={openCount}
+          onTopUp={() => setGasOpen(true)}
+          onStop={() => disarm('manual', Date.now())}
+        />
+      )}
 
       {/* ── Setup (idle or stopped) ─────────────────────────────────────────
           One fork at the top, then ONE way of setting up beneath it. Both paths used to
@@ -549,7 +569,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             maxTrades={limits.maxTrades}
             openCount={openCount}
             maxConcurrent={limits.maxConcurrent}
-            armed={armed}
+            armed={running}
             timeLeftMs={timeLeftMs}
             ranForMs={ranForMs}
             armDurationMs={limits.armDurationMs}
@@ -557,10 +577,10 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
             <div className="grid gap-4 lg:grid-cols-2">
               <PerformancePanel perf={engine.perf} positions={engine.positions} />
-              <RunLogPanel log={log} tape={tape} now={now} armed={armed} ready={engine.ready} />
+              <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
             </div>
           ) : (
-            <RunLogPanel log={log} tape={tape} now={now} armed={armed} ready={engine.ready} />
+            <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
           )}
           <PlanCard
             rules={rules}
@@ -613,6 +633,9 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
       {/* The finished run as a card to post. Mounted outside the view fork so it can
           open over either screen: the setup it just cleared back to, or Results. */}
       <SessionShareModal run={share?.run ?? null} context={share?.context ?? 'results'} onClose={() => setShare(null)} />
+      {/* Session-gas top-up for a paused run. Same dialog as the wallet menu's, so the
+          free (Google) and fund-from-wallet (Slush) paths both work from here. */}
+      <SessionGasModal open={gasOpen} onClose={() => setGasOpen(false)} />
     </div>
   );
 }

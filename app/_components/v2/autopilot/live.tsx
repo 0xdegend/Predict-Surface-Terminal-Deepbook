@@ -8,12 +8,13 @@
  */
 import { useEffect, useRef } from 'react';
 import type { IconType } from 'react-icons';
-import { LuActivity, LuCircleCheck, LuClock, LuExternalLink, LuEye, LuGauge, LuHand, LuHistory, LuLayers, LuRadioTower, LuShieldCheck, LuTimer, LuTrendingUp, LuTriangleAlert, LuWallet, LuZap } from 'react-icons/lu';
+import { LuActivity, LuCircleCheck, LuClock, LuExternalLink, LuEye, LuGauge, LuHand, LuHistory, LuLayers, LuPause, LuPlay, LuRadioTower, LuShieldCheck, LuTimer, LuTrendingUp, LuTriangleAlert, LuWallet, LuZap } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
+import { AnimatedNumber } from '@/app/_components/analytics/charts/animated-number';
 import type { AutopilotOpenView, AutopilotPerf } from '@/lib/hooks/use-autopilot-engine';
-import type { AutopilotLogEntry, RunResult } from '@/lib/store/autopilot-store';
-import { type StopReason, stopReasonKind, stopReasonLabel } from '@/lib/autopilot/policy';
+import type { AutopilotLogEntry, AutopilotStatus, RunResult } from '@/lib/store/autopilot-store';
+import { type PauseReason, type StopReason, pauseReasonLabel, stopReasonKind, stopReasonLabel } from '@/lib/autopilot/policy';
 import type { RunTape as RunTapeData, TapeTrade } from '@/lib/autopilot/run-tape';
 import { pnlClass, signedUsd } from './shared';
 import { clamp } from './setup';
@@ -76,9 +77,18 @@ export function PerformancePanel({ perf, positions }: { perf: AutopilotPerf; pos
             <span className="eyebrow flex items-center gap-1.5">
               <LuActivity size={12} className="text-accent" /> Live performance
             </span>
-            <span className={`font-mono text-[26px] font-semibold leading-none tabular-nums ${pnlClass(perf.netPnlUsd)}`}>
-              {signedUsd(perf.netPnlUsd)}
-            </span>
+            {/* Counts up from zero on arrival and eases to each new figure after that
+                (a settlement landing, or the open trade being re-marked off the price),
+                so the score reads as a live number rather than a label that swaps. The
+                colour follows the real value, not the frame in flight, so a number easing
+                through zero never flickers between teal and coral. */}
+            <AnimatedNumber
+              value={perf.netPnlUsd}
+              from={0}
+              durationMs={900}
+              format={signedUsd}
+              className={`font-mono text-[26px] font-semibold leading-none tabular-nums ${pnlClass(perf.netPnlUsd)}`}
+            />
             <span className="text-[11px] text-text-3">net profit and loss this run</span>
           </div>
           <div className="flex flex-col items-end gap-1 text-[11.5px]">
@@ -158,7 +168,7 @@ function OpenTradeRow({ p }: { p: AutopilotOpenView }) {
   );
 }
 
-export function StatusPill({ status, settling }: { status: 'idle' | 'armed' | 'stopped'; settling?: boolean }) {
+export function StatusPill({ status, settling }: { status: AutopilotStatus; settling?: boolean }) {
   // While stopped with trades still resolving, "Finishing" reads truer than "Stopped".
   const map =
     status === 'stopped' && settling
@@ -166,6 +176,7 @@ export function StatusPill({ status, settling }: { status: 'idle' | 'armed' | 's
       : {
           idle: { label: 'Idle', cls: 'bg-white/5 text-text-3' },
           armed: { label: 'Running', cls: 'bg-(--accent-soft) text-up' },
+          paused: { label: 'Paused', cls: 'bg-(--warn-soft) text-warn' },
           stopped: { label: 'Stopped', cls: 'bg-(--down-soft) text-down' },
         }[status];
   // `status-flip` plays once because the panel keys this on the status, so it mounts
@@ -276,6 +287,65 @@ export function StoppedBanner({
         <span className="font-medium">{headline}</span>
         {settlingCount > 0 && <span className="text-[11.5px] leading-relaxed opacity-90">{settlingLine(settlingCount)}</span>}
         <ClearingNote seconds={clearInSec ?? null} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The hold banner. A live run whose trading key cannot pay for the next trade's gas
+ * stops PLACING trades but keeps everything else: its budget, its counters, its open
+ * trades, and its clock. Top up and it resumes on its own (the engine reads the refill
+ * within a tick); or stop it here, which ends the run the normal way.
+ *
+ * Warn tone, not the alarm red of a broken run: nothing has gone wrong that a top-up
+ * does not fix, and the run is still yours. The buttons sit on their own row at phone
+ * widths so "Top up gas" never squeezes into a tall two-line box.
+ */
+export function PausedBanner({
+  reason,
+  settlingCount,
+  onTopUp,
+  onStop,
+}: {
+  reason: PauseReason | null;
+  settlingCount: number;
+  onTopUp: () => void;
+  onStop: () => void;
+}) {
+  const why = reason == null ? 'Waiting to continue' : pauseReasonLabel(reason);
+  return (
+    <div className="mb-4 flex flex-col gap-3 rounded-lg border border-warn/40 bg-(--warn-soft) p-3.5 text-[12.5px] text-text-1 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
+        <LuPause size={15} className="mt-px flex-none text-warn" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-medium text-warn">Autopilot paused. {why}.</span>
+          <span className="text-[11.5px] leading-relaxed text-text-2">
+            Top up and it picks up where it left off, with the same budget and trade count.
+            {settlingCount === 1
+              ? ' Your open trade is still running and settles on its own.'
+              : settlingCount > 1
+                ? ` Your ${settlingCount} open trades are still running and settle on their own.`
+                : ''}{' '}
+            The run clock keeps going while it waits.
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-none items-center gap-2 sm:pl-2">
+        <button
+          type="button"
+          onClick={onStop}
+          className="shrink-0 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[11px] font-medium text-text-2 transition-colors hover:bg-white/5 hover:text-text-1"
+        >
+          Stop instead
+        </button>
+        <button
+          type="button"
+          onClick={onTopUp}
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-[11px] font-medium text-warn transition-colors hover:bg-warn/20"
+        >
+          <LuZap size={12} /> Top up gas
+        </button>
       </div>
     </div>
   );
@@ -780,12 +850,16 @@ export function RunLogPanel({
   tape,
   now,
   armed,
+  paused = false,
   ready,
 }: {
   log: AutopilotLogEntry[];
   tape: RunTapeData;
   now: number;
   armed: boolean;
+  /** Holding for gas: the run is still on (the tape's playhead keeps moving) but the
+   *  header says so instead of "Live". */
+  paused?: boolean;
   ready: boolean;
 }) {
   return (
@@ -801,11 +875,16 @@ export function RunLogPanel({
             Live
           </span>
         )}
+        {paused && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-(--warn-soft) px-2 py-0.5 text-[10.5px] font-medium text-warn">
+            <LuPause size={10} /> Paused
+          </span>
+        )}
         {!ready && <span className="ml-auto text-[10.5px] text-text-3">Waiting for the live feed…</span>}
       </div>
       {/* The shape of the run, above the words. The divider moved below it so the tape
           reads as part of the header rather than as the first row of the list. */}
-      <RunTape tape={tape} now={now} armed={armed} />
+      <RunTape tape={tape} now={now} armed={armed || paused} />
       <div className="border-b border-white/6" />
       {log.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
@@ -832,6 +911,8 @@ function LogRow({ entry, now }: { entry: AutopilotLogEntry; now: number }) {
     placed: { Icon: LuCircleCheck, cls: 'text-up' },
     held: { Icon: LuHand, cls: 'text-text-3' },
     settled: { Icon: LuActivity, cls: 'text-text-2' },
+    paused: { Icon: LuPause, cls: 'text-warn' },
+    resumed: { Icon: LuPlay, cls: 'text-up' },
     disarmed: { Icon: LuShieldCheck, cls: 'text-text-2' },
   };
   const { Icon, cls } = meta[entry.kind];

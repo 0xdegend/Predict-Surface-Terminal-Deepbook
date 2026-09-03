@@ -327,3 +327,76 @@ describe('how long a run actually lasted', () => {
     expect(S().log[0].at).toBe(S().stoppedAt);
   });
 });
+
+describe('pause / resume (low gas holds the run instead of ending it)', () => {
+  it('pauses an armed run in place: same run, same counters, nothing saved to results', () => {
+    S().arm(1_000);
+    S().recordPlacement(trade({ marketId: '0xa', qty: 10, cost: 5, expiry: 9_000 }), { dryRun: false }, 1_100);
+    const runId = S().run.id;
+    S().pause('gas_low', 2_000);
+    expect(S().status).toBe('paused');
+    expect(S().pauseReason).toBe('gas_low');
+    expect(S().run.id).toBe(runId);
+    expect(S().run.tradeCount).toBe(1);
+    expect(S().run.open).toHaveLength(1);
+    expect(S().stoppedAt).toBeNull();
+    expect(S().history).toHaveLength(0);
+    expect(S().log[0].kind).toBe('paused');
+    expect(S().log[0].text).toMatch(/low on gas/i);
+  });
+
+  it('resumes back to armed with the run intact and logs it', () => {
+    S().arm(1_000);
+    S().recordPlacement(trade({ marketId: '0xa', qty: 10, cost: 5, expiry: 9_000 }), { dryRun: false }, 1_100);
+    S().pause('gas_low', 2_000);
+    S().resume(3_000);
+    expect(S().status).toBe('armed');
+    expect(S().pauseReason).toBeNull();
+    expect(S().run.tradeCount).toBe(1);
+    expect(S().log[0].kind).toBe('resumed');
+    expect(S().log[0].text).toMatch(/topped up/i);
+  });
+
+  it('only an armed run can pause, and only a paused run can resume', () => {
+    S().pause('gas_low', 1_000);
+    expect(S().status).toBe('idle');
+    S().arm(1_000);
+    S().resume(2_000);
+    expect(S().status).toBe('armed');
+    S().disarm('manual', 3_000);
+    S().pause('gas_low', 4_000);
+    expect(S().status).toBe('stopped');
+    expect(S().pauseReason).toBeNull();
+  });
+
+  it('stopping a paused run ends it like any other and clears the hold', () => {
+    S().arm(1_000);
+    S().recordPlacement(trade({ qty: 10, cost: 5 }), { dryRun: false }, 1_100);
+    S().pause('gas_low', 2_000);
+    S().disarm('duration_elapsed', 3_000);
+    expect(S().status).toBe('stopped');
+    expect(S().stopReason).toBe('duration_elapsed');
+    expect(S().pauseReason).toBeNull();
+    expect(S().stoppedAt).toBe(3_000);
+    expect(S().history).toHaveLength(1);
+  });
+
+  it('a reload never resumes a paused run either: it lands stopped and flagged', () => {
+    S().arm(1_000);
+    S().recordPlacement(trade({ marketId: '0xa', qty: 10, cost: 5, expiry: 9_000 }), { dryRun: false }, 1_100);
+    S().pause('gas_low', 2_000);
+    S()._resumeAfterReload();
+    expect(S().status).toBe('stopped');
+    expect(S().pauseReason).toBeNull();
+    expect(S().interruptedByReload).toBe(true);
+    expect(S().history).toHaveLength(1);
+  });
+
+  it('persists the hold reason so a reload can explain what it landed on', () => {
+    S().arm(1_000);
+    S().pause('gas_low', 2_000);
+    const saved = useAutopilotStore.persist.getOptions().partialize!(useAutopilotStore.getState()) as Record<string, unknown>;
+    expect(saved.status).toBe('paused');
+    expect(saved.pauseReason).toBe('gas_low');
+  });
+});

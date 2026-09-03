@@ -3,6 +3,8 @@ import {
   classifyTenor,
   gateTrade,
   autoStopReason,
+  autoPauseReason,
+  pauseReasonLabel,
   settleOutcome,
   gateReasonLabel,
   stopReasonLabel,
@@ -171,6 +173,31 @@ describe('autoStopReason — terminal disarms', () => {
     expect(autoStopReason(careful, twoIn, health, NOW)).toBeNull();
   });
 
+  it('folds a leftover too small to ever place into the trade, so the budget lands exactly', () => {
+    // A cent-precise split ($5,000 / 3 = $1,666.67) walked trade by trade: the third
+    // trade takes the exact remainder and the run has spent $5,000.00, not $4,998.
+    const careful = { ...limits, budgetUsd: 5000, perTradeUsd: 1666.67, maxTrades: 3 };
+    let spent = 0;
+    const stakes: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const stake = stakeFor(careful, { ...runtime, spentUsd: spent, tradeCount: i });
+      stakes.push(stake);
+      spent += stake;
+    }
+    expect(stakes).toEqual([1666.67, 1666.67, 1666.66]);
+    expect(spent).toBeCloseTo(5000, 6);
+    expect(autoStopReason(careful, { ...runtime, spentUsd: spent, tradeCount: 3 }, health, NOW)).toBe('trade_cap_reached');
+
+    // Rounded DOWN split ($5,000 / 6 = $833.33): the last trade grows by the 2 cents
+    // that would otherwise be stranded below the chain's $1 minimum.
+    const six = { ...limits, budgetUsd: 5000, perTradeUsd: 833.33, maxTrades: 6 };
+    expect(stakeFor(six, { ...runtime, spentUsd: 4166.65, tradeCount: 5 })).toBe(833.35);
+
+    // A leftover big enough to be a trade is NOT folded in: the per-trade size holds.
+    expect(stakeFor(limits, { ...runtime, spentUsd: 43 })).toBe(5); // $7 left → $5 now, $2 later
+    expect(stakeFor(limits, { ...runtime, spentUsd: 44.5 })).toBe(5.5); // $5.50 left → 50c can never trade
+  });
+
   it('stops at the trade cap', () => {
     expect(autoStopReason(limits, { ...runtime, tradeCount: 8 }, health, NOW)).toBe('trade_cap_reached');
   });
@@ -186,7 +213,8 @@ describe('autoStopReason — terminal disarms', () => {
 
   it('stops on any machinery failure, key and feed before the routine reasons', () => {
     expect(autoStopReason(limits, runtime, { ...health, sessionLive: false }, NOW)).toBe('session_expired');
-    expect(autoStopReason(limits, runtime, { ...health, gasOk: false }, NOW)).toBe('gas_low');
+    // Low gas is a PAUSE now, not a stop (see autoPauseReason below).
+    expect(autoStopReason(limits, runtime, { ...health, gasOk: false }, NOW)).toBeNull();
     expect(autoStopReason(limits, runtime, { ...health, feedFresh: false }, NOW)).toBe('feed_stall');
     // a dead session outranks a spent budget in the reported reason
     const broke = { ...runtime, spentUsd: 50 };
@@ -262,5 +290,27 @@ describe('settleOutcome', () => {
     expect(settleOutcome(band, 110)).toBe(true); // upper edge included
     expect(settleOutcome(band, 100)).toBe(false); // lower edge excluded
     expect(settleOutcome(band, 111)).toBe(false);
+  });
+});
+
+describe('autoPauseReason — holds the trader can clear', () => {
+  it('holds on low gas and clears the moment the key is funded again', () => {
+    expect(autoPauseReason({ ...health, gasOk: false })).toBe('gas_low');
+    expect(autoPauseReason(health)).toBeNull();
+  });
+
+  it('is only about gas: a dead key or a quiet feed are stops, not holds', () => {
+    expect(autoPauseReason({ ...health, sessionLive: false })).toBeNull();
+    expect(autoPauseReason({ ...health, feedFresh: false })).toBeNull();
+  });
+
+  it('a run out of time while it waits on gas still ends as a normal finish', () => {
+    // The engine checks stops before holds, so the stop reason is what it reports.
+    const old = { ...runtime, armedAt: NOW - limits.armDurationMs };
+    expect(autoStopReason(limits, old, { ...health, gasOk: false }, NOW)).toBe('duration_elapsed');
+  });
+
+  it('labels the hold in plain words', () => {
+    expect(pauseReasonLabel('gas_low')).toMatch(/low on gas/i);
   });
 });
