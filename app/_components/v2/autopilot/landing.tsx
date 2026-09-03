@@ -469,24 +469,8 @@ export function RecentRuns({ history, onViewAll, now }: { history: RunResult[]; 
     <section className="glass-card flex min-w-0 flex-col p-4">
       <p className="eyebrow">Recent runs</p>
       {recent.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-          {/* Kelly in orbit: two quiet rings with a marker each, the outer one turning
-              slowly. It is an empty-state illustration, not chrome, and it stops under
-              reduced motion. */}
-          <div className="relative mb-3 h-32 w-32">
-            <span aria-hidden className="absolute inset-0 rounded-full border border-white/8 motion-safe:animate-[spin_48s_linear_infinite]">
-              <span className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/70" />
-            </span>
-            <span aria-hidden className="absolute inset-4 rounded-full border border-dashed border-white/10 motion-safe:animate-[spin_32s_linear_infinite_reverse]">
-              <span className="absolute bottom-1 right-3 h-1 w-1 rounded-full bg-white/40" />
-            </span>
-            <span
-              aria-hidden
-              className="absolute inset-8 rounded-full"
-              style={{ background: 'radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 72%)' }}
-            />
-            <Image src={MASCOT_SRC.thinking} alt="" width={88} height={88} aria-hidden className="absolute inset-5 h-22 w-22 object-contain" />
-          </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 py-6 text-center">
+          <OrbitEmpty />
           <p className="text-[14px] font-medium text-text-1">No runs yet</p>
           <p className="max-w-60 text-[12.5px] leading-relaxed text-text-2">Your Autopilot runs will appear here.</p>
           <button
@@ -527,5 +511,55 @@ export function RecentRuns({ history, onViewAll, now }: { history: RunResult[]; 
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Kelly in orbit: the Recent runs empty state.
+ *
+ * The fox sits on a dark disc with a soft accent glow, inside three thin rings that
+ * carry a few satellites: the picture of a system waiting for its first run. Drawn as
+ * one SVG so the rings are true circles at any size and the accent arcs on the inner
+ * ring are dash segments of a normalised path (pathLength=1), not hand-cut geometry.
+ * Each ring turns on its own slow period, in alternating directions, so the satellites
+ * drift past one another rather than marching; it is an illustration, not chrome, and
+ * it stops entirely under reduced motion.
+ */
+function OrbitEmpty() {
+  return (
+    <div className="relative mb-2 h-40 w-40 text-accent">
+      <svg viewBox="0 0 160 160" width={160} height={160} aria-hidden="true" focusable="false" className="absolute inset-0 h-full w-full">
+        <defs>
+          <radialGradient id="orbit-glow" cx="50%" cy="48%" r="50%">
+            <stop offset="0%" stopColor="currentColor" stopOpacity={0.38} />
+            <stop offset="55%" stopColor="currentColor" stopOpacity={0.1} />
+            <stop offset="100%" stopColor="currentColor" stopOpacity={0} />
+          </radialGradient>
+        </defs>
+        {/* Outer ring: the slowest, with two small satellites. */}
+        <g className="origin-center motion-safe:animate-[spin_80s_linear_infinite]">
+          <circle cx="80" cy="80" r="72" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
+          <circle cx="135.2" cy="126.3" r="2.2" fill="currentColor" opacity="0.8" />
+          <circle cx="55.4" cy="12.3" r="1.4" fill="currentColor" opacity="0.5" />
+        </g>
+        {/* Middle ring: dotted, turning the other way, one white satellite. */}
+        <g className="origin-center motion-safe:animate-[spin_60s_linear_infinite_reverse]">
+          <circle cx="80" cy="80" r="58" fill="none" stroke="rgba(255,255,255,0.11)" strokeWidth="1" pathLength={1} strokeDasharray="0.012 0.024" strokeLinecap="round" />
+          <circle cx="25.5" cy="60.2" r="2" fill="rgba(255,255,255,0.55)" />
+        </g>
+        {/* Inner ring: the base hairline, two glowing accent arcs riding on it, and the
+            brightest satellite. */}
+        <g className="origin-center motion-safe:animate-[spin_40s_linear_infinite]">
+          <circle cx="80" cy="80" r="46" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="1" />
+          <circle cx="80" cy="80" r="46" fill="none" stroke="currentColor" strokeWidth="4" opacity="0.16" pathLength={1} strokeDasharray="0.14 0.36" strokeLinecap="round" />
+          <circle cx="80" cy="80" r="46" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.75" pathLength={1} strokeDasharray="0.14 0.36" strokeLinecap="round" />
+          <circle cx="119.8" cy="57" r="2.6" fill="currentColor" />
+        </g>
+        {/* The glow and the disc the fox sits on. */}
+        <circle cx="80" cy="80" r="54" fill="url(#orbit-glow)" />
+        <circle cx="80" cy="80" r="36" fill="var(--bg-1)" stroke="currentColor" strokeOpacity="0.3" strokeWidth="1" />
+      </svg>
+      <Image src={MASCOT_SRC.thinking} alt="" width={64} height={64} aria-hidden className="absolute inset-0 m-auto h-18 w-18 object-contain" />
+    </div>
   );
 }
