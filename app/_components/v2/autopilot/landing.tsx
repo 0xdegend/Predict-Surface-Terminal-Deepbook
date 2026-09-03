@@ -18,8 +18,9 @@
  * presentational: the panel still owns the state, the arm flow and the engine.
  */
 import Image from 'next/image';
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { monotonePath } from '@/lib/autopilot/smooth-path';
 import type { IconType } from 'react-icons';
 import { LuActivity, LuArrowRight, LuGauge, LuHistory, LuMessageSquare, LuSlidersHorizontal, LuTrash2, LuTrendingUp } from 'react-icons/lu';
 import { ReviewButton } from '@/app/_components/ticket/review-button';
@@ -302,7 +303,7 @@ export function PerformanceOverview({ history, now }: { history: RunResult[]; no
         <Kpi label="Max drawdown" value={stats.maxDrawdown > 0 ? `-$${num(stats.maxDrawdown, 2)}` : '—'} valueClass={stats.maxDrawdown > 0 ? 'text-down' : undefined} />
       </div>
 
-      <OverviewChart series={series} />
+      <OverviewChart series={series} range={range} />
     </section>
   );
 }
@@ -317,38 +318,105 @@ function Kpi({ label, value, valueClass }: { label: string; value: string; value
 }
 
 /**
- * The cumulative P&L line. Geometry comes from `overviewSeries` in a 0..1 box and is
- * drawn in a 100x100 viewBox stretched to the frame, with non-scaling strokes so the
- * line stays one and a half pixels wide whatever the frame's shape. Labels are HTML,
- * positioned off the same fractions, so they never stretch with the drawing.
+ * The cumulative P&L curve.
+ *
+ * Drawn in real pixels: the plot box is measured (ResizeObserver) and the geometry is
+ * computed in that space, so nothing is stretched and the curve's shape is the curve's
+ * shape. It used to be a stepped polyline in a 100x100 box scaled to the frame, which
+ * read as jagged: hard verticals at every settlement and a flat block of fill.
+ *
+ * Now: a monotone curve through the settlement points (never overshoots a high or a
+ * low, see smooth-path.ts), a fill that fades from the line toward zero, teal above
+ * zero and coral below it (the same area path, clipped twice), a soft glow under the
+ * stroke, a marker at "now" that breathes, and a draw-in on mount and on range change
+ * (the svg is keyed on the range). Axis labels stay HTML, positioned off the same
+ * fractions, so they never stretch with the drawing.
  */
-function OverviewChart({ series }: { series: OverviewSeries }) {
-  const y = (v: number) => 50 - (v / series.yMax) * 50;
-  const pts = series.points.map((p) => `${(p.x * 100).toFixed(2)},${y(p.y).toFixed(2)}`);
-  const line = pts.length > 0 ? `M ${pts.join(' L ')}` : '';
-  const last = series.points[series.points.length - 1];
-  const area = last ? `${line} L ${(last.x * 100).toFixed(2)},50 L 0,50 Z` : '';
-  const tone = last && last.y < -0.005 ? 'var(--down)' : 'var(--accent)';
+function OverviewChart({ series, range }: { series: OverviewSeries; range: OverviewRange }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0]?.contentRect;
+      if (r) setSize({ w: Math.round(r.width), h: Math.round(r.height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // useId's own separators are not safe inside url(#...), so keep the word characters.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+
+  const { w, h } = size;
+  const PAD = 6; // keeps the stroke and the marker inside the box at the extremes
+  const zeroY = h / 2;
+  const px = (x: number) => x * w;
+  const py = (v: number) => zeroY - (v / series.yMax) * (zeroY - PAD);
+  const pts = series.points.map((p) => ({ x: px(p.x), y: py(p.y) }));
+  const line = w > 0 && h > 0 ? monotonePath(pts) : '';
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const area = line && last ? `${line} L ${last.x.toFixed(2)},${zeroY} L ${first.x.toFixed(2)},${zeroY} Z` : '';
   const flat = series.points.every((p) => p.y === 0);
+  const endTone = last && last.y > zeroY + 0.5 ? 'var(--down)' : 'var(--accent)';
+  const up = `url(#${uid}-up)`;
+  const down = `url(#${uid}-down)`;
+  const above = `url(#${uid}-above)`;
+  const below = `url(#${uid}-below)`;
+
   return (
     <div className="mt-5">
       <div className="relative h-32 pr-12 sm:h-36">
-        <svg className="absolute inset-y-0 left-0 h-full w-[calc(100%-3rem)]" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {[0, 50, 100].map((gy) => (
-            <line
-              key={gy}
-              x1="0"
-              x2="100"
-              y1={gy}
-              y2={gy}
-              stroke="rgba(255,255,255,0.08)"
-              strokeDasharray="1.5 2.5"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-          {!flat && <path d={area} fill={tone} opacity="0.12" />}
-          <path d={line} fill="none" stroke={tone} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        </svg>
+        <div ref={boxRef} className="absolute inset-y-0 left-0 w-[calc(100%-3rem)]">
+          {w > 0 && h > 0 && (
+            <svg key={range} width={w} height={h} className="overflow-visible" aria-hidden>
+              <defs>
+                {/* Strongest at the top of the plot and gone at zero, so a small gain sits
+                    on a faint wash and a big one on a full one: the fill reads the size. */}
+                <linearGradient id={`${uid}-up`} gradientUnits="userSpaceOnUse" x1="0" y1={PAD} x2="0" y2={zeroY}>
+                  <stop offset="0" stopColor="var(--accent)" stopOpacity="0.32" />
+                  <stop offset="1" stopColor="var(--accent)" stopOpacity="0.02" />
+                </linearGradient>
+                <linearGradient id={`${uid}-down`} gradientUnits="userSpaceOnUse" x1="0" y1={h - PAD} x2="0" y2={zeroY}>
+                  <stop offset="0" stopColor="var(--down)" stopOpacity="0.3" />
+                  <stop offset="1" stopColor="var(--down)" stopOpacity="0.02" />
+                </linearGradient>
+                <clipPath id={`${uid}-above`}>
+                  <rect x="0" y="-8" width={w} height={zeroY + 8} />
+                </clipPath>
+                <clipPath id={`${uid}-below`}>
+                  <rect x="0" y={zeroY} width={w} height={h - zeroY + 8} />
+                </clipPath>
+              </defs>
+
+              {[PAD, zeroY, h - PAD].map((gy) => (
+                <line key={gy} x1="0" x2={w} y1={gy} y2={gy} stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+              ))}
+
+              {!flat && (
+                <>
+                  <path d={area} fill={up} clipPath={above} className="overview-area" />
+                  <path d={area} fill={down} clipPath={below} className="overview-area" />
+                </>
+              )}
+
+              {/* The glow: the same stroke, wide and faint, under the real one. */}
+              <path d={line} fill="none" stroke="var(--accent)" strokeWidth="7" opacity="0.14" strokeLinejoin="round" strokeLinecap="round" clipPath={above} pathLength={1} className="overview-line" />
+              <path d={line} fill="none" stroke="var(--down)" strokeWidth="7" opacity="0.14" strokeLinejoin="round" strokeLinecap="round" clipPath={below} pathLength={1} className="overview-line" />
+              <path d={line} fill="none" stroke="var(--accent)" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" clipPath={above} pathLength={1} className="overview-line" />
+              <path d={line} fill="none" stroke="var(--down)" strokeWidth="1.75" strokeLinejoin="round" strokeLinecap="round" clipPath={below} pathLength={1} className="overview-line" />
+
+              {last && (
+                <>
+                  <circle cx={last.x} cy={last.y} r="3" fill={endTone} className="overview-halo" />
+                  <circle cx={last.x} cy={last.y} r="3" fill={endTone} />
+                  <circle cx={last.x} cy={last.y} r="1.25" fill="var(--bg-0)" opacity="0.7" />
+                </>
+              )}
+            </svg>
+          )}
+        </div>
         {series.ticksY.map((t, i) => (
           <span
             key={t.value}

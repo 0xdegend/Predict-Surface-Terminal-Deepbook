@@ -152,6 +152,10 @@ export function fmtAxis(v: number): string {
 /** Empty ranges still get a readable axis: this is what ±1.0K on a fresh page is. */
 const EMPTY_Y_MAX = 1000;
 
+/** How much of the window a settlement takes to "arrive" on the curve (see the lead-in
+ *  points in overviewSeries). About 20 minutes of a day, 2.5 hours of a week. */
+export const SETTLE_EASE = 0.015;
+
 function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
@@ -195,19 +199,27 @@ export function overviewSeries(trades: readonly EquityTrade[], range: OverviewRa
   const span = end - start || 1;
   const inWin = tradesInWindow(trades, window);
 
-  // A STEP line, not a slope: the total is flat until a trade settles and jumps at that
-  // moment, so each trade adds two points, the level just before it and the level after.
-  // Drawn as a plain polyline the first trade of a week-long window was a seven-day
-  // diagonal from zero, which reads as a slow bleed that never happened.
+  // One point per settled trade (the running total after it, at the time it settled),
+  // each with a short LEAD-IN just before it holding the previous level. The chart draws
+  // the list as a monotone curve (lib/autopilot/smooth-path), and the lead-in is what
+  // keeps that curve honest about time: without it, a single trade a day into a
+  // week-long window drew as a six-day slope from the window's edge, a slow bleed that
+  // never happened. With it, the line holds flat until a settlement and eases into the
+  // new level over about a percent and a half of the window. Trades closer together
+  // than that flow into one another with no lead-in, which is the right picture of a
+  // burst of settlements.
   const points: OverviewPoint[] = [{ x: 0, y: 0 }];
   let cum = 0;
   let swing = 0;
+  let lastX = 0;
   for (const t of inWin) {
     const x = (t.at - start) / span;
-    points.push({ x, y: cum });
+    const lead = x - SETTLE_EASE;
+    if (lead > lastX) points.push({ x: lead, y: cum });
     cum += t.pnlUsd;
     if (Math.abs(cum) > swing) swing = Math.abs(cum);
     points.push({ x, y: cum });
+    lastX = x;
   }
   // Carry the line to the right edge so "where it stands now" reads across the chart.
   // Today's window runs to midnight, so the carry stops at now rather than the frame.

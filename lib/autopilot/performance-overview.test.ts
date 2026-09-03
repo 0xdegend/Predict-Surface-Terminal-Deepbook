@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fmtAxis, niceCeil, overviewSeries, overviewStats, rangeWindow, startOfDay, tradesInWindow } from './performance-overview';
+import { SETTLE_EASE, fmtAxis, niceCeil, overviewSeries, overviewStats, rangeWindow, startOfDay, tradesInWindow } from './performance-overview';
 import type { EquityTrade } from './equity';
 
 const H = 60 * 60_000;
@@ -73,13 +73,20 @@ describe('overviewSeries', () => {
     expect(s.points.every((p) => p.y === 0)).toBe(true);
   });
 
-  it('steps at each settlement (flat before, jump at the trade) with headroom above the biggest swing', () => {
+  it('holds flat until a settlement, eases into it, and leaves headroom above the biggest swing', () => {
     const s = overviewSeries([t(10 * H, 300), t(2 * H, -500)], '1D', NOW);
+    // Each trade is preceded by a lead-in at the previous level, so the curve stays
+    // level between settlements and only moves in the moments around them.
     expect(s.points.map((p) => p.y)).toEqual([0, 0, 300, 300, -200, -200]);
-    // The first trade at 05:00 contributes two points at the same x: before and after.
-    expect(s.points[1].x).toBeCloseTo(5 / 24);
+    expect(s.points[1].x).toBeCloseTo(5 / 24 - SETTLE_EASE);
     expect(s.points[2].x).toBeCloseTo(5 / 24);
     expect(s.yMax).toBe(500); // niceCeil(300 * 1.15) = 500
+  });
+
+  it('a burst of settlements closer together than the lead-in flows as one move', () => {
+    const s = overviewSeries([t(2 * H, 10), t(2 * H - 60_000, 10), t(2 * H - 120_000, 10)], '1D', NOW);
+    // One lead-in before the burst, then the three trades, then the carry to now.
+    expect(s.points.map((p) => p.y)).toEqual([0, 0, 10, 20, 30, 30]);
   });
 
   it('labels today 00:00 through 24:00 in four-hour steps', () => {
