@@ -458,7 +458,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
 
       {/* ── Command Center beside The Plan ──────────────────────────────────
           One fork inside the Command Center, then ONE way of setting up beneath it. In
-          Auto the body is Kelly's conversation with the one-tap plans; in Manual it is
+          Auto the body is Kelly's chat; in Manual it is
           the controls. The plan on the right is the same read-out either way and stays
           put while the left column scrolls, because it is the confirm, not the setup. */}
       {idle && (
@@ -492,7 +492,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
           </CommandCenter>
           {/* Stretches to the Command Center's height (no sticky, no self-start): the
               reference's two cards share one bottom edge, and the plan fills its column
-              with the steps spread out and the mode line pinned to the foot. */}
+              with the steps on a capped rhythm and the mode line pinned to the foot. */}
           <div className="flex min-w-0 flex-col gap-4">
             <PlanCard
               rules={rules}

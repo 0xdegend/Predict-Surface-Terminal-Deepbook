@@ -1,24 +1,22 @@
 'use client';
 
 /**
- * Auto mode: Kelly's setup conversation, and the little language helpers that let her
+ * Auto mode: Kelly's setup chat, and the little language helpers that let her
  * acknowledge what she just understood.
  *
  * Split out of autopilot-panel.tsx. See lib/autopilot/read-setup.ts for the reader that
  * feeds it (rules, plus the optional model tier).
  *
- * THE SHAPE (redesign, 2026-09-03). This used to be a chat: a scrolling thread of bubbles
- * with a composer under it. It is now the body of the Command Center and reads top to
- * bottom as one conversation turn at a time: Kelly's current line as the heading (her
- * question, or her acknowledgement), what she has heard so far as four slots, three
- * one-tap plans plus a door to the manual controls, and the box you talk to her in. The
- * whole thread still lives in the store (Kelly's replies are built from it), only the
- * scrollback is gone: the slots say what she knows and the heading says what she wants,
- * which is what the scrollback was for.
+ * THE SHAPE. This is a chat and reads like one: a thread of bubbles (Kelly on the left,
+ * the trader on the right) in a scrolling box with the composer at its foot, the same
+ * language as the co-pilot chat on /v2/copilot. Under the box, four slots say what Kelly
+ * has heard so far, so what is still outstanding can be read without scrolling back.
+ * A 2026-09-03 pass briefly flattened this to a heading plus "You said", one turn at a
+ * time. It read as a form, not a conversation, and was put back the same day.
  */
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
-import { useAutopilotStore } from '@/lib/store/autopilot-store';
+import { useAutopilotStore, type SetupTurn } from '@/lib/store/autopilot-store';
 import { LuArrowRight, LuCircleCheck, LuRotateCcw, LuSparkles } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
@@ -40,6 +38,10 @@ const GAP_CHIPS: Record<SetupGap, string[]> = {
   budget: ['$10', '$25', '$50', '$100'],
   duration: ['15 minutes', '30 minutes', 'An hour', '2 hours'],
 };
+
+/** Kelly's opening line. Drawn, not stored: the thread in the store starts with the
+ *  trader's first words, and this is what sits in the box until then. */
+const GREETING = "What's the plan today? Tell me how to play it, how much to put in, and how long to run. Leave anything out and I'll ask.";
 
 /** Composer height cap, matching the co-pilot chat: roughly three lines, then scroll. */
 const MAX_INPUT_H = 76;
@@ -128,15 +130,11 @@ export function KellySetupCard({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const threadRef = useRef<HTMLDivElement>(null);
 
   const gaps = missingFrom(intent);
   const openGap = gaps[0] ?? null;
   const done = gaps.length === 0 && turns.length > 0;
-
-  // Kelly's current line is the heading, and the trader's last words sit under it, so
-  // the exchange that matters is on screen without a scrollback.
-  const lastKelly = [...turns].reverse().find((t) => t.who === 'kelly')?.text ?? null;
-  const lastTrader = [...turns].reverse().find((t) => t.who === 'trader')?.text ?? null;
 
   /** Grow the composer with its text, then let it scroll. A single-line input hid the
    *  end of anything longer than the box, which is the wrong trade in the one field on
@@ -148,6 +146,14 @@ export function KellySetupCard({
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_H)}px`;
   }, [text]);
+
+  /** Keep the newest line in view. A new turn (or the typing dots) lands at the foot of
+   *  the thread, so the thread follows it. Set on the thread itself rather than
+   *  scrollIntoView, which walks up and scrolls ancestors too, hopping the page. */
+  useEffect(() => {
+    const el = threadRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turns.length, busy]);
 
   async function send(raw: string) {
     const message = raw.trim();
@@ -239,120 +245,125 @@ export function KellySetupCard({
     setText('');
   }
 
-  const eyebrow = busy ? 'Kelly is thinking' : done ? 'Ready when you are' : 'Kelly is listening';
-  const heading = lastKelly ?? "What's the plan today?";
+  const status = busy ? 'Thinking' : done ? 'Ready when you are' : 'Listening';
   const quick = turns.length > 0 && openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : [];
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Kelly, and her current line. */}
-      <div className="flex items-start gap-4">
-        <Image
-          src={MASCOT_SRC.thinking}
-          alt=""
-          width={48}
-          height={48}
-          aria-hidden
-          className="h-12 w-12 flex-none rounded-full object-contain"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow flex items-center gap-2 text-accent">
-            {eyebrow}
-            {busy && (
-              <span className="inline-flex gap-1">
-                <Dot delay={0} />
-                <Dot delay={120} />
-                <Dot delay={240} />
-              </span>
-            )}
-          </p>
-          <p className="mt-1 text-[17px] font-medium leading-snug text-text-1 sm:text-[19px]">{heading}</p>
-          {lastTrader && (
-            <p className="mt-1 truncate text-[12px] text-text-3">
-              You said: &ldquo;{lastTrader}&rdquo;
-            </p>
+    <div className="flex flex-col gap-2.5">
+      {/* The chat box: Kelly's bar, the thread, the answers on offer, and the composer.
+          A darker well than the card around it, so the bubbles sit IN something. */}
+      <div className="flex flex-col overflow-hidden rounded-xl border border-line bg-black/20">
+        <div className="flex items-center gap-2.5 border-b border-white/6 px-3 py-2">
+          <Image
+            src={MASCOT_SRC.thinking}
+            alt=""
+            width={28}
+            height={28}
+            aria-hidden
+            className="h-7 w-7 flex-none rounded-full bg-(--accent-soft) object-contain ring-1 ring-(--accent-line)"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-medium leading-tight text-text-1">Kelly</p>
+            <p className="mt-0.5 text-[10.5px] leading-tight text-accent">{status}</p>
+          </div>
+          {turns.length > 0 && (
+            <button
+              type="button"
+              onClick={restart}
+              className="glass-inset flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1"
+            >
+              <LuRotateCcw size={12} className="flex-none" />
+              Start over
+            </button>
           )}
         </div>
-        {turns.length > 0 && (
-          <button
-            type="button"
-            onClick={restart}
-            className="glass-inset flex flex-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1"
-          >
-            <LuRotateCcw size={12} className="flex-none" />
-            Start over
-          </button>
+
+        {/* The thread. Kelly's greeting is drawn until the trader has said something;
+            after that the store's turns are the whole conversation.
+
+            A FIXED height, on purpose. This card sits beside The Plan in a grid row, and
+            the row is as tall as the taller card. A thread that grew with the chat (or
+            was merely capped) made the Command Center 560-630px tall, and the plan had to
+            stretch to match, four short steps pulled apart down a column of gap. The
+            thread scrolls, so it can be short: the newest lines stay in view, the plan
+            sits at its own compact height, and the two cards share a bottom edge with no
+            void in either. */}
+        <div ref={threadRef} aria-live="polite" className="scroll-quiet flex h-36 flex-col gap-2 overflow-y-auto px-3 py-3">
+          {turns.length === 0 && <Bubble who="kelly" text={GREETING} />}
+          {turns.map((t) => (
+            <Bubble key={t.id} who={t.who} text={t.text} />
+          ))}
+          {busy && <TypingBubble />}
+        </div>
+
+        {/* Answers to whatever Kelly just asked, or Start once she has everything. */}
+        {quick.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+            {quick.map((s) => (
+              <button
+                key={s}
+                type="button"
+                disabled={busy}
+                onClick={() => void send(s)}
+                className={`rounded-full px-3 py-1.5 text-[11.5px] transition-colors disabled:opacity-40 ${
+                  s === 'Start'
+                    ? 'border border-(--accent-line) bg-(--accent-soft) font-medium text-accent hover:bg-up/15'
+                    : 'glass-inset text-text-2 hover:border-(--accent-line) hover:text-text-1'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         )}
+
+        {/* The box you talk to her in. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send(text);
+          }}
+          className="flex items-end gap-2 border-t border-white/6 px-2.5 py-2"
+        >
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter (or a newline mid-IME) drops a line.
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send(text);
+              }
+            }}
+            disabled={busy}
+            rows={1}
+            placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Tell Kelly what you want to play...'}
+            aria-label="Tell Kelly how you want Autopilot to run"
+            // 16px is deliberate: iOS Safari force-zooms a focused field under 16px.
+            className="scroll-quiet w-full resize-none bg-transparent px-1 py-1 text-[16px] leading-snug text-text-1 outline-none placeholder:text-text-3 disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={busy || !text.trim()}
+            aria-label="Send"
+            className="grid h-9 w-9 flex-none place-items-center rounded-lg border border-(--accent-line) bg-(--accent-soft) text-accent transition-colors hover:bg-up/15 disabled:opacity-40"
+          >
+            <LuArrowRight size={15} />
+          </button>
+        </form>
       </div>
 
       {/* What Kelly has so far. Four slots that fill in as the conversation goes, so the
-          trader can see what is still outstanding without a scrollback. Mode is never a
-          question (it has a default), so it shows the default quietly until it is named. */}
+          trader can see what is still outstanding without scrolling the thread. Mode is
+          never a question (it has a default), so it shows the default quietly until it
+          is named. */}
       <div className="flex flex-wrap gap-2">
         <Slot label="Style" value={intent.presetNamed ? capital(presetWord(intent.preset)) : null} asking={openGap === 'style'} />
         <Slot label="Budget" value={intent.budgetUsd != null ? `$${num(intent.budgetUsd, 0)}` : null} asking={openGap === 'budget'} />
         <Slot label="Time" value={intent.durationMins != null ? durationWords(intent.durationMins) : null} asking={openGap === 'duration'} />
         <Slot label="Mode" value={live ? 'Live' : 'Watch'} quiet={intent.live == null} />
       </div>
-
-      {/* The box you talk to her in. Styles are not offered as cards here on purpose:
-          this side is for saying it in words, and the Manual tab beside is the one with
-          the pickers. */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send(text);
-        }}
-        className="flex items-end gap-2"
-      >
-        <textarea
-          ref={inputRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends; Shift+Enter (or a newline mid-IME) drops a line.
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send(text);
-            }
-          }}
-          disabled={busy}
-          rows={1}
-          placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Tell Kelly what you want to play...'}
-          aria-label="Tell Kelly how you want Autopilot to run"
-          // 16px is deliberate: iOS Safari force-zooms a focused field under 16px.
-          className="scroll-quiet glass-inset w-full resize-none rounded-xl px-3.5 py-3 text-[16px] leading-snug text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={busy || !text.trim()}
-          aria-label="Send"
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) text-accent transition-colors hover:bg-up/15 disabled:opacity-40"
-        >
-          <LuArrowRight size={16} />
-        </button>
-      </form>
-
-      {/* Answers to whatever Kelly just asked, or Start once she has everything. */}
-      {quick.length > 0 && (
-        <div className="-mt-2 flex flex-wrap gap-1.5">
-          {quick.map((s) => (
-            <button
-              key={s}
-              type="button"
-              disabled={busy}
-              onClick={() => void send(s)}
-              className={`rounded-full px-3 py-1.5 text-[11.5px] transition-colors disabled:opacity-40 ${
-                s === 'Start'
-                  ? 'border border-(--accent-line) bg-(--accent-soft) font-medium text-accent hover:bg-up/15'
-                  : 'glass-inset text-text-2 hover:border-(--accent-line) hover:text-text-1'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
 
       {done ? (
         <p className="-mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
@@ -369,6 +380,39 @@ export function KellySetupCard({
           </span>
         </p>
       )}
+    </div>
+  );
+}
+
+/** One line of the thread. Kelly sits left in glass; the trader sits right in the
+ *  accent wash. The same two bubbles as the co-pilot chat, so the two Kellys match. */
+function Bubble({ who, text }: { who: SetupTurn['who']; text: string }) {
+  const mine = who === 'trader';
+  return (
+    <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+      <p
+        className={`max-w-[88%] rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed ${
+          mine ? 'rise bg-(--accent-soft) text-text-1' : 'msg-fade glass-inset text-text-2'
+        }`}
+      >
+        {text}
+      </p>
+    </div>
+  );
+}
+
+/** Kelly reading the reply: a small name tag and three bouncing dots. */
+function TypingBubble() {
+  return (
+    <div className="flex items-start">
+      <div className="glass-inset flex items-center gap-2 rounded-2xl px-3 py-2.5 text-text-3">
+        <span className="text-[9.5px] font-medium uppercase tracking-wider">Kelly</span>
+        <span className="flex items-center gap-1">
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.15s' }} />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-current" style={{ animationDelay: '0.3s' }} />
+        </span>
+      </div>
     </div>
   );
 }
@@ -406,14 +450,4 @@ function answerHint(gap: SetupGap): string {
   if (gap === 'style') return 'Careful, balanced, or bold';
   if (gap === 'budget') return 'An amount, like $25';
   return 'How long, like 30 minutes';
-}
-
-/** One bouncing dot of the thinking indicator. */
-function Dot({ delay }: { delay: number }) {
-  return (
-    <span
-      className="inline-block h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-bounce"
-      style={{ animationDelay: `${delay}ms` }}
-    />
-  );
 }

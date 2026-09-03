@@ -237,7 +237,7 @@ export function StatTiles({ spot, watching, history, now }: { spot: number | nul
 
 export function CommandCenter({ mode, onMode, children }: { mode: SetupMode; onMode: (m: SetupMode) => void; children: React.ReactNode }) {
   return (
-    <section className="glass-card flex min-w-0 flex-col gap-4 p-4">
+    <section className="glass-card flex min-w-0 flex-col gap-3 p-4">
       <p className="eyebrow">Command center</p>
       <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-white/4 p-1">
         <ModeSegment active={mode === 'auto'} icon={LuMessageSquare} title="Auto" sub="Let Kelly handle it" onClick={() => onMode('auto')} />
@@ -254,14 +254,14 @@ function ModeSegment({ active, icon: Icon, title, sub, onClick }: { active: bool
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex items-center justify-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-all duration-150 ${
+      className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-left transition-all duration-150 ${
         active ? 'glass-accent text-text-1' : 'text-text-3 hover:text-text-1'
       }`}
     >
       <Icon size={15} className={`flex-none ${active ? 'text-accent' : ''}`} />
       <span className="flex flex-col leading-tight">
-        <span className="text-[13px] font-medium">{title}</span>
-        <span className="text-[10.5px] opacity-70">{sub}</span>
+        <span className="text-[12.5px] font-medium">{title}</span>
+        <span className="text-[10px] opacity-70">{sub}</span>
       </span>
     </button>
   );

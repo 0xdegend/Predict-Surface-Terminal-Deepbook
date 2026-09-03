@@ -170,29 +170,31 @@ export function PlanCard({
          off the card edge. `pt-2` centres the first line of a title on its dot.
 
          Spacious: the list takes the card's spare height and each phase grows evenly,
-         so the four steps spread down the column instead of bunching at the top with
-         a void under them. The connector is drawn per row to its bottom edge, so it
-         keeps up with however tall the row becomes. */
-      <ol className={`flex flex-col ${spacious ? 'mt-4 flex-1' : 'mt-3'}`}>
+         but only up to a cap (max-h-26, 104px). Uncapped, the column matched whatever height
+         the chat beside it reached and four short rows spread over 600px of card, all
+         gap. Past the cap the slack sits above the footer instead, which reads as a
+         card with room rather than a list pulled apart. The connector is drawn per row
+         to its bottom edge, so it keeps up with however tall the row becomes. */
+      <ol className={`flex flex-col ${spacious ? 'mt-3.5 flex-1' : 'mt-3'}`}>
         {phases.map((p, i) => (
-          <li key={p.id} className={`relative flex gap-3 last:pb-0 ${spacious ? 'flex-1 gap-3.5 pb-4' : 'pb-3'}`}>
+          <li key={p.id} className={`relative flex gap-3 last:pb-0 ${spacious ? 'max-h-26 flex-1 pb-3.5' : 'pb-3'}`}>
             {i < phases.length - 1 && (
               <span
                 aria-hidden
-                className={`absolute bottom-0 w-px bg-white/10 ${spacious ? 'left-5 top-11' : 'left-4 top-9'}`}
+                className={`absolute bottom-0 w-px bg-white/10 ${spacious ? 'left-4.5 top-10' : 'left-4 top-9'}`}
               />
             )}
             <span
               className={`plan-step-dot relative z-10 flex flex-none items-center justify-center rounded-full ring-1 ring-inset ring-white/10 ${
-                spacious ? 'h-10 w-10' : 'h-8 w-8'
+                spacious ? 'h-9 w-9' : 'h-8 w-8'
               }`}
               style={{ animationDelay: `${i * PHASE_STAGGER_MS}ms` }}
             >
               <PhaseGlyph id={p.id} delayMs={i * PHASE_STAGGER_MS} size={16} />
             </span>
-            <div className={`min-w-0 flex-1 ${spacious ? 'pt-2' : 'pt-2'}`}>
-              <p className={`font-medium leading-tight text-text-1 ${spacious ? 'text-[13.5px]' : 'text-[12.5px]'}`}>{p.title}</p>
-              <p className={`mt-0.5 leading-relaxed ${spacious ? 'text-[12px] text-text-2' : 'text-[11.5px] text-text-3'}`}>{p.detail}</p>
+            <div className={`min-w-0 flex-1 ${spacious ? 'pt-1.5' : 'pt-2'}`}>
+              <p className={`font-medium leading-tight text-text-1 ${spacious ? 'text-[13px]' : 'text-[12.5px]'}`}>{p.title}</p>
+              <p className={`mt-0.5 leading-relaxed ${spacious ? 'text-[11.5px] text-text-2' : 'text-[11.5px] text-text-3'}`}>{p.detail}</p>
             </div>
           </li>
         ))}
@@ -202,10 +204,10 @@ export function PlanCard({
       {(live != null || learnMoreHref) && (
         <div
           className={`flex items-center justify-between gap-3 ${avatar ? 'pl-11' : ''} ${
-            spacious ? 'mt-auto border-t border-white/6 pt-3.5' : 'mt-3'
+            spacious ? 'mt-auto border-t border-white/6 pt-3' : 'mt-3'
           }`}
         >
-          <p className={`leading-relaxed text-text-3 ${spacious ? 'text-[11.5px]' : 'text-[11px]'}`}>
+          <p className={`leading-relaxed text-text-3 ${spacious ? 'text-[11px]' : 'text-[11px]'}`}>
             {live == null ? '' : live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
           </p>
           {learnMoreHref && (
