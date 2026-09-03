@@ -40,6 +40,7 @@ import {
   gateReasonLabel,
   gateTrade,
   settleOutcome,
+  stakeFor,
   type AutopilotHealth,
   type GateCode,
   type ProposedTrade,
@@ -300,7 +301,9 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       edge: 0, // the recommender does not surface its value edge yet (fast-follow)
       side: bet.isUp ? 'up' : 'down',
       leverage: bet.leverage ?? 1,
-      sizeUsd: limits.perTradeUsd,
+      // The per-trade size, or the budget's remainder when that is smaller, so the run
+      // spends what the trader put up instead of stopping a fraction short.
+      sizeUsd: stakeFor(limits, runtime),
     };
 
     const gate = gateTrade(proposed, rules, limits, runtime, now);
@@ -328,7 +331,7 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       svi: cand.pricer.svi,
       strikePrice: bet.strikePrice ?? null,
       isUp: bet.isUp,
-      stake: limits.perTradeUsd,
+      stake: proposed.sizeUsd,
       leverage: bet.leverage ?? 1,
     });
     if (!plan.probOk || !plan.stakeOk) return;

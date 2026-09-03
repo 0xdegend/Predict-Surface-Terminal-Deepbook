@@ -222,6 +222,24 @@ export function gateTrade(
   return ALLOW;
 }
 
+/** The smallest trade the chain accepts: its $1 minimum net premium (see
+ *  lib/sui/v2/quote MIN_STAKE_BASE). The budget stop and the last-trade sizing both key
+ *  off it: a run keeps going while at least this much is left to place. */
+export const MIN_TRADE_USD = 1;
+
+/**
+ * How much the next trade stakes: the per-trade size, or whatever is left of the budget
+ * once that is smaller.
+ *
+ * A $5,000 budget split three ways came out at $1,667 a trade, and two of those left
+ * $1,666: less than a full trade, but a third of the money the trader put up. The run
+ * stopped there and called it "Budget used up". The last trade shrinks to the remainder
+ * instead, so the budget is the thing that gets spent, not the rounding.
+ */
+export function stakeFor(limits: AutopilotLimits, runtime: AutopilotRuntime): number {
+  return Math.max(0, Math.min(limits.perTradeUsd, limits.budgetUsd - runtime.spentUsd));
+}
+
 /**
  * Decide whether Autopilot should disarm itself now. Returns the first terminal
  * condition that holds, or null to keep running. Ordered so the most
@@ -239,8 +257,10 @@ export function autoStopReason(
   if (!health.feedFresh) return 'feed_stall';
   if (runtime.consecutiveLosses >= limits.maxConsecutiveLosses) return 'loss_limit';
   if (runtime.tradeCount >= limits.maxTrades) return 'trade_cap_reached';
-  // Nothing left to place if the remaining budget can't fund another trade.
-  if (limits.budgetUsd - runtime.spentUsd < limits.perTradeUsd) return 'budget_spent';
+  // Nothing left to place once what remains cannot fund even the smallest trade. NOT
+  // "another full trade": the last one shrinks to the remainder (see stakeFor), so a
+  // budget that does not divide evenly by the per-trade size still gets spent.
+  if (limits.budgetUsd - runtime.spentUsd < MIN_TRADE_USD) return 'budget_spent';
   if (now - runtime.armedAt >= limits.armDurationMs) return 'duration_elapsed';
   return null;
 }

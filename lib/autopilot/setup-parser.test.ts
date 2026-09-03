@@ -106,6 +106,15 @@ describe('resolveSetup', () => {
     expect(r.perTradeUsd).toBe(10);
   });
 
+  it('rounds the derived per-bet DOWN so every planned trade fits the budget', () => {
+    // $5,000 careful is 3 trades. Nearest rounding gave $1,667, and three of those are
+    // $5,001, so the third trade could never fire and the run stopped after two.
+    const r = resolveSetup(parseSetup('careful, $5000 for 30 minutes'), CURRENT);
+    expect(r.budgetUsd).toBe(5000);
+    expect(r.perTradeUsd).toBe(1666);
+    expect(r.perTradeUsd * 3).toBeLessThanOrEqual(r.budgetUsd);
+  });
+
   it('never lets the per-bet exceed the budget', () => {
     const r = resolveSetup(parseSetup('$5 a bet, $3 total'), CURRENT);
     expect(r.budgetUsd).toBe(3);

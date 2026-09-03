@@ -15,6 +15,7 @@ import {
   type AutopilotHealth,
   type GateCode,
   type StopReason,
+  stakeFor,
 } from './policy';
 
 const NOW = 1_800_000_000_000;
@@ -151,10 +152,23 @@ describe('autoStopReason — terminal disarms', () => {
     expect(autoStopReason(limits, runtime, health, NOW)).toBeNull();
   });
 
-  it('stops when the remaining budget cannot fund another trade', () => {
-    expect(autoStopReason(limits, { ...runtime, spentUsd: 46 }, health, NOW)).toBe('budget_spent');
-    // exactly one more trade still fits
+  it('stops only when what is left cannot fund even the smallest trade', () => {
+    // $4 left is less than a full $5 trade, but the last trade shrinks to fit (stakeFor).
+    expect(autoStopReason(limits, { ...runtime, spentUsd: 46 }, health, NOW)).toBeNull();
     expect(autoStopReason(limits, { ...runtime, spentUsd: 45 }, health, NOW)).toBeNull();
+    expect(autoStopReason(limits, { ...runtime, spentUsd: 49.5 }, health, NOW)).toBe('budget_spent');
+    expect(autoStopReason(limits, { ...runtime, spentUsd: 50 }, health, NOW)).toBe('budget_spent');
+  });
+
+  it('sizes the last trade to whatever budget is left', () => {
+    expect(stakeFor(limits, runtime)).toBe(5);
+    expect(stakeFor(limits, { ...runtime, spentUsd: 46 })).toBe(4);
+    expect(stakeFor(limits, { ...runtime, spentUsd: 50 })).toBe(0);
+    // The $5,000 careful run that stopped after two $1,667 trades with $1,666 unspent.
+    const careful = { ...limits, budgetUsd: 5000, perTradeUsd: 1667, maxTrades: 3 };
+    const twoIn = { ...runtime, spentUsd: 3334, tradeCount: 2 };
+    expect(stakeFor(careful, twoIn)).toBe(1666);
+    expect(autoStopReason(careful, twoIn, health, NOW)).toBeNull();
   });
 
   it('stops at the trade cap', () => {
