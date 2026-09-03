@@ -48,6 +48,8 @@ export function PlanCard({
   avatar = true,
   variant = 'full',
   surface,
+  learnMoreHref,
+  spacious = false,
 }: {
   rules: Rules;
   limits: Limits;
@@ -78,6 +80,12 @@ export function PlanCard({
    * default follows each variant's usual home and the odd one out says so.
    */
   surface?: 'card' | 'inset';
+  /** Where "Learn more" points. Given, the footer becomes a row: the mode line on the
+   *  left and the link on the right, the way the landing's plan card reads. */
+  learnMoreHref?: string;
+  /** Room to breathe: the landing gives the plan a whole column, so the stepper gets
+   *  bigger dots and a taller rhythm than the same list inside a dialog. */
+  spacious?: boolean;
 }) {
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : null;
   const phases = planPhases(rules, limits);
@@ -90,7 +98,15 @@ export function PlanCard({
   const inset = (surface ?? (compact ? 'inset' : 'card')) === 'inset';
 
   return (
-    <div className={inset ? 'glass-inset border-l-2 border-(--accent-line) p-3.5' : 'glass-card p-4'}>
+    <div
+      className={
+        inset
+          ? 'glass-inset border-l-2 border-(--accent-line) p-3.5'
+          : spacious
+            ? 'glass-card flex flex-1 flex-col p-4'
+            : 'glass-card p-4'
+      }
+    >
       <div className="flex items-start gap-3">
         {avatar && (
           <Image
@@ -102,10 +118,12 @@ export function PlanCard({
             className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
           />
         )}
-        <p className="eyebrow flex items-center gap-1.5">
+        <p className="eyebrow flex items-center gap-2">
           The plan
-          <span className="rounded-full bg-white/6 px-1.5 py-px text-[9.5px] font-medium text-text-2">
-            {preset ? preset.name : 'Custom'}
+          {/* The style as an accent chip, the same one the landing's Kelly card fills in
+              for STYLE, so the two read as the same fact in two places. */}
+          <span className="rounded-full bg-(--accent-soft) px-2 py-0.5 text-[9.5px] font-medium tracking-wider text-accent ring-1 ring-inset ring-(--accent-line)">
+            {(preset ? preset.name : 'Custom').toUpperCase()}
           </span>
         </p>
       </div>
@@ -149,32 +167,56 @@ export function PlanCard({
          down the left edge; the titles start at 32 + gap-3, which is exactly where "THE
          PLAN" starts. This used to indent the whole list by `pl-11` to clear the fox,
          which put the dots in a third column of their own and pushed every sentence 84px
-         off the card edge. `pt-2` centres the first line of a title on its dot. */
-      <ol className="mt-3 flex flex-col">
+         off the card edge. `pt-2` centres the first line of a title on its dot.
+
+         Spacious: the list takes the card's spare height and each phase grows evenly,
+         so the four steps spread down the column instead of bunching at the top with
+         a void under them. The connector is drawn per row to its bottom edge, so it
+         keeps up with however tall the row becomes. */
+      <ol className={`flex flex-col ${spacious ? 'mt-4 flex-1' : 'mt-3'}`}>
         {phases.map((p, i) => (
-          <li key={p.id} className="relative flex gap-3 pb-3 last:pb-0">
+          <li key={p.id} className={`relative flex gap-3 last:pb-0 ${spacious ? 'flex-1 gap-3.5 pb-4' : 'pb-3'}`}>
             {i < phases.length - 1 && (
-              <span aria-hidden className="absolute left-4 top-9 bottom-0 w-px bg-white/10" />
+              <span
+                aria-hidden
+                className={`absolute bottom-0 w-px bg-white/10 ${spacious ? 'left-5 top-11' : 'left-4 top-9'}`}
+              />
             )}
             <span
-              className="plan-step-dot relative z-10 flex h-8 w-8 flex-none items-center justify-center rounded-full ring-1 ring-inset ring-white/10"
+              className={`plan-step-dot relative z-10 flex flex-none items-center justify-center rounded-full ring-1 ring-inset ring-white/10 ${
+                spacious ? 'h-10 w-10' : 'h-8 w-8'
+              }`}
               style={{ animationDelay: `${i * PHASE_STAGGER_MS}ms` }}
             >
               <PhaseGlyph id={p.id} delayMs={i * PHASE_STAGGER_MS} size={16} />
             </span>
-            <div className="min-w-0 flex-1 pt-2">
-              <p className="text-[12.5px] font-medium leading-tight text-text-1">{p.title}</p>
-              <p className="mt-0.5 text-[11.5px] leading-relaxed text-text-3">{p.detail}</p>
+            <div className={`min-w-0 flex-1 ${spacious ? 'pt-2' : 'pt-2'}`}>
+              <p className={`font-medium leading-tight text-text-1 ${spacious ? 'text-[13.5px]' : 'text-[12.5px]'}`}>{p.title}</p>
+              <p className={`mt-0.5 leading-relaxed ${spacious ? 'text-[12px] text-text-2' : 'text-[11.5px] text-text-3'}`}>{p.detail}</p>
             </div>
           </li>
         ))}
       </ol>
       )}
 
-      {live != null && (
-        <p className={`mt-3 text-[11px] leading-relaxed text-text-3 ${avatar ? 'pl-11' : ''}`}>
-          {live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
-        </p>
+      {(live != null || learnMoreHref) && (
+        <div
+          className={`flex items-center justify-between gap-3 ${avatar ? 'pl-11' : ''} ${
+            spacious ? 'mt-auto border-t border-white/6 pt-3.5' : 'mt-3'
+          }`}
+        >
+          <p className={`leading-relaxed text-text-3 ${spacious ? 'text-[11.5px]' : 'text-[11px]'}`}>
+            {live == null ? '' : live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
+          </p>
+          {learnMoreHref && (
+            <a
+              href={learnMoreHref}
+              className="inline-flex flex-none items-center gap-1 text-[12px] text-accent transition-colors hover:text-text-1"
+            >
+              Learn more <span aria-hidden>→</span>
+            </a>
+          )}
+        </div>
       )}
     </div>
   );

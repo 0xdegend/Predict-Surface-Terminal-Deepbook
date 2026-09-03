@@ -404,7 +404,7 @@ function Meter({
  * top of tripping this repo's `set-state-in-effect` rule. Adding the class a frame after
  * removing it restarts the animation even when the price moves the same way twice.
  */
-function useTickFlash(value: number | null) {
+export function useTickFlash(value: number | null) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const prev = useRef<number | null>(null);
   useEffect(() => {
@@ -421,7 +421,7 @@ function useTickFlash(value: number | null) {
 }
 
 /** A small teal "this is live" pulse dot. */
-function LivePulse() {
+export function LivePulse() {
   return (
     <span className="relative flex h-1.5 w-1.5">
       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
@@ -440,7 +440,7 @@ const SPARK_DOWN = '#f0796b';
  * keeps it off the React render path: no per-tick re-render, and no ref reads during
  * render. Trend colours the line teal (up over the window) or coral (down).
  */
-function Sparkline({ value }: { value: number | null }) {
+export function Sparkline({ value }: { value: number | null }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bufRef = useRef<number[]>([]);
 

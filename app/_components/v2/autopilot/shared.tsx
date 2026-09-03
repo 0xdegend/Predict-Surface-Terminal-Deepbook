@@ -8,7 +8,7 @@
  * rather than a junk drawer.
  */
 import type { IconType } from 'react-icons';
-import { useAutopilotStore } from '@/lib/store/autopilot-store';
+import { useAutopilotStore, type RunResult } from '@/lib/store/autopilot-store';
 
 /** How the trader sets Autopilot up: say it in words, or work the controls. */
 export type SetupMode = 'auto' | 'manual';
@@ -42,6 +42,28 @@ export function signedUsd(v: number): string {
 /** Color class for a signed number (a small dead-band reads flat as neutral). */
 export function pnlClass(v: number): string {
   return v > 0.005 ? 'text-up' : v < -0.005 ? 'text-down' : 'text-text-2';
+}
+
+/**
+ * Autopilot's lifetime numbers off the saved Results archive. The landing's stat tiles,
+ * the running dashboard's stat band, and the Recent runs module all read these, so the
+ * arithmetic lives once.
+ */
+export function lifetimeStats(history: readonly RunResult[]): {
+  net: number;
+  wins: number;
+  losses: number;
+  runs: number;
+  trades: number;
+  /** 0..100, or null before anything has settled. */
+  winRate: number | null;
+} {
+  const net = history.reduce((a, r) => a + r.realizedPnlUsd, 0);
+  const wins = history.reduce((a, r) => a + r.wins, 0);
+  const losses = history.reduce((a, r) => a + r.losses, 0);
+  const trades = history.reduce((a, r) => a + r.tradeCount, 0);
+  const resolved = wins + losses;
+  return { net, wins, losses, runs: history.length, trades, winRate: resolved > 0 ? Math.round((wins / resolved) * 100) : null };
 }
 
 export function ModeTab({

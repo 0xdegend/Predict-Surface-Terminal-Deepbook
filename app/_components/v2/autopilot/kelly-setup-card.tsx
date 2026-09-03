@@ -6,25 +6,26 @@
  *
  * Split out of autopilot-panel.tsx. See lib/autopilot/read-setup.ts for the reader that
  * feeds it (rules, plus the optional model tier).
+ *
+ * THE SHAPE (redesign, 2026-09-03). This used to be a chat: a scrolling thread of bubbles
+ * with a composer under it. It is now the body of the Command Center and reads top to
+ * bottom as one conversation turn at a time: Kelly's current line as the heading (her
+ * question, or her acknowledgement), what she has heard so far as four slots, three
+ * one-tap plans plus a door to the manual controls, and the box you talk to her in. The
+ * whole thread still lives in the store (Kelly's replies are built from it), only the
+ * scrollback is gone: the slots say what she knows and the heading says what she wants,
+ * which is what the scrollback was for.
  */
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import { useAutopilotStore } from '@/lib/store/autopilot-store';
-import { LuArrowRight, LuCircleCheck, LuRotateCcw } from 'react-icons/lu';
+import { LuArrowRight, LuCircleCheck, LuRotateCcw, LuSparkles } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
 import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
-import { GAP_ORDER, type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
+import { type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
 import { readSetup } from '@/lib/autopilot/read-setup';
 import type { StartOutcome } from './shared';
-
-/**
- * The four openers were two careful ones, a bold one and a balanced one, half of them
- * missing a duration, so tapping one usually bought a follow-up question. Three now, one
- * per style, each naming all three things Kelly needs: a tap lands a finished setup and
- * the plan fills in beside it. Typing a half-sentence still starts the conversation.
- */
-const OPENERS = ['Careful, $25 for an hour', 'Balanced, $50 for an hour', 'Bold, $100 for 30 minutes'];
 
 /** What Kelly asks for, in the order she asks. Plain words, one thing at a time. */
 const GAP_QUESTION: Record<SetupGap, string> = {
@@ -39,8 +40,6 @@ const GAP_CHIPS: Record<SetupGap, string[]> = {
   budget: ['$10', '$25', '$50', '$100'],
   duration: ['15 minutes', '30 minutes', 'An hour', '2 hours'],
 };
-
-const GAP_LABEL: Record<SetupGap, string> = { style: 'Style', budget: 'Budget', duration: 'For' };
 
 /** Composer height cap, matching the co-pilot chat: roughly three lines, then scroll. */
 const MAX_INPUT_H = 76;
@@ -128,17 +127,16 @@ export function KellySetupCard({
   // restoring one would put words in the box that the trader did not leave there.
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
-  const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const gaps = missingFrom(intent);
   const openGap = gaps[0] ?? null;
   const done = gaps.length === 0 && turns.length > 0;
 
-  // Keep the newest turn in view as the thread grows.
-  useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
-  }, [turns.length, busy]);
+  // Kelly's current line is the heading, and the trader's last words sit under it, so
+  // the exchange that matters is on screen without a scrollback.
+  const lastKelly = [...turns].reverse().find((t) => t.who === 'kelly')?.text ?? null;
+  const lastTrader = [...turns].reverse().find((t) => t.who === 'trader')?.text ?? null;
 
   /** Grow the composer with its text, then let it scroll. A single-line input hid the
    *  end of anything longer than the box, which is the wrong trade in the one field on
@@ -191,7 +189,7 @@ export function KellySetupCard({
           'kelly',
           ok
             ? 'Running. Stop me any time from the top bar.'
-            : 'That didn\u2019t go through. Check your wallet, then say \u201cstart\u201d to try again.',
+            : 'That didn’t go through. Check your wallet, then say “start” to try again.',
         );
         return;
       }
@@ -227,7 +225,7 @@ export function KellySetupCard({
       if (ack) lines.push(ack);
       else lines.push("I didn't catch that one.");
       if (nextGaps.length > 0) lines.push(GAP_QUESTION[nextGaps[0]]);
-      else lines.push("That's everything. Check the plan, then say \u201cstart\u201d whenever you're ready.");
+      else lines.push("That's everything. Check the plan, then say “start” whenever you're ready.");
       push('kelly', lines.join(' '));
 
       if (nextGaps.length === 0) onApply(resolveSetup(merged, current));
@@ -241,22 +239,39 @@ export function KellySetupCard({
     setText('');
   }
 
+  const eyebrow = busy ? 'Kelly is thinking' : done ? 'Ready when you are' : 'Kelly is listening';
+  const heading = lastKelly ?? "What's the plan today?";
+  const quick = turns.length > 0 && openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : [];
+
   return (
-    <div className="glass-card flex flex-1 flex-col gap-3 p-4">
-      <div className="flex items-start gap-3">
+    <div className="flex flex-col gap-4">
+      {/* Kelly, and her current line. */}
+      <div className="flex items-start gap-4">
         <Image
           src={MASCOT_SRC.thinking}
           alt=""
-          width={32}
-          height={32}
+          width={48}
+          height={48}
           aria-hidden
-          className="mt-0.5 h-8 w-8 flex-none rounded-full object-contain"
+          className="h-12 w-12 flex-none rounded-full object-contain"
         />
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">Set it up for me</p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-text-2">
-            Tell me how you want to play it, in your own words.
+          <p className="eyebrow flex items-center gap-2 text-accent">
+            {eyebrow}
+            {busy && (
+              <span className="inline-flex gap-1">
+                <Dot delay={0} />
+                <Dot delay={120} />
+                <Dot delay={240} />
+              </span>
+            )}
           </p>
+          <p className="mt-1 text-[17px] font-medium leading-snug text-text-1 sm:text-[19px]">{heading}</p>
+          {lastTrader && (
+            <p className="mt-1 truncate text-[12px] text-text-3">
+              You said: &ldquo;{lastTrader}&rdquo;
+            </p>
+          )}
         </div>
         {turns.length > 0 && (
           <button
@@ -270,77 +285,19 @@ export function KellySetupCard({
         )}
       </div>
 
-      {/* What Kelly has so far. Three slots, filling in as the conversation goes, so the
-          trader can see what is still outstanding without reading back up the thread. */}
-      <div className="flex flex-wrap gap-1.5">
-        {GAP_ORDER.map((g) => {
-          const value = slotValue(g, intent);
-          return (
-            <span
-              key={g}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] ring-1 ring-inset transition-colors ${
-                value
-                  ? 'bg-(--accent-soft) text-accent ring-(--accent-line)'
-                  : openGap === g
-                    ? 'bg-white/6 text-text-1 ring-white/15'
-                    : 'bg-white/3 text-text-3 ring-transparent'
-              }`}
-            >
-              {value ? <LuCircleCheck size={11} className="flex-none" /> : <span className="h-1.5 w-1.5 rounded-full bg-current opacity-40" />}
-              <span className="text-[10px] uppercase tracking-wide opacity-70">{GAP_LABEL[g]}</span>
-              {value ?? '?'}
-            </span>
-          );
-        })}
+      {/* What Kelly has so far. Four slots that fill in as the conversation goes, so the
+          trader can see what is still outstanding without a scrollback. Mode is never a
+          question (it has a default), so it shows the default quietly until it is named. */}
+      <div className="flex flex-wrap gap-2">
+        <Slot label="Style" value={intent.presetNamed ? capital(presetWord(intent.preset)) : null} asking={openGap === 'style'} />
+        <Slot label="Budget" value={intent.budgetUsd != null ? `$${num(intent.budgetUsd, 0)}` : null} asking={openGap === 'budget'} />
+        <Slot label="Time" value={intent.durationMins != null ? durationWords(intent.durationMins) : null} asking={openGap === 'duration'} />
+        <Slot label="Mode" value={live ? 'Live' : 'Watch'} quiet={intent.live == null} />
       </div>
 
-      {/* The message area, always present even with nothing in it yet. `flex-1` hands it
-          the card's spare height, which is what puts the composer on the bottom edge of
-          the chat instead of floating halfway up an empty card. `min-h-0` lets it shrink
-          below its content so `max-h-56` still caps the card and scrolls a long thread
-          rather than growing forever. */}
-      <div
-        ref={threadRef}
-        className="scroll-quiet flex max-h-56 min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1"
-      >
-        {turns.map((t) => (
-          <div
-            key={t.id}
-            className={`max-w-[88%] rounded-xl px-3 py-2 text-[12.5px] leading-relaxed ${
-              t.who === 'kelly'
-                ? 'glass-inset self-start text-text-1'
-                : 'self-end bg-(--accent-soft) text-text-1 ring-1 ring-inset ring-(--accent-line)'
-            }`}
-          >
-            {t.text}
-          </div>
-        ))}
-        {busy && (
-          <div className="glass-inset self-start rounded-xl px-3 py-2 text-[12.5px] text-text-3">
-            <span className="inline-flex gap-1">
-              <Dot delay={0} />
-              <Dot delay={120} />
-              <Dot delay={240} />
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Openers before the first message, then answers to whatever Kelly just asked. */}
-      <div className="flex flex-wrap gap-1.5">
-        {(turns.length === 0 ? OPENERS : openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : []).map((s) => (
-          <button
-            key={s}
-            type="button"
-            disabled={busy}
-            onClick={() => void send(s)}
-            className="glass-inset rounded-full px-3 py-2 text-[11px] text-text-2 transition-colors hover:border-(--accent-line) hover:text-text-1 disabled:opacity-40 sm:px-2.5 sm:py-1"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-
+      {/* The box you talk to her in. Styles are not offered as cards here on purpose:
+          this side is for saying it in words, and the Manual tab beside is the one with
+          the pickers. */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -361,35 +318,78 @@ export function KellySetupCard({
           }}
           disabled={busy}
           rows={1}
-          placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Try "careful, $25 for an hour"'}
+          placeholder={openGap && turns.length > 0 ? answerHint(openGap) : 'Tell Kelly what you want to play...'}
           aria-label="Tell Kelly how you want Autopilot to run"
           // 16px is deliberate: iOS Safari force-zooms a focused field under 16px.
-          className="scroll-quiet glass-inset w-full resize-none rounded-lg px-3 py-2.5 text-[16px] leading-snug text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
+          className="scroll-quiet glass-inset w-full resize-none rounded-xl px-3.5 py-3 text-[16px] leading-snug text-text-1 outline-none transition-colors placeholder:text-text-3 focus:border-(--accent-line) disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={busy || !text.trim()}
           aria-label="Send"
-          className="glass-inset flex-none rounded-lg p-2.5 text-text-2 transition-colors hover:text-text-1 disabled:opacity-40"
+          className="flex h-11 w-11 flex-none items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) text-accent transition-colors hover:bg-up/15 disabled:opacity-40"
         >
           <LuArrowRight size={16} />
         </button>
       </form>
 
+      {/* Answers to whatever Kelly just asked, or Start once she has everything. */}
+      {quick.length > 0 && (
+        <div className="-mt-2 flex flex-wrap gap-1.5">
+          {quick.map((s) => (
+            <button
+              key={s}
+              type="button"
+              disabled={busy}
+              onClick={() => void send(s)}
+              className={`rounded-full px-3 py-1.5 text-[11.5px] transition-colors disabled:opacity-40 ${
+                s === 'Start'
+                  ? 'border border-(--accent-line) bg-(--accent-soft) font-medium text-accent hover:bg-up/15'
+                  : 'glass-inset text-text-2 hover:border-(--accent-line) hover:text-text-1'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
       {done ? (
-        <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
+        <p className="-mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-accent">
           <LuCircleCheck size={12} className="mt-px flex-none" />
           Settings loaded. Say &ldquo;start&rdquo; and I&rsquo;ll begin{' '}
           {live ? 'trading live' : 'in watch mode, no real money'}. Say &ldquo;live&rdquo; or &ldquo;watch&rdquo; to switch.
         </p>
       ) : (
-        /* Just the promise. What to say is already on screen three times over: the three
-           slots above, the placeholder's worked example, and the openers below. */
-        <p className="text-[11px] leading-relaxed text-text-3">
-          I&rsquo;ll ask about anything you leave out, and I never stake an amount you didn&rsquo;t choose.
+        <p className="-mt-1 flex items-start gap-1.5 text-[11px] leading-relaxed text-text-3">
+          <LuSparkles size={12} className="mt-px flex-none text-accent" />
+          <span>
+            Examples: &ldquo;Balanced, $50 for an hour, live&rdquo; or &ldquo;Play it safe for 30 minutes&rdquo;. I&rsquo;ll ask
+            about anything you leave out, and I never stake an amount you didn&rsquo;t choose.
+          </span>
         </p>
       )}
     </div>
+  );
+}
+
+/** One "so far" slot: the label, and the value or a question mark while it is unknown. */
+function Slot({ label, value, asking = false, quiet = false }: { label: string; value: string | null; asking?: boolean; quiet?: boolean }) {
+  const known = value != null && !quiet;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] ring-1 ring-inset transition-colors ${
+        known
+          ? 'bg-(--accent-soft) text-accent ring-(--accent-line)'
+          : asking
+            ? 'bg-white/6 text-text-1 ring-white/15'
+            : 'bg-white/3 text-text-3 ring-white/8'
+      }`}
+    >
+      {known && <LuCircleCheck size={11} className="flex-none" />}
+      <span className="text-[10px] uppercase tracking-wider opacity-70">{label}</span>
+      <span className={known ? 'font-medium' : ''}>{value ?? '?'}</span>
+    </span>
   );
 }
 
@@ -398,11 +398,8 @@ function lowerFirst(t: string): string {
   return t.charAt(0).toLowerCase() + t.slice(1);
 }
 
-/** The value shown in a "so far" slot, or null while it is still unknown. */
-function slotValue(gap: SetupGap, intent: SetupIntent): string | null {
-  if (gap === 'style') return intent.presetNamed ? presetWord(intent.preset) : null;
-  if (gap === 'budget') return intent.budgetUsd != null ? `$${num(intent.budgetUsd, 0)}` : null;
-  return intent.durationMins != null ? durationWords(intent.durationMins) : null;
+function capital(t: string): string {
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 function answerHint(gap: SetupGap): string {

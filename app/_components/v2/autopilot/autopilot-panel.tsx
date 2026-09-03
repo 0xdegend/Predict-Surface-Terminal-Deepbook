@@ -26,11 +26,8 @@
  * House style matches the track-record + leaderboard panels: glass cards, mono
  * numerals, teal (up) / coral (down) semantics, hairline dividers.
  */
-import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LuGauge, LuHistory, LuShieldCheck, LuTrash2, LuTriangleAlert } from 'react-icons/lu';
-import { ReviewButton } from '@/app/_components/ticket/review-button';
-import { MASCOT_SRC } from '@/lib/mascot';
+import { LuTriangleAlert } from 'react-icons/lu';
 import { useNow } from '@/lib/hooks/use-now';
 import { num } from '@/lib/format';
 import { fromQuote, toQuote } from '@/config/scale';
@@ -45,11 +42,12 @@ import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
 import { topUpBase } from '@/lib/autopilot/funding';
 import { buildRunTape } from '@/lib/autopilot/run-tape';
 import { type SetupMode, type StartOutcome } from './shared';
-import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker, SetupModeTabs } from './setup';
+import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker } from './setup';
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
-import { HeaderTape, MetersStrip, PausedBanner, PerformancePanel, ReloadBanner, RunLogPanel, RunModePill, StatBand, StatusPill, StoppedBanner } from './live';
+import { MetersStrip, PausedBanner, PerformancePanel, ReloadBanner, RunLogPanel, StatBand, StoppedBanner } from './live';
+import { CommandCenter, PageHeader, PerformanceOverview, RecentRuns, StatTiles } from './landing';
 import { SessionGasModal } from '@/app/_components/session-gas-modal';
 import { ResultsView } from './results';
 import { SessionShareModal } from './session-share-modal';
@@ -395,61 +393,27 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-5">
-      {/* ── One command bar ─────────────────────────────────────────────────
-          This was three stacked full-width strips before a single piece of content: a
-          view switcher, a header card, and the Auto/Manual fork. 308px of chrome on a
-          1200px screen, carrying the word "Autopilot" five times (the tab, the eyebrow,
-          the title) and 778px of nothing between the title and the button.
-
-          One bar now, one title, and the void holds the live tape, which is the only
-          thing on this page that moves while nothing is running. The fork moved down to
-          sit above the column it actually switches. */}
-      <div className="glass-card sticky top-0 z-20 mb-4 flex flex-wrap items-center gap-x-4 gap-y-2.5 p-3 backdrop-blur-md sm:gap-x-5 sm:p-3.5">
-        <div className="relative flex h-10 w-10 flex-none items-center justify-center">
-          <span
-            aria-hidden
-            className="absolute inset-0"
-            style={{ background: 'radial-gradient(circle at 50% 42%, var(--accent-soft), transparent 70%)' }}
-          />
-          <Image src={MASCOT_SRC.thinking} alt="Kelly the fox" width={40} height={40} className="relative h-full w-full object-contain" />
-        </div>
-        <div className="flex flex-none items-center gap-2">
-          <h1 className="text-[17px] font-semibold tracking-tight text-text-1 sm:text-[18px]">Autopilot</h1>
-          <StatusPill key={`${status}:${stopped && openCount > 0}`} status={status} settling={stopped && openCount > 0} />
-          {running && <RunModePill live={live} />}
-        </div>
-
-        <HeaderTape spot={engine.spot} watching={engine.candidates.length} />
-
-        {/* On a phone this wraps to its own line, so it spreads rather than hugging the
-            right edge and leaving 340px of empty bar beside it. From `sm` it goes back to
-            sitting at the end of the row. */}
-        <div className="flex w-full flex-none items-center justify-between gap-2 sm:ml-auto sm:w-auto sm:justify-end">
-          <ViewSwitch view={view} onView={setView} resultCount={history.length} running={running} />
-          {stopped && (
-            <button
-              onClick={finishRun}
-              className="group glass-inset hidden items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1 sm:inline-flex"
-            >
-              <LuTrash2 size={12} className="transition-colors duration-200 group-hover:text-accent" /> Clear log
-            </button>
-          )}
-          {/* Start is mode-neutral: it opens the confirm, and the confirm is where
-              watch-vs-live and the wallet steps happen. */}
-          <div className="flex w-32 flex-col sm:w-36">
-            {running ? (
-              <ReviewButton tone="down" onClick={() => disarm('manual', Date.now())}>
-                Stop Autopilot
-              </ReviewButton>
-            ) : (
-              <ReviewButton tone="up" onClick={handleStart} disabled={!canArm}>
-                Start Autopilot
-              </ReviewButton>
-            )}
-          </div>
-        </div>
-      </div>
+    // Centered, one step wider than the rest of the app's panels (1280px): the founder
+    // tried it edge to edge and preferred a column, with the density coming from the
+    // elements inside rather than from the page.
+    <div className="mx-auto w-full max-w-7xl px-4 py-5 sm:px-6">
+      {/* ── Page header ────────────────────────────────────────────────────
+          Open while nothing is running: the name, one line of purpose, the status and
+          the one action. Compact and sticky during a run so Stop stays in reach. */}
+      <PageHeader
+        status={status}
+        settling={stopped && openCount > 0}
+        running={running}
+        live={live}
+        view={view}
+        resultCount={history.length}
+        onToggleView={() => setView((v) => (v === 'results' ? 'cockpit' : 'results'))}
+        showClear={stopped}
+        onClear={finishRun}
+        onStart={handleStart}
+        onStop={() => disarm('manual', Date.now())}
+        canArm={canArm}
+      />
 
       {view === 'results' ? (
         <ResultsView
@@ -466,14 +430,10 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         </p>
       )}
 
-      {/* ── Stat band: live market + lifetime performance, at a glance ───────
-          Top of the page while nothing is running. During a run it moves BELOW the live
-          blocks (see the armed section): stacking it over the meters put two identical
-          rows of four tiles in a row, so the trader's own record competed with the
-          numbers that change every second. Ordered by what you are actually watching. */}
+      {/* ── Stat tiles: the market it trades, and Autopilot's lifetime record ── */}
       {idle && (
         <div className="mb-4">
-          <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
+          <StatTiles spot={engine.spot} watching={engine.candidates.length} history={history} now={now} />
         </div>
       )}
 
@@ -496,56 +456,63 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         />
       )}
 
-      {/* ── Setup (idle or stopped) ─────────────────────────────────────────
-          One fork at the top, then ONE way of setting up beneath it. Both paths used to
-          be on screen at once, with the manual controls filling the wide column and
-          "Set it up for me" tucked third down the narrow one, which read as a footnote
-          to the controls rather than an alternative to them. Whichever you are not
-          using is now gone, which is the trim and the feature at the same time.
-          The right column stays put in both, because the mode and the plan are the
-          confirm, not the setup. */}
+      {/* ── Command Center beside The Plan ──────────────────────────────────
+          One fork inside the Command Center, then ONE way of setting up beneath it. In
+          Auto the body is Kelly's conversation with the one-tap plans; in Manual it is
+          the controls. The plan on the right is the same read-out either way and stays
+          put while the left column scrolls, because it is the confirm, not the setup. */}
       {idle && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-            {/* The fork sits above the column it switches, at its own width, instead of
-                spanning both columns as a third full-width bar. It governs the left side
-                only: the plan on the right is the same read-out either way. */}
-            <div className="flex min-w-0 flex-col gap-4">
-              <SetupModeTabs mode={setupMode} onMode={setSetupMode} />
-              {setupMode === 'auto' ? (
-                <KellySetupCard
-                  current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
-                  onApply={applySetup}
-                  onStart={quickStart}
-                  startIssue={armIssue}
-                  live={live}
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,1fr)]">
+          <CommandCenter mode={setupMode} onMode={setSetupMode}>
+            {setupMode === 'auto' ? (
+              <KellySetupCard
+                current={{ budgetUsd: limits.budgetUsd, perTradeUsd: limits.perTradeUsd, armDurationMs: limits.armDurationMs }}
+                onApply={applySetup}
+                onStart={quickStart}
+                startIssue={armIssue}
+                live={live}
+              />
+            ) : (
+              <div className="flex flex-col gap-4">
+                <PresetPicker active={activePreset} onApply={applyPreset} />
+                <MoneyCard limits={limits} setLimits={setLimits} />
+                <CustomizeSection
+                  open={customizeOpen}
+                  onToggle={() => setCustomizeOpen((o) => !o)}
+                  custom={activePreset === null}
+                  rules={rules}
+                  limits={limits}
+                  setRules={setRules}
+                  setLimits={setLimits}
+                  toggleTenor={toggleTenor}
+                  toggleSide={toggleSide}
                 />
-              ) : (
-                <>
-                  <PresetPicker active={activePreset} onApply={applyPreset} />
-                  <MoneyCard limits={limits} setLimits={setLimits} />
-                  <CustomizeSection
-                    open={customizeOpen}
-                    onToggle={() => setCustomizeOpen((o) => !o)}
-                    custom={activePreset === null}
-                    rules={rules}
-                    limits={limits}
-                    setRules={setRules}
-                    setLimits={setLimits}
-                    toggleTenor={toggleTenor}
-                    toggleSide={toggleSide}
-                  />
-                </>
-              )}
-            </div>
-            {/* Sticky because it is the read-out for the controls beside it: in Manual
-                the left column is much taller than this one, so a fixed plan would
-                scroll away exactly while you are changing what it describes.
-                In Auto the mode is what "start" will use, so it is shown; in Manual it is
-                `null` because the Start button's confirm is where it gets chosen. */}
-            <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
-              <PlanCard rules={rules} limits={limits} live={setupMode === 'auto' ? live : null} presetId={activePreset} />
-              {setupMode === 'manual' && <PlanDetails rules={rules} limits={limits} />}
-            </div>
+              </div>
+            )}
+          </CommandCenter>
+          {/* Stretches to the Command Center's height (no sticky, no self-start): the
+              reference's two cards share one bottom edge, and the plan fills its column
+              with the steps spread out and the mode line pinned to the foot. */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <PlanCard
+              rules={rules}
+              limits={limits}
+              live={setupMode === 'auto' ? live : null}
+              presetId={activePreset}
+              avatar={false}
+              spacious
+              learnMoreHref="/docs"
+            />
+            {setupMode === 'manual' && <PlanDetails rules={rules} limits={limits} />}
+          </div>
+        </div>
+      )}
+
+      {/* ── Below the fold: how it has done, and the last few runs ─────────── */}
+      {idle && (
+        <div className="mb-4 grid gap-4 lg:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+          <PerformanceOverview history={history} now={now} />
+          <RecentRuns history={history} onViewAll={() => setView('results')} now={now} />
         </div>
       )}
 
@@ -595,17 +562,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
         </div>
       )}
 
-      {/* ── Footer safety note (setup only) ────────────────────────────────── */}
-      {status === 'idle' && (
-        <p className="flex items-start gap-1.5 text-[10.5px] leading-relaxed text-text-3">
-          <LuShieldCheck size={12} className="mt-px flex-none" />
-          {/* The full version of this (what the session key can and cannot do, what a
-              deposit pins) now sits in the arm confirm, where it is read at the moment
-              it decides something rather than skimmed at the bottom of setup. */}
-          <span>Autopilot can only spend your trading-account balance, and you can stop it at any moment.</span>
-        </p>
-      )}
-
       <ArmConfirmModal
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -639,65 +595,3 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     </div>
   );
 }
-
-/* ------------------------------- pieces ---------------------------------- */
-
-/**
- * The view switch, as a control inside the command bar rather than a full-width strip
- * above it. Labels collapse to icons below `sm`, where the bar is already carrying the
- * title, the status and the primary action.
- *
- * "Run", not "Autopilot": the bar's own `h1` two controls to the left already says
- * Autopilot, and the tab saying it again was one of the five on the page.
- */
-function ViewSwitch({
-  view,
-  onView,
-  resultCount,
-  running,
-}: {
-  view: 'cockpit' | 'results';
-  onView: (v: 'cockpit' | 'results') => void;
-  resultCount: number;
-  running: boolean;
-}) {
-  return (
-    <div className="flex flex-none items-center gap-0.5 rounded-lg bg-white/4 p-0.5">
-      <ViewTab active={view === 'cockpit'} onClick={() => onView('cockpit')}>
-        <LuGauge size={13} className="flex-none" />
-        <span className="hidden sm:inline">Run</span>
-        {running && (
-          <span className="relative flex h-1.5 w-1.5 flex-none">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-up opacity-75" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-up" />
-          </span>
-        )}
-      </ViewTab>
-      <ViewTab active={view === 'results'} onClick={() => onView('results')}>
-        <LuHistory size={13} className="flex-none" />
-        <span className="hidden sm:inline">Results</span>
-        {resultCount > 0 && (
-          <span className="rounded-full bg-white/8 px-1.5 py-px font-mono text-[10px] tabular-nums text-text-2">
-            {resultCount}
-          </span>
-        )}
-      </ViewTab>
-    </div>
-  );
-}
-
-function ViewTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-all duration-150 sm:px-3 ${
-        active ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-1'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-/* -------------------------------- results -------------------------------- */
