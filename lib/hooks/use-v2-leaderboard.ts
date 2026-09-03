@@ -128,8 +128,11 @@ export function useV2Leaderboard(): UseV2Leaderboard {
     queryFn: async ({ signal }) => {
       const fresh = forceOnceRef.current;
       forceOnceRef.current = false; // consume — only this refetch is forced
+      // The route bounds itself (a forced rescan answers within ~12s); this is the
+      // safety net behind it, so the Refresh spinner can never sit open indefinitely.
+      const cutoff = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(30_000) : undefined;
       const res = await fetch(fresh ? '/api/v2/leaderboard?fresh=1' : '/api/v2/leaderboard', {
-        signal,
+        signal: cutoff && typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, cutoff]) : signal,
         cache: fresh ? 'no-store' : 'default',
       });
       if (!res.ok) throw new Error(`leaderboard ${res.status}`);

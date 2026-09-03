@@ -79,6 +79,19 @@ const graphqlUrl = () => `https://graphql.${predictV2Config.network}.sui.io/grap
 const EVENT_RETRY_MAX = 4;
 const EVENT_RETRY_BASE_MS = 400;
 const EVENT_RETRY_MAX_MS = 4_000;
+/** Cap one GraphQL request. A proxy that holds a connection open without answering
+ *  used to wedge the leaderboard's whole in-flight cycle (every later request shares
+ *  it). With this, the request fails, the scan skips that type for the cycle, and the
+ *  next cycle retries from the same cursor. */
+const EVENT_FETCH_TIMEOUT_MS = 15_000;
+/** The caller's signal, also cut off after `ms`. Older runtimes without the static
+ *  helpers just keep the caller's signal. */
+function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal.timeout !== 'function') return signal;
+  const t = AbortSignal.timeout(ms);
+  if (!signal) return t;
+  return typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, t]) : signal;
+}
 const sleepMs = (wait: number, signal?: AbortSignal): Promise<void> =>
   new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error('aborted'));
@@ -91,7 +104,7 @@ async function postEvents(body: string, opts?: GetOptions): Promise<Response> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
-      signal: opts?.signal,
+      signal: withTimeout(opts?.signal, EVENT_FETCH_TIMEOUT_MS),
       body,
     });
     if ((res.status !== 429 && res.status !== 503) || attempt >= EVENT_RETRY_MAX) return res;

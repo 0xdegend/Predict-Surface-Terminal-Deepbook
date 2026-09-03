@@ -72,7 +72,7 @@ export function V2LeaderboardPanel() {
   // Real Season-2 standings, reconstructed from the per-market order feeds. 'all'
   // is the whole indexed venue; 'skew' is only bets placed through the app (they
   // carry its on-chain builder code).
-  const { rows: allRows, skewRows, loading, skewLoading, refreshing, forceRefresh } = useV2Leaderboard();
+  const { rows: allRows, skewRows, loading, skewLoading, refreshing, error, forceRefresh } = useV2Leaderboard();
   const rows = scope === 'skew' ? skewRows : allRows;
   // Each scope has its own source (fan-out window vs on-chain Skew scan), so the
   // active tab's own loading state drives the skeleton, not just the default tab's.
@@ -179,6 +179,14 @@ export function V2LeaderboardPanel() {
           <LuRefreshCw size={12} className={`transition-colors duration-200 group-hover:text-accent ${refreshing ? 'animate-spin' : ''}`} />
         </button>
       </div>
+
+      {/* A refresh that did not come back says so, instead of a spinner that just stops.
+          The board on screen is still the last good one. */}
+      {error && !refreshing && (
+        <p className="-mt-3 mb-4 text-right text-[10.5px] text-warn">
+          Couldn&rsquo;t refresh just now. Showing the last board.
+        </p>
+      )}
 
       {/* Totals strip */}
       <div className="glass-card mb-5 grid grid-cols-3 gap-2.5 p-2.5 font-mono tabular-nums">

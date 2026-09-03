@@ -27,6 +27,25 @@ import type { V2OrderEvent } from '@/lib/api/v2/types';
 
 /** Re-scan at most once per this window (concurrent callers share the in-flight scan). */
 const FRESH_MS = 20_000;
+/**
+ * A forced refresh waits this long for the scan before answering with the last tally
+ * (the scan keeps running and lands for the next request). A normal catch-up is a few
+ * pages per event type, two or three seconds; this is a ceiling for the bad day, and
+ * it sits inside a serverless function's budget.
+ */
+const FORCE_DEADLINE_MS = 12_000;
+/**
+ * Write the tally to the store at most this often.
+ *
+ * The tally is a multi-MB JSON document (the join set of open mints dominates: ~15k
+ * entries on 8-06), and it used to be written after EVERY 20s cycle, on the request
+ * path. A forced refresh therefore waited on a 4MB upload, which from a slow uplink is
+ * a minute or more, and every later request shared that same in-flight cycle. The
+ * write is now off the request path, single-flight, and throttled; the in-process
+ * tally is the live truth either way, and a cold instance rebuilds forward from the
+ * last persisted cursors, so a write that is a couple of minutes behind costs nothing.
+ */
+const PERSIST_MIN_MS = 2 * 60_000;
 /** KV snapshot lifetime — a week; the pkg guard resets it on redeploy anyway. */
 const KV_TTL_S = 7 * 86_400;
 /** Max pages/type a single catch-up walks. First run backfills the newest ~2000/type;
@@ -52,12 +71,66 @@ interface Persisted {
   seedVersion: number;
 }
 
+interface PersistState {
+  /** The store write in flight, if any (single-flight: a new one waits for it). */
+  inflight: Promise<void> | null;
+  /** When the last write STARTED (ms), for the throttle. */
+  lastAt: number;
+}
 interface Cache {
   snap: Persisted | null;
   inflight: Promise<Persisted> | null;
+  persist?: PersistState;
 }
 const g = globalThis as unknown as { __lbIndexer?: Cache };
 const cache: Cache = (g.__lbIndexer ??= { snap: null, inflight: null });
+
+/** Should a tally be written now? Not while another write is in flight, and not sooner
+ *  than `minMs` after the last one started. Pure, so the throttle is testable. */
+export function persistDue(now: number, lastAt: number, inflight: boolean, minMs = PERSIST_MIN_MS): boolean {
+  if (inflight) return false;
+  if (lastAt === 0) return true; // this process has never written: the store may be far behind
+  return now - lastAt >= minMs;
+}
+
+/** Resolve with `p`'s value, or `fallback` once `ms` has passed (or if `p` fails). The
+ *  promise itself is left running: a slow scan still lands for the next request. */
+export function withDeadline<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      () => {
+        clearTimeout(t);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
+/**
+ * Write the tally through to the store, off the request path. Fire-and-forget: nothing
+ * awaits it, a failure is swallowed (the in-process tally still serves this instance),
+ * and the throttle means a busy instance uploads once every couple of minutes rather
+ * than every cycle. Each cycle calls this with its fresh snapshot, so a write that was
+ * throttled is simply superseded by a newer one when the window opens.
+ */
+function persistSoon(snap: Persisted): void {
+  if (!kv) return;
+  const p = (cache.persist ??= { inflight: null, lastAt: 0 });
+  if (!persistDue(Date.now(), p.lastAt, p.inflight !== null)) return;
+  p.lastAt = Date.now();
+  p.inflight = kv
+    .set(kvKey(), snap, { ex: KV_TTL_S })
+    .then(() => undefined)
+    .catch(() => undefined)
+    .finally(() => {
+      p.inflight = null;
+    });
+}
 
 /** A persisted tally is usable only if it was built for THIS package AND under the
  *  current seed logic — otherwise it's discarded and rebuilt from scratch. */
@@ -175,13 +248,7 @@ async function runAccumulate(): Promise<Persisted> {
     seedVersion: SEED_VERSION,
   };
   cache.snap = snap;
-  if (kv) {
-    try {
-      await kv.set(kvKey(), snap, { ex: KV_TTL_S });
-    } catch {
-      /* best-effort — the in-process tally still serves this instance. */
-    }
-  }
+  persistSoon(snap); // never awaited: the store write is not part of the cycle's latency
   return snap;
 }
 
@@ -204,15 +271,21 @@ async function current(force = false): Promise<Persisted> {
   cache.inflight ??= runAccumulate().finally(() => {
     cache.inflight = null;
   });
-  // An explicit refresh (force) BLOCKS on the scan so the response reflects a just-made
-  // trade — the caller accepts the few-seconds wait. A concurrent scan is shared, so
-  // spamming the button never launches parallel scans.
+  // An explicit refresh (force) waits for the scan so the response reflects a just-made
+  // trade — but not forever. Past the deadline it answers with the last tally and the
+  // scan lands for the next request, so a wedged upstream or a long catch-up can never
+  // hold the button's spinner open indefinitely. A concurrent scan is shared, so
+  // spamming the button never launches parallel scans. A cold, never-seeded instance
+  // has nothing to fall back to, so that one case still waits for the first build.
   if (force) {
-    try {
-      return await cache.inflight;
-    } catch {
-      return prev;
+    if (!(isCurrent(prev) && prev.builtAtMs > 0)) {
+      try {
+        return await cache.inflight;
+      } catch {
+        return prev;
+      }
     }
+    return withDeadline(cache.inflight, FORCE_DEADLINE_MS, prev);
   }
   // Have something usable? Serve it now; the in-flight refresh updates it for next time.
   if (isCurrent(prev) && prev.builtAtMs > 0) {
