@@ -36,6 +36,17 @@
  * B is re-read at double depth and must return the same counts, because a truncating
  * fan-out would silently shrink the seed.
  *
+ *   C. the PREVIOUS snapshot of this same deployment, if one is on disk. Added
+ *      2026-09-04 after a re-capture of 8-06 came back with 521 wallets and yet lost 104
+ *      that the 8-31 snapshot had (238 trades), every one last active 6 to 8 days
+ *      earlier. Discovery is the blind spot: the owner walk reads the newest few hundred
+ *      opt-in events, which by then reached six days, and path A reaches four. Nothing
+ *      on chain had changed. So the previous seed's owners are fed into the fan-out (so
+ *      they are RE-READ at full depth, not frozen), the owner walk is run ten times
+ *      deeper than the live board's, and whatever still falls outside every read is
+ *      carried from the previous file by the same larger-count-wins rule. A gate then
+ *      refuses to write a seed in which any wallet has fewer trades than it had before.
+ *
  * SCOPE IS `skew`, NOT `all`. `aggregateV2Leaderboard` hardcodes scope `'all'`, which
  * counts every trade an owner made anywhere on the venue. The live Skew board and the
  * 6-24 seed both count only builder-code-attributed trades. Scoring the fan-out with
@@ -48,7 +59,7 @@
  * from that would count 6-24 twice once both seeds sit on the next deployment.
  */
 import { describe, it, expect } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACTIVE_V2_DEPLOYMENT, predictV2Config } from '@/config/predict';
 import { onchainOwnerOrders, onchainSkewOwners } from '@/lib/api/v2/onchain';
@@ -59,6 +70,7 @@ import { emptyLbState, finalizeRows, foldOrderEvents } from './v2-aggregate';
 import { fetchSkewEvents, skewRowsFromEvents } from './v2-onchain-events';
 import { LEGACY_OWNERS } from './legacy-carryover';
 import type { V2LeaderboardRow } from './v2';
+import { mergeSeedHistory, mergeSeedRows, seedOwners, type SeedRow } from './seed-merge';
 
 const RUN = process.env.RUN_LIVE === '1' && process.env.CAPTURE_SEED === '1';
 
@@ -72,6 +84,11 @@ const FANOUT_CONCURRENCY = 5;
 
 /** How many of the busiest wallets get re-read at triple depth to prove saturation. */
 const SATURATION_PROBE = 6;
+
+/** How many builder-code opt-in events the owner walk reads. The live board's 300 is a
+ *  request-path budget and reached only ~6 days on 8-06 by 2026-09-04; a capture is a
+ *  one-off and can afford to walk the whole stream. */
+const OWNER_EVENT_DEPTH = 3000;
 
 const lc = (s: string) => s.toLowerCase();
 
@@ -140,7 +157,7 @@ async function fanOutRows(
   txDepth: number,
 ): Promise<{ rows: V2LeaderboardRow[]; ordersByOwner: Map<string, V2OrderEvent[]> }> {
   const code = predictV2Config.builderCodeId;
-  const discovered = code ? await onchainSkewOwners(code) : [];
+  const discovered = code ? await onchainSkewOwners(code, undefined, OWNER_EVENT_DEPTH) : [];
   const owners = [
     ...new Set(
       [...discovered, ...extraOwners, ...LEGACY_OWNERS, ...predictV2Config.featuredWallets].map(lc),
@@ -183,9 +200,22 @@ function syntheticMarkets(ordersByOwner: Iterable<V2OrderEvent[]>): Map<string, 
   return map;
 }
 
+/** Source C: the seed already on disk for THIS deployment, if any. */
+function previousSeed(root: string): { rows: SeedRow[]; byOwner: Record<string, PastPrediction[]>; capturedAt: string } | null {
+  const p = resolve(root, `lib/leaderboard/legacy-points-${ACTIVE_V2_DEPLOYMENT}.json`);
+  const h = resolve(root, `lib/portfolio/legacy-history-${ACTIVE_V2_DEPLOYMENT}.json`);
+  if (!existsSync(p) || !existsSync(h)) return null;
+  const points = JSON.parse(readFileSync(p, 'utf8')) as { deployment: string; capturedAt: string; rows: SeedRow[] };
+  const history = JSON.parse(readFileSync(h, 'utf8')) as { deployment: string; byOwner: Record<string, PastPrediction[]> };
+  if (points.deployment !== ACTIVE_V2_DEPLOYMENT || history.deployment !== ACTIVE_V2_DEPLOYMENT) return null;
+  return { rows: points.rows, byOwner: history.byOwner, capturedAt: points.capturedAt };
+}
+
 describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
   it('agrees across both read paths, then writes the points + history seeds', async () => {
     expect(predictV2Config.builderCodeId, 'builder code must be wired to attribute Skew trades').not.toBe('');
+    const root = resolve(__dirname, '..', '..');
+    const prev = previousSeed(root);
 
     // Sequential, not Promise.all. Path A alone is a ~160-request burst against the
     // public GraphQL endpoint; running the fan-out alongside it doubles the peak and
@@ -193,7 +223,9 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     // has to finish first so its owners can seed the fan-out's set.
     const scanEvents = await fetchSkewEvents();
     const scanRows = skewRowsFromEvents(scanEvents);
-    const extra = scanRows.map((r) => r.owner);
+    // Everyone the previous seed knows is re-read too, at full depth, so a quiet wallet
+    // gets its CURRENT count rather than a frozen one.
+    const extra = [...scanRows.map((r) => r.owner), ...(prev ? seedOwners(prev.rows) : [])];
     const fan = await fanOutRows(extra, OWNER_TX_DEPTH);
 
     const byOwnerScan = new Map(scanRows.map((r) => [lc(r.owner), r]));
@@ -256,20 +288,36 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     }
 
     const capturedAt = new Date().toISOString();
-    const pointsSeed = {
-      deployment: ACTIVE_V2_DEPLOYMENT,
-      capturedAt,
-      rows: rows.map((r) => ({
-        owner: r.owner,
-        points: r.points,
-        volume: r.volume,
-        trades: r.trades,
-        netPnl: r.netPnl ?? 0,
-        skewVolume: r.skewVolume ?? 0,
-        skewTrades: r.skewTrades ?? 0,
-        lastActiveMs: r.lastActiveMs ?? 0,
-      })),
-    };
+    const freshRows: SeedRow[] = rows.map((r) => ({
+      owner: r.owner,
+      points: r.points,
+      volume: r.volume,
+      trades: r.trades,
+      netPnl: r.netPnl ?? 0,
+      skewVolume: r.skewVolume ?? 0,
+      skewTrades: r.skewTrades ?? 0,
+      lastActiveMs: r.lastActiveMs ?? 0,
+    }));
+    // Source C. Whatever this run could not see is carried from the previous file.
+    const seedRows = mergeSeedRows(freshRows, prev?.rows ?? []);
+    const seenNow = new Set(freshRows.map((r) => lc(r.owner)));
+    const carriedOnly = seedRows.filter((r) => !seenNow.has(lc(r.owner))).length;
+    console.log(
+      `  previous seed    ${prev ? `${prev.rows.length} rows from ${prev.capturedAt}` : 'none'}` +
+        `; ${carriedOnly} owners carried that neither path saw this run`,
+    );
+
+    // GATE: nobody loses standing against the previous seed. True by construction of the
+    // merge, asserted anyway, because this is the one property a seed must never lose.
+    if (prev) {
+      const merged = new Map(seedRows.map((r) => [lc(r.owner), r]));
+      const lost = prev.rows
+        .filter((r) => (merged.get(lc(r.owner))?.trades ?? 0) < r.trades)
+        .map((r) => `${lc(r.owner).slice(0, 14)}… ${r.trades} → ${merged.get(lc(r.owner))?.trades ?? 0}`);
+      expect(lost, `wallets would lose trades against the previous seed:\n  ${lost.join('\n  ')}`).toEqual([]);
+    }
+
+    const pointsSeed = { deployment: ACTIVE_V2_DEPLOYMENT, capturedAt, rows: seedRows };
 
     // History gets the same union treatment. The fan-out's per-owner orders are the
     // primary source, and any wallet only path A could see is derived from that path's
@@ -314,9 +362,18 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     // the whole seed would read "$0", which is how the first capture came out.
     expect(dropped / Math.max(1, kept + dropped), 'too many unpriceable history rows').toBeLessThan(0.01);
 
-    const historySeed = { deployment: ACTIVE_V2_DEPLOYMENT, capturedAt, byOwner };
+    // Source C for history: union by row key per wallet, fresh copy winning.
+    const mergedHistory = prev ? mergeSeedHistory(byOwner, prev.byOwner) : byOwner;
+    if (prev) {
+      const shrunk = Object.entries(prev.byOwner)
+        .filter(([o, rows]) => (mergedHistory[lc(o)]?.length ?? 0) < rows.length)
+        .map(([o]) => lc(o).slice(0, 14));
+      expect(shrunk, `wallets would lose history rows against the previous seed: ${shrunk.join(', ')}`).toEqual([]);
+      const mergedRows = Object.values(mergedHistory).flat().length;
+      console.log(`  history merged   ${mergedRows} rows across ${Object.keys(mergedHistory).length} wallets (with the previous seed)`);
+    }
+    const historySeed = { deployment: ACTIVE_V2_DEPLOYMENT, capturedAt, byOwner: mergedHistory };
 
-    const root = resolve(__dirname, '..', '..');
     const pointsPath = resolve(root, `lib/leaderboard/legacy-points-${ACTIVE_V2_DEPLOYMENT}.json`);
     const historyPath = resolve(root, `lib/portfolio/legacy-history-${ACTIVE_V2_DEPLOYMENT}.json`);
     writeFileSync(pointsPath, `${JSON.stringify(pointsSeed, null, 2)}\n`);
@@ -324,7 +381,7 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
 
     console.log(
       `\n  WROTE ${pointsSeed.rows.length} board rows (${pointsSeed.rows.reduce((s, r) => s + r.trades, 0)} trades)` +
-        ` + history for ${Object.keys(byOwner).length} wallets` +
+        ` + history for ${Object.keys(mergedHistory).length} wallets` +
         `\n    ${pointsPath}\n    ${historyPath}\n`,
     );
 

@@ -968,11 +968,15 @@ export async function scanOrderEventsSince(
  * whale-proof: it's the app's own user set, not the whole venue. The robust seed for
  * the Skew board (see fetchSkewLeaderboardRows) and the leaderboard's app-user fold.
  */
-export async function onchainSkewOwners(codeId: string, opts?: GetOptions): Promise<string[]> {
+export async function onchainSkewOwners(codeId: string, opts?: GetOptions, limit = 300): Promise<string[]> {
   if (!codeId) return [];
+  // `limit` is how many BuilderCodeSet events to walk, newest first. 300 is the live
+  // board's budget and is NOT complete on a busy deployment: on 8-06 it reached about
+  // six days by 2026-09-04, so any wallet quiet for longer was invisible. The seed
+  // capture passes a far larger number; nothing on a request path should.
   const evs = await queryEventsPaged(
     { MoveEventType: `${predictV2Config.packages.predict}::builder_code_events::BuilderCodeSet` },
-    300,
+    limit,
     opts,
   );
   const owners = new Set<string>();

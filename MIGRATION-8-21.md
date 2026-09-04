@@ -100,6 +100,15 @@ The capture has its own gates: it fails rather than writing a partial board if t
 does not saturate, or if too many history rows cannot be priced. A failure here means do not
 proceed, not retry until it passes.
 
+**It also folds in the snapshot already on disk.** Found on 2026-09-04: a fresh read four days
+after the first capture returned more wallets overall and yet was missing 104 that the first
+capture had, because the chain reads are windowed (the owner walk reached about six days,
+the global scan about four). So the capture now treats the previous file as a third source:
+its wallets are re-read at full depth, the owner walk runs ten times deeper, and anything
+still outside every read is carried forward, larger trade count winning per wallet. It
+refuses to write a seed in which any wallet has fewer trades or history rows than before.
+Leave the previous files in place when you run it; do not delete them first.
+
 **4. Run the preflight against 8-21.**
 
 ```
