@@ -42,26 +42,52 @@ export const TENOR_BUCKETS = {
 } as const;
 
 /**
- * The least time a market may have left for a rules-driven bet to fire on it.
+ * The least time a market may have left for a rules-driven bet to fire on it: enough to
+ * build, sign, and land the transaction and still be reading a live market, and no more.
  *
- * Found the hard way on 2026-09-04, the first live Autopilot run on 8-21: Kelly's
- * best-value pick takes the SOONEST open market, and the venue lists a fresh 1-minute
- * market every minute, so "soonest" was a market with 5 seconds left, then one with 53.
- * Two real $1,666 bets went on at the money and settled a few dollars the wrong side.
- * With seconds to go, the client's fair value is a step function around spot (any strike
- * a hair below spot prices as near-certain) while the chain quoted 56%, and there is no
- * protocol brake: 8-21's expiry-fee window is a day wide with a 1x multiplier. So the
- * brake is here. Two minutes keeps the 5-minute and hourly ladders in play and, since a
- * 1-minute market is listed at most two minutes ahead, keeps unattended money off the
- * 1-minute ladder entirely, which is the right call for a bet nobody is watching. A
- * trader can still take those by hand from the ticket, where the chain's quote is on
- * screen before they confirm.
+ * This is NOT a tenor rule. The founder's call (2026-09-04): Kelly may take a 1-minute
+ * market, or a 5-minute one, whenever she reads a good chance on it and it settles within
+ * the trader's session; the goal is good chances inside the trader's time, not a fixed
+ * ladder. What she must never do is what she did that morning: two real $1,666 bets on a
+ * market with 5 and 53 seconds left, at the money, that settled a few dollars the wrong
+ * side. With seconds to go, client fair value is a step around spot and there is no
+ * protocol brake on 8-21 (the expiry-fee window is a day wide at 1x). The honest check for
+ * "a good chance" is the chain's own quote, which the engine now reads by simulating the
+ * mint before it fires (lib/sui/v2/quote-mint); this floor only keeps the bet from being
+ * placed so late that the read is stale by the time it lands. Forty-five seconds, so a
+ * just-listed 1-minute market (two minutes out) has more than a minute of eligibility.
  */
-export const MIN_TIME_TO_EXPIRY_MS = 2 * 60_000;
+export const MIN_TIME_TO_EXPIRY_MS = 45_000;
 
 /** True when a market has at least MIN_TIME_TO_EXPIRY_MS left. */
 export function hasTimeToTrade(expiry: number, now: number): boolean {
   return expiry - now >= MIN_TIME_TO_EXPIRY_MS;
+}
+
+/**
+ * True when a market settles before the run's own clock runs out. An unattended bet
+ * that outlives its session leaves the trader with an open position after "time is up",
+ * which is not what they asked for: the session length is the whole of their consent.
+ */
+export function fitsSession(expiry: number, armedAt: number, durationMs: number): boolean {
+  return expiry <= armedAt + durationMs;
+}
+
+/** A win-chance floor at or above this reads as a careful run (the same line the plan
+ *  card draws), and a careful run takes the SUREST bet on offer rather than the soonest. */
+export const CAREFUL_MIN_PROB = 0.68;
+
+/**
+ * Order Kelly's per-market picks for a run. Anything under the trader's floor is out.
+ * A careful run then takes the highest win chance first (soonest on a tie); any other
+ * run keeps the soonest first, which is the order the picks arrive in.
+ */
+export function rankPicks<T extends { prob: number; expiry: number }>(picks: readonly T[], minProb: number): T[] {
+  const ok = picks.filter((p) => p.prob >= minProb);
+  if (minProb >= CAREFUL_MIN_PROB) {
+    return [...ok].sort((a, b) => b.prob - a.prob || a.expiry - b.expiry);
+  }
+  return [...ok].sort((a, b) => a.expiry - b.expiry);
 }
 
 /**
@@ -184,6 +210,7 @@ export type GateCode =
   | 'below_min_prob'
   | 'below_min_edge'
   | 'too_close_to_expiry'
+  | 'settles_after_session'
   | 'tenor_not_allowed'
   | 'side_not_allowed'
   | 'leverage_too_high'
@@ -244,6 +271,9 @@ export function gateTrade(
   // so nothing fires unattended on a horizon nobody opted into.
   const tenor = classifyTenor(trade.expiry - now);
   if (tenor === null || !rules.tenors.includes(tenor)) return deny('tenor_not_allowed');
+  // After the tenor check on purpose: a market outside the trader's windows is refused
+  // for that reason first, so the log names the rule they set rather than the clock.
+  if (!fitsSession(trade.expiry, runtime.armedAt, limits.armDurationMs)) return deny('settles_after_session');
   if (!rules.sides.includes(trade.side)) return deny('side_not_allowed');
   if (trade.leverage > rules.maxLeverage) return deny('leverage_too_high');
 
@@ -252,8 +282,11 @@ export function gateTrade(
   if (runtime.lastTradeAt != null && now - runtime.lastTradeAt < limits.cooldownMs) {
     return deny('cooldown_active');
   }
-  const firedAt = runtime.firedMarkets[trade.marketId];
-  if (firedAt != null && now - firedAt < limits.cooldownMs) return deny('market_recently_fired');
+  // One bet per market per run. This used to be "not within the cooldown", which came
+  // to the same thing on a venue of 1-minute markets. On the 5-minute ladder it let
+  // Kelly stack a second bet on the market she had just bet (2026-09-04), so a run's
+  // "2 open at a time" were two copies of one view of the same five minutes.
+  if (runtime.firedMarkets[trade.marketId] != null) return deny('market_recently_fired');
 
   return ALLOW;
 }
@@ -357,7 +390,9 @@ export function gateReasonLabel(code: GateCode): string {
     case 'below_min_edge':
       return 'Held back: not enough value edge';
     case 'too_close_to_expiry':
-      return 'Held back: settles in under 2 minutes';
+      return 'Held back: too close to settling to place a bet';
+    case 'settles_after_session':
+      return 'Held back: settles after your session ends';
     case 'tenor_not_allowed':
       return 'Held back: outside your allowed windows';
     case 'side_not_allowed':
@@ -367,7 +402,7 @@ export function gateReasonLabel(code: GateCode): string {
     case 'cooldown_active':
       return 'Waiting: cooling down between trades';
     case 'market_recently_fired':
-      return 'Waiting: already traded this market';
+      return 'Skipped: already traded this market';
     case 'max_concurrent_reached':
       return 'Waiting: at your open-positions limit';
   }

@@ -48,10 +48,15 @@ import {
   type GateCode,
   type ProposedTrade,
   type TradeSide,
+  fitsSession,
   hasTimeToTrade,
+  rankPicks,
 } from '@/lib/autopilot/policy';
 import { useAutopilotStore, type OpenPosition } from '@/lib/store/autopilot-store';
 
+/** How many chain quotes one tick may spend before giving up on this tick. Each is a
+ *  ~2s simulate, and the loop runs every 6s. */
+const MAX_QUOTES_PER_TICK = 2;
 /** How often the armed loop evaluates. The pricer refreshes about every 5s, so a
  *  6s tick reads a fresh surface without hammering it. */
 const TICK_MS = 6_000;
@@ -89,7 +94,7 @@ const RULE_HOLDS: ReadonlySet<GateCode> = new Set<GateCode>([
  *  firing (mintBudget, session-signed) share ONE in-flight lock and never overlap. */
 export type AutopilotAcct = Pick<
   ReturnType<typeof usePredictAccountV2>,
-  'mintBudget' | 'sessionCanTrade' | 'sessionLive'
+  'mintBudget' | 'quoteMintBudget' | 'sessionCanTrade' | 'sessionLive'
 >;
 
 interface Args {
@@ -164,16 +169,20 @@ async function resolveSettlement(pos: OpenPosition, handled: Set<string>): Promi
     const state = await getV2MarketState(pos.marketId);
     const raw = state.settlement?.settlement_price;
     if (raw == null) {
-      handled.delete(pos.marketId); // not settled yet — retry on a later tick
+      handled.delete(positionKey(pos)); // not settled yet — retry on a later tick
       return;
     }
     const price = toFloat(BigInt(raw));
     const won = settleOutcome(pos, price);
-    useAutopilotStore.getState().recordSettlement(pos.marketId, won, Date.now());
+    useAutopilotStore.getState().recordSettlement(pos.marketId, won, Date.now(), pos.openedAt);
   } catch {
-    handled.delete(pos.marketId); // transient read failure — retry
+    handled.delete(positionKey(pos)); // transient read failure — retry
   }
 }
+
+/** Settlement is tracked per POSITION, not per market: two bets can sit on one market
+ *  (different strikes, placed a cooldown apart) and each must be scored on its own. */
+const positionKey = (p: OpenPosition) => `${p.marketId}:${p.openedAt ?? ''}`;
 
 export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct }: Args): AutopilotEngineView {
   const markets = useV2Markets(initialMarkets);
@@ -251,8 +260,9 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     //    Runs even while STOPPED, so a finished run's late trades still resolve into
     //    its saved result.
     for (const pos of st.run.open) {
-      if (pos.expiry > now || settledRef.current.has(pos.marketId)) continue;
-      settledRef.current.add(pos.marketId);
+      const key = positionKey(pos);
+      if (pos.expiry > now || settledRef.current.has(key)) continue;
+      settledRef.current.add(key);
       void resolveSettlement(pos, settledRef.current);
     }
     // 2) Retire positions whose settlement never resolved within the grace window.
@@ -303,96 +313,178 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // a venue that lists a fresh 1-minute market every minute that was one with seconds
     // left (see MIN_TIME_TO_EXPIRY_MS for the day it cost real money). Filtered here so
     // she reasons over the next market with time on it, with the gate as the backstop.
+    //
+    // And a market this run has already bet on. One bet per market: with 1-minute markets
+    // a fresh "soonest" appeared every minute, so this never came up; with the 5-minute
+    // ladder the same market is the soonest for ten minutes and Kelly stacked a second
+    // bet on it two minutes after the first, which then blocked the third under the
+    // open-positions limit. Dropped here so she picks the NEXT market instead.
+    //
+    // And a market that settles after the session does: an open position past "time is
+    // up" is not what the trader signed up for. Said once when it rules out everything.
+    const sessionEnd = { armedAt: runtime.armedAt, durationMs: limits.armDurationMs };
     const allowed = candidates.filter((c) => {
       if (!hasTimeToTrade(c.market.expiry, now)) return false;
+      if (!fitsSession(c.market.expiry, sessionEnd.armedAt, sessionEnd.durationMs)) return false;
+      if (runtime.firedMarkets[c.market.expiry_market_id] != null) return false;
       const tenor = classifyTenor(c.market.expiry - now);
       return tenor !== null && rules.tenors.includes(tenor);
     });
-    if (allowed.length === 0) return;
+    if (allowed.length === 0) {
+      const anyLive = candidates.some((c) => hasTimeToTrade(c.market.expiry, now) && runtime.firedMarkets[c.market.expiry_market_id] == null);
+      const noneFit = anyLive && !candidates.some((c) => fitsSession(c.market.expiry, sessionEnd.armedAt, sessionEnd.durationMs));
+      if (noneFit && lastHoldRef.current !== 'no_fit') {
+        lastHoldRef.current = 'no_fit';
+        st.noteHold(gateReasonLabel('settles_after_session'), '', now);
+      }
+      return;
+    }
 
-    const reply = respondToIntent(
-      { kind: 'best_value' },
-      { insights, candidates: allowed, now, spot, closes, selection: null },
-    );
-    const bet = reply.bet;
-    if (!bet || !(bet.prob > 0)) return;
-
-    const proposed: ProposedTrade = {
-      kind: 'binary',
-      marketId: bet.marketId,
-      expiry: bet.expiry,
-      prob: bet.prob,
-      edge: 0, // the recommender does not surface its value edge yet (fast-follow)
-      side: bet.isUp ? 'up' : 'down',
-      leverage: bet.leverage ?? 1,
-      // The per-trade size, or the budget's remainder when that is smaller, so the run
-      // spends what the trader put up instead of stopping a fraction short.
-      sizeUsd: stakeFor(limits, runtime),
-    };
-
-    const gate = gateTrade(proposed, rules, limits, runtime, now);
-    if (!gate.allow) {
-      // Surface only the trader-rule holds, deduped, so pacing waits stay silent.
-      if (RULE_HOLDS.has(gate.code)) {
-        const key = `${proposed.marketId}:${gate.code}`;
+    // One pick per market still in play, then ranked by the trader's rules. Kelly's
+    // best-value read works one market at a time (it scans the strikes around spot on
+    // that market), so she is asked once per market and the picks are ranked: a careful
+    // run takes the surest bet on offer, a bolder run the soonest. Picks under the
+    // trader's floor by the surface's own estimate are out here; the chain's price is
+    // checked below, before anything fires.
+    const picks = allowed.flatMap((c) => {
+      const reply = respondToIntent({ kind: 'best_value' }, { insights, candidates: [c], now, spot, closes, selection: null });
+      const b = reply.bet;
+      return b && b.prob > 0 ? [{ cand: c, bet: b, prob: b.prob, expiry: c.market.expiry }] : [];
+    });
+    const ranked = rankPicks(picks, rules.minProb);
+    if (ranked.length === 0) {
+      // Everything on offer is under the floor. Said once per change of the candidate
+      // set rather than every six seconds.
+      if (picks.length > 0) {
+        const key = `floor:${picks.map((p) => p.cand.market.expiry_market_id).join(',')}`;
         if (lastHoldRef.current !== key) {
           lastHoldRef.current = key;
-          st.noteHold(gateReasonLabel(gate.code), proposed.marketId, now);
+          st.noteHold(gateReasonLabel('below_min_prob'), picks[0].cand.market.expiry_market_id, now);
         }
       }
       return;
     }
-    lastHoldRef.current = null;
 
-    // Build the mint plan for the pick. BOTH modes use it: watch mode records a
-    // simulated position with the SAME sized numbers (so its live PnL is real), and
-    // live mode also signs it. Skip a dead-odds strike or a sub-minimum stake.
-    const cand = allowed.find((c) => c.market.expiry_market_id === bet.marketId);
-    if (!cand) return;
-    const plan = planBinaryBudgetMint({
-      market: cand.market,
-      forward: cand.pricer.forward,
-      svi: cand.pricer.svi,
-      strikePrice: bet.strikePrice ?? null,
-      isUp: bet.isUp,
-      stake: proposed.sizeUsd,
-      leverage: bet.leverage ?? 1,
-    });
-    if (!plan.probOk || !plan.stakeOk) return;
-
-    // Carry the marking detail so the position marks with the terminal's own math.
-    const scored: ProposedTrade = {
-      ...proposed,
-      leverage: plan.lev, // the clamped leverage the mint actually uses
-      strike: plan.strike,
-      entryProb: plan.entryProb,
-      qty: fromQuote(plan.quantity),
-      cost: fromQuote(plan.estCostBase),
-    };
-
-    // Watch mode: simulate the fire with the same numbers, no signing.
-    if (dryRun) {
-      st.recordPlacement(scored, { dryRun: true }, now);
-      return;
-    }
-
-    // --- real fire (session key, no popup) --------------------------------------
-    // One at a time: a fire is async and records only on success, so the guard stops
-    // a second candidate firing in the ~1-2s before this one lands (cooldown backs it up).
-    if (fireRef.current || !acct.sessionCanTrade) return;
+    // One at a time: the rest of the tick is async (chain quotes, then the fire), so the
+    // guard stops the next tick starting a second pass before this one lands.
+    if (fireRef.current) return;
     fireRef.current = true;
     void (async () => {
+      const store = useAutopilotStore.getState;
+      const pctOf = (p: number) => `${Math.round(p * 100)}%`;
+      let quotes = 0;
       try {
-        // No `deposit`: mintBudget routes through the session key (it can only spend
-        // the trading-account balance, never top it up or withdraw).
-        const digest = await acct.mintBudget({ ...plan.mint }, { silentSuccess: true });
-        if (digest) {
-          useAutopilotStore.getState().recordPlacement(scored, { dryRun: false, digest }, Date.now());
-          if (RECEIPTS_ON) {
-            void recordCall(
-              binaryIntent({ marketId: bet.marketId, expiry: bet.expiry, isUp: bet.isUp, strikePrice: plan.strike }),
-            );
+        for (const { cand, bet } of ranked) {
+          const proposed: ProposedTrade = {
+            kind: 'binary',
+            marketId: bet.marketId,
+            expiry: bet.expiry,
+            prob: bet.prob,
+            edge: 0, // the recommender does not surface its value edge yet (fast-follow)
+            side: bet.isUp ? 'up' : 'down',
+            leverage: bet.leverage ?? 1,
+            // The per-trade size, or the budget's remainder when that is smaller, so the run
+            // spends what the trader put up instead of stopping a fraction short.
+            sizeUsd: stakeFor(limits, runtime),
+          };
+          const gate = gateTrade(proposed, rules, limits, runtime, now);
+          if (!gate.allow) {
+            // A trader-rule hold is about THIS pick, so the next one may pass; a pacing
+            // hold applies to every pick alike, so the tick is done.
+            if (!RULE_HOLDS.has(gate.code)) return;
+            const key = `${proposed.marketId}:${gate.code}`;
+            if (lastHoldRef.current !== key) {
+              lastHoldRef.current = key;
+              store().noteHold(gateReasonLabel(gate.code), proposed.marketId, now);
+            }
+            continue;
           }
+
+          // The mint plan for the pick. Both modes use it: watch mode records a simulated
+          // position with the same sized numbers, live mode also signs it. Skip a dead-odds
+          // strike or a sub-minimum stake.
+          const plan = planBinaryBudgetMint({
+            market: cand.market,
+            forward: cand.pricer.forward,
+            svi: cand.pricer.svi,
+            strikePrice: bet.strikePrice ?? null,
+            isUp: bet.isUp,
+            stake: proposed.sizeUsd,
+            leverage: bet.leverage ?? 1,
+          });
+          if (!plan.probOk || !plan.stakeOk) continue;
+
+          // The chain's own price, before anything fires. The surface's estimate got the
+          // pick this far; the number the trader actually pays is what the floor is
+          // held against. A market that prices the bet under the floor is passed over
+          // for the next pick. No account to quote against (watch mode without one)
+          // means the estimate stands.
+          if (quotes >= MAX_QUOTES_PER_TICK) return;
+          quotes++;
+          let entryProb = plan.entryProb;
+          let qty = fromQuote(plan.quantity);
+          let cost = fromQuote(plan.estCostBase);
+          const quote = await acct
+            .quoteMintBudget({
+              marketId: plan.mint.marketId,
+              lowerTick: plan.mint.lowerTick,
+              higherTick: plan.mint.higherTick,
+              amount: plan.mint.amount,
+              leverage: plan.mint.leverage,
+            })
+            .catch(() => null);
+          if (quote) {
+            entryProb = quote.entryProb;
+            qty = fromQuote(quote.quantityBase);
+            cost = fromQuote(quote.premiumBase + quote.builderFeeBase);
+            if (entryProb < rules.minProb) {
+              const key = `${proposed.marketId}:chain_price`;
+              if (lastHoldRef.current !== key) {
+                lastHoldRef.current = key;
+                store().noteHold(
+                  `Held back: the market prices it at ${pctOf(entryProb)} to win, under your ${pctOf(rules.minProb)} floor`,
+                  proposed.marketId,
+                  now,
+                );
+              }
+              continue;
+            }
+          }
+          lastHoldRef.current = null;
+
+          // Carry the marking detail so the position marks with the terminal's own math,
+          // and the chain's price where we have it, so the log and the live PnL start
+          // from what was actually paid.
+          const scored: ProposedTrade = {
+            ...proposed,
+            prob: entryProb,
+            leverage: plan.lev, // the clamped leverage the mint actually uses
+            strike: plan.strike,
+            entryProb,
+            qty,
+            cost,
+          };
+
+          // Watch mode: simulate the fire with the same numbers, no signing.
+          if (dryRun) {
+            store().recordPlacement(scored, { dryRun: true }, Date.now());
+            return;
+          }
+
+          // --- real fire (session key, no popup) ----------------------------------
+          if (!acct.sessionCanTrade) return;
+          // No `deposit`: mintBudget routes through the session key (it can only spend
+          // the trading-account balance, never top it up or withdraw).
+          const digest = await acct.mintBudget({ ...plan.mint }, { silentSuccess: true });
+          if (digest) {
+            store().recordPlacement(scored, { dryRun: false, digest }, Date.now());
+            if (RECEIPTS_ON) {
+              void recordCall(
+                binaryIntent({ marketId: bet.marketId, expiry: bet.expiry, isUp: bet.isUp, strikePrice: plan.strike }),
+              );
+            }
+          }
+          return;
         }
       } finally {
         fireRef.current = false;

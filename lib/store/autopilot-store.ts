@@ -423,7 +423,9 @@ interface AutopilotState {
     now: number,
   ) => void;
   /** Record a settled position (Phase 1): free its slot and update the streak. */
-  recordSettlement: (marketId: string, won: boolean, now: number) => void;
+  /** Score and close ONE open position. `openedAt` picks it out when more than one bet
+   *  sits on the same market; without it the first match is taken. */
+  recordSettlement: (marketId: string, won: boolean, now: number, openedAt?: number) => void;
   /** Append an informational hold/skip line (engine dedupes; store just stores). */
   noteHold: (text: string, marketId: string, now: number) => void;
 
@@ -612,13 +614,19 @@ export const useAutopilotStore = create<AutopilotState>()(
           }),
         })),
 
-      recordSettlement: (marketId, won, now) =>
+      recordSettlement: (marketId, won, now, openedAt) =>
         set((s) => {
-          const pos = s.run.open.find((p) => p.marketId === marketId);
+          // One POSITION, never "everything on this market". This used to find the first
+          // position for the market and then drop EVERY position on it, so when two bets
+          // sat on the same market (2026-09-04, two $166.67 wins two minutes apart on one
+          // 5-minute market) the second vanished from the run unscored: "2 trades, 1W/0L",
+          // no pending, and a real $42 win missing from the books.
+          const idx = s.run.open.findIndex((p) => p.marketId === marketId && (openedAt == null || p.openedAt === openedAt));
+          const pos = idx >= 0 ? s.run.open[idx] : undefined;
           const pnl = pos ? realizedPnl(pos, won) : 0;
           const run: Run = {
             ...s.run,
-            open: s.run.open.filter((p) => p.marketId !== marketId),
+            open: pos ? s.run.open.filter((_, i) => i !== idx) : s.run.open,
             consecutiveLosses: won ? 0 : s.run.consecutiveLosses + 1,
             realizedPnlUsd: s.run.realizedPnlUsd + pnl,
             wins: won ? s.run.wins + 1 : s.run.wins,

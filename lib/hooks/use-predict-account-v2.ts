@@ -26,6 +26,7 @@ import { isInsufficientGas, isSessionExpired, SESSION_EXPIRED_MESSAGE } from '@/
 import { toast } from '@/lib/store/toast-store';
 import { readWrapper, readAccountId, readBalance, buildCreateAccountTx, buildDepositTx, buildWithdrawTx, buildCashOutTx } from '@/lib/sui/v2/account';
 import { buildMintTx, buildMintBudgetTx, buildRedeemLiveTx, buildRedeemSettledTx, type MintParams, type MintBudgetParams, type RedeemParams } from '@/lib/sui/v2/predict-tx';
+import { quoteBudgetMint, type MintQuoteParams } from '@/lib/sui/v2/quote-mint';
 import {
   buildSessionMintTx,
   buildSessionMintBudgetTx,
@@ -784,6 +785,11 @@ export function usePredictAccountV2() {
         return runOwnerMint(buildMintTx({ ...p, wrapperId, attachBuilderCode: builderCode.shouldAttach }), opts);
       });
     },
+    /** The chain's own price for a budget mint, read by simulating it as the owner (no
+     *  signature, no gas). Null with no account to quote against, or when the simulated
+     *  mint produced nothing. What Autopilot gates a careful bet on. */
+    quoteMintBudget: (p: Omit<MintQuoteParams, 'owner' | 'wrapperId'>) =>
+      owner && wrapperId ? quoteBudgetMint(client.core, { ...p, owner, wrapperId }) : Promise.resolve(null),
     /** Budget mint (mint_exact_amount) — the chain sizes the quantity at
      *  execution, so odds drift can't break the $1 minimum-premium check. */
     mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: TradeOpts) => {

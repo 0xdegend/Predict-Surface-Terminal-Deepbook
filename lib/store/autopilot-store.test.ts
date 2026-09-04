@@ -127,6 +127,22 @@ describe('recordSettlement realizes the PnL tape', () => {
     expect(S().run.losses).toBe(1);
   });
 
+  it('settles one POSITION at a time when two bets sit on the same market', () => {
+    S().arm(1_000);
+    S().recordPlacement(trade({ marketId: '0xm', qty: 10, cost: 5, entryProb: 0.5, leverage: 1 }), { dryRun: false }, 1_100);
+    S().recordPlacement(trade({ marketId: '0xm', qty: 10, cost: 5, entryProb: 0.5, leverage: 1 }), { dryRun: false }, 1_200);
+    S().recordSettlement('0xm', true, 2_000, 1_100);
+    expect(S().run.open).toHaveLength(1);
+    expect(S().run.open[0].openedAt).toBe(1_200);
+    expect(S().run.wins).toBe(1);
+    S().recordSettlement('0xm', false, 2_100, 1_200);
+    expect(S().run.open).toHaveLength(0);
+    expect(S().run.wins).toBe(1);
+    expect(S().run.losses).toBe(1);
+    expect(S().run.settled).toHaveLength(2);
+    expect(S().run.realizedPnlUsd).toBeCloseTo(0);
+  });
+
   it('a leveraged win nets out the static floor', () => {
     S().arm(1_000);
     // qty $10, entry 60%, 2x → floor = 0.6·10·(1−1/2) = $3 → payout $7 → minus $5 cost = +$2.

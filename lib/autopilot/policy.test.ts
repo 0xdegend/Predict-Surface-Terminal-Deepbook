@@ -19,7 +19,10 @@ import {
   type StopReason,
   stakeFor,
   MIN_TIME_TO_EXPIRY_MS,
+  CAREFUL_MIN_PROB,
+  fitsSession,
   hasTimeToTrade,
+  rankPicks,
 } from './policy';
 
 const NOW = 1_800_000_000_000;
@@ -105,14 +108,42 @@ describe('gateTrade — the trader rules', () => {
     expect(gateTrade(justUnder, rules, limits, runtime, NOW).code).toBe('too_close_to_expiry');
     const atFloor: ProposedTrade = { ...goodTrade, expiry: NOW + MIN_TIME_TO_EXPIRY_MS };
     expect(gateTrade(atFloor, rules, limits, runtime, NOW).code).not.toBe('too_close_to_expiry');
-    expect(hasTimeToTrade(NOW + 119_999, NOW)).toBe(false);
-    expect(hasTimeToTrade(NOW + 120_000, NOW)).toBe(true);
+    expect(hasTimeToTrade(NOW + MIN_TIME_TO_EXPIRY_MS - 1, NOW)).toBe(false);
+    expect(hasTimeToTrade(NOW + MIN_TIME_TO_EXPIRY_MS, NOW)).toBe(true);
+    // Forty-five seconds: a just-listed 1-minute market (two minutes out) is in play.
+    expect(MIN_TIME_TO_EXPIRY_MS).toBe(45_000);
+  });
+
+  it('refuses a market that settles after the session ends', () => {
+    const shortSession = { ...limits, armDurationMs: 10 * 60_000 };
+    const inside: ProposedTrade = { ...goodTrade, expiry: runtime.armedAt + 9 * 60_000 };
+    const outside: ProposedTrade = { ...goodTrade, expiry: runtime.armedAt + 11 * 60_000 };
+    expect(gateTrade(inside, rules, shortSession, runtime, NOW).code).not.toBe('settles_after_session');
+    expect(gateTrade(outside, rules, shortSession, runtime, NOW).code).toBe('settles_after_session');
+    expect(fitsSession(1_000, 0, 1_000)).toBe(true);
+    expect(fitsSession(1_001, 0, 1_000)).toBe(false);
+  });
+
+  it('rankPicks drops picks under the floor, and a careful run takes the surest first', () => {
+    const picks = [
+      { id: 'soon-low', prob: 0.62, expiry: NOW + 60_000 },
+      { id: 'soon-ok', prob: 0.72, expiry: NOW + 120_000 },
+      { id: 'later-best', prob: 0.81, expiry: NOW + 600_000 },
+      { id: 'later-ok', prob: 0.72, expiry: NOW + 900_000 },
+    ];
+    expect(rankPicks(picks, 0.7).map((p) => p.id)).toEqual(['later-best', 'soon-ok', 'later-ok']);
+    // A bolder floor keeps the soonest first.
+    expect(rankPicks(picks, 0.55).map((p) => p.id)).toEqual(['soon-low', 'soon-ok', 'later-best', 'later-ok']);
+    expect(rankPicks(picks, 0.9)).toEqual([]);
+    expect(CAREFUL_MIN_PROB).toBe(0.68);
   });
 
   it('rejects a tenor the trader did not allow', () => {
     const longDated: ProposedTrade = { ...goodTrade, expiry: NOW + 3 * 60 * 60_000 }; // today
     expect(gateTrade(longDated, rules, limits, runtime, NOW).code).toBe('tenor_not_allowed');
-    expect(gateTrade(longDated, { ...rules, tenors: ['today'] }, limits, runtime, NOW).allow).toBe(true);
+    // Allowed once the window is on, given a session long enough to hold a 3-hour bet.
+    const longSession = { ...limits, armDurationMs: 4 * 60 * 60_000 };
+    expect(gateTrade(longDated, { ...rules, tenors: ['today'] }, longSession, runtime, NOW).allow).toBe(true);
   });
 
   it('rejects a side the trader turned off', () => {
@@ -152,6 +183,9 @@ describe('gateTrade — pacing (non-terminal, clears on its own)', () => {
   it('waits before re-firing a market it just traded', () => {
     const fired = { ...runtime, firedMarkets: { '0xmarket-a': NOW - 30_000 } };
     expect(gateTrade(goodTrade, rules, limits, fired, NOW).code).toBe('market_recently_fired');
+    // And not only inside the cooldown: a market is one bet per run, full stop.
+    const firedLongAgo = { ...runtime, firedMarkets: { '0xmarket-a': NOW - 3_600_000 } };
+    expect(gateTrade(goodTrade, rules, limits, firedLongAgo, NOW).code).toBe('market_recently_fired');
     // a different market is unaffected
     expect(gateTrade({ ...goodTrade, marketId: '0xmarket-b' }, rules, limits, fired, NOW).allow).toBe(true);
   });
@@ -241,6 +275,7 @@ describe('label helpers cover every code (plain language, no em-dash)', () => {
     'below_min_prob',
     'below_min_edge',
     'too_close_to_expiry',
+    'settles_after_session',
     'tenor_not_allowed',
     'side_not_allowed',
     'leverage_too_high',

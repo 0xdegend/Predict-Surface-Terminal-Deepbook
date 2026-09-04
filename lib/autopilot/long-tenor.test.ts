@@ -105,8 +105,11 @@ describe('the gate on a nine-day market', () => {
   });
 
   it('still allows the same trade on a market that really does settle today', () => {
-    // Proving the fix denies by TENOR and has not just broken the gate.
-    expect(gateTrade(trade(LIVE.sevenHours), rules, limits, runtime, NOW).allow).toBe(true);
+    // Proving the fix denies by TENOR and has not just broken the gate. The seven-hour
+    // market needs a session long enough to hold it: a bet must also settle before the
+    // run's own clock runs out (settles_after_session), which is a separate rule.
+    const longSession = { ...limits, armDurationMs: 12 * HOUR };
+    expect(gateTrade(trade(LIVE.sevenHours), rules, longSession, runtime, NOW).allow).toBe(true);
     expect(gateTrade(trade(LIVE.fiveMin), rules, limits, runtime, NOW).allow).toBe(true);
   });
 

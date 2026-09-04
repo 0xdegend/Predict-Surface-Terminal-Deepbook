@@ -10,8 +10,8 @@ const cand = (id: string, msLeft: number): BetCandidate =>
 
 describe('pickCandidate: "soonest" skips a market about to settle', () => {
   it('prefers the soonest market that still has the floor worth of time', () => {
-    const cs = [cand('5s', 5_000), cand('53s', 53_000), cand('4m', 4 * 60_000), cand('20m', 20 * 60_000)];
-    expect(pickCandidate(cs, 'soonest', NOW)?.market.expiry_market_id).toBe('4m');
+    const cs = [cand('5s', 5_000), cand('20s', 20_000), cand('90s', 90_000), cand('20m', 20 * 60_000)];
+    expect(pickCandidate(cs, 'soonest', NOW)?.market.expiry_market_id).toBe('90s');
   });
 
   it('treats exactly the floor as enough', () => {
@@ -20,7 +20,7 @@ describe('pickCandidate: "soonest" skips a market about to settle', () => {
   });
 
   it('still answers with what exists when nothing has the floor (a person can read the time left)', () => {
-    const cs = [cand('5s', 5_000), cand('53s', 53_000)];
+    const cs = [cand('5s', 5_000), cand('20s', 20_000)];
     expect(pickCandidate(cs, 'soonest', NOW)?.market.expiry_market_id).toBe('5s');
   });
 
