@@ -37,7 +37,7 @@ import { useAutopilotEngine } from '@/lib/hooks/use-autopilot-engine';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useAutopilotStore, type RunResult } from '@/lib/store/autopilot-store';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
-import { type PresetId, matchPreset, presetPatch } from '@/lib/autopilot/presets';
+import { type PresetId, isAutoSized, matchPreset, paceFor, perBetFor, presetPatch } from '@/lib/autopilot/presets';
 import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
 import { topUpBase } from '@/lib/autopilot/funding';
 import { buildRunTape } from '@/lib/autopilot/run-tape';
@@ -368,9 +368,29 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   // Which style the current config matches (null = the trader customized away from all).
   const activePreset = matchPreset(rules, limits);
   function applyPreset(id: PresetId) {
-    const patch = presetPatch(id);
-    setRules(patch.rules); // leaves budget / per-trade / run length untouched
-    setLimits(patch.limits);
+    const patch = presetPatch(id, limits); // paced for the current run length + budget
+    setRules(patch.rules); // leaves budget / run length untouched
+    // The per-bet follows the new count only while it is still the budget split over
+    // the count; a size the trader typed stays.
+    const sized = isAutoSized(limits) ? { perTradeUsd: perBetFor(limits.budgetUsd, patch.limits.maxTrades!) } : {};
+    setLimits({ ...patch.limits, ...sized });
+  }
+
+  /**
+   * Money-card writes. A new run length or budget re-paces the bet count and gap while
+   * the config is on a style (presets.ts `paceFor`), so "15 minutes" means more bets
+   * than "5 minutes" without the trader touching Customize. Off a style, the numbers
+   * are theirs and only the field they changed moves.
+   */
+  function setMoney(patch: Partial<typeof limits>) {
+    if (!activePreset || (patch.armDurationMs == null && patch.budgetUsd == null)) {
+      setLimits(patch);
+      return;
+    }
+    const next = { ...limits, ...patch };
+    const pace = paceFor(activePreset, next);
+    const sized = isAutoSized(limits) ? { perTradeUsd: Math.min(next.budgetUsd, perBetFor(next.budgetUsd, pace.maxTrades)) } : {};
+    setLimits({ ...patch, ...pace, ...sized });
   }
 
   /**
@@ -380,7 +400,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    * only changed when the trader actually named one.
    */
   function applySetup(r: ResolvedSetup) {
-    const patch = presetPatch(r.preset);
+    const patch = presetPatch(r.preset, { armDurationMs: r.durationMins * 60_000, budgetUsd: r.budgetUsd });
     setRules(patch.rules);
     setLimits({
       ...patch.limits,
@@ -475,7 +495,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             ) : (
               <div className="flex flex-col gap-4">
                 <PresetPicker active={activePreset} onApply={applyPreset} />
-                <MoneyCard limits={limits} setLimits={setLimits} />
+                <MoneyCard limits={limits} setLimits={setMoney} />
                 <CustomizeSection
                   open={customizeOpen}
                   onToggle={() => setCustomizeOpen((o) => !o)}

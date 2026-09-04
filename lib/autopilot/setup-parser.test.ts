@@ -99,21 +99,35 @@ describe('resolveSetup', () => {
     expect(r.live).toBeUndefined();
   });
 
-  it('sizes the per-bet from the budget over the preset trade count when only a budget is named', () => {
-    // Balanced runs up to 5 trades → $50 / 5 = $10 a bet.
+  it('sizes the per-bet from the budget over the bets the style paces into the run', () => {
+    // $50 over the current hour on Balanced: the $5 floor caps it at 10 bets of $5.
     const r = resolveSetup(parseSetup('balanced $50'), CURRENT);
     expect(r.budgetUsd).toBe(50);
-    expect(r.perTradeUsd).toBe(10);
+    expect(r.perTradeUsd).toBe(5);
   });
 
-  it('rounds the derived per-bet DOWN so every planned trade fits the budget', () => {
-    // $5,000 careful is 3 trades. Nearest rounding gave $1,667, and three of those are
-    // $5,001, so the third trade could never fire and the run stopped after two.
+  it('a 15-minute careful run with $500 is five bets of $100, not three of $167', () => {
+    const r = resolveSetup(parseSetup('careful, $500 for 15 minutes'), CURRENT);
+    expect(r.preset).toBe('cautious');
+    expect(r.durationMins).toBe(15);
+    expect(r.perTradeUsd).toBe(100);
+  });
+
+  it('a shorter run gets fewer, bigger bets', () => {
+    const r = resolveSetup(parseSetup('careful, $8000 for 5 minutes'), CURRENT);
+    expect(r.perTradeUsd).toBe(4000);
+  });
+
+  it('splits the budget to the cent over the paced count so every planned trade fits', () => {
+    // $5,000 careful over 30 minutes paces to 10 bets. Whole-dollar rounding once left
+    // $2 of a budget never placed, and the trade cap ended the run there.
     const r = resolveSetup(parseSetup('careful, $5000 for 30 minutes'), CURRENT);
     expect(r.budgetUsd).toBe(5000);
-    // To the cent: whole dollars ($1,666 x 3 = $4,998) left $2 of the budget never placed.
-    expect(r.perTradeUsd).toBe(1666.67);
-    expect(Math.abs(r.perTradeUsd * 3 - r.budgetUsd)).toBeLessThan(0.05);
+    expect(r.perTradeUsd).toBe(500);
+    expect(Math.abs(r.perTradeUsd * 10 - r.budgetUsd)).toBeLessThan(0.05);
+    // And a split that does not come out even is carried to the cent.
+    expect(resolveSetup(parseSetup('careful, $1000 for 15 minutes'), CURRENT).perTradeUsd).toBe(200);
+    expect(resolveSetup(parseSetup('careful, $1234 for 15 minutes'), CURRENT).perTradeUsd).toBe(246.8);
   });
 
   it('never lets the per-bet exceed the budget', () => {

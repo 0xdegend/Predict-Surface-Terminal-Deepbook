@@ -11,7 +11,7 @@
 // safe default (Balanced, the trader's current money, their current mode) whenever a
 // phrase is ambiguous, because the panel shows exactly what it chose before running.
 import type { PresetId } from './presets';
-import { PRESET_BY_ID } from './presets';
+import { paceFor, perBetFor } from './presets';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -144,26 +144,26 @@ export function parseSetup(input: string): SetupIntent {
 
 /**
  * Fill an intent's gaps from the panel's current money/time so it's ready to apply.
- * When a budget is named but no per-bet size, size the bet so the budget covers roughly
- * the preset's trade count (e.g. $25 over Balanced's 5 trades ≈ $5 each). Everything is
- * clamped to sane bounds, and the per-bet can never exceed the budget.
+ * When a budget or a run length is named but no per-bet size, the bet is the budget
+ * split over the bets the style paces into that run (presets.ts `paceFor`): "$500,
+ * careful, 15 minutes" is five bets of $100, three minutes apart. Everything is clamped
+ * to sane bounds, and the per-bet can never exceed the budget.
  */
 export function resolveSetup(
   intent: SetupIntent,
   current: { budgetUsd: number; perTradeUsd: number; armDurationMs: number },
 ): ResolvedSetup {
-  const shape = PRESET_BY_ID[intent.preset].shape;
   const budgetUsd = clamp(intent.budgetUsd ?? current.budgetUsd, 1, 100_000);
-  // To the CENT, not the dollar: $5,000 over three careful trades is $1,666.67. Whole
-  // dollars left the budget short by the rounding ($1,666 x 3 = $4,998), and the trade
-  // cap then ended the run with $2 of the money the trader put up never placed. Cents
-  // leave at most a few cents over or under, and the engine's stakeFor() sizes the
-  // last trade to the exact remainder either way, so the budget is what gets spent.
+  const durationMins = intent.durationMins ?? Math.round(current.armDurationMs / 60_000);
+  const pace = paceFor(intent.preset, { armDurationMs: durationMins * 60_000, budgetUsd });
+  // To the CENT, not the dollar (perBetFor): whole dollars once left $2 of a $5,000
+  // budget never placed, and the trade cap ended the run there. The engine's stakeFor()
+  // sizes the last trade to the exact remainder either way, so the budget is what gets
+  // spent.
   const proposedPer =
     intent.perTradeUsd ??
-    (intent.budgetUsd != null ? Math.max(1, Math.round((budgetUsd / shape.maxTrades) * 100) / 100) : current.perTradeUsd);
+    (intent.budgetUsd != null || intent.durationMins != null ? perBetFor(budgetUsd, pace.maxTrades) : current.perTradeUsd);
   const perTradeUsd = clamp(proposedPer, 1, budgetUsd);
-  const durationMins = intent.durationMins ?? Math.round(current.armDurationMs / 60_000);
   return { preset: intent.preset, budgetUsd, perTradeUsd, durationMins, live: intent.live };
 }
 

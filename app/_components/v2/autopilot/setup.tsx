@@ -24,6 +24,14 @@ const LEV_CHOICES = [1, 2, 3];
 
 const COOLDOWN_CHOICES = [30_000, 60_000, 90_000, 120_000];
 
+/** "45s" under a minute, "3 min" on the minute, "2.5 min" between. */
+function cooldownLabel(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = s / 60;
+  return `${Number.isInteger(m) ? m : m.toFixed(1)} min`;
+}
+
 const DURATION_CHOICES = [15, 30, 60, 120]; // minutes
 
 function durationLabel(mins: number): string {
@@ -285,7 +293,7 @@ export function PlanDetails({ rules, limits }: { rules: Rules; limits: Limits })
     { label: 'Windows', value: windows },
     { label: 'Direction', value: sides },
     { label: 'At most open at once', value: `${limits.maxConcurrent}` },
-    { label: 'Waits between bets', value: `${Math.round(limits.cooldownMs / 1000)}s` },
+    { label: 'Waits between bets', value: cooldownLabel(limits.cooldownMs) },
   ];
   return (
     <div className="glass-card p-4">
@@ -532,11 +540,15 @@ export function CustomizeSection({
                 />
               </div>
               <Field label="Cooldown between trades">
-                {COOLDOWN_CHOICES.map((c) => (
-                  <Chip key={c} mono active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
-                    {c / 1000}s
-                  </Chip>
-                ))}
+                {/* A paced gap (say 3 minutes for a 15-minute careful run) is not one of the
+                    fixed choices, so it joins them as a chip rather than leaving none lit. */}
+                {[...new Set([...COOLDOWN_CHOICES, limits.cooldownMs])]
+                  .sort((a, b) => a - b)
+                  .map((c) => (
+                    <Chip key={c} mono active={limits.cooldownMs === c} onClick={() => setLimits({ cooldownMs: c })}>
+                      {cooldownLabel(c)}
+                    </Chip>
+                  ))}
               </Field>
             </div>
           </div>

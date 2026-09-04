@@ -20,7 +20,7 @@ import { useAutopilotStore, type SetupTurn } from '@/lib/store/autopilot-store';
 import { LuArrowRight, LuCircleCheck, LuRotateCcw, LuSparkles } from 'react-icons/lu';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { num } from '@/lib/format';
-import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
+import { PRESETS, paceFor, type PresetId } from '@/lib/autopilot/presets';
 import { type ResolvedSetup, type SetupGap, type SetupIntent, mergeIntents, missingFrom, resolveSetup, wantsStart } from '@/lib/autopilot/setup-parser';
 import { readSetup } from '@/lib/autopilot/read-setup';
 import type { StartOutcome } from './shared';
@@ -63,6 +63,26 @@ function ackFor(before: SetupIntent, after: SetupIntent): string | null {
   if (before.live !== after.live && after.live != null) learned.push(after.live ? 'trading live' : 'watch mode');
   if (learned.length === 0) return null;
   return `Got it: ${listWords(learned)}.`;
+}
+
+/**
+ * The paced plan in one breath: "That's up to 5 bets of $100, about 3 minutes apart."
+ * The count and gap follow the run length (presets.ts `paceFor`), and a trader who asked
+ * for 15 minutes should hear that it means five bets, not three, before they say start.
+ * "Up to", because Kelly holds when she reads no good chance.
+ */
+function planWords(r: ResolvedSetup): string {
+  const pace = paceFor(r.preset, { armDurationMs: r.durationMins * 60_000, budgetUsd: r.budgetUsd });
+  const per = `$${num(r.perTradeUsd, r.perTradeUsd % 1 === 0 ? 0 : 2)}`;
+  if (pace.maxTrades === 1) return `That's one bet of ${per}.`;
+  return `That's up to ${pace.maxTrades} bets of ${per}, about ${gapWords(pace.cooldownMs)} apart.`;
+}
+
+function gapWords(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} seconds`;
+  const m = s / 60;
+  return Number.isInteger(m) ? `${m} minute${m === 1 ? '' : 's'}` : `${m.toFixed(1)} minutes`;
 }
 
 /**
@@ -227,14 +247,15 @@ export function KellySetupCard({
       // and only says "I did not catch that" when the reply genuinely taught her nothing.
       const ack = read.note ?? ackFor(intent, merged);
       const nextGaps = missingFrom(merged);
+      const resolved = nextGaps.length === 0 ? resolveSetup(merged, current) : null;
       const lines: string[] = [];
       if (ack) lines.push(ack);
       else lines.push("I didn't catch that one.");
-      if (nextGaps.length > 0) lines.push(GAP_QUESTION[nextGaps[0]]);
-      else lines.push("That's everything. Check the plan, then say “start” whenever you're ready.");
+      if (!resolved) lines.push(GAP_QUESTION[nextGaps[0]]);
+      else lines.push(`${planWords(resolved)} Check the plan, then say “start” whenever you're ready.`);
       push('kelly', lines.join(' '));
 
-      if (nextGaps.length === 0) onApply(resolveSetup(merged, current));
+      if (resolved) onApply(resolved);
     } finally {
       setBusy(false);
     }

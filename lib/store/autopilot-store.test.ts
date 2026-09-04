@@ -432,12 +432,46 @@ describe('migrateAutopilotState', () => {
 
   it('is a no-op at the current version and on a blob it cannot read', () => {
     const blob = v1(['up', 'down']);
-    expect(migrateAutopilotState(blob, 2)).toBe(blob);
+    expect(migrateAutopilotState(blob, 3)).toBe(blob);
     expect(migrateAutopilotState(undefined, 1)).toBeUndefined();
     expect(migrateAutopilotState({ rules: {} }, 1)).toEqual({ rules: {} });
   });
 
   it('a fresh setup already carries the range, so nothing to migrate there', () => {
     expect(DEFAULT_RULES.sides).toEqual(['up', 'down', 'range']);
+  });
+
+  it('v2 limits still on a preset\'s old fixed count and gap are re-paced for their own run', () => {
+    // A careful $500, 15-minute config saved before pacing: 3 bets of $166.67, 2 minutes apart.
+    const blob = {
+      rules: { ...DEFAULT_RULES, minProb: 0.7, maxLeverage: 1, tenors: ['soonest', 'hour'], sides: ['up', 'down', 'range'] },
+      limits: { ...DEFAULT_LIMITS, budgetUsd: 500, perTradeUsd: 166.67, armDurationMs: 15 * 60_000, maxTrades: 3, cooldownMs: 120_000, maxConcurrent: 2, maxConsecutiveLosses: 2 },
+    };
+    const out = migrateAutopilotState(blob, 2) as { limits: { maxTrades: number; cooldownMs: number; perTradeUsd: number } };
+    expect(out.limits.maxTrades).toBe(5);
+    expect(out.limits.cooldownMs).toBe(180_000);
+    expect(out.limits.perTradeUsd).toBe(100);
+  });
+
+  it('a hand-typed bet size survives the re-pace, and a customized config is left alone', () => {
+    const typed = {
+      rules: { ...DEFAULT_RULES, minProb: 0.7, maxLeverage: 1, tenors: ['soonest', 'hour'], sides: ['up', 'down', 'range'] },
+      limits: { ...DEFAULT_LIMITS, budgetUsd: 500, perTradeUsd: 50, armDurationMs: 15 * 60_000, maxTrades: 3, cooldownMs: 120_000, maxConcurrent: 2, maxConsecutiveLosses: 2 },
+    };
+    const t = migrateAutopilotState(typed, 2) as { limits: { maxTrades: number; perTradeUsd: number } };
+    expect(t.limits.maxTrades).toBe(5);
+    expect(t.limits.perTradeUsd).toBe(50);
+    const custom = { ...typed, limits: { ...typed.limits, maxTrades: 7 } };
+    expect(migrateAutopilotState(custom, 2)).toBe(custom);
+  });
+
+  it('a v1 blob goes through both steps: gains the range, then is re-paced', () => {
+    const blob = {
+      rules: { ...DEFAULT_RULES, minProb: 0.7, maxLeverage: 1, tenors: ['soonest', 'hour'], sides: ['up', 'down'] },
+      limits: { ...DEFAULT_LIMITS, budgetUsd: 500, perTradeUsd: 166.67, armDurationMs: 15 * 60_000, maxTrades: 3, cooldownMs: 120_000, maxConcurrent: 2, maxConsecutiveLosses: 2 },
+    };
+    const out = migrateAutopilotState(blob, 1) as { rules: { sides: string[] }; limits: { maxTrades: number } };
+    expect(out.rules.sides).toEqual(['up', 'down', 'range']);
+    expect(out.limits.maxTrades).toBe(5);
   });
 });

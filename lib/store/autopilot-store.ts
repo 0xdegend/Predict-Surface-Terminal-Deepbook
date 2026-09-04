@@ -27,7 +27,7 @@ import {
   type StopReason,
   type TradeSide,
 } from '@/lib/autopilot/policy';
-import { presetPatch, matchPreset, DEFAULT_PRESET, type PresetId } from '@/lib/autopilot/presets';
+import { presetPatch, matchPreset, DEFAULT_PRESET, legacyPresetOf, paceFor, perBetFor, isAutoSized, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
 
 /** One line of Kelly's Auto-mode setup conversation. */
@@ -190,7 +190,10 @@ interface Run {
 // source of truth — the preset picker highlights "Balanced" on first load with no drift).
 // Only the money + time fields, which a preset never sets, are chosen here: a small
 // budget, a modest per-trade size, a short leash. The trader widens these on purpose.
-const _balanced = presetPatch(DEFAULT_PRESET);
+/** The money and time a fresh setup lands on: a small budget, a one-hour leash. The
+ *  bet count and gap follow from these (presets.ts `paceFor`). */
+const DEFAULT_RUN = { armDurationMs: 60 * 60_000, budgetUsd: 25 };
+const _balanced = presetPatch(DEFAULT_PRESET, DEFAULT_RUN);
 
 export const DEFAULT_RULES: AutopilotRules = {
   minEdge: 0,
@@ -201,9 +204,9 @@ export const DEFAULT_RULES: AutopilotRules = {
 };
 
 export const DEFAULT_LIMITS: AutopilotLimits = {
-  budgetUsd: 25,
-  perTradeUsd: 5,
-  armDurationMs: 60 * 60_000,
+  budgetUsd: DEFAULT_RUN.budgetUsd,
+  perTradeUsd: perBetFor(DEFAULT_RUN.budgetUsd, _balanced.limits.maxTrades!),
+  armDurationMs: DEFAULT_RUN.armDurationMs,
   maxTrades: _balanced.limits.maxTrades!,
   maxConcurrent: _balanced.limits.maxConcurrent!,
   cooldownMs: _balanced.limits.cooldownMs!,
@@ -224,11 +227,33 @@ export const DEFAULT_LIMITS: AutopilotLimits = {
  * customized on purpose and are left alone.
  */
 export function migrateAutopilotState(persisted: unknown, version: number): unknown {
-  if (version >= 2 || !persisted || typeof persisted !== 'object') return persisted;
-  const state = persisted as { rules?: { sides?: unknown } };
-  const sides = Array.isArray(state.rules?.sides) ? (state.rules.sides as string[]) : null;
-  if (!sides || !sides.includes('up') || !sides.includes('down') || sides.includes('range')) return persisted;
-  return { ...state, rules: { ...state.rules, sides: [...sides, 'range'] } };
+  if (!persisted || typeof persisted !== 'object') return persisted;
+  let state = persisted as { rules?: AutopilotRules; limits?: AutopilotLimits };
+
+  if (version < 2) {
+    const sides = Array.isArray(state.rules?.sides) ? (state.rules.sides as string[]) : null;
+    if (sides && sides.includes('up') && sides.includes('down') && !sides.includes('range')) {
+      state = { ...state, rules: { ...state.rules!, sides: [...sides, 'range'] as TradeSide[] } };
+    }
+  }
+
+  // Version 3 (2026-09-04): paced runs. A preset used to carry a fixed bet count and
+  // gap; now both follow the run length and budget (presets.ts `paceFor`), and
+  // matchPreset compares against that. A saved config still on a preset's old fixed
+  // numbers is re-paced for its own run length and budget, so it stays on its preset
+  // and gets the new behaviour. The per-bet follows only while it is still the budget
+  // split over the count; a hand-typed bet size is left alone, and so is any config
+  // the trader customized away from every preset.
+  if (version < 3 && state.rules && state.limits) {
+    const id = legacyPresetOf(state.rules, state.limits);
+    if (id) {
+      const pace = paceFor(id, state.limits);
+      const sized = isAutoSized(state.limits) ? { perTradeUsd: perBetFor(state.limits.budgetUsd, pace.maxTrades) } : {};
+      state = { ...state, limits: { ...state.limits, ...pace, ...sized } };
+    }
+  }
+
+  return state;
 }
 
 const MAX_LOG = 120;
@@ -727,7 +752,7 @@ export const useAutopilotStore = create<AutopilotState>()(
     }),
     {
       name: 'skew-autopilot',
-      version: 2,
+      version: 3,
       /**
        * Carry an older blob forward instead of dropping it.
        *

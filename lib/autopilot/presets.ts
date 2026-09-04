@@ -20,15 +20,15 @@ import type { AutopilotRules, AutopilotLimits, Tenor, TradeSide } from './policy
 
 export type PresetId = 'cautious' | 'balanced' | 'bold';
 
-/** The fields a preset controls. Budget / per-trade / run length are NOT here. */
+/** The fields a preset controls. Budget / per-trade / run length are NOT here, and
+ *  neither are the bet count and the gap between bets: those follow the run length
+ *  (see `paceFor`). */
 interface PresetShape {
   minProb: number;
   maxLeverage: number;
   tenors: Tenor[];
   sides: TradeSide[];
-  cooldownMs: number;
   maxConsecutiveLosses: number;
-  maxTrades: number;
   maxConcurrent: number;
 }
 
@@ -61,9 +61,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       maxLeverage: 1,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
-      cooldownMs: 120_000,
       maxConsecutiveLosses: 2,
-      maxTrades: 3,
       maxConcurrent: 2,
     },
   },
@@ -78,9 +76,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       maxLeverage: 2,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
-      cooldownMs: 90_000,
       maxConsecutiveLosses: 3,
-      maxTrades: 5,
       maxConcurrent: 3,
     },
   },
@@ -95,9 +91,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       maxLeverage: 3,
       tenors: ['soonest', 'hour', 'today'],
       sides: ['up', 'down', 'range'],
-      cooldownMs: 60_000,
       maxConsecutiveLosses: 4,
-      maxTrades: 8,
       maxConcurrent: 4,
     },
   },
@@ -110,22 +104,129 @@ export const PRESET_BY_ID: Record<PresetId, AutopilotPreset> = Object.fromEntrie
 /** The default style a fresh setup lands on. */
 export const DEFAULT_PRESET: PresetId = 'balanced';
 
+/* -------------------------------- pacing --------------------------------- */
+// How many bets a run makes, and how far apart, follow the run LENGTH, not a fixed
+// count. A careful run used to be "3 bets, 2 minutes apart" whatever the session: a
+// $500, 15-minute run placed three $167 bets and was over in four minutes, with eleven
+// minutes of the trader's time unused (founder, 2026-09-04). Now each style has a
+// target gap between bets, the count is the run length over that gap inside the style's
+// bounds, and never so many that a bet drops under $5. The gap then stretches so the
+// bets spread across the whole run, up to ten minutes apart.
+//
+// Honest about what this buys. More, smaller bets at the same odds do not make any one
+// of them likelier to win. They use the whole session, and they make the result less of
+// a coin flip on two or three bets.
+
+interface PaceShape {
+  /** Target gap between bets. */
+  betEveryMs: number;
+  /** Fewest and most bets in a run, before the budget has its say. */
+  minTrades: number;
+  maxTrades: number;
+  /** The gap never shrinks below this, however short the run. */
+  minCooldownMs: number;
+}
+
+const PACE: Record<PresetId, PaceShape> = {
+  cautious: { betEveryMs: 3 * 60_000, minTrades: 2, maxTrades: 12, minCooldownMs: 90_000 },
+  balanced: { betEveryMs: 2 * 60_000, minTrades: 3, maxTrades: 20, minCooldownMs: 60_000 },
+  bold: { betEveryMs: 90_000, minTrades: 4, maxTrades: 30, minCooldownMs: 45_000 },
+};
+
+/** The smallest bet a paced run plans. Under this the count comes down, not the bet. */
+export const MIN_PACED_BET_USD = 5;
+
+/** Bets are never spread further apart than this, so a small budget over a long run
+ *  still finishes in a reasonable time rather than trickling out one bet an hour. */
+export const MAX_SPREAD_MS = 10 * 60_000;
+
+/** The two things pacing follows. `AutopilotLimits` satisfies it. */
+export interface RunShape {
+  armDurationMs: number;
+  budgetUsd: number;
+}
+
+export interface Pace {
+  maxTrades: number;
+  cooldownMs: number;
+}
+
+/** The bet count and gap a style uses for a run of this length and budget. */
+export function paceFor(id: PresetId, run: RunShape): Pace {
+  const p = PACE[id];
+  const byTime = Math.min(p.maxTrades, Math.max(p.minTrades, Math.round(run.armDurationMs / p.betEveryMs)));
+  const byBudget = Math.max(1, Math.floor(run.budgetUsd / MIN_PACED_BET_USD));
+  const maxTrades = Math.max(1, Math.min(byTime, byBudget));
+  // Spread the bets over the run: the run length over the count, to the 15 seconds
+  // below, inside the style's floor and the ten-minute ceiling.
+  const spread = Math.floor(run.armDurationMs / maxTrades / 15_000) * 15_000;
+  return { maxTrades, cooldownMs: Math.min(MAX_SPREAD_MS, Math.max(p.minCooldownMs, spread)) };
+}
+
+/** The per-bet size that splits a budget over a bet count, to the cent. The engine's
+ *  stakeFor() sizes the last bet to the exact remainder, so a few cents of rounding
+ *  never strand any of the budget. */
+export function perBetFor(budgetUsd: number, maxTrades: number): number {
+  return Math.max(1, Math.round((budgetUsd / Math.max(1, maxTrades)) * 100) / 100);
+}
+
+/** True while the per-bet size is still the budget split over the bet count, so a
+ *  re-pace may size it again without stepping on a number the trader typed. */
+export function isAutoSized(l: { budgetUsd: number; perTradeUsd: number; maxTrades: number }): boolean {
+  return Math.abs(l.perTradeUsd * l.maxTrades - l.budgetUsd) <= Math.max(0.05, l.budgetUsd * 0.02);
+}
+
 /**
- * The rules + limits a preset applies. Only the "how she bets + pacing" fields — never
- * budget, per-trade, or run length — so applying a preset keeps the trader's money and
- * time choices untouched. minEdge stays out (the recommender doesn't surface edge yet).
+ * The rules + limits a preset applies to a run of the given length and budget. Only
+ * the "how she bets + pacing" fields, never budget, per-trade, or run length, so
+ * applying a preset keeps the trader's money and time choices untouched. minEdge stays
+ * out (the recommender doesn't surface edge yet).
  */
-export function presetPatch(id: PresetId): { rules: Partial<AutopilotRules>; limits: Partial<AutopilotLimits> } {
+export function presetPatch(id: PresetId, run: RunShape): { rules: Partial<AutopilotRules>; limits: Partial<AutopilotLimits> } {
   const s = PRESET_BY_ID[id].shape;
+  const pace = paceFor(id, run);
   return {
     rules: { minProb: s.minProb, maxLeverage: s.maxLeverage, tenors: [...s.tenors], sides: [...s.sides] },
     limits: {
-      cooldownMs: s.cooldownMs,
+      cooldownMs: pace.cooldownMs,
       maxConsecutiveLosses: s.maxConsecutiveLosses,
-      maxTrades: s.maxTrades,
+      maxTrades: pace.maxTrades,
       maxConcurrent: s.maxConcurrent,
     },
   };
+}
+
+/**
+ * The fixed count + gap each preset carried before pacing (store schema versions 1
+ * and 2). Only the store's migration reads this, to recognise a saved config that was
+ * on a preset and re-pace it rather than show it as Custom.
+ */
+export const LEGACY_PACE: Record<PresetId, Pace> = {
+  cautious: { maxTrades: 3, cooldownMs: 120_000 },
+  balanced: { maxTrades: 5, cooldownMs: 90_000 },
+  bold: { maxTrades: 8, cooldownMs: 60_000 },
+};
+
+function rulesMatch(rules: AutopilotRules, limits: AutopilotLimits, p: AutopilotPreset): boolean {
+  const s = p.shape;
+  return (
+    Math.abs(rules.minProb - s.minProb) < 1e-9 &&
+    rules.maxLeverage === s.maxLeverage &&
+    sameSet(rules.tenors, s.tenors) &&
+    sameSet(rules.sides, s.sides) &&
+    limits.maxConsecutiveLosses === s.maxConsecutiveLosses &&
+    limits.maxConcurrent === s.maxConcurrent
+  );
+}
+
+/** Which preset a pre-pacing saved config was on, by its rules and the old fixed
+ *  count + gap, or null when it was customized. */
+export function legacyPresetOf(rules: AutopilotRules, limits: AutopilotLimits): PresetId | null {
+  for (const p of PRESETS) {
+    const legacy = LEGACY_PACE[p.id];
+    if (rulesMatch(rules, limits, p) && limits.maxTrades === legacy.maxTrades && limits.cooldownMs === legacy.cooldownMs) return p.id;
+  }
+  return null;
 }
 
 function sameSet<T>(a: readonly T[], b: readonly T[]): boolean {
@@ -141,17 +242,10 @@ function sameSet<T>(a: readonly T[], b: readonly T[]): boolean {
  */
 export function matchPreset(rules: AutopilotRules, limits: AutopilotLimits): PresetId | null {
   for (const p of PRESETS) {
-    const s = p.shape;
-    if (
-      Math.abs(rules.minProb - s.minProb) < 1e-9 &&
-      rules.maxLeverage === s.maxLeverage &&
-      sameSet(rules.tenors, s.tenors) &&
-      sameSet(rules.sides, s.sides) &&
-      limits.cooldownMs === s.cooldownMs &&
-      limits.maxConsecutiveLosses === s.maxConsecutiveLosses &&
-      limits.maxTrades === s.maxTrades &&
-      limits.maxConcurrent === s.maxConcurrent
-    ) {
+    // The count and gap are compared against what pacing gives THIS run length and
+    // budget, so changing how long or how much never flips a trader off their style.
+    const pace = paceFor(p.id, limits);
+    if (rulesMatch(rules, limits, p) && limits.maxTrades === pace.maxTrades && limits.cooldownMs === pace.cooldownMs) {
       return p.id;
     }
   }
