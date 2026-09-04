@@ -104,6 +104,11 @@ describe('parseIntent', () => {
     expect(parseIntent('safe up bet for the next hour')).toMatchObject({ horizon: 'hour' });
     expect(parseIntent('quick up bet')).toMatchObject({ horizon: 'soonest' });
     expect(parseIntent('an up bet in 1h')).toMatchObject({ horizon: 'hour' });
+    expect(parseIntent('safe up bet for tomorrow')).toMatchObject({ horizon: 'day' });
+    expect(parseIntent('a daily up bet')).toMatchObject({ horizon: 'day' });
+    expect(parseIntent('safe up bet this week')).toMatchObject({ horizon: 'week' });
+    expect(parseIntent('weekly down bet')).toMatchObject({ horizon: 'week' });
+    expect(parseIntent('up bet for today')).toMatchObject({ horizon: 'today' });
   });
 
   it('"should I go up or down (or range)?" → a recommendation (a steer, not a bet)', () => {
@@ -366,6 +371,8 @@ describe('parseIntent', () => {
     expect(parseIntent('what is the chance BTC is above 65k today')).toMatchObject({ kind: 'odds', horizon: 'today' });
     expect(parseIntent('odds BTC is above 65,000 in a few hours')).toMatchObject({ kind: 'odds', horizon: 'today' });
     expect(parseIntent('chance BTC is above 65k in the next hour')).toMatchObject({ kind: 'odds', horizon: 'hour' });
+    expect(parseIntent('chance BTC is above 65k tomorrow')).toMatchObject({ kind: 'odds', horizon: 'day' });
+    expect(parseIntent('odds BTC is above 65k this week')).toMatchObject({ kind: 'odds', horizon: 'week' });
     // no time word → the soonest market
     expect(parseIntent('what are the odds BTC is above 65k')).toMatchObject({ kind: 'odds', horizon: 'soonest' });
   });

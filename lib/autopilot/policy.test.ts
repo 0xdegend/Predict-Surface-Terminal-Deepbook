@@ -77,6 +77,12 @@ describe('classifyTenor', () => {
     expect(classifyTenor(TENOR_BUCKETS.hourMaxMs)).toBe('hour');
     expect(classifyTenor(TENOR_BUCKETS.hourMaxMs + 1)).toBe('today');
     expect(classifyTenor(6 * 60 * 60_000)).toBe('today');
+    expect(classifyTenor(TENOR_BUCKETS.todayMaxMs)).toBe('today');
+    expect(classifyTenor(TENOR_BUCKETS.todayMaxMs + 1)).toBe('day');
+    expect(classifyTenor(TENOR_BUCKETS.dayMaxMs)).toBe('day');
+    expect(classifyTenor(TENOR_BUCKETS.dayMaxMs + 1)).toBe('week');
+    expect(classifyTenor(TENOR_BUCKETS.weekMaxMs)).toBe('week');
+    expect(classifyTenor(TENOR_BUCKETS.weekMaxMs + 1)).toBeNull();
   });
 });
 
@@ -368,5 +374,23 @@ describe('autoPauseReason — holds the trader can clear', () => {
 
   it('labels the hold in plain words', () => {
     expect(pauseReasonLabel('gas_low')).toMatch(/low on gas/i);
+  });
+});
+
+describe('daily and weekly windows outlive the session by design', () => {
+  const DAY = 24 * 60 * 60_000;
+  const dayBet: ProposedTrade = { ...goodTrade, expiry: NOW + DAY };
+  const weekBet: ProposedTrade = { ...goodTrade, expiry: NOW + 7 * DAY };
+  const shortRun = { ...limits, armDurationMs: 60 * 60_000 };
+
+  it('a daily or weekly bet is not held to the one-hour session clock once its window is on', () => {
+    expect(gateTrade(dayBet, { ...rules, tenors: ['day'] }, shortRun, runtime, NOW).allow).toBe(true);
+    expect(gateTrade(weekBet, { ...rules, tenors: ['week'] }, shortRun, runtime, NOW).allow).toBe(true);
+  });
+
+  it('but still needs the window switched on, and a short bet is still held to the clock', () => {
+    expect(gateTrade(dayBet, { ...rules, tenors: ['soonest', 'hour', 'today'] }, shortRun, runtime, NOW).code).toBe('tenor_not_allowed');
+    const twoHours: ProposedTrade = { ...goodTrade, expiry: NOW + 2 * 60 * 60_000 };
+    expect(gateTrade(twoHours, { ...rules, tenors: ['today'] }, shortRun, runtime, NOW).code).toBe('settles_after_session');
   });
 });

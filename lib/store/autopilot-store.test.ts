@@ -432,7 +432,7 @@ describe('migrateAutopilotState', () => {
 
   it('is a no-op at the current version and on a blob it cannot read', () => {
     const blob = v1(['up', 'down']);
-    expect(migrateAutopilotState(blob, 3)).toBe(blob);
+    expect(migrateAutopilotState(blob, 4)).toBe(blob);
     expect(migrateAutopilotState(undefined, 1)).toBeUndefined();
     expect(migrateAutopilotState({ rules: {} }, 1)).toEqual({ rules: {} });
   });
@@ -473,5 +473,27 @@ describe('migrateAutopilotState', () => {
     const out = migrateAutopilotState(blob, 1) as { rules: { sides: string[] }; limits: { maxTrades: number } };
     expect(out.rules.sides).toEqual(['up', 'down', 'range']);
     expect(out.limits.maxTrades).toBe(5);
+  });
+
+  it('v3 Bold rules on the old three windows gain daily and weekly; other styles keep theirs', () => {
+    const bold = { rules: { ...DEFAULT_RULES, minProb: 0.55, maxLeverage: 3, tenors: ['soonest', 'hour', 'today'] }, limits: DEFAULT_LIMITS };
+    expect((migrateAutopilotState(bold, 3) as { rules: { tenors: string[] } }).rules.tenors).toEqual(['soonest', 'hour', 'today', 'day', 'week']);
+    const balanced = { rules: { ...DEFAULT_RULES, tenors: ['soonest', 'hour'] }, limits: DEFAULT_LIMITS };
+    expect(migrateAutopilotState(balanced, 3)).toBe(balanced);
+  });
+});
+
+describe('pruneExpired grace for daily and weekly positions', () => {
+  it('a long position waits for the long grace; a short one is retired after the short grace', () => {
+    const DAY = 24 * 60 * 60_000;
+    S().arm(1_000);
+    S().recordPlacement(trade({ marketId: '0xshort', expiry: 10_000 }), { dryRun: false, digest: 'a' }, 1_000);
+    S().recordPlacement(trade({ marketId: '0xday', expiry: 1_000 + DAY }), { dryRun: false, digest: 'b' }, 1_000);
+    // A minute past the daily expiry: the short one (long expired) goes, the daily one stays.
+    expect(S().pruneExpired(1_000 + DAY + 60_000, 15 * 60_000, 7 * DAY)).toBe(1);
+    expect(S().run.open.map((p) => p.marketId)).toEqual(['0xday']);
+    // A week later it is retired too.
+    expect(S().pruneExpired(1_000 + 8 * DAY + 60_000, 15 * 60_000, 7 * DAY)).toBe(1);
+    expect(S().run.open).toHaveLength(0);
   });
 });

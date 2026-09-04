@@ -16,7 +16,10 @@ import { type Limits, ModeTab, type Rules, type SetupMode } from './shared';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-const TENOR_LABEL: Record<Tenor, string> = { soonest: 'Minutes', hour: '~1 hour', today: 'Longer' };
+const TENOR_LABEL: Record<Tenor, string> = { soonest: 'Minutes', hour: '~1 hour', today: 'Hours', day: 'Daily', week: 'Weekly' };
+/** Every window a trader can pick, soonest first. Daily and weekly are the 1-day and
+ *  1-week markets; a bet there settles after the run ends (the plan card says so). */
+const TENOR_CHIPS: Tenor[] = ['soonest', 'hour', 'today', 'day', 'week'];
 
 const PROB_CHOICES = [0.55, 0.6, 0.65, 0.7, 0.75];
 
@@ -276,7 +279,7 @@ function StepBadge({ n }: { n: number }) {
  */
 export function PlanDetails({ rules, limits }: { rules: Rules; limits: Limits }) {
   const windows = rules.tenors.length
-    ? (['soonest', 'hour', 'today'] as Tenor[]).filter((t) => rules.tenors.includes(t)).map((t) => TENOR_LABEL[t]).join(', ')
+    ? TENOR_CHIPS.filter((t) => rules.tenors.includes(t)).map((t) => TENOR_LABEL[t]).join(', ')
     : 'none picked';
   const sideNames = (['up', 'down', 'range'] as TradeSide[])
     .filter((side) => rules.sides.includes(side))
@@ -493,7 +496,7 @@ export function CustomizeSection({
                 ))}
               </Field>
               <Field label="Windows to trade">
-                {(['soonest', 'hour', 'today'] as Tenor[]).map((t) => (
+                {TENOR_CHIPS.map((t) => (
                   <Chip key={t} active={rules.tenors.includes(t)} onClick={() => toggleTenor(t)}>
                     {TENOR_LABEL[t]}
                   </Chip>

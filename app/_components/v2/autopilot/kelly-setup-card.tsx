@@ -61,6 +61,9 @@ function ackFor(before: SetupIntent, after: SetupIntent): string | null {
     learned.push(`$${num(after.perTradeUsd, after.perTradeUsd % 1 === 0 ? 0 : 2)} a bet`);
   }
   if (before.live !== after.live && after.live != null) learned.push(after.live ? 'trading live' : 'watch mode');
+  if (after.windows?.length && (before.windows ?? []).join() !== after.windows.join()) {
+    learned.push(`${after.windows.map((w) => (w === 'day' ? 'daily' : 'weekly')).join(' and ')} markets too`);
+  }
   if (learned.length === 0) return null;
   return `Got it: ${listWords(learned)}.`;
 }

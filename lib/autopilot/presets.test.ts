@@ -121,6 +121,13 @@ describe('paceFor: the bet count and gap follow the run length', () => {
 });
 
 describe('range bets', () => {
+  it('Bold takes the daily and weekly markets; Careful and Balanced keep the short windows', () => {
+    const by = (id: string) => PRESETS.find((p) => p.id === id)!.shape.tenors;
+    expect(by('bold')).toEqual(['soonest', 'hour', 'today', 'day', 'week']);
+    expect(by('cautious')).toEqual(['soonest', 'hour']);
+    expect(by('balanced')).toEqual(['soonest', 'hour']);
+  });
+
   it('every preset offers UP, DOWN and a range', () => {
     for (const p of PRESETS) expect(p.shape.sides).toEqual(['up', 'down', 'range']);
   });

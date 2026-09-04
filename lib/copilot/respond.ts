@@ -280,6 +280,13 @@ export function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now:
     // honest answer to "today", while silently offering a nine-day bet is not.
     return open.reduce((best, c) => (c.market.expiry < best.market.expiry ? c : best));
   }
+  if (horizon === 'day' || horizon === 'week') {
+    // The market nearest a day (or a week) out. Unbounded on purpose: the copy always
+    // states the real time left, so "nearest to a day" is an honest answer whether the
+    // venue lists a 1-day market or only a longer one.
+    const target = now + (horizon === 'day' ? 24 : 7 * 24) * 3_600_000;
+    return open.reduce((best, c) => (Math.abs(c.market.expiry - target) < Math.abs(best.market.expiry - target) ? c : best));
+  }
   if (horizon === 'hour') {
     const target = now + 3_600_000;
     return open.reduce((best, c) =>
@@ -403,7 +410,11 @@ function oddsReply(level: OddsLevel, dir: BetDirection | undefined, ctx: Copilot
       ? `The longest market I can price right now settles in ${label}, so that's the window here. `
       : horizon === 'hour' && minsLeft < 30
         ? `The market nearest an hour out settles in ${label}, so that's what I'm using. `
-        : '';
+        : horizon === 'day' && minsLeft < 12 * 60
+          ? `The market nearest a day out settles in ${label}, so that's what I'm using. `
+          : horizon === 'week' && minsLeft < 3 * 24 * 60
+            ? `The market nearest a week out settles in ${label}, so that's what I'm using. `
+            : '';
 
   // Resolve the level to an absolute, admission-snapped strike.
   let rawStrike: number;

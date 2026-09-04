@@ -54,6 +54,7 @@ import {
   type TradeSide,
   fitsSession,
   hasTimeToTrade,
+  isLongTenor,
   rankPicks,
 } from '@/lib/autopilot/policy';
 import { useAutopilotStore, type OpenPosition } from '@/lib/store/autopilot-store';
@@ -77,6 +78,10 @@ const HEALTH_WARMUP_MS = 35_000;
 /** Keep a real position around this long after expiry to read its settlement; past
  *  it, retire the position unscored (a settlement we never saw can't count). */
 const SETTLE_GRACE_MS = 15 * 60_000;
+/** The same for a daily or weekly position. Those settle after the run, often after the
+ *  trader has closed the page, and a settled market's price can be read any time, so the
+ *  position waits for the next visit rather than being written off as pending. */
+const LONG_SETTLE_GRACE_MS = 7 * 24 * 60 * 60_000;
 
 /** Receipts are minted only when the same flag the co-pilot uses is on (and the
  *  server writer key is set). Fire-and-forget, so a missing key just skips it. */
@@ -275,7 +280,7 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       void resolveSettlement(pos, settledRef.current);
     }
     // 2) Retire positions whose settlement never resolved within the grace window.
-    st.pruneExpired(now, SETTLE_GRACE_MS);
+    st.pruneExpired(now, SETTLE_GRACE_MS, LONG_SETTLE_GRACE_MS);
     if (candidates.length > 0) lastLiveRef.current = now;
 
     // A stopped run only finishes settling its remaining positions — no health checks,
@@ -329,15 +334,17 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // bet on it two minutes after the first, which then blocked the third under the
     // open-positions limit. Dropped here so she picks the NEXT market instead.
     //
-    // And a market that settles after the session does: an open position past "time is
-    // up" is not what the trader signed up for. Said once when it rules out everything.
+    // And a short-window market that settles after the session does: an open position
+    // past "time is up" is not what the trader signed up for. A daily or weekly market is
+    // the exception by design (LONG_TENORS): opting into that window is opting into a bet
+    // that settles after the run. Said once when it rules out everything.
     const sessionEnd = { armedAt: runtime.armedAt, durationMs: limits.armDurationMs };
     const allowed = candidates.filter((c) => {
       if (!hasTimeToTrade(c.market.expiry, now)) return false;
-      if (!fitsSession(c.market.expiry, sessionEnd.armedAt, sessionEnd.durationMs)) return false;
       if (runtime.firedMarkets[c.market.expiry_market_id] != null) return false;
       const tenor = classifyTenor(c.market.expiry - now);
-      return tenor !== null && rules.tenors.includes(tenor);
+      if (tenor === null || !rules.tenors.includes(tenor)) return false;
+      return isLongTenor(tenor) || fitsSession(c.market.expiry, sessionEnd.armedAt, sessionEnd.durationMs);
     });
     if (allowed.length === 0) {
       const anyLive = candidates.some((c) => hasTimeToTrade(c.market.expiry, now) && runtime.firedMarkets[c.market.expiry_market_id] == null);

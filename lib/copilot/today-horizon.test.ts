@@ -104,3 +104,21 @@ describe('Kelly answering "a bet for today"', () => {
     expect(hour.bet!.marketId).toBe('m-1h');
   });
 });
+
+describe('Kelly answering "a bet for tomorrow" and "this week"', () => {
+  it('a day out picks the 1-day market', () => {
+    const reply = respondToIntent({ kind: 'directional_bet', dir: 'up', conviction: 'even', horizon: 'day' }, ctx(BOARD));
+    expect(reply.bet?.marketId).toBe('m-1d');
+  });
+
+  it('a week out picks the weekly market', () => {
+    const reply = respondToIntent({ kind: 'directional_bet', dir: 'up', conviction: 'even', horizon: 'week' }, ctx(BOARD));
+    expect(reply.bet?.marketId).toBe('m-9d');
+  });
+
+  it('with no long market listed, answers with the nearest thing and says the real time left', () => {
+    const short = BOARD.filter((c) => c.market.expiry - NOW < 2 * HOUR);
+    const reply = respondToIntent({ kind: 'directional_bet', dir: 'up', conviction: 'even', horizon: 'week' }, ctx(short));
+    expect(reply.bet?.marketId).toBe('m-1h');
+  });
+});

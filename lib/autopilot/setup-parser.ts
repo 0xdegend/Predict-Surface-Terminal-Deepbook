@@ -12,6 +12,7 @@
 // phrase is ambiguous, because the panel shows exactly what it chose before running.
 import type { PresetId } from './presets';
 import { paceFor, perBetFor } from './presets';
+import type { Tenor } from './policy';
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
@@ -28,6 +29,9 @@ export interface SetupIntent {
   durationMins?: number;
   /** Watch (false) or live (true), if the trader named a mode. */
   live?: boolean;
+  /** Extra windows asked for by name ("daily", "weekly markets"), added on top of the
+   *  style's own. Not a required piece: a style without them runs on its own windows. */
+  windows?: Tenor[];
 }
 
 /** A setup with every field filled in — what actually gets applied to the panel. */
@@ -38,6 +42,19 @@ export interface ResolvedSetup {
   durationMins: number;
   /** Only set when the trader named a mode; otherwise the panel keeps its current one. */
   live?: boolean;
+  /** Windows to add to the style's own (see SetupIntent.windows). */
+  windows?: Tenor[];
+}
+
+/**
+ * "daily" / "weekly" markets, asked for by name. "a day" and "all day" are run LENGTHS
+ * and stay with the duration parser; only the market words count here.
+ */
+function extractWindows(text: string): Tenor[] | undefined {
+  const out: Tenor[] = [];
+  if (/\b(?:daily|day markets?|(?:1|one)[- ]day markets?|1d markets?)\b/i.test(text)) out.push('day');
+  if (/\b(?:weekly|week markets?|(?:1|one)[- ]week markets?|1w markets?)\b/i.test(text)) out.push('week');
+  return out.length > 0 ? out : undefined;
 }
 
 const STYLE_WORDS: { id: PresetId; re: RegExp }[] = [
@@ -139,6 +156,7 @@ export function parseSetup(input: string): SetupIntent {
     perTradeUsd: money.perTradeUsd,
     durationMins: mins,
     live,
+    windows: extractWindows(input),
   };
 }
 
@@ -164,7 +182,7 @@ export function resolveSetup(
     intent.perTradeUsd ??
     (intent.budgetUsd != null || intent.durationMins != null ? perBetFor(budgetUsd, pace.maxTrades) : current.perTradeUsd);
   const perTradeUsd = clamp(proposedPer, 1, budgetUsd);
-  return { preset: intent.preset, budgetUsd, perTradeUsd, durationMins, live: intent.live };
+  return { preset: intent.preset, budgetUsd, perTradeUsd, durationMins, live: intent.live, windows: intent.windows };
 }
 
 /* ------------------------ what the trader left out ------------------------ */
@@ -244,6 +262,7 @@ export function mergeIntents(base: SetupIntent, next: SetupIntent): SetupIntent 
     perTradeUsd: next.perTradeUsd ?? base.perTradeUsd,
     durationMins: next.durationMins ?? base.durationMins,
     live: next.live ?? base.live,
+    windows: next.windows ?? base.windows,
   };
 }
 

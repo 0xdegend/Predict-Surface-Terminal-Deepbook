@@ -89,7 +89,9 @@ export const PRESETS: readonly AutopilotPreset[] = [
     shape: {
       minProb: 0.55,
       maxLeverage: 3,
-      tenors: ['soonest', 'hour', 'today'],
+      // Bold takes the daily and weekly markets too (live on 8-21 since 2026-09-04). A
+      // careful or balanced trader adds them by name, in chat or under Customize.
+      tenors: ['soonest', 'hour', 'today', 'day', 'week'],
       sides: ['up', 'down', 'range'],
       maxConsecutiveLosses: 4,
       maxConcurrent: 4,

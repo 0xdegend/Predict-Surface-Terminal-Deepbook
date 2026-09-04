@@ -57,6 +57,11 @@ describe('planPhases', () => {
 
   it('lists the windows a trader actually picked', () => {
     expect(detail('watch', { ...RULES, tenors: ['soonest'] })).toContain('the next few minutes');
+    expect(detail('watch', { ...RULES, tenors: ['soonest'] })).toContain('before your session ends');
+    const long = detail('watch', { ...RULES, tenors: ['soonest', 'day', 'week'] });
+    expect(long).toMatch(/the next few minutes, about a day or about a week/);
+    expect(long).toContain('settles after the run ends');
+    expect(long).not.toContain('before your session ends');
     expect(detail('watch', { ...RULES, tenors: ['soonest', 'hour', 'today'] })).toMatch(
       /the next few minutes, about an hour or later today/,
     );

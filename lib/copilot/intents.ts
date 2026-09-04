@@ -16,7 +16,9 @@
 import { isMeaningfulMemory } from './memory-quality';
 
 export type Conviction = 'safe' | 'even' | 'longshot';
-export type Horizon = 'soonest' | 'hour' | 'today';
+/** How far out a bet should settle. `day` and `week` are the 1-day and 1-week markets
+ *  8-21 lists (live on the trade page since 2026-09-04). */
+export type Horizon = 'soonest' | 'hour' | 'today' | 'day' | 'week';
 export type BetDirection = 'up' | 'down';
 /** What a memory-recall question is asking for: the trader's name, their trading
  *  style/preferences, or an open "what do you remember about me". */
@@ -161,6 +163,11 @@ function convictionFrom(text: string): Conviction {
 }
 
 function horizonFrom(text: string): Horizon {
+  // A week out: the 1-week markets. Before the day and today checks, since "this week"
+  // and "7 days" would otherwise read as shorter windows.
+  if (/\bweekly\b|\bthis week\b|\bnext week\b|\bend of (?:the )?week\b|\beow\b|\b(?:a|one|1)[- ]?(?:week|wk)\b|\b7[- ]?days?\b|\bweek(?:ly)?[- ]market/.test(text)) return 'week';
+  // A day out: the 1-day markets. "today" is not "a day": that stays the short window.
+  if (/\bdaily\b|\btomorrow\b|\bovernight\b|\b(?:a|one|1)[- ]?day\b|\b24[- ]?h(?:ours?|rs?)?\b|\bday[- ]market/.test(text)) return 'day';
   // Multiple hours / today / rest of the day → price the LONGEST market we list
   // (this venue's markets are short, so that's the best available answer).
   if (/\btoday\b|\btonight\b|this (?:afternoon|evening|morning)|end of (?:the )?day|\beod\b|rest of (?:the )?day|(?:few|couple|several|\d+)\s*(?:more\s*)?hours|\bhours\b/.test(text)) return 'today';

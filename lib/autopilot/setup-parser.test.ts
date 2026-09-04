@@ -273,4 +273,25 @@ describe('wantsStart', () => {
   it('handles junk without throwing', () => {
     for (const m of ['', '   ', '!!!', '???']) expect(wantsStart(m)).toBe(false);
   });
+
+});
+
+describe('daily and weekly markets, asked for by name', () => {
+  it('reads the market words into extra windows', () => {
+    expect(parseSetup('careful, $500 for 15 minutes, include daily and weekly markets').windows).toEqual(['day', 'week']);
+    expect(parseSetup('go bold on the weekly markets').windows).toEqual(['week']);
+    expect(parseSetup('add the daily market').windows).toEqual(['day']);
+  });
+
+  it('does not mistake a run length for a window', () => {
+    expect(parseSetup('trade all day with $50').windows).toBeUndefined();
+    expect(parseSetup('$25 for an hour').windows).toBeUndefined();
+  });
+
+  it('carries the windows through merge and resolve', () => {
+    const merged = mergeIntents(parseSetup('careful $100'), parseSetup('weekly markets too'));
+    expect(merged.windows).toEqual(['week']);
+    expect(resolveSetup(merged, CURRENT).windows).toEqual(['week']);
+    expect(mergeIntents(merged, parseSetup('for 30 minutes')).windows).toEqual(['week']);
+  });
 });

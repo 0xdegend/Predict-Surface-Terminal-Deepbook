@@ -17,8 +17,10 @@
 // session key cannot spend past it, top it up, or withdraw). Everything here is
 // a policy layer on top of that hard floor, never a substitute for it.
 
-/** Which listed window a market belongs to, derived from its time-to-expiry. */
-export type Tenor = 'soonest' | 'hour' | 'today';
+/** Which listed window a market belongs to, derived from its time-to-expiry. The first
+ *  three are the short windows; `day` and `week` are the 1-day and 1-week markets 8-21
+ *  lists, opened up on 2026-09-04 once they were live on the trade page. */
+export type Tenor = 'soonest' | 'hour' | 'today' | 'day' | 'week';
 
 /** A tradeable direction. Binary picks are up/down; a two-sided band is 'range'. */
 export type TradeSide = 'up' | 'down' | 'range';
@@ -27,19 +29,37 @@ export type TradeSide = 'up' | 'down' | 'range';
  * Time-to-expiry buckets (ms). One place so the gate, the picker and the UI agree on what
  * "1h" means. Boundaries are inclusive on the upper edge.
  *
- * `todayMaxMs` is the one that matters for safety, and it is why this function can return
- * null. These three names are the trader's whole vocabulary, and they were written when
+ * `todayMaxMs` is the one that matters for safety. The three short names were written when
  * every listed market settled within the hour, so "anything longer" and "today" were the
  * same thing. On 8-21 they are not: the venue lists 1-day and 1-week markets, and there is
  * a live market settling in 9.3 days. An unbounded `today` would classify that as today,
  * and Autopilot would place a nine-day unattended bet while the plan card said it settles
- * this afternoon. The trader would have consented to something they were not shown.
+ * this afternoon. So `today` stops at twelve hours, and the daily and weekly markets are
+ * their own windows the trader opts into by name. Past `weekMaxMs` a market belongs to no
+ * window at all and is never eligible (see classifyTenor).
  */
 export const TENOR_BUCKETS = {
   soonestMaxMs: 20 * 60_000,
   hourMaxMs: 90 * 60_000,
   todayMaxMs: 12 * 3_600_000,
+  /** A 1-day market: up to a day and a half out. */
+  dayMaxMs: 36 * 3_600_000,
+  /** A 1-week market: the venue lists them up to about nine days out (9.3 seen live 8-31). */
+  weekMaxMs: 10 * 24 * 3_600_000,
 } as const;
+
+/**
+ * The windows whose bets settle after any run the trader can set. A daily or weekly bet
+ * is placed during the session and scored when its market settles, hours or days later.
+ * Opting into one of these windows IS the consent for that; the session-fit rule
+ * (`fitsSession`) is for the short windows, where "settles before time is up" is what
+ * the trader expects.
+ */
+export const LONG_TENORS: ReadonlySet<Tenor> = new Set<Tenor>(['day', 'week']);
+
+export function isLongTenor(tenor: Tenor | null): boolean {
+  return tenor != null && LONG_TENORS.has(tenor);
+}
 
 /**
  * The least time a market may have left for a rules-driven bet to fire on it: enough to
@@ -107,6 +127,8 @@ export function classifyTenor(msToExpiry: number): Tenor | null {
   if (msToExpiry <= TENOR_BUCKETS.soonestMaxMs) return 'soonest';
   if (msToExpiry <= TENOR_BUCKETS.hourMaxMs) return 'hour';
   if (msToExpiry <= TENOR_BUCKETS.todayMaxMs) return 'today';
+  if (msToExpiry <= TENOR_BUCKETS.dayMaxMs) return 'day';
+  if (msToExpiry <= TENOR_BUCKETS.weekMaxMs) return 'week';
   return null;
 }
 
@@ -272,8 +294,10 @@ export function gateTrade(
   const tenor = classifyTenor(trade.expiry - now);
   if (tenor === null || !rules.tenors.includes(tenor)) return deny('tenor_not_allowed');
   // After the tenor check on purpose: a market outside the trader's windows is refused
-  // for that reason first, so the log names the rule they set rather than the clock.
-  if (!fitsSession(trade.expiry, runtime.armedAt, limits.armDurationMs)) return deny('settles_after_session');
+  // for that reason first, so the log names the rule they set rather than the clock. A
+  // daily or weekly bet is meant to outlive the run (see LONG_TENORS), so only the short
+  // windows are held to the session clock.
+  if (!isLongTenor(tenor) && !fitsSession(trade.expiry, runtime.armedAt, limits.armDurationMs)) return deny('settles_after_session');
   if (!rules.sides.includes(trade.side)) return deny('side_not_allowed');
   if (trade.leverage > rules.maxLeverage) return deny('leverage_too_high');
 

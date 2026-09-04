@@ -401,7 +401,9 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    */
   function applySetup(r: ResolvedSetup) {
     const patch = presetPatch(r.preset, { armDurationMs: r.durationMins * 60_000, budgetUsd: r.budgetUsd });
-    setRules(patch.rules);
+    // Windows the trader named ("daily", "weekly") join the style's own.
+    const tenors = r.windows?.length ? [...new Set([...(patch.rules.tenors ?? []), ...r.windows])] : patch.rules.tenors;
+    setRules({ ...patch.rules, tenors });
     setLimits({
       ...patch.limits,
       budgetUsd: r.budgetUsd,

@@ -26,8 +26,9 @@ import {
   type ProposedTrade,
   type StopReason,
   type TradeSide,
+  TENOR_BUCKETS,
 } from '@/lib/autopilot/policy';
-import { presetPatch, matchPreset, DEFAULT_PRESET, legacyPresetOf, paceFor, perBetFor, isAutoSized, type PresetId } from '@/lib/autopilot/presets';
+import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
 
 /** One line of Kelly's Auto-mode setup conversation. */
@@ -253,6 +254,19 @@ export function migrateAutopilotState(persisted: unknown, version: number): unkn
     }
   }
 
+  // Version 4 (2026-09-04): daily and weekly windows. Bold now includes them, so a saved
+  // Bold config on the old three windows gains the two new ones and stays Bold; a
+  // careful or balanced config, or anything customized, keeps its own windows.
+  if (version < 4 && state.rules) {
+    const r = state.rules;
+    const bold = PRESET_BY_ID.bold.shape;
+    const t = Array.isArray(r.tenors) ? r.tenors : [];
+    const oldBoldWindows = t.length === 3 && (['soonest', 'hour', 'today'] as const).every((x) => t.includes(x));
+    if (oldBoldWindows && Math.abs(r.minProb - bold.minProb) < 1e-9 && r.maxLeverage === bold.maxLeverage) {
+      state = { ...state, rules: { ...r, tenors: [...t, 'day', 'week'] } };
+    }
+  }
+
   return state;
 }
 
@@ -461,7 +475,7 @@ interface AutopilotState {
    *  unscored. Returns the count pruned. Concurrency already excludes expired
    *  positions (see buildRuntime), so this is about scoring + freeing memory, not the
    *  open cap. */
-  pruneExpired: (now: number, graceMs?: number) => number;
+  pruneExpired: (now: number, graceMs?: number, longGraceMs?: number) => number;
   /** Record a placement: bump the counters and add a log line. */
   recordPlacement: (
     trade: ProposedTrade,
@@ -599,11 +613,15 @@ export const useAutopilotStore = create<AutopilotState>()(
           interruptedByReload: false,
         }),
 
-      pruneExpired: (now, graceMs = 0) => {
+      pruneExpired: (now, graceMs = 0, longGraceMs = graceMs) => {
+        // A daily or weekly position (judged by how long it had to run when placed) gets
+        // the longer grace: its settlement is read on the trader's next visit, which may
+        // be days later, and a settled market's price can be read at any time.
+        const grace = (p: OpenPosition) => (p.expiry - (p.openedAt ?? p.expiry) > TENOR_BUCKETS.todayMaxMs ? longGraceMs : graceMs);
         const before = get().run.open;
-        const dropped = before.filter((p) => p.expiry + graceMs <= now);
+        const dropped = before.filter((p) => p.expiry + grace(p) <= now);
         if (dropped.length === 0) return 0;
-        const open = before.filter((p) => p.expiry + graceMs > now);
+        const open = before.filter((p) => p.expiry + grace(p) > now);
         set((s) => {
           // A dropped position never settled in time — record it as a pending outcome
           // so the results tape still shows it happened (not silently lost).
@@ -752,7 +770,7 @@ export const useAutopilotStore = create<AutopilotState>()(
     }),
     {
       name: 'skew-autopilot',
-      version: 3,
+      version: 4,
       /**
        * Carry an older blob forward instead of dropping it.
        *
