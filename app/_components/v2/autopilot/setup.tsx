@@ -8,7 +8,7 @@
  * change: these are the same components, moved.
  */
 import type { IconType } from 'react-icons';
-import { LuChevronDown, LuCircleCheck, LuFlame, LuMessageSquare, LuScale, LuShieldCheck, LuSlidersHorizontal, LuTrendingDown, LuTrendingUp } from 'react-icons/lu';
+import { LuArrowLeftRight, LuChevronDown, LuCircleCheck, LuFlame, LuMessageSquare, LuScale, LuShieldCheck, LuSlidersHorizontal, LuTrendingDown, LuTrendingUp } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { PRESETS, type PresetId } from '@/lib/autopilot/presets';
@@ -270,8 +270,15 @@ export function PlanDetails({ rules, limits }: { rules: Rules; limits: Limits })
   const windows = rules.tenors.length
     ? (['soonest', 'hour', 'today'] as Tenor[]).filter((t) => rules.tenors.includes(t)).map((t) => TENOR_LABEL[t]).join(', ')
     : 'none picked';
+  const sideNames = (['up', 'down', 'range'] as TradeSide[])
+    .filter((side) => rules.sides.includes(side))
+    .map((side) => (side === 'range' ? 'range' : side.toUpperCase()));
   const sides =
-    rules.sides.length === 2 ? 'UP and DOWN' : rules.sides.length === 1 ? rules.sides[0].toUpperCase() : 'none picked';
+    sideNames.length === 0
+      ? 'none picked'
+      : sideNames.length === 1
+        ? sideNames[0]
+        : `${sideNames.slice(0, -1).join(', ')} and ${sideNames[sideNames.length - 1]}`;
   const rows: { label: string; value: string }[] = [
     { label: 'Total budget', value: `$${num(limits.budgetUsd, 0)}` },
     { label: 'Only bets at least', value: `${Math.round(rules.minProb * 100)}% likely` },
@@ -491,8 +498,8 @@ export function CustomizeSection({
                 <Chip active={rules.sides.includes('down')} onClick={() => toggleSide('down')}>
                   <LuTrendingDown size={12} className="mr-1 inline text-down" /> DOWN
                 </Chip>
-                <Chip active={false} disabled title="Range bets come next">
-                  Range · soon
+                <Chip active={rules.sides.includes('range')} onClick={() => toggleSide('range')}>
+                  <LuArrowLeftRight size={12} className="mr-1 inline text-accent" /> Range
                 </Chip>
               </Field>
               <Field label="Max leverage">

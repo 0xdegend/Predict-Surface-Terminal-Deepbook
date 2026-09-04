@@ -52,6 +52,7 @@ describe('planPhases', () => {
     // as an ordinary sentence with a blank in it.
     expect(detail('watch', { ...RULES, tenors: [] })).toMatch(/no windows picked/i);
     expect(detail('pick', { ...RULES, sides: [] })).toMatch(/no direction picked/i);
+    expect(detail('pick', { ...RULES, sides: ['up', 'down', 'range'] })).toContain('going UP, DOWN or range');
   });
 
   it('lists the windows a trader actually picked', () => {

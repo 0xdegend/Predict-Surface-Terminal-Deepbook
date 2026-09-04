@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useAutopilotStore, DEFAULT_LIMITS, DEFAULT_RULES } from './autopilot-store';
+import { useAutopilotStore, DEFAULT_LIMITS, DEFAULT_RULES, migrateAutopilotState } from './autopilot-store';
 import type { ProposedTrade } from '@/lib/autopilot/policy';
 
 const S = () => useAutopilotStore.getState();
@@ -414,5 +414,30 @@ describe('pause / resume (low gas holds the run instead of ending it)', () => {
     const saved = useAutopilotStore.persist.getOptions().partialize!(useAutopilotStore.getState()) as Record<string, unknown>;
     expect(saved.status).toBe('paused');
     expect(saved.pauseReason).toBe('gas_low');
+  });
+});
+
+describe('migrateAutopilotState', () => {
+  const v1 = (sides: string[]) => ({ rules: { ...DEFAULT_RULES, sides }, limits: DEFAULT_LIMITS, history: [{ id: 'r1' }] });
+
+  it('v1 rules that read UP + DOWN gain the range (that chip was disabled back then)', () => {
+    const out = migrateAutopilotState(v1(['up', 'down']), 1) as { rules: { sides: string[] }; history: unknown[] };
+    expect(out.rules.sides).toEqual(['up', 'down', 'range']);
+    expect(out.history).toHaveLength(1); // everything else rides along untouched
+  });
+
+  it('leaves single-side rules alone: those were customized on purpose', () => {
+    expect((migrateAutopilotState(v1(['up']), 1) as { rules: { sides: string[] } }).rules.sides).toEqual(['up']);
+  });
+
+  it('is a no-op at the current version and on a blob it cannot read', () => {
+    const blob = v1(['up', 'down']);
+    expect(migrateAutopilotState(blob, 2)).toBe(blob);
+    expect(migrateAutopilotState(undefined, 1)).toBeUndefined();
+    expect(migrateAutopilotState({ rules: {} }, 1)).toEqual({ rules: {} });
+  });
+
+  it('a fresh setup already carries the range, so nothing to migrate there', () => {
+    expect(DEFAULT_RULES.sides).toEqual(['up', 'down', 'range']);
   });
 });

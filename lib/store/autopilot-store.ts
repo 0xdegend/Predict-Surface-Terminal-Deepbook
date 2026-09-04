@@ -210,6 +210,27 @@ export const DEFAULT_LIMITS: AutopilotLimits = {
   maxConsecutiveLosses: _balanced.limits.maxConsecutiveLosses!,
 };
 
+/**
+ * Carry a persisted blob from an older schema version forward. Called by the persist
+ * middleware (see the `migrate` note on the store); pure, so each version step is
+ * unit-tested against the blob shape it actually fixes.
+ *
+ * Version 2 (2026-09-04): range bets. Every preset now offers ranges alongside UP and
+ * DOWN, and the Customize chip for them is live. A trader whose saved rules read UP +
+ * DOWN never chose to leave ranges out: that chip was "Range · soon", disabled, so
+ * up-and-down was the only shape a preset could carry. Those rules get the range added,
+ * which keeps them on their preset (matchPreset compares the side set) and gives them
+ * the new shape the same way a fresh setup gets it. Rules with a single side were
+ * customized on purpose and are left alone.
+ */
+export function migrateAutopilotState(persisted: unknown, version: number): unknown {
+  if (version >= 2 || !persisted || typeof persisted !== 'object') return persisted;
+  const state = persisted as { rules?: { sides?: unknown } };
+  const sides = Array.isArray(state.rules?.sides) ? (state.rules.sides as string[]) : null;
+  if (!sides || !sides.includes('up') || !sides.includes('down') || sides.includes('range')) return persisted;
+  return { ...state, rules: { ...state.rules, sides: [...sides, 'range'] } };
+}
+
 const MAX_LOG = 120;
 /** How many finished runs to keep in the Results archive (newest first). */
 const MAX_HISTORY = 30;
@@ -706,7 +727,7 @@ export const useAutopilotStore = create<AutopilotState>()(
     }),
     {
       name: 'skew-autopilot',
-      version: 1,
+      version: 2,
       /**
        * Carry an older blob forward instead of dropping it.
        *
@@ -722,7 +743,7 @@ export const useAutopilotStore = create<AutopilotState>()(
        * shape, this is the function that converts it: take the second `version` argument
        * and fix up that one key. Never make it return an empty object.
        */
-      migrate: (persisted) => persisted as AutopilotState,
+      migrate: (persisted, version) => migrateAutopilotState(persisted, version) as AutopilotState,
       storage: createJSONStorage(() =>
         typeof window !== 'undefined' && window.localStorage ? browserStorage : noopStorage,
       ),

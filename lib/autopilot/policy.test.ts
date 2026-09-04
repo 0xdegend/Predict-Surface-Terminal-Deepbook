@@ -155,6 +155,13 @@ describe('gateTrade — the trader rules', () => {
     );
   });
 
+  it('a range is a side like any other: allowed when the rules list it, held when they do not', () => {
+    const range: ProposedTrade = { ...goodTrade, kind: 'range', side: 'range', lower: 64_000, higher: 66_000, strike: undefined };
+    expect(gateTrade(range, { ...rules, sides: ['up', 'down'] }, limits, runtime, NOW).code).toBe('side_not_allowed');
+    expect(gateTrade(range, { ...rules, sides: ['up', 'down', 'range'] }, limits, runtime, NOW).allow).toBe(true);
+    expect(gateTrade(range, { ...rules, sides: ['range'] }, limits, runtime, NOW).allow).toBe(true);
+  });
+
   it('rejects leverage above the cap', () => {
     expect(gateTrade({ ...goodTrade, leverage: 3.1 }, rules, limits, runtime, NOW).code).toBe('leverage_too_high');
     expect(gateTrade({ ...goodTrade, leverage: 3 }, rules, limits, runtime, NOW).allow).toBe(true);

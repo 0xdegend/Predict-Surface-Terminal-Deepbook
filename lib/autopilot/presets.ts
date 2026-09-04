@@ -5,13 +5,18 @@
 // know what those mean and shouldn't have to. A preset bundles all of them into one
 // friendly choice — Cautious / Balanced / Bold — so the common path is a single tap.
 //
+// Every preset offers all three shapes the venue lists: UP, DOWN, and a range (BTC
+// stays between two prices). Ranges joined on 2026-09-04 at the founder's call: Kelly
+// takes one when she reads a good chance on it (lib/copilot/range-pick), and a trader
+// who wants direction only switches the chip off under Customize.
+//
 // A preset controls HOW Kelly bets + how she paces herself. It deliberately does NOT
 // set the budget, per-trade size, or run length: those are the trader's own money and
 // time decisions, surfaced separately. Power users can still open Customize and change
 // any individual field, at which point the config no longer matches a preset (Custom).
 //
 // Pure (no React) so the mapping + the plain-language plan are unit-tested.
-import type { AutopilotRules, AutopilotLimits, Tenor } from './policy';
+import type { AutopilotRules, AutopilotLimits, Tenor, TradeSide } from './policy';
 
 export type PresetId = 'cautious' | 'balanced' | 'bold';
 
@@ -20,7 +25,7 @@ interface PresetShape {
   minProb: number;
   maxLeverage: number;
   tenors: Tenor[];
-  sides: ('up' | 'down')[];
+  sides: TradeSide[];
   cooldownMs: number;
   maxConsecutiveLosses: number;
   maxTrades: number;
@@ -55,7 +60,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       minProb: 0.7,
       maxLeverage: 1,
       tenors: ['soonest', 'hour'],
-      sides: ['up', 'down'],
+      sides: ['up', 'down', 'range'],
       cooldownMs: 120_000,
       maxConsecutiveLosses: 2,
       maxTrades: 3,
@@ -72,7 +77,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       minProb: 0.6,
       maxLeverage: 2,
       tenors: ['soonest', 'hour'],
-      sides: ['up', 'down'],
+      sides: ['up', 'down', 'range'],
       cooldownMs: 90_000,
       maxConsecutiveLosses: 3,
       maxTrades: 5,
@@ -89,7 +94,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
       minProb: 0.55,
       maxLeverage: 3,
       tenors: ['soonest', 'hour', 'today'],
-      sides: ['up', 'down'],
+      sides: ['up', 'down', 'range'],
       cooldownMs: 60_000,
       maxConsecutiveLosses: 4,
       maxTrades: 8,
@@ -171,11 +176,13 @@ function nextDurationWords(ms: number): string {
 }
 
 function sidesWords(sides: AutopilotRules['sides']): string {
-  const up = sides.includes('up');
-  const down = sides.includes('down');
-  const range = sides.includes('range');
-  const base = up && down ? 'UP or DOWN' : up ? 'UP' : down ? 'DOWN' : 'no';
-  return range ? `${base} or range` : base;
+  const parts: string[] = [];
+  if (sides.includes('up')) parts.push('UP');
+  if (sides.includes('down')) parts.push('DOWN');
+  if (sides.includes('range')) parts.push('range');
+  if (parts.length === 0) return 'no';
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(', ')} or ${parts[parts.length - 1]}`;
 }
 
 /**

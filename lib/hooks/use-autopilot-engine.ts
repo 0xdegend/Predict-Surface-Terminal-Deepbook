@@ -11,8 +11,10 @@
  *   3. checks the terminal stop conditions (autoStopReason) and disarms if any hold,
  *      then the holdable ones (autoPauseReason): low gas pauses the run rather than
  *      ending it, and the run resumes on its own once the key is topped up,
- *   4. asks Kelly for her best-value pick over the trader's allowed windows,
- *   5. runs that pick through the pure gate, and
+ *   4. asks Kelly for her picks over the trader's allowed windows: on each market a
+ *      directional (UP/DOWN) pick and, when the rules allow it, a range (BTC stays
+ *      between two prices), in the order she prefers them (lib/copilot/range-pick),
+ *   5. runs the picks through the pure gate and the chain's own quote, and
  *   6. either SIMULATES the fire (watch mode) or PLACES it for real through the
  *      session key (no wallet popup) and mints a Walrus receipt for it.
  *
@@ -27,15 +29,17 @@ import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
 import { getV2MarketState } from '@/lib/api/v2/client';
 import { toFloat, fromQuote } from '@/config/scale';
-import { planBinaryBudgetMint } from '@/lib/sui/v2/budget-mint';
+import { planBinaryBudgetMint, planRangeBudgetMint } from '@/lib/sui/v2/budget-mint';
 import { positionMarkPrice, valueV2Position, type V2PortfolioPosition } from '@/lib/portfolio/v2';
-import { recordCall, binaryIntent } from '@/lib/copilot/receipts-client';
+import { recordCall, binaryIntent, rangeIntent } from '@/lib/copilot/receipts-client';
 import { useV2Markets } from './use-v2-markets';
 import { useV2Pricers } from './use-v2-pricers';
 import { useV2Spot } from './use-v2-spot';
 import { useBtcInsights, type BtcInsights } from './use-btc-insights';
 import { usePredictAccountV2 } from './use-predict-account-v2';
-import { respondToIntent, type BetCandidate } from '@/lib/copilot/respond';
+import { respondToIntent, type BetCandidate, type BetSuggestion } from '@/lib/copilot/respond';
+import { pickRange, shapeOrder, type RangePick } from '@/lib/copilot/range-pick';
+import { recommendation } from '@/lib/insights/market-read';
 import {
   autoPauseReason,
   autoStopReason,
@@ -96,6 +100,11 @@ export type AutopilotAcct = Pick<
   ReturnType<typeof usePredictAccountV2>,
   'mintBudget' | 'quoteMintBudget' | 'sessionCanTrade' | 'sessionLive'
 >;
+
+/** One of Kelly's picks on one market, with the win chance the surface gives it. */
+type ShapePick =
+  | { kind: 'binary'; bet: BetSuggestion; prob: number }
+  | { kind: 'range'; range: RangePick; prob: number };
 
 interface Args {
   markets: V2Market[];
@@ -340,26 +349,48 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       return;
     }
 
-    // One pick per market still in play, then ranked by the trader's rules. Kelly's
-    // best-value read works one market at a time (it scans the strikes around spot on
-    // that market), so she is asked once per market and the picks are ranked: a careful
+    // Kelly's picks on every market still in play, then ranked by the trader's rules.
+    // Her reads work one market at a time (the directional scan walks the strikes
+    // around spot on that market; the range scan walks band widths), so she is asked
+    // once per market for each shape the rules allow, and the shapes come back in the
+    // order she prefers them: a mispriced one first, else the wider market's lean
+    // decides (no clear direction reads as a range). The second shape is the fallback
+    // for the same market if the first is held. Then the markets are ranked: a careful
     // run takes the surest bet on offer, a bolder run the soonest. Picks under the
     // trader's floor by the surface's own estimate are out here; the chain's price is
     // checked below, before anything fires.
+    const wantsBinary = rules.sides.includes('up') || rules.sides.includes('down');
+    const wantsRange = rules.sides.includes('range');
+    const lean = recommendation(insights)?.pick ?? null;
+    let offered = 0;
     const picks = allowed.flatMap((c) => {
-      const reply = respondToIntent({ kind: 'best_value' }, { insights, candidates: [c], now, spot, closes, selection: null });
-      const b = reply.bet;
-      return b && b.prob > 0 ? [{ cand: c, bet: b, prob: b.prob, expiry: c.market.expiry }] : [];
+      const bet = wantsBinary
+        ? respondToIntent({ kind: 'best_value' }, { insights, candidates: [c], now, spot, closes, selection: null }).bet
+        : undefined;
+      const range = wantsRange ? pickRange(c, { closes, spot, now }) : null;
+      const order = shapeOrder({
+        binaryEdge: bet && bet.prob > 0 ? (bet.edge ?? 0) : null,
+        rangeEdge: range ? range.edge : null,
+        lean,
+      });
+      const shapes: ShapePick[] = order.map((k) =>
+        k === 'range'
+          ? { kind: 'range', range: range as RangePick, prob: (range as RangePick).prob }
+          : { kind: 'binary', bet: bet as BetSuggestion, prob: (bet as BetSuggestion).prob },
+      );
+      offered += shapes.length;
+      const clear = shapes.filter((sh) => sh.prob >= rules.minProb);
+      return clear.length > 0 ? [{ cand: c, shapes: clear, prob: clear[0].prob, expiry: c.market.expiry }] : [];
     });
     const ranked = rankPicks(picks, rules.minProb);
     if (ranked.length === 0) {
       // Everything on offer is under the floor. Said once per change of the candidate
       // set rather than every six seconds.
-      if (picks.length > 0) {
-        const key = `floor:${picks.map((p) => p.cand.market.expiry_market_id).join(',')}`;
+      if (offered > 0) {
+        const key = `floor:${allowed.map((c) => c.market.expiry_market_id).join(',')}`;
         if (lastHoldRef.current !== key) {
           lastHoldRef.current = key;
-          st.noteHold(gateReasonLabel('below_min_prob'), picks[0].cand.market.expiry_market_id, now);
+          st.noteHold(gateReasonLabel('below_min_prob'), allowed[0].market.expiry_market_id, now);
         }
       }
       return;
@@ -372,119 +403,150 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     void (async () => {
       const store = useAutopilotStore.getState;
       const pctOf = (p: number) => `${Math.round(p * 100)}%`;
+      const holdOnce = (key: string, text: string, marketId: string) => {
+        if (lastHoldRef.current === key) return;
+        lastHoldRef.current = key;
+        store().noteHold(text, marketId, now);
+      };
       let quotes = 0;
-      try {
-        for (const { cand, bet } of ranked) {
-          const proposed: ProposedTrade = {
-            kind: 'binary',
-            marketId: bet.marketId,
-            expiry: bet.expiry,
-            prob: bet.prob,
-            edge: 0, // the recommender does not surface its value edge yet (fast-follow)
-            side: bet.isUp ? 'up' : 'down',
-            leverage: bet.leverage ?? 1,
-            // The per-trade size, or the budget's remainder when that is smaller, so the run
-            // spends what the trader put up instead of stopping a fraction short.
-            sizeUsd: stakeFor(limits, runtime),
-          };
-          const gate = gateTrade(proposed, rules, limits, runtime, now);
-          if (!gate.allow) {
-            // A trader-rule hold is about THIS pick, so the next one may pass; a pacing
-            // hold applies to every pick alike, so the tick is done.
-            if (!RULE_HOLDS.has(gate.code)) return;
-            const key = `${proposed.marketId}:${gate.code}`;
-            if (lastHoldRef.current !== key) {
-              lastHoldRef.current = key;
-              store().noteHold(gateReasonLabel(gate.code), proposed.marketId, now);
-            }
-            continue;
-          }
 
-          // The mint plan for the pick. Both modes use it: watch mode records a simulated
-          // position with the same sized numbers, live mode also signs it. Skip a dead-odds
-          // strike or a sub-minimum stake.
-          const plan = planBinaryBudgetMint({
-            market: cand.market,
-            forward: cand.pricer.forward,
-            svi: cand.pricer.svi,
-            strikePrice: bet.strikePrice ?? null,
-            isUp: bet.isUp,
-            stake: proposed.sizeUsd,
-            leverage: bet.leverage ?? 1,
-          });
-          if (!plan.probOk || !plan.stakeOk) continue;
-
-          // The chain's own price, before anything fires. The surface's estimate got the
-          // pick this far; the number the trader actually pays is what the floor is
-          // held against. A market that prices the bet under the floor is passed over
-          // for the next pick. No account to quote against (watch mode without one)
-          // means the estimate stands.
-          if (quotes >= MAX_QUOTES_PER_TICK) return;
-          quotes++;
-          let entryProb = plan.entryProb;
-          let qty = fromQuote(plan.quantity);
-          let cost = fromQuote(plan.estCostBase);
-          const quote = await acct
-            .quoteMintBudget({
-              marketId: plan.mint.marketId,
-              lowerTick: plan.mint.lowerTick,
-              higherTick: plan.mint.higherTick,
-              amount: plan.mint.amount,
-              leverage: plan.mint.leverage,
-            })
-            .catch(() => null);
-          if (quote) {
-            entryProb = quote.entryProb;
-            qty = fromQuote(quote.quantityBase);
-            cost = fromQuote(quote.premiumBase + quote.builderFeeBase);
-            if (entryProb < rules.minProb) {
-              const key = `${proposed.marketId}:chain_price`;
-              if (lastHoldRef.current !== key) {
-                lastHoldRef.current = key;
-                store().noteHold(
-                  `Held back: the market prices it at ${pctOf(entryProb)} to win, under your ${pctOf(rules.minProb)} floor`,
-                  proposed.marketId,
-                  now,
-                );
+      /**
+       * Try to place ONE shape on one market. 'held' is about this shape alone, so the
+       * market's other shape, or the next market, may still go; 'stop' ends the tick for
+       * every pick alike (a pacing hold, the quote budget, a key that cannot trade).
+       */
+      const attempt = async (cand: BetCandidate, shape: ShapePick): Promise<'fired' | 'held' | 'stop'> => {
+        // The per-trade size, or the budget's remainder when that is smaller, so the run
+        // spends what the trader put up instead of stopping a fraction short.
+        const sizeUsd = stakeFor(limits, runtime);
+        const proposed: ProposedTrade =
+          shape.kind === 'range'
+            ? {
+                kind: 'range',
+                marketId: shape.range.marketId,
+                expiry: shape.range.expiry,
+                prob: shape.range.prob,
+                edge: shape.range.edge,
+                side: 'range',
+                leverage: 1,
+                sizeUsd,
               }
-              continue;
-            }
-          }
-          lastHoldRef.current = null;
+            : {
+                kind: 'binary',
+                marketId: shape.bet.marketId,
+                expiry: shape.bet.expiry,
+                prob: shape.bet.prob,
+                edge: shape.bet.edge ?? 0,
+                side: shape.bet.isUp ? 'up' : 'down',
+                leverage: shape.bet.leverage ?? 1,
+                sizeUsd,
+              };
+        const gate = gateTrade(proposed, rules, limits, runtime, now);
+        if (!gate.allow) {
+          // A trader-rule hold is about THIS pick, so the next one may pass; a pacing
+          // hold applies to every pick alike, so the tick is done.
+          if (!RULE_HOLDS.has(gate.code)) return 'stop';
+          holdOnce(`${proposed.marketId}:${proposed.side}:${gate.code}`, gateReasonLabel(gate.code), proposed.marketId);
+          return 'held';
+        }
 
-          // Carry the marking detail so the position marks with the terminal's own math,
-          // and the chain's price where we have it, so the log and the live PnL start
-          // from what was actually paid.
-          const scored: ProposedTrade = {
-            ...proposed,
-            prob: entryProb,
-            leverage: plan.lev, // the clamped leverage the mint actually uses
-            strike: plan.strike,
-            entryProb,
-            qty,
-            cost,
-          };
+        // The mint plan for the pick. Both modes use it: watch mode records a simulated
+        // position with the same sized numbers, live mode also signs it. Skip a dead-odds
+        // strike or band, or a sub-minimum stake.
+        const base = { market: cand.market, forward: cand.pricer.forward, svi: cand.pricer.svi, stake: proposed.sizeUsd, leverage: proposed.leverage };
+        const plan =
+          shape.kind === 'range'
+            ? planRangeBudgetMint({ ...base, lower: shape.range.lower, higher: shape.range.higher })
+            : planBinaryBudgetMint({ ...base, strikePrice: shape.bet.strikePrice ?? null, isUp: shape.bet.isUp });
+        if (!plan.probOk || !plan.stakeOk) return 'held';
 
-          // Watch mode: simulate the fire with the same numbers, no signing.
-          if (dryRun) {
-            store().recordPlacement(scored, { dryRun: true }, Date.now());
-            return;
+        // The chain's own price, before anything fires. The surface's estimate got the
+        // pick this far; the number the trader actually pays is what the floor is
+        // held against. A market that prices the bet under the floor is passed over
+        // for the next pick. Three answers are possible and only one lets the
+        // estimate stand: `undefined` (no account to quote against, a watcher with no
+        // wallet). `null` means the chain REFUSED the mint (8-21 enforces a per-market
+        // probability policy and aborts strikes outside it), and a thrown read means
+        // we could not ask; neither fires, because "unchecked" is how this morning's
+        // losses happened.
+        if (quotes >= MAX_QUOTES_PER_TICK) return 'stop';
+        quotes++;
+        let entryProb = plan.entryProb;
+        let qty = fromQuote(plan.quantity);
+        let cost = fromQuote(plan.estCostBase);
+        const quote = await acct
+          .quoteMintBudget({
+            marketId: plan.mint.marketId,
+            lowerTick: plan.mint.lowerTick,
+            higherTick: plan.mint.higherTick,
+            amount: plan.mint.amount,
+            leverage: plan.mint.leverage,
+          })
+          .catch(() => null);
+        if (quote === null) {
+          holdOnce(`${proposed.marketId}:${proposed.side}:no_quote`, "Held back: the market wouldn't price that bet right now", proposed.marketId);
+          return 'held';
+        }
+        if (quote) {
+          entryProb = quote.entryProb;
+          qty = fromQuote(quote.quantityBase);
+          cost = fromQuote(quote.premiumBase + quote.builderFeeBase);
+          if (entryProb < rules.minProb) {
+            holdOnce(
+              `${proposed.marketId}:${proposed.side}:chain_price`,
+              `Held back: the market prices it at ${pctOf(entryProb)} to win, under your ${pctOf(rules.minProb)} floor`,
+              proposed.marketId,
+            );
+            return 'held';
           }
+        }
+        lastHoldRef.current = null;
 
-          // --- real fire (session key, no popup) ----------------------------------
-          if (!acct.sessionCanTrade) return;
-          // No `deposit`: mintBudget routes through the session key (it can only spend
-          // the trading-account balance, never top it up or withdraw).
-          const digest = await acct.mintBudget({ ...plan.mint }, { silentSuccess: true });
-          if (digest) {
-            store().recordPlacement(scored, { dryRun: false, digest }, Date.now());
-            if (RECEIPTS_ON) {
-              void recordCall(
-                binaryIntent({ marketId: bet.marketId, expiry: bet.expiry, isUp: bet.isUp, strikePrice: plan.strike }),
-              );
-            }
+        // Carry the marking detail so the position marks with the terminal's own math,
+        // and the chain's price where we have it, so the log and the live PnL start
+        // from what was actually paid. The strike or band is the SNAPPED one the mint
+        // uses, which is what a settled position is scored against.
+        const detail: { strike: number } | { lower: number; higher: number } =
+          'strike' in plan ? { strike: plan.strike } : { lower: plan.lower, higher: plan.higher };
+        const scored: ProposedTrade = {
+          ...proposed,
+          prob: entryProb,
+          leverage: plan.lev, // the clamped leverage the mint actually uses
+          entryProb,
+          qty,
+          cost,
+          ...detail,
+        };
+
+        // Watch mode: simulate the fire with the same numbers, no signing.
+        if (dryRun) {
+          store().recordPlacement(scored, { dryRun: true }, Date.now());
+          return 'fired';
+        }
+
+        // --- real fire (session key, no popup) ----------------------------------
+        if (!acct.sessionCanTrade) return 'stop';
+        // No `deposit`: mintBudget routes through the session key (it can only spend
+        // the trading-account balance, never top it up or withdraw).
+        const digest = await acct.mintBudget({ ...plan.mint }, { silentSuccess: true });
+        if (!digest) return 'stop';
+        store().recordPlacement(scored, { dryRun: false, digest }, Date.now());
+        if (RECEIPTS_ON) {
+          void recordCall(
+            'strike' in detail
+              ? binaryIntent({ marketId: proposed.marketId, expiry: proposed.expiry, isUp: proposed.side === 'up', strikePrice: detail.strike })
+              : rangeIntent({ marketId: proposed.marketId, expiry: proposed.expiry, lower: detail.lower, higher: detail.higher }),
+          );
+        }
+        return 'fired';
+      };
+
+      try {
+        for (const { cand, shapes } of ranked) {
+          for (const shape of shapes) {
+            const outcome = await attempt(cand, shape);
+            if (outcome !== 'held') return;
           }
-          return;
         }
       } finally {
         fireRef.current = false;

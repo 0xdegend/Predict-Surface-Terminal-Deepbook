@@ -8,7 +8,7 @@ const DEFAULT_RULES: AutopilotRules = {
   minProb: 0.6,
   minEdge: 0,
   tenors: ['soonest', 'hour'],
-  sides: ['up', 'down'],
+  sides: ['up', 'down', 'range'],
   maxLeverage: 2,
 };
 const DEFAULT_LIMITS: AutopilotLimits = {
@@ -63,6 +63,22 @@ describe('presets', () => {
     const rules = { ...DEFAULT_RULES, ...patch.rules };
     const limits = { ...DEFAULT_LIMITS, ...patch.limits, budgetUsd: 999, perTradeUsd: 42 };
     expect(matchPreset(rules, limits)).toBe('balanced');
+  });
+});
+
+describe('range bets', () => {
+  it('every preset offers UP, DOWN and a range', () => {
+    for (const p of PRESETS) expect(p.shape.sides).toEqual(['up', 'down', 'range']);
+  });
+
+  it('the plan sentence lists all three shapes', () => {
+    const s = planSentence({ ...DEFAULT_RULES, sides: ['up', 'down', 'range'] }, DEFAULT_LIMITS);
+    expect(s).toContain('UP, DOWN or range');
+  });
+
+  it('and reads a single shape plainly', () => {
+    expect(planSentence({ ...DEFAULT_RULES, sides: ['range'] }, DEFAULT_LIMITS)).toContain('range bets');
+    expect(planSentence({ ...DEFAULT_RULES, sides: [] }, DEFAULT_LIMITS)).toContain('no bets');
   });
 });
 

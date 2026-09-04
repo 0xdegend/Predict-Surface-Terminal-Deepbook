@@ -786,10 +786,12 @@ export function usePredictAccountV2() {
       });
     },
     /** The chain's own price for a budget mint, read by simulating it as the owner (no
-     *  signature, no gas). Null with no account to quote against, or when the simulated
-     *  mint produced nothing. What Autopilot gates a careful bet on. */
+     *  signature, no gas). `undefined` when there is no account to quote against (a
+     *  watcher with no wallet); `null` when the chain REFUSED the mint (a strike outside
+     *  the market's probability policy, a paused market). The two must stay distinct:
+     *  the first means "nothing to check against", the second means "do not fire". */
     quoteMintBudget: (p: Omit<MintQuoteParams, 'owner' | 'wrapperId'>) =>
-      owner && wrapperId ? quoteBudgetMint(client.core, { ...p, owner, wrapperId }) : Promise.resolve(null),
+      owner && wrapperId ? quoteBudgetMint(client.core, { ...p, owner, wrapperId }) : Promise.resolve(undefined),
     /** Budget mint (mint_exact_amount) — the chain sizes the quantity at
      *  execution, so odds drift can't break the $1 minimum-premium check. */
     mintBudget: (p: Omit<MintBudgetParams, 'wrapperId'>, opts?: TradeOpts) => {

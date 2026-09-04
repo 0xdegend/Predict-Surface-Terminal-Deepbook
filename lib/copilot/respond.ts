@@ -144,6 +144,10 @@ export interface BetSuggestion {
    *  including stake + leverage, which the review card shows and loads. */
   amount?: number;
   leverage?: number;
+  /** Value edge behind a best-value pick: how often BTC actually landed there lately,
+   *  minus the surface's price (0..1). Absent on a plain pick (nothing mispriced), which
+   *  Autopilot reads as 0 so a min-edge rule holds it back. */
+  edge?: number;
 }
 
 /** A concrete RANGE bet the UI loads into the trade store (range mode) + lights the
@@ -214,7 +218,7 @@ export interface CopilotReply {
 
 /** Target win-chance per conviction — kept inside the quotable band so the
  *  snapped strike is always mintable (never rounds to a 0%/100% dead strike). */
-const CONVICTION_TARGET: Record<Conviction, number> = { safe: 0.72, even: 0.5, longshot: 0.28 };
+export const CONVICTION_TARGET: Record<Conviction, number> = { safe: 0.72, even: 0.5, longshot: 0.28 };
 
 /** Plain-language time-to-settle, e.g. "under a minute" / "about 4 minutes". */
 export function timeLeftLabel(expiry: number, now: number): string {
@@ -762,7 +766,7 @@ function bestValueReply(ctx: CopilotContext): CopilotReply {
       `The surface gives it about ${pct(best.implied, 0)} to win (pays ~${payoutMultiple(best.implied).toFixed(2)}×), but across the last ${best.samples.toLocaleString()} similar ${minutesToExpiry}-minute windows BTC actually landed there about ${pct(best.empirical, 0)} of the time. Better odds than the price is asking for.`,
       'Not financial advice, and past moves are only a guide. I’ve loaded it into your ticket. Tap “Place this bet” to trade it, or ask me to “analyze this strike”.',
     ],
-    bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir: best.isUp ? 'up' : 'down', isUp: best.isUp, strikePrice: best.strike, prob: best.implied, payoutMult: payoutMultiple(best.implied), conviction: conv, timeLeftLabel: timeLeftLabel(market.expiry, ctx.now) },
+    bet: { marketId: market.expiry_market_id, expiry: market.expiry, dir: best.isUp ? 'up' : 'down', isUp: best.isUp, strikePrice: best.strike, prob: best.implied, payoutMult: payoutMultiple(best.implied), conviction: conv, timeLeftLabel: timeLeftLabel(market.expiry, ctx.now), edge: best.value },
   };
 }
 
