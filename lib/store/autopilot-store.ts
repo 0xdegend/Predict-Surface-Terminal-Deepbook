@@ -439,6 +439,11 @@ interface AutopilotState {
   /** True right after a reload landed an armed run as stopped for safety. Cleared on
    *  the next arm/reset. Drives a "picked up where you left off" banner. */
   interruptedByReload: boolean;
+  /** True once the persisted run and results have been read back (or the read has
+   *  failed and there is nothing to wait for). Not persisted. The panel shows its
+   *  skeleton until then, so a reload never flashes the default idle state before the
+   *  saved one lands. */
+  hydrated: boolean;
 
   // --- results archive (persisted) ---
   /** Finished runs, newest first. A run is saved when it stops and completes in
@@ -525,6 +530,7 @@ export const useAutopilotStore = create<AutopilotState>()(
       stoppedAt: null,
       log: [],
       interruptedByReload: false,
+      hydrated: false,
       history: [],
       setupChat: freshSetupChat(),
 

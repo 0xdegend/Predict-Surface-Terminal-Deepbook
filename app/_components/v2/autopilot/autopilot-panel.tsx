@@ -43,6 +43,7 @@ import { topUpBase } from '@/lib/autopilot/funding';
 import { buildRunTape } from '@/lib/autopilot/run-tape';
 import { type SetupMode, type StartOutcome } from './shared';
 import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker } from './setup';
+import { AutopilotSkeleton } from './skeleton';
 import { PlanCard } from './plan-card';
 import { KellySetupCard } from './kelly-setup-card';
 import { ArmConfirmModal } from './arm-confirm';
@@ -85,6 +86,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const pauseReason = useAutopilotStore((s) => s.pauseReason);
   const stoppedAt = useAutopilotStore((s) => s.stoppedAt);
   const interruptedByReload = useAutopilotStore((s) => s.interruptedByReload);
+  const hydrated = useAutopilotStore((s) => s.hydrated);
   const log = useAutopilotStore((s) => s.log);
   const setRules = useAutopilotStore((s) => s.setRules);
   const setLimits = useAutopilotStore((s) => s.setLimits);
@@ -119,7 +121,9 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   // reload restores an in-progress run's open trades, and _resumeAfterReload lands it
   // stopped so it never resumes placing trades on its own.
   useEffect(() => {
-    void useAutopilotStore.persist.rehydrate();
+    // Whatever the read does, the page must fill in: a failed or empty read still ends
+    // the skeleton, with the defaults in place of a saved state.
+    void Promise.resolve(useAutopilotStore.persist.rehydrate()).finally(() => useAutopilotStore.setState({ hydrated: true }));
   }, []);
 
   /**
@@ -413,6 +417,12 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
     if (r.live != null) setDryRun(!r.live);
     setCustomizeOpen(false);
   }
+
+  // Until the saved run and results are back from the browser, the page is its own
+  // skeleton: the same shape the route's loading.tsx paints during the server fetch, so a
+  // hard refresh goes skeleton to skeleton to content with no blank frame and no flash
+  // of the default idle state in between.
+  if (!hydrated) return <AutopilotSkeleton />;
 
   return (
     // Centered, one step wider than the rest of the app's panels (1280px): the founder
