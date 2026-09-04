@@ -259,8 +259,10 @@ describe('respondToIntent — odds time horizon (soon vs today)', () => {
     market: { expiry_market_id: id, expiry: NOW + min * 60_000, admission_tick_size: '1000000000', tick_size: '1', max_admission_leverage: 3_000_000_000, base_fee: '0' } as unknown as V2Market,
     pricer: { expiryMarketId: id, forward: 64_354, svi: { a: 0, b, rho: -0.1, m: 0, sigma } } as LivePricer,
   });
-  // A ~1-minute market (almost no room to move) and a ~3-hour market (real room).
-  const octx: CopilotContext = { insights: INSIGHTS, candidates: [mk('m1', 1, 0.001, 0.002), mk('mlong', 180, 0.02, 0.12)], now: NOW, spot: 64_354 };
+  // A 1-minute market as just listed, two minutes out (almost no room to move) and a
+  // ~3-hour market (real room). Two minutes rather than one because "soonest" now skips
+  // anything under the MIN_TIME_TO_EXPIRY_MS floor (see pickCandidate).
+  const octx: CopilotContext = { insights: INSIGHTS, candidates: [mk('m1', 2, 0.001, 0.002), mk('mlong', 180, 0.02, 0.12)], now: NOW, spot: 64_354 };
 
   it('"soon" prices the 1-minute market, so a $65k strike reads as out of reach', () => {
     const r = respondToIntent({ kind: 'odds', level: { kind: 'strike', price: 65_000 }, dir: 'up', horizon: 'soonest' }, octx);

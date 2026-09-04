@@ -18,7 +18,7 @@
 import { num, pct, signed, compact } from '@/lib/format';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { quantityForStake, winPayout, leverageSliderMax } from '@/lib/sui/v2/quote';
-import { TENOR_BUCKETS } from '@/lib/autopilot/policy';
+import { TENOR_BUCKETS, hasTimeToTrade } from '@/lib/autopilot/policy';
 import { buildMarketRead, directionStance, recommendation } from '@/lib/insights/market-read';
 import { analyzeStrike, strikeVerdict } from '@/lib/insights/strike-analysis';
 import { positioningLines, flowLines, optionsLines } from '@/lib/insights/positioning-read';
@@ -258,7 +258,7 @@ function windowAdj(expiry: number, now: number): string {
 }
 
 /** Pick the market a horizon points at, from those we can price. */
-function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now: number): BetCandidate | null {
+export function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now: number): BetCandidate | null {
   const open = candidates.filter((c) => c.market.expiry > now);
   if (open.length === 0) return null;
   if (horizon === 'today') {
@@ -282,7 +282,15 @@ function pickCandidate(candidates: BetCandidate[], horizon: Horizon, now: number
       Math.abs(c.market.expiry - target) < Math.abs(best.market.expiry - target) ? c : best,
     );
   }
-  return open.reduce((best, c) => (c.market.expiry < best.market.expiry ? c : best));
+  // "Soonest" is the soonest market with TIME ON IT. On a venue listing a fresh 1-minute
+  // market every minute the literal soonest is one with seconds left, which is a coin
+  // flip whatever the surface says, and was what Autopilot fired on with real money on
+  // 2026-09-04 (see MIN_TIME_TO_EXPIRY_MS). Prefer the next one with the floor's worth of
+  // time; if nothing qualifies, answer with what exists, since the copy states the real
+  // time left and a person can judge it, while the rules-driven path has its own gate.
+  const ready = open.filter((c) => hasTimeToTrade(c.market.expiry, now));
+  const pool = ready.length > 0 ? ready : open;
+  return pool.reduce((best, c) => (c.market.expiry < best.market.expiry ? c : best));
 }
 
 const convictionLead: Record<Conviction, string> = { safe: 'a safer', even: 'an even-odds', longshot: 'a longshot' };

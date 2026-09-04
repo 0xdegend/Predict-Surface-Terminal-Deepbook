@@ -42,6 +42,29 @@ export const TENOR_BUCKETS = {
 } as const;
 
 /**
+ * The least time a market may have left for a rules-driven bet to fire on it.
+ *
+ * Found the hard way on 2026-09-04, the first live Autopilot run on 8-21: Kelly's
+ * best-value pick takes the SOONEST open market, and the venue lists a fresh 1-minute
+ * market every minute, so "soonest" was a market with 5 seconds left, then one with 53.
+ * Two real $1,666 bets went on at the money and settled a few dollars the wrong side.
+ * With seconds to go, the client's fair value is a step function around spot (any strike
+ * a hair below spot prices as near-certain) while the chain quoted 56%, and there is no
+ * protocol brake: 8-21's expiry-fee window is a day wide with a 1x multiplier. So the
+ * brake is here. Two minutes keeps the 5-minute and hourly ladders in play and, since a
+ * 1-minute market is listed at most two minutes ahead, keeps unattended money off the
+ * 1-minute ladder entirely, which is the right call for a bet nobody is watching. A
+ * trader can still take those by hand from the ticket, where the chain's quote is on
+ * screen before they confirm.
+ */
+export const MIN_TIME_TO_EXPIRY_MS = 2 * 60_000;
+
+/** True when a market has at least MIN_TIME_TO_EXPIRY_MS left. */
+export function hasTimeToTrade(expiry: number, now: number): boolean {
+  return expiry - now >= MIN_TIME_TO_EXPIRY_MS;
+}
+
+/**
  * Bucket a market by how long until it settles, or null when it settles beyond anything the
  * trader's rules can name.
  *
@@ -160,6 +183,7 @@ export type GateCode =
   | 'ok'
   | 'below_min_prob'
   | 'below_min_edge'
+  | 'too_close_to_expiry'
   | 'tenor_not_allowed'
   | 'side_not_allowed'
   | 'leverage_too_high'
@@ -213,6 +237,8 @@ export function gateTrade(
   // --- the trader's rules (the "your rules" filter) ---
   if (trade.prob < rules.minProb) return deny('below_min_prob');
   if (rules.minEdge > 0 && trade.edge < rules.minEdge) return deny('below_min_edge');
+  // Not a trader rule but a house one, and it fails closed: see MIN_TIME_TO_EXPIRY_MS.
+  if (!hasTimeToTrade(trade.expiry, now)) return deny('too_close_to_expiry');
   // A null tenor is a market settling beyond any window the trader's rules can name (8-21
   // lists 1-day and 1-week markets). It is denied here rather than defaulted into 'today',
   // so nothing fires unattended on a horizon nobody opted into.
@@ -330,6 +356,8 @@ export function gateReasonLabel(code: GateCode): string {
       return 'Held back: below your win-chance floor';
     case 'below_min_edge':
       return 'Held back: not enough value edge';
+    case 'too_close_to_expiry':
+      return 'Held back: settles in under 2 minutes';
     case 'tenor_not_allowed':
       return 'Held back: outside your allowed windows';
     case 'side_not_allowed':

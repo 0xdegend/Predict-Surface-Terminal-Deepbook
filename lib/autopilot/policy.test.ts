@@ -18,6 +18,8 @@ import {
   type GateCode,
   type StopReason,
   stakeFor,
+  MIN_TIME_TO_EXPIRY_MS,
+  hasTimeToTrade,
 } from './policy';
 
 const NOW = 1_800_000_000_000;
@@ -94,6 +96,17 @@ describe('gateTrade — the trader rules', () => {
     expect(gateTrade({ ...goodTrade, edge: 0.04 }, strict, limits, runtime, NOW).allow).toBe(true);
     // with minEdge 0 (default), a zero-edge safe pick is fine
     expect(gateTrade({ ...goodTrade, edge: 0 }, rules, limits, runtime, NOW).allow).toBe(true);
+  });
+
+  it('refuses a market about to settle, whatever the rules say', () => {
+    const lastSeconds: ProposedTrade = { ...goodTrade, expiry: NOW + 5_000 };
+    expect(gateTrade(lastSeconds, rules, limits, runtime, NOW).code).toBe('too_close_to_expiry');
+    const justUnder: ProposedTrade = { ...goodTrade, expiry: NOW + MIN_TIME_TO_EXPIRY_MS - 1 };
+    expect(gateTrade(justUnder, rules, limits, runtime, NOW).code).toBe('too_close_to_expiry');
+    const atFloor: ProposedTrade = { ...goodTrade, expiry: NOW + MIN_TIME_TO_EXPIRY_MS };
+    expect(gateTrade(atFloor, rules, limits, runtime, NOW).code).not.toBe('too_close_to_expiry');
+    expect(hasTimeToTrade(NOW + 119_999, NOW)).toBe(false);
+    expect(hasTimeToTrade(NOW + 120_000, NOW)).toBe(true);
   });
 
   it('rejects a tenor the trader did not allow', () => {
@@ -227,6 +240,7 @@ describe('label helpers cover every code (plain language, no em-dash)', () => {
     'ok',
     'below_min_prob',
     'below_min_edge',
+    'too_close_to_expiry',
     'tenor_not_allowed',
     'side_not_allowed',
     'leverage_too_high',

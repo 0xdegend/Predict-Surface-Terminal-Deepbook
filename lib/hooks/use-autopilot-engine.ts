@@ -48,6 +48,7 @@ import {
   type GateCode,
   type ProposedTrade,
   type TradeSide,
+  hasTimeToTrade,
 } from '@/lib/autopilot/policy';
 import { useAutopilotStore, type OpenPosition } from '@/lib/store/autopilot-store';
 
@@ -297,7 +298,13 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // a market settling past every named window, so it is dropped here too: the gate would
     // deny it anyway, but leaving it in the candidate set lets Kelly reason about a bet she
     // can never place, and the run reads as "no trades" rather than "nothing eligible".
+    //
+    // The same goes for a market about to settle. Her pick takes the SOONEST market, and on
+    // a venue that lists a fresh 1-minute market every minute that was one with seconds
+    // left (see MIN_TIME_TO_EXPIRY_MS for the day it cost real money). Filtered here so
+    // she reasons over the next market with time on it, with the gate as the backstop.
     const allowed = candidates.filter((c) => {
+      if (!hasTimeToTrade(c.market.expiry, now)) return false;
       const tenor = classifyTenor(c.market.expiry - now);
       return tenor !== null && rules.tenors.includes(tenor);
     });

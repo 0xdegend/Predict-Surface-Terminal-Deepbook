@@ -90,7 +90,7 @@ export function planPhases(rules: AutopilotRules, limits: AutopilotLimits): Plan
       // An empty window list is not a detail to gloss over: it is the setting that makes
       // a run sit there doing nothing, so it says so instead of reading as normal.
       detail: windows
-        ? `Every open BTC market settling in ${windows}.`
+        ? `Every open BTC market settling in ${windows}, with at least 2 minutes left.`
         : 'No windows picked yet, so nothing would qualify.',
     },
     {

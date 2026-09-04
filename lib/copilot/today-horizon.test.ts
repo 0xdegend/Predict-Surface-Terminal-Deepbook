@@ -36,7 +36,9 @@ function candidate(id: string, msOut: number): BetCandidate {
 
 /** The live 8-21 board on the day this was written. */
 const BOARD = [
-  candidate('m-1m', 60_000),
+  // A 1-minute market as it is when just listed: two minutes out. Anything under the
+  // MIN_TIME_TO_EXPIRY_MS floor is no longer what "soonest" means (see pickCandidate).
+  candidate('m-1m', 2 * 60_000),
   candidate('m-1h', HOUR),
   candidate('m-7h', 7.2 * HOUR), // a 1d market late in its life: genuinely today
   candidate('m-1d', 1.3 * 24 * HOUR),
