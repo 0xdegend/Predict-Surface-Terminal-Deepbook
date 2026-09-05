@@ -16,6 +16,13 @@
  * A pane mounts the first time its tab is opened and stays mounted after that. Landing
  * on /v2/kelly/autopilot mounts only Autopilot; the chat comes in when you open it.
  *
+ * The chat pane is hidden differently from the other two. `display: none` collapses the
+ * 3-D surface's canvas to 0×0, the renderer and camera are sized to nothing, and when the
+ * tab comes back the surface paints a white block with its labels bunched in a corner.
+ * So the chat is parked instead: a fixed box the size of the visible one, invisible and
+ * inert, so the canvas keeps its size and simply carries on. Autopilot and Record hold no
+ * WebGL and can use `hidden`.
+ *
  * The bar under the chrome also carries a small live read of a running Autopilot, so a
  * run is never out of sight while you are on another tab.
  */
@@ -108,8 +115,15 @@ export function KellyHub({
           role="tabpanel"
           id="kelly-pane-chat"
           aria-labelledby="kelly-tab-chat"
-          hidden={tab !== 'chat'}
-          className="flex min-h-0 flex-1 flex-col"
+          inert={tab !== 'chat'}
+          aria-hidden={tab !== 'chat'}
+          className={
+            tab === 'chat'
+              ? 'flex min-h-0 flex-1 flex-col'
+              : // Parked, not collapsed: same height as when on show, so the surface's canvas
+                // never sees a zero size (see the note at the top of this file).
+                'pointer-events-none invisible fixed inset-x-0 bottom-0 top-[calc(4rem+var(--kelly-tabs,0rem))] flex min-h-0 flex-col'
+          }
         >
           <V2CopilotScreen markets={markets} pricerSeeds={pricerSeeds} serverNow={serverNow} active={tab === 'chat'} />
         </section>
