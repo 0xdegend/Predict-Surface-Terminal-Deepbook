@@ -419,7 +419,7 @@ function PausedTicket() {
             </p>
             <FearGreedRead />
             <Link
-              href="/v2/copilot"
+              href="/v2/kelly"
               className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[11px] text-text-2 transition-colors hover:border-accent/40 hover:text-text-1"
             >
               <LuMessageSquare size={12} />

@@ -9,7 +9,7 @@
  *
  * THE SHAPE. This is a chat and reads like one: a thread of bubbles (Kelly on the left,
  * the trader on the right) in a scrolling box with the composer at its foot, the same
- * language as the co-pilot chat on /v2/copilot. Under the box, four slots say what Kelly
+ * language as the co-pilot chat on /v2/kelly. Under the box, four slots say what Kelly
  * has heard so far, so what is still outstanding can be read without scrolling back.
  * A 2026-09-03 pass briefly flattened this to a heading plus "You said", one turn at a
  * time. It read as a form, not a conversation, and was put back the same day.

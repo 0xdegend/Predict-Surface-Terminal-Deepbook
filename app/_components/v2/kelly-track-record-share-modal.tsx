@@ -101,7 +101,7 @@ export function KellyTrackRecordShareModal({
       const intent =
         `https://twitter.com/intent/tweet` +
         `?text=${encodeURIComponent(shareText(data))}` +
-        `&url=${encodeURIComponent('https://tryskew.xyz/v2/track-record')}`;
+        `&url=${encodeURIComponent('https://tryskew.xyz/v2/kelly/record')}`;
       window.open(intent, '_blank', 'noopener,noreferrer');
     }
     flash(ok ? 'shared' : 'nocopy');

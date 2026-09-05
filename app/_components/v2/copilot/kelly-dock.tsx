@@ -3,7 +3,7 @@
 /**
  * KellyDock — the always-present "Ask Kelly" launcher + right-side chat drawer.
  *
- * Kelly already lives as the whole `/v2/copilot` page (surface cockpit + wizard +
+ * Kelly already lives as the whole `/v2/kelly` page (surface cockpit + wizard +
  * ticket). This is the LIGHT, global way in: a floating fox button pinned bottom-
  * right on every screen that opens a slide-in chat, so a trader (especially a
  * newcomer) can ask "what's a call option?", "analyze BTC", or "what's happening
@@ -78,7 +78,7 @@ const AI_SESSION_CAP = 40;
 const AI_TIMEOUT_MS = 16_000;
 
 /** Routes where the dock hides: the full Kelly page (redundant) + the OAuth popup. */
-const HIDDEN_ON = ['/v2/copilot', '/auth'];
+const HIDDEN_ON = ['/v2/kelly', '/auth'];
 
 // Proactive help: once a visitor has been on the site this long WITHOUT opening
 // Kelly, gently offer a hand ("Do you need some help?"). Session-scoped so it shows
@@ -93,7 +93,7 @@ const HANDOFF: ReadonlySet<CopilotIntent['kind']> = new Set([
   'create_account', 'get_tokens', 'onboarding', 'close_position', 'adjust_ticket',
 ]);
 
-// Same greeting as the full /v2/copilot page (copilot-screen.tsx), so the drawer
+// Same greeting as the full /v2/kelly page (copilot-screen.tsx), so the drawer
 // reads identically. Today's biggest market event is folded in as a third line
 // once the calendar lands (see the effect in KellyPanel).
 const GREETING: string[] = [
@@ -699,7 +699,7 @@ function KellyPanel({
     if (intent.kind === 'start_trade') {
       pushReply(t, { text: ['Let’s build that in the full trade view, where you can see the live surface. Opening it now.'] });
       onClose();
-      router.push('/v2/copilot');
+      router.push('/v2/kelly');
       return;
     }
     // Onboarding + position mutations → a short pointer to where they happen.
@@ -902,7 +902,7 @@ function KellyPanel({
             messages={messages}
             onSend={handleSend}
             onPlaceBet={handlePlaceBet}
-            onEditBet={() => router.push('/v2/copilot')}
+            onEditBet={() => router.push('/v2/kelly')}
             onVaultDeposit={handleVaultDeposit}
             busy={busy}
             suggestions={DOCK_CHIPS}

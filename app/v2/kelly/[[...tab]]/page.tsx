@@ -6,8 +6,8 @@
  *   /v2/kelly/record     every call she made, signed and scored
  *
  * One live snapshot (active markets + warm pricers) feeds every tab, fetched once here.
- * The three standalone pages (/v2/copilot, /v2/autopilot, /v2/track-record) still exist
- * while the hub is being judged; this route is additive.
+ * The three pages this replaced (/v2/copilot, /v2/autopilot, /v2/track-record) redirect
+ * here (next.config.ts), so every old link, share card and bookmark still lands.
  */
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';

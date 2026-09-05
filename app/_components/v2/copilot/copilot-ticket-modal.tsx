@@ -2,7 +2,7 @@
 
 /**
  * V2CopilotTicketModal — the trade ticket as an on-demand modal rather than an
- * always-visible rail. On /v2/copilot the surface owns the page; the ticket only
+ * always-visible rail. On /v2/kelly the surface owns the page; the ticket only
  * pops out when the trader is ready — from the "Place this bet" button on a
  * co-pilot suggestion, or any pick that flips `ticketSheetOpen`.
  *
@@ -31,7 +31,7 @@ export function V2CopilotTicketModal({
   market: V2Market | null;
   pricer?: LivePricer;
   serverNow: number;
-  /** Controlled open/close. When omitted (the /v2/copilot + /v2/options mounts) the modal
+  /** Controlled open/close. When omitted (the /v2/kelly + /v2/options mounts) the modal
    *  binds to the SHARED `ticketSheetOpen` store flag as before. The Kelly DRAWER passes
    *  its own local state instead, so it can pop this ticket in place without touching the
    *  shared flag — which the trade screen + options page also read, so reusing it would

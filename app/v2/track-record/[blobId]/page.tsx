@@ -30,7 +30,7 @@ export default async function CallReceiptPage({ params }: { params: Promise<{ bl
     <main className="flex flex-1 flex-col">
       <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-5">
         <Link
-          href="/v2/track-record"
+          href="/v2/kelly/record"
           className="mb-4 inline-flex items-center gap-1.5 text-[12px] text-text-3 transition-colors hover:text-text-1"
         >
           <LuArrowLeft size={13} />
@@ -64,7 +64,7 @@ export default async function CallReceiptPage({ params }: { params: Promise<{ bl
                   <LuArrowUpRight size={11} className="text-text-3" />
                 </a>
                 <Link
-                  href="/v2/track-record"
+                  href="/v2/kelly/record"
                   className="glass-inset inline-flex items-center px-3.5 py-2 text-[12px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
                 >
                   See the full record
@@ -87,7 +87,7 @@ export default async function CallReceiptPage({ params }: { params: Promise<{ bl
                 The receipt could not be found on Walrus. It may still be settling, or the link may be incomplete.
               </p>
               <Link
-                href="/v2/track-record"
+                href="/v2/kelly/record"
                 className="glass-inset mt-5 inline-flex items-center px-3.5 py-2 text-[12px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
               >
                 See Kelly&rsquo;s full record

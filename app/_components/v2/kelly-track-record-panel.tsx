@@ -395,7 +395,7 @@ function EmptyState({ tab }: { tab: Tab }) {
           : 'Ask Kelly to set up a bet. Every pick it makes gets signed and logged here, so the record builds itself as you trade.'}
       </p>
       <Link
-        href="/v2/copilot"
+        href="/v2/kelly"
         className="group glass-inset mt-1 inline-flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium text-text-2 transition-all duration-200 hover:border-(--accent-line) hover:text-text-1"
       >
         <LuSparkles size={12} className="transition-colors duration-200 group-hover:text-accent" />

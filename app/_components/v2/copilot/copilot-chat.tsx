@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * CopilotChat — the conversation rail for /v2/copilot. Presentational: it renders
+ * CopilotChat — the conversation rail for /v2/kelly. Presentational: it renders
  * the message thread, the suggested-prompt chips, and the input, and calls
  * `onSend` with the raw text. All the brains (parse → respond → load the ticket)
  * live in the screen; this file just shows the talk.

@@ -34,7 +34,7 @@ import { useTradeViewStore, tradeHref, isTradeRoute } from '@/lib/store/trade-vi
 import { usePythTapeSpotFeed } from '@/lib/hooks/use-v2-pyth-history';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { TourButton } from '../tour/tour-button';
-import { IcoAdmin, IcoArena, IcoAutopilot, IcoDocs, IcoKelly, IcoOptions, IcoQuests, IcoRecord, IcoRisk, IcoVault } from './nav-icons';
+import { IcoAdmin, IcoArena, IcoDocs, IcoKelly, IcoOptions, IcoQuests, IcoRisk, IcoVault } from './nav-icons';
 import { SocialIconLinks } from '../social-links';
 import { V2SpotTape } from './spot-tape';
 import { useCurrentAccount } from '@mysten/dapp-kit-react';
@@ -51,14 +51,10 @@ type MenuItem = {
   footer?: boolean;
   /** An off-site link (e.g. a social account) — opens in a new tab, never route-active. */
   external?: boolean;
-  /** Other route prefixes that count as this item being open (the Kelly hub at /v2/kelly
-   *  is the same destination as /v2/copilot while both exist). */
-  also?: string[];
 };
 
 /** Is this menu item the page on show? External links never are. */
-const itemActive = (pathname: string, item: MenuItem): boolean =>
-  !item.external && (pathname.startsWith(item.href) || (item.also?.some((a) => pathname.startsWith(a)) ?? false));
+const itemActive = (pathname: string, item: MenuItem): boolean => !item.external && pathname.startsWith(item.href);
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
@@ -79,20 +75,12 @@ const VAULT_ITEMS: MenuItem[] = [
  *  as a full-width footer. Quests / Competitions render the shared showcase
  *  panels under the v2 shell; Docs renders the shared manual under the v2 shell
  *  too (/v2/docs) so it keeps the Latest chrome and its in-page links stay on /v2. */
-// Kelly's Track Record ships with the receipts feature — nav entry only when it's on.
-const KELLY_RECEIPTS = process.env.NEXT_PUBLIC_KELLY_RECEIPTS === '1';
-// Autopilot is dark until released — nav entry only when it's on.
-const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
-
+// Kelly is one destination: the hub at /v2/kelly holds the chat, Autopilot and her signed
+// record as tabs (the two optional tabs are gated inside the hub by their own flags), so
+// the menu no longer lists them as separate pages.
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: IcoOptions },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: IcoKelly, also: ['/v2/kelly'] },
-  ...(AUTOPILOT
-    ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: IcoAutopilot } as MenuItem]
-    : []),
-  ...(KELLY_RECEIPTS
-    ? [{ href: '/v2/track-record', label: "Kelly's Record", desc: 'Every call, signed on Walrus', icon: IcoRecord } as MenuItem]
-    : []),
+  { href: '/v2/kelly', label: 'Kelly', desc: 'Talk to the surface · Autopilot · her record', icon: IcoKelly },
   { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: IcoQuests, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: IcoArena, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: IcoDocs, footer: true },

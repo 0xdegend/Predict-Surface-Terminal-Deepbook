@@ -26,6 +26,19 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/kelly/**": ["./node_modules/@mysten/walrus-wasm/**"],
   },
+
+  // Kelly moved into one hub (/v2/kelly) with Chat, Autopilot and Record as tabs. The
+  // three pages it replaced had been shared and linked for weeks (the "Ask Kelly" card,
+  // Autopilot share cards, the track-record link), so their exact addresses forward to
+  // the matching tab. Only the exact paths: /v2/track-record/<blobId>, the per-call
+  // receipt page with its own social card, is still a real route.
+  async redirects() {
+    return [
+      { source: "/v2/copilot", destination: "/v2/kelly", permanent: false },
+      { source: "/v2/autopilot", destination: "/v2/kelly/autopilot", permanent: false },
+      { source: "/v2/track-record", destination: "/v2/kelly/record", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
