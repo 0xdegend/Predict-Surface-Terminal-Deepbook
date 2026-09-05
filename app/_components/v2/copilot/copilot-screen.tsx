@@ -242,15 +242,20 @@ export function V2CopilotScreen({
   markets: initialMarkets,
   pricerSeeds,
   serverNow,
+  active = true,
 }: {
   markets: V2Market[];
   pricerSeeds: Record<string, LivePricer>;
   serverNow: number;
+  /** False while the screen is mounted but hidden behind another tab of the Kelly hub.
+   *  The chat keeps its thread and live state either way; only the mobile viewport lock
+   *  follows this, so a hidden chat never pins the document under the tab on show. */
+  active?: boolean;
 }) {
   // Lift the composer above the on-screen keyboard (mobile): publishes the visible
   // height + a `kb-open` class that globals.css uses to collapse the shell and hide
   // the dock while typing. No-op on desktop.
-  useKeyboardViewport();
+  useKeyboardViewport(active);
 
   const markets = useV2Markets(initialMarkets);
   const marketId = useV2TradeStore((s) => s.marketId);
@@ -1733,7 +1738,7 @@ export function V2CopilotScreen({
           height (--kvh) — so ONLY the message thread scrolls (grid-rows-1 = 1fr +
           overflow-hidden), the composer stays pinned above the dock, and the page
           never document-scrolls. Desktop locks to the viewport with a fixed height. */}
-      <main className="copilot-main grid flex-1 grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem)] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px]">
+      <main className="copilot-main grid flex-1 grid-cols-1 grid-rows-1 gap-px overflow-hidden bg-white/6 lg:h-[calc(100dvh-4rem-var(--kelly-tabs,0rem))] lg:flex-none lg:grid-cols-[minmax(0,1fr)_400px]">
         {/* Left — the cockpit: a live stat bar, a markets rail, and the surface
             (the hero). It reacts to the conversation: a suggested or clicked bet
             lights up here, and you trade it in place (surface click-to-mint) or via

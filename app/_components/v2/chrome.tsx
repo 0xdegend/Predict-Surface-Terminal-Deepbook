@@ -51,7 +51,14 @@ type MenuItem = {
   footer?: boolean;
   /** An off-site link (e.g. a social account) — opens in a new tab, never route-active. */
   external?: boolean;
+  /** Other route prefixes that count as this item being open (the Kelly hub at /v2/kelly
+   *  is the same destination as /v2/copilot while both exist). */
+  also?: string[];
 };
+
+/** Is this menu item the page on show? External links never are. */
+const itemActive = (pathname: string, item: MenuItem): boolean =>
+  !item.external && (pathname.startsWith(item.href) || (item.also?.some((a) => pathname.startsWith(a)) ?? false));
 
 const PRIMARY: NavItem[] = [
   { href: '/v2', label: 'Trade', exact: true },
@@ -79,7 +86,7 @@ const AUTOPILOT = process.env.NEXT_PUBLIC_AUTOPILOT === '1';
 
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: IcoOptions },
-  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: IcoKelly },
+  { href: '/v2/copilot', label: 'Kelly', desc: 'Talk to the surface · set up a bet', icon: IcoKelly, also: ['/v2/kelly'] },
   ...(AUTOPILOT
     ? [{ href: '/v2/autopilot', label: 'Autopilot', desc: 'Kelly trades your rules, hands-free', icon: IcoAutopilot } as MenuItem]
     : []),
@@ -286,7 +293,7 @@ function NavMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const activeItem = items.find((i) => pathname.startsWith(i.href));
+  const activeItem = items.find((i) => itemActive(pathname, i));
 
   const tileItems = grid ? items.filter((i) => !i.footer) : items;
   const footerItems = grid ? items.filter((i) => i.footer) : [];
@@ -375,7 +382,7 @@ function MenuRow({
   pathname: string;
   onSelect: () => void;
 }) {
-  const active = !item.external && pathname.startsWith(item.href);
+  const active = itemActive(pathname, item);
   const Icon = item.icon;
   const cls = `group ctrl-soft flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${
     active ? 'text-text-1' : 'text-text-2 hover:text-text-1'
@@ -419,7 +426,7 @@ function MenuTile({
   pathname: string;
   onSelect: () => void;
 }) {
-  const active = pathname.startsWith(item.href);
+  const active = itemActive(pathname, item);
   const Icon = item.icon;
   return (
     <Link

@@ -18,6 +18,12 @@
  *
  * Side-effecting only (no re-renders): it writes a CSS var + class and cleans both
  * up on unmount. Mount it once on the screen that needs it (the copilot chat).
+ *
+ * `enabled` is for a screen that stays MOUNTED while another one is on show: the Kelly
+ * hub keeps the chat alive behind its Autopilot and Record tabs so the thread survives
+ * a tab switch. Locking the document for a screen nobody can see would stop the visible
+ * tab from scrolling, so the lock follows the tab instead and is released the moment
+ * the chat is hidden.
  */
 import { useEffect } from 'react';
 
@@ -42,8 +48,9 @@ export function isKeyboardOpen(innerHeight: number, viewportHeight: number): boo
   return innerHeight - viewportHeight > KEYBOARD_MIN_PX;
 }
 
-export function useKeyboardViewport(): void {
+export function useKeyboardViewport(enabled = true): void {
   useEffect(() => {
+    if (!enabled) return;
     const root = document.documentElement;
     // `chat-page` locks the shell to --kvh (globals.css) so this viewport-locked
     // screen never document-scrolls — even when `100dvh` overshoots the visible
@@ -84,7 +91,7 @@ export function useKeyboardViewport(): void {
       root.style.removeProperty('--kvh');
       root.style.removeProperty('--kvt');
     };
-  }, []);
+  }, [enabled]);
 }
 
 /**

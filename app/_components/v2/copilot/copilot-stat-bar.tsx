@@ -18,6 +18,7 @@ import { LuTrendingUp, LuTrendingDown, LuClock } from 'react-icons/lu';
 import { num } from '@/lib/format';
 import { useV2Spot } from '@/lib/hooks/use-v2-spot';
 import { useNow } from '@/lib/hooks/use-now';
+import { useMounted } from '@/lib/hooks/use-mounted';
 import type { BtcInsights } from '@/lib/hooks/use-btc-insights';
 import type { VolState, ArbState, Bias } from '@/lib/copilot/pulse';
 
@@ -64,7 +65,14 @@ export function CopilotStatBar({
   nextExpiry: number | null;
   serverNow: number;
 }) {
-  const spot = useV2Spot(); // live BTC (shared query — no extra fetch)
+  const live = useV2Spot(); // live BTC (shared query — no extra fetch)
+  // The server never has this number, but the client can already hold it at hydration:
+  // the chrome's price tape shares the query and can fill it before a heavier page (the
+  // Kelly hub) hydrates. Painting it in the first client render then mismatches the
+  // server's dash and React throws the whole page away to regenerate it. So the first
+  // client paint shows the dash too, and the live number lands one render later.
+  const mounted = useMounted();
+  const spot = mounted ? live : null;
   const now = useNow(serverNow); // 1s tick, isolated to this strip
 
   const change = insights?.change24hPct ?? null;
