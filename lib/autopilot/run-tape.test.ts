@@ -99,7 +99,7 @@ describe('buildRunTape', () => {
   it('keeps the moments Kelly looked and passed, in order, and nothing else from the log', () => {
     const log: TapeLogLine[] = [
       { kind: 'held', at: ARMED + 9 * MIN, text: 'Odds too thin' },
-      { kind: 'armed', at: ARMED, text: 'Autopilot armed' },
+      { kind: 'armed', at: ARMED, text: 'Autopilot started trading' },
       { kind: 'held', at: ARMED + 3 * MIN, text: 'Cooling down' },
     ];
     const holds = tape({ log }).holds;

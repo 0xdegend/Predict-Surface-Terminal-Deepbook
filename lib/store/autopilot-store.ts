@@ -561,7 +561,7 @@ export const useAutopilotStore = create<AutopilotState>()(
             id: nextId(now),
             at: now,
             kind: 'armed',
-            text: s.dryRun ? 'Autopilot armed in watch mode (no real trades)' : 'Autopilot armed',
+            text: s.dryRun ? 'Autopilot started watching (no real trades)' : 'Autopilot started trading',
           }),
         })),
 
