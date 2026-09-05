@@ -24,10 +24,12 @@ import {
   type CallSource,
   type ReceiptIndexEntry,
 } from '@/lib/walrus/receipts';
-import { getV2MarketState, getPythLatest, pythSpot } from '@/lib/api/v2/client';
+import { getPythLatest, pythSpot } from '@/lib/api/v2/client';
+import { onchainMarketSettlement } from '@/lib/api/v2/onchain';
 import { simulateLivePricer, v2GrpcClient, fairUp, fairDn, fairRange } from '@/lib/sui/v2/pricer';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, ACTIVE_V2_DEPLOYMENT, KNOWN_V2_DEPLOYMENTS, type PredictDeployment } from '@/config/predict';
 import { toFloat } from '@/config/scale';
+import { kv } from '@/lib/server/kv';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -96,7 +98,10 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   try {
-    const { id, blobId } = await mintCallReceipt({ claim: claimFromIntent(intent, priced), source: intent.source });
+    // The deployment travels with the claim: after a republish the market id alone no longer
+    // says which package can read its settlement (see settlementMap).
+    const claim = claimFromIntent(intent, priced, ACTIVE_V2_DEPLOYMENT);
+    const { id, blobId } = await mintCallReceipt({ claim, source: intent.source });
     return NextResponse.json({ ok: true, id, blobId });
   } catch {
     // Fail soft — a Walrus hiccup should never surface to the trader (the call was made anyway).
@@ -104,57 +109,96 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 }
 
-/** How many NEW settled-market reads to fan out per request (bounds the cost). Only markets
- *  missing from the cache count against it, so this bounds work, not coverage. */
+/** How many NEW settlement reads to fan out per request (bounds the cost). Only markets
+ *  missing from both caches count against it, so this bounds work, not coverage. */
 const MAX_SETTLEMENT_READS = 40;
 
 /**
  * Resolved settlements, kept for the life of the server process.
  *
  * A settlement price is IMMUTABLE: once a market settles, that number never changes. So a
- * market only ever needs reading once, and caching it is not a staleness risk — it is the
- * whole fix. Before this, every request re-read every expired market from scratch and the
- * fan-out was capped at 40, which quietly meant COVERAGE was capped at 40: with 50 distinct
- * expired markets, the 10 oldest fell off the end of the slice on every single request and
- * sat on "Awaiting settle" forever, getting worse with every new call Kelly made. They were
- * settled on chain the whole time; nothing ever read them.
- *
- * Now the cap applies only to markets not yet resolved, so a backlog drains over a couple of
- * refreshes and then stays resolved for free.
+ * market only ever needs reading once, and caching it is not a staleness risk. Before this
+ * cache existed, every request re-read every expired market from scratch and the fan-out
+ * was capped at 40, which quietly meant COVERAGE was capped at 40: with 50 distinct expired
+ * markets the 10 oldest fell off the slice on every request and sat on "Awaiting settle"
+ * forever. Now the cap applies only to markets not yet resolved.
  */
 const settlementCache = new Map<string, number>();
 /** Guard against unbounded growth in a long-lived process (ids are cheap, but not free). */
 const SETTLEMENT_CACHE_MAX = 5_000;
 
 /**
+ * The durable copy of the same cache. A serverless instance starts with the in-process map
+ * empty, and with fifty settled markets behind the record every cold start would re-read
+ * all of them from chain; a resolved price is therefore also written to KV. Keyed by
+ * network so a testnet market id can never be confused with a mainnet one.
+ */
+const settlementKey = (marketId: string) => `kelly:settlement:${predictV2Config.network}:${marketId}`;
+
+const asDeployment = (v: unknown): PredictDeployment | null =>
+  KNOWN_V2_DEPLOYMENTS.includes(v as PredictDeployment) ? (v as PredictDeployment) : null;
+
+/**
  * Best-effort settlement map (marketId → settlement price in USD) for the EXPIRED calls only.
- * Cached markets are free; the read budget is spent on the ones still unresolved. A market that
- * isn't settled yet (or a flaky read) simply stays pending, which is honest, and it gets
- * retried on the next request because nothing negative is cached.
+ *
+ * Reads go to the package that OWNS each market, not the active one. After the 9-04 cutover
+ * to 8-21 every call Kelly had made on an 8-06 market (fifty of them, all settled on chain)
+ * showed as pending, because the 8-21 view getters abort on an 8-06 object and an aborted
+ * read is indistinguishable from an unsettled market. `onchainMarketSettlement` reads the
+ * object's type first, helped by the deployment newer receipts record on the claim.
+ *
+ * Cached markets are free (in-process, then KV); the read budget is spent on the ones still
+ * unresolved. A market that isn't settled yet, or a flaky read, simply stays pending, which
+ * is honest, and it is retried on the next request because nothing negative is cached.
  */
 async function settlementMap(entries: ReceiptIndexEntry[], now: number): Promise<Map<string, number>> {
-  const expired = [...new Set(entries.filter((e) => e.claim.expiry < now).map((e) => e.claim.marketId))];
+  const expired = entries.filter((e) => e.claim.expiry < now);
+  const ids = [...new Set(expired.map((e) => e.claim.marketId))];
+  /** The deployment each receipt recorded for its market, when it recorded one. */
+  const hints = new Map<string, PredictDeployment>();
+  for (const e of expired) {
+    const d = asDeployment(e.claim.deployment);
+    if (d && !hints.has(e.claim.marketId)) hints.set(e.claim.marketId, d);
+  }
+
   const map = new Map<string, number>();
-  for (const id of expired) {
+  const remember = (id: string, usd: number) => {
+    map.set(id, usd);
+    if (settlementCache.size >= SETTLEMENT_CACHE_MAX) settlementCache.clear();
+    settlementCache.set(id, usd);
+  };
+  for (const id of ids) {
     const hit = settlementCache.get(id);
     if (hit != null) map.set(id, hit);
   }
-  const toRead = expired.filter((id) => !map.has(id)).slice(0, MAX_SETTLEMENT_READS);
+
+  // The durable cache next: one round trip for everything this process has not seen.
+  let missing = ids.filter((id) => !map.has(id));
+  if (kv && missing.length) {
+    try {
+      const rows = await kv.mget<(number | string | null)[]>(...missing.map(settlementKey));
+      missing.forEach((id, i) => {
+        const usd = Number(rows[i]);
+        if (rows[i] != null && Number.isFinite(usd) && usd > 0) remember(id, usd);
+      });
+    } catch {
+      /* KV unreachable: fall through to the chain, the same as before the cache existed */
+    }
+    missing = ids.filter((id) => !map.has(id));
+  }
+
+  const toRead = missing.slice(0, MAX_SETTLEMENT_READS);
   await Promise.all(
     toRead.map(async (id) => {
       try {
-        const st = await getV2MarketState(id);
-        const sp = st?.settlement?.settlement_price;
-        if (sp != null) {
-          const usd = toFloat(sp);
-          if (Number.isFinite(usd)) {
-            map.set(id, usd);
-            if (settlementCache.size >= SETTLEMENT_CACHE_MAX) settlementCache.clear();
-            settlementCache.set(id, usd);
-          }
-        }
+        const { settlementPrice } = await onchainMarketSettlement(id, hints.get(id));
+        if (settlementPrice == null) return; // genuinely unsettled: stays pending, retried next time
+        const usd = toFloat(settlementPrice);
+        if (!Number.isFinite(usd) || usd <= 0) return;
+        remember(id, usd);
+        if (kv) await kv.set(settlementKey(id), usd).catch(() => undefined);
       } catch {
-        /* not settled / read flaky — leave pending, and retry next request */
+        /* read flaky: leave pending, and retry next request */
       }
     }),
   );

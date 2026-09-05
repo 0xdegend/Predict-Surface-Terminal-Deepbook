@@ -165,7 +165,10 @@ export const V2_READY = true;
  */
 export type PredictDeployment = '6-24' | '7-29' | '8-06' | '8-21';
 const _DEPLOYMENT_ENV = process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT;
-const _KNOWN_DEPLOYMENTS: PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21'];
+/** Every deployment this build can read, oldest first. Exported so a reader can answer
+ *  "which deployment does this object belong to" instead of assuming the active one. */
+export const KNOWN_V2_DEPLOYMENTS: readonly PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21'];
+const _KNOWN_DEPLOYMENTS = KNOWN_V2_DEPLOYMENTS;
 export const ACTIVE_V2_DEPLOYMENT: PredictDeployment = _KNOWN_DEPLOYMENTS.includes(
   _DEPLOYMENT_ENV as PredictDeployment,
 )
@@ -710,6 +713,34 @@ function selectV2Config(network: SuiNetwork): PredictV2Config {
  */
 export function predictConfigFor(deployment: PredictDeployment): PredictV2Config {
   return V2_TESTNET_BY_DEPLOYMENT[deployment];
+}
+
+/** `0x` + 64 lowercase hex, so a short or upper-case form of the same address compares equal. */
+function canonicalAddress(addr: string): string {
+  const hex = addr.trim().toLowerCase().replace(/^0x/, '');
+  return hex && /^[0-9a-f]+$/.test(hex) ? `0x${hex.padStart(64, '0')}` : '';
+}
+
+/**
+ * The deployment whose predict package DEFINED an object, from that object's Move type (or
+ * a bare package address), or null when the package is not one of ours.
+ *
+ * A market id alone is ambiguous after a republish. Every deployment has its own
+ * `expiry_market::ExpiryMarket` type, and a view getter from the 8-21 package aborts on an
+ * 8-06 object, so anything that reads settled markets across a cutover (Kelly's track record
+ * scores calls made weeks ago) has to pick the package the object came from. The type's
+ * address is the ORIGINAL package id; every testnet deployment is still at version 1, so it
+ * matches `packages.predict` directly. The newest deployment wins if two ever shared one.
+ */
+export function deploymentForPredictPackage(packageOrType: string): PredictDeployment | null {
+  const pkg = canonicalAddress(packageOrType.split('::')[0] ?? '');
+  if (!pkg) return null;
+  for (let i = KNOWN_V2_DEPLOYMENTS.length - 1; i >= 0; i--) {
+    const d = KNOWN_V2_DEPLOYMENTS[i];
+    const p = canonicalAddress(V2_TESTNET_BY_DEPLOYMENT[d].packages.predict);
+    if (p && p === pkg) return d;
+  }
+  return null;
 }
 
 /**

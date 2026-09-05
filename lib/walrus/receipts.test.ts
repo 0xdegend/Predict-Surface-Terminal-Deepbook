@@ -186,6 +186,15 @@ describe('claimFromIntent — server-priced claim assembly', () => {
     const claim = claimFromIntent(intent, { probability: 0.5, spotAtCall: 116_000, forward: 116_200 });
     expect(claim).toMatchObject({ kind: 'binary', role: 'read', direction: 'up', strike: 116_200, marketId: '0xm3' });
   });
+
+  it('records the deployment the market lives on, and leaves it out when the caller has none', () => {
+    // A market id is only meaningful with its deployment once a republish has happened:
+    // the scorer uses this to pick the package that can actually read the settlement.
+    const intent: CallIntent = { kind: 'binary', marketId: '0xm4', expiry: 1, source: 'rules', direction: 'down', strike: 80_000 };
+    const priced = { probability: 0.7, spotAtCall: 81_000, forward: 81_050 };
+    expect(claimFromIntent(intent, priced, '8-21').deployment).toBe('8-21');
+    expect('deployment' in claimFromIntent(intent, priced)).toBe(false);
+  });
 });
 
 describe('read (forecast) receipts', () => {

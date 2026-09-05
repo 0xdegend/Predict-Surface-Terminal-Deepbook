@@ -18,7 +18,14 @@
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { grpcRead, activeGrpcUrl } from '@/lib/sui/grpc-core';
-import { predictV2Config, V2_IS_821_PLUS } from '@/config/predict';
+import {
+  predictV2Config,
+  V2_IS_821_PLUS,
+  ACTIVE_V2_DEPLOYMENT,
+  predictConfigFor,
+  deploymentForPredictPackage,
+  type PredictDeployment,
+} from '@/config/predict';
 import { fromQuote } from '@/config/scale';
 import { loadSessionAddresses } from '@/lib/sui/v2/session';
 import { PredictApiError } from '@/lib/api/client';
@@ -566,6 +573,68 @@ export async function onchainMarketState(marketId: string): Promise<V2MarketStat
     mint_paused: boolAt(slot('mint_paused')),
     settlement,
   };
+}
+
+/* ---------------------- settlement across deployments ---------------------- */
+
+/**
+ * Which deployment a market belongs to, read from the object's own Move type.
+ *
+ * `onchainMarketState` asks the ACTIVE package's view getters, which is right for every
+ * market the app trades today and wrong for every market it traded before a cutover: the
+ * 8-21 `expiry_market::is_settled` aborts on an 8-06 `ExpiryMarket`, and a read that aborts
+ * looks exactly like a market that has not settled yet. Kelly's track record hit this after
+ * the 9-04 cutover: fifty calls made on 8-06 markets sat on "Awaiting settle" although every
+ * one of them had settled on chain, some of them two weeks earlier. Reading the type first
+ * costs one point read and removes the guess. Null when the object is gone or belongs to no
+ * deployment this build knows.
+ */
+export async function onchainMarketDeployment(marketId: string): Promise<PredictDeployment | null> {
+  try {
+    const res = (await grpcRead((client, signal) => client.core.getObject({ objectId: marketId, signal }))) as {
+      object?: { type?: string };
+    };
+    const type = res?.object?.type;
+    return type ? deploymentForPredictPackage(type) : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface MarketSettlementRead {
+  /** The deployment whose package answered. */
+  deployment: PredictDeployment;
+  /** Raw 1e9-scaled settlement price, or null while the market is unsettled. */
+  settlementPrice: bigint | null;
+}
+
+/**
+ * A market's settlement, read with the package that OWNS the market rather than the active
+ * one. `hint` is the deployment a caller recorded when it first saw the market (Kelly's
+ * receipts carry one from 9-05 on); it is tried first and skips the type read. A hint that
+ * turns out wrong falls back to the type read, and a market with no hint and no readable
+ * type is asked of the active package, which is exactly the old behaviour.
+ */
+export async function onchainMarketSettlement(marketId: string, hint?: PredictDeployment | null): Promise<MarketSettlementRead> {
+  const readWith = async (deployment: PredictDeployment): Promise<MarketSettlementRead> => {
+    const pkg = predictConfigFor(deployment).packages.predict;
+    if (!pkg) throw new PredictApiError(`no predict package for ${deployment}`, 0, activeGrpcUrl());
+    const tx = new Transaction();
+    tx.moveCall({ target: `${pkg}::expiry_market::is_settled`, arguments: [tx.object(marketId)] });
+    tx.moveCall({ target: `${pkg}::expiry_market::try_settlement_price`, arguments: [tx.object(marketId)] });
+    const [settled, price] = await inspectReturns(tx);
+    const settlementPrice = boolAt(settled?.[0] ?? new Uint8Array()) ? optU64(price?.[0] ?? new Uint8Array()) : null;
+    return { deployment, settlementPrice };
+  };
+  if (hint) {
+    try {
+      return await readWith(hint);
+    } catch {
+      /* the hint named the wrong deployment; let the object say which one it is */
+    }
+  }
+  const owner = await onchainMarketDeployment(marketId);
+  return readWith(owner ?? ACTIVE_V2_DEPLOYMENT);
 }
 
 /**

@@ -56,6 +56,11 @@ export interface CallClaim {
   expiry: number;
   /** The market this call is on (expiry_market_id), so settlement can be resolved later. */
   marketId: string;
+  /** Which Predict deployment the market lives on (e.g. '8-21'). A market id is only
+   *  meaningful with its deployment: every republish mints new ExpiryMarket objects under a
+   *  new package, and a call scored with the wrong package reads as never settled. Absent on
+   *  receipts minted before 2026-09-05; the scorer then works it out from the object's type. */
+  deployment?: string;
 }
 
 /**
@@ -92,7 +97,7 @@ export interface PricedFields {
  * Assemble a full, scoreable claim from a validated client intent + the server-computed
  * priced fields. The route validates the intent's structural fields before calling this.
  */
-export function claimFromIntent(intent: CallIntent, priced: PricedFields): CallClaim {
+export function claimFromIntent(intent: CallIntent, priced: PricedFields, deployment?: string): CallClaim {
   const base = {
     asset: 'BTC' as const,
     probability: priced.probability,
@@ -100,6 +105,7 @@ export function claimFromIntent(intent: CallIntent, priced: PricedFields): CallC
     forward: priced.forward,
     expiry: intent.expiry,
     marketId: intent.marketId,
+    ...(deployment ? { deployment } : {}),
   };
   if (intent.kind === 'range') {
     return { ...base, kind: 'range', lower: intent.lower, higher: intent.higher };
