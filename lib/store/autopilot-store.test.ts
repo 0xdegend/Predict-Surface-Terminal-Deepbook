@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAutopilotStore, DEFAULT_LIMITS, DEFAULT_RULES, migrateAutopilotState } from './autopilot-store';
+import { PRESET_BY_ID } from '@/lib/autopilot/presets';
 import type { ProposedTrade } from '@/lib/autopilot/policy';
 
 const S = () => useAutopilotStore.getState();
@@ -432,9 +433,12 @@ describe('migrateAutopilotState', () => {
 
   it('is a no-op at the current version and on a blob it cannot read', () => {
     const blob = v1(['up', 'down']);
-    expect(migrateAutopilotState(blob, 4)).toBe(blob);
+    expect(migrateAutopilotState(blob, 5)).toBe(blob);
     expect(migrateAutopilotState(undefined, 1)).toBeUndefined();
-    expect(migrateAutopilotState({ rules: {} }, 1)).toEqual({ rules: {} });
+    // A rules blob with nothing in it still gains the field v5 introduced. That is the
+    // migration doing its job, not a failure to no-op: leaving minEdge undefined would
+    // make every comparison against it read false and silently disable the value bar.
+    expect(migrateAutopilotState({ rules: {} }, 1)).toEqual({ rules: { minEdge: 0 } });
   });
 
   it('a fresh setup already carries the range, so nothing to migrate there', () => {
@@ -461,8 +465,32 @@ describe('migrateAutopilotState', () => {
     const t = migrateAutopilotState(typed, 2) as { limits: { maxTrades: number; perTradeUsd: number } };
     expect(t.limits.maxTrades).toBe(5);
     expect(t.limits.perTradeUsd).toBe(50);
+    // "Left alone" is about the LIMITS. v5 still moves this config's rules, and should:
+    // the floor it carries is Careful's old one, and hand-setting a bet count is not a
+    // reason to leave someone on the odds floor that was losing them money.
     const custom = { ...typed, limits: { ...typed.limits, maxTrades: 7 } };
-    expect(migrateAutopilotState(custom, 2)).toBe(custom);
+    const out = migrateAutopilotState(custom, 2) as { limits: unknown };
+    expect(out.limits).toEqual(custom.limits);
+  });
+
+  it('v5 moves a saved Careful off the 70% floor it was losing on', () => {
+    const careful = {
+      rules: { ...DEFAULT_RULES, minProb: 0.7, maxLeverage: 1, tenors: ['soonest', 'hour'], sides: ['up', 'down', 'range'] },
+      limits: { ...DEFAULT_LIMITS, maxConcurrent: 2, maxConsecutiveLosses: 2 },
+    };
+    const out = migrateAutopilotState(careful, 4) as { rules: { minProb: number; minEdge: number } };
+    expect(out.rules.minProb).toBe(PRESET_BY_ID.cautious.shape.minProb);
+    expect(out.rules.minEdge).toBe(PRESET_BY_ID.cautious.shape.minEdge);
+    expect(out.rules.minProb).toBeLessThan(0.7);
+  });
+
+  it('v5 leaves a genuinely customized floor exactly where the trader put it', () => {
+    const own = {
+      rules: { ...DEFAULT_RULES, minProb: 0.64, maxLeverage: 1 },
+      limits: { ...DEFAULT_LIMITS },
+    };
+    const out = migrateAutopilotState(own, 4) as { rules: { minProb: number } };
+    expect(out.rules.minProb).toBe(0.64);
   });
 
   it('a v1 blob goes through both steps: gains the range, then is re-paced', () => {

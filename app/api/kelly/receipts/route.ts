@@ -30,6 +30,7 @@ import { simulateLivePricer, v2GrpcClient, fairUp, fairDn, fairRange } from '@/l
 import { predictV2Config, ACTIVE_V2_DEPLOYMENT, KNOWN_V2_DEPLOYMENTS, type PredictDeployment } from '@/config/predict';
 import { toFloat } from '@/config/scale';
 import { kv } from '@/lib/server/kv';
+import { writerHealth } from '@/lib/walrus/client';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -222,7 +223,19 @@ export async function GET(req: Request): Promise<NextResponse> {
   };
   const reads = tr.calls.filter((c) => c.claim.role === 'read');
   const picks = tr.calls.filter((c) => c.claim.role !== 'read');
+  // Whether NEW calls can still be recorded, reported next to the record itself. Without
+  // this a dry writer wallet looks exactly like a quiet week: on 2026-09-04 the writer ran
+  // out of gas, every POST 500'd into recordCall's swallowed catch, and Autopilot kept
+  // trading against a record that had silently stopped growing.
+  const recording = await writerHealth();
   return NextResponse.json({
+    recording: {
+      ok: recording.ok,
+      low: recording.low,
+      reason: recording.reason,
+      writesLeft: recording.writesLeft,
+      address: recording.address,
+    },
     total: tr.total,
     resolved: tr.resolved,
     won: tr.won,

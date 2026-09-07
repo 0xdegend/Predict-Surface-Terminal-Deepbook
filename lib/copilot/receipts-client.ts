@@ -97,6 +97,16 @@ export async function recordCall(intent: CallIntent): Promise<void> {
   }
 }
 
+/** Whether Kelly can still WRITE new receipts, which is separate from what the record
+ *  already holds. A dry writer wallet reads as a quiet week unless this is surfaced. */
+export interface RecordingStatus {
+  ok: boolean;
+  low: boolean;
+  reason: 'ok' | 'low_gas' | 'no_gas' | 'unconfigured' | 'unreadable';
+  writesLeft: number | null;
+  address: string | null;
+}
+
 export interface TrackRecordCall {
   id: string;
   blobId: string;
@@ -126,6 +136,8 @@ export interface TrackRecordResponse extends TrackRecordSplit {
   /** Kelly's concrete bet recommendations only. */
   picks: TrackRecordSplit;
   calls: TrackRecordCall[];
+  /** Whether new calls can still be written. Optional so an older deploy still parses. */
+  recording?: RecordingStatus;
 }
 
 /** Read Kelly's public track record (scored calls + resolved-only win rate). */

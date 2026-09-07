@@ -28,7 +28,7 @@ import {
   type TradeSide,
   TENOR_BUCKETS,
 } from '@/lib/autopilot/policy';
-import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, type PresetId } from '@/lib/autopilot/presets';
+import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, LEGACY_SHAPE_V4, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
 
 /** One line of Kelly's Auto-mode setup conversation. */
@@ -197,7 +197,9 @@ const DEFAULT_RUN = { armDurationMs: 60 * 60_000, budgetUsd: 25 };
 const _balanced = presetPatch(DEFAULT_PRESET, DEFAULT_RUN);
 
 export const DEFAULT_RULES: AutopilotRules = {
-  minEdge: 0,
+  // Read from the preset, not hardcoded: a fresh setup IS the Balanced preset, and a
+  // literal here silently drifts from it the moment the preset changes.
+  minEdge: _balanced.rules.minEdge!,
   minProb: _balanced.rules.minProb!,
   maxLeverage: _balanced.rules.maxLeverage!,
   tenors: _balanced.rules.tenors!,
@@ -259,7 +261,8 @@ export function migrateAutopilotState(persisted: unknown, version: number): unkn
   // careful or balanced config, or anything customized, keeps its own windows.
   if (version < 4 && state.rules) {
     const r = state.rules;
-    const bold = PRESET_BY_ID.bold.shape;
+    // Frozen, not PRESET_BY_ID.bold.shape: a v3 blob carries the floor bold had THEN.
+    const bold = LEGACY_SHAPE_V4.bold;
     const t = Array.isArray(r.tenors) ? r.tenors : [];
     const oldBoldWindows = t.length === 3 && (['soonest', 'hour', 'today'] as const).every((x) => t.includes(x));
     if (oldBoldWindows && Math.abs(r.minProb - bold.minProb) < 1e-9 && r.maxLeverage === bold.maxLeverage) {
@@ -267,7 +270,42 @@ export function migrateAutopilotState(persisted: unknown, version: number): unkn
     }
   }
 
+  // Version 5 (2026-09-07): the win-chance floors came DOWN, and every preset gained a
+  // value bar (`minEdge`). A high floor was never safety - a binary costs its own win
+  // chance, so the old Careful 0.70 bought the most expensive bets on the board and shut
+  // bands out entirely. Saved configs sitting on an old preset's numbers are moved onto
+  // that preset's new ones, so a trader who chose Careful keeps getting Careful rather
+  // than being quietly left on the setting that was losing. Anything customized away from
+  // every preset is left exactly as the trader set it.
+  if (version < 5 && state.rules) {
+    const r = state.rules;
+    const was = matchOldPreset(r);
+    if (was) {
+      const shape = PRESET_BY_ID[was].shape;
+      state = { ...state, rules: { ...r, minProb: shape.minProb, minEdge: shape.minEdge } };
+    } else if (typeof r.minEdge !== 'number') {
+      // Customized, but `minEdge` may predate the field. Default it off rather than
+      // leaving it undefined, which would compare as NaN in the gate.
+      state = { ...state, rules: { ...r, minEdge: 0 } };
+    }
+  }
+
   return state;
+}
+
+/** Which preset a pre-v5 config was on, from the win-chance floor + leverage it carried,
+ *  or null when the trader had customized it.
+ *
+ *  Deliberately only those two fields. Windows and sides were already moved by the v2 and
+ *  v4 steps above, so demanding a full match here would strand exactly the configs those
+ *  migrations just fixed. The pair is still specific enough to be unambiguous: no two old
+ *  presets shared both numbers. */
+function matchOldPreset(r: AutopilotRules): PresetId | null {
+  for (const id of ['cautious', 'balanced', 'bold'] as PresetId[]) {
+    const old = LEGACY_SHAPE_V4[id];
+    if (Math.abs(r.minProb - old.minProb) < 1e-9 && r.maxLeverage === old.maxLeverage) return id;
+  }
+  return null;
 }
 
 const MAX_LOG = 120;
@@ -776,7 +814,7 @@ export const useAutopilotStore = create<AutopilotState>()(
     }),
     {
       name: 'skew-autopilot',
-      version: 4,
+      version: 5,
       /**
        * Carry an older blob forward instead of dropping it.
        *

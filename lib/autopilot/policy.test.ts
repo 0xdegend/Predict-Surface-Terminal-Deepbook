@@ -19,7 +19,8 @@ import {
   type StopReason,
   stakeFor,
   MIN_TIME_TO_EXPIRY_MS,
-  CAREFUL_MIN_PROB,
+  MIN_RANGE_PROB,
+  clearsProbFloor,
   fitsSession,
   hasTimeToTrade,
   rankPicks,
@@ -133,17 +134,30 @@ describe('gateTrade — the trader rules', () => {
   });
 
   it('rankPicks drops picks under the floor, and a careful run takes the surest first', () => {
+    // Value, not win chance. A binary is bought AT its win chance, so the surest pick is
+    // also the priciest and sorting by it buys the worst end of the board: measured on 343
+    // settled bets, binaries priced 80%+ returned -3.9% per $1 while 50-60% returned +32.5%.
     const picks = [
-      { id: 'soon-low', prob: 0.62, expiry: NOW + 60_000 },
-      { id: 'soon-ok', prob: 0.72, expiry: NOW + 120_000 },
-      { id: 'later-best', prob: 0.81, expiry: NOW + 600_000 },
-      { id: 'later-ok', prob: 0.72, expiry: NOW + 900_000 },
+      { id: 'sure-but-priced', prob: 0.81, edge: 0.01, expiry: NOW + 60_000 },
+      { id: 'best-value', prob: 0.62, edge: 0.09, expiry: NOW + 600_000 },
+      { id: 'fair', prob: 0.72, edge: 0.04, expiry: NOW + 120_000 },
     ];
-    expect(rankPicks(picks, 0.7).map((p) => p.id)).toEqual(['later-best', 'soon-ok', 'later-ok']);
-    // A bolder floor keeps the soonest first.
-    expect(rankPicks(picks, 0.55).map((p) => p.id)).toEqual(['soon-low', 'soon-ok', 'later-best', 'later-ok']);
-    expect(rankPicks(picks, 0.9)).toEqual([]);
-    expect(CAREFUL_MIN_PROB).toBe(0.68);
+    expect(rankPicks(picks).map((p) => p.id)).toEqual(['best-value', 'fair', 'sure-but-priced']);
+  });
+
+  it('ranks a tie to the market that settles soonest', () => {
+    const picks = [
+      { id: 'later', edge: 0.05, expiry: NOW + 600_000 },
+      { id: 'sooner', edge: 0.05, expiry: NOW + 60_000 },
+    ];
+    expect(rankPicks(picks).map((p) => p.id)).toEqual(['sooner', 'later']);
+  });
+
+  it('leaves filtering to the caller rather than re-applying a floor it cannot read', () => {
+    // rankPicks no longer takes minProb: the floor is shape-aware now (clearsProbFloor)
+    // and a rank function that only sees prob would apply the directional rule to bands.
+    const picks = [{ id: 'a', edge: 0, expiry: NOW }];
+    expect(rankPicks(picks)).toHaveLength(1);
   });
 
   it('rejects a tenor the trader did not allow', () => {
@@ -451,5 +465,37 @@ describe('gateTrade — the tenor ceiling', () => {
   it('refuses everything when no window is picked', () => {
     const none: AutopilotRules = { ...rules, tenors: [] };
     expect(gateTrade(goodTrade, none, limits, runtime, NOW).code).toBe('tenor_not_allowed');
+  });
+});
+
+describe('clearsProbFloor — the win-chance floor is a directional rule', () => {
+  const r = { minProb: 0.7 };
+
+  it('holds directional bets to the trader floor', () => {
+    expect(clearsProbFloor('up', 0.71, r)).toBe(true);
+    expect(clearsProbFloor('up', 0.69, r)).toBe(false);
+    expect(clearsProbFloor('down', 0.69, r)).toBe(false);
+  });
+
+  it('lets a cheap band through, which is the whole point', () => {
+    // A band that pays out most of the time is CHEAP, not improbable, and a single floor
+    // over both shapes removes the cheap ones first. That is how one wallet ran 26 bets
+    // and never placed a band: the 0.70 Careful floor excluded ~86% of them, leaving only
+    // the >=70% ones, the single band bucket that lost money.
+    expect(clearsProbFloor('range', 0.38, r)).toBe(true);
+    expect(clearsProbFloor('range', 0.55, r)).toBe(true);
+  });
+
+  it('still refuses a band that is a lottery ticket', () => {
+    expect(clearsProbFloor('range', MIN_RANGE_PROB - 0.01, r)).toBe(false);
+    expect(MIN_RANGE_PROB).toBeLessThan(0.5);
+  });
+
+  it('gates a real range trade through the full gate', () => {
+    const band: ProposedTrade = { ...goodTrade, kind: 'range', side: 'range', prob: 0.4, edge: 0.12 };
+    const careful: AutopilotRules = { ...rules, minProb: 0.7, minEdge: 0, sides: ['up', 'down', 'range'] };
+    expect(gateTrade(band, careful, limits, runtime, NOW)).toEqual({ allow: true, code: 'ok' });
+    // The same odds on a directional bet are still refused.
+    expect(gateTrade({ ...band, kind: 'binary', side: 'up' }, careful, limits, runtime, NOW).code).toBe('below_min_prob');
   });
 });

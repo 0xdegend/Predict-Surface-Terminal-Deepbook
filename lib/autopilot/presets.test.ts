@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { PRESETS, presetPatch, matchPreset, planSentence, DEFAULT_PRESET, paceFor, perBetFor, isAutoSized, legacyPresetOf, LEGACY_PACE } from './presets';
+import { PRESETS, presetPatch, matchPreset, planSentence, DEFAULT_PRESET, paceFor, perBetFor, isAutoSized, legacyPresetOf, LEGACY_PACE, LEGACY_SHAPE_V4 } from './presets';
 import type { AutopilotRules, AutopilotLimits } from './policy';
 
 // Mirrors the store's DEFAULT_RULES / DEFAULT_LIMITS (= the Balanced preset). Kept local
 // so this pure-module test doesn't pull in the Zustand store.
 const DEFAULT_RULES: AutopilotRules = {
-  minProb: 0.6,
-  minEdge: 0,
+  minProb: 0.5,
+  minEdge: 0.02,
   tenors: ['soonest', 'hour'],
   sides: ['up', 'down', 'range'],
   maxLeverage: 2,
@@ -112,8 +112,16 @@ describe('paceFor: the bet count and gap follow the run length', () => {
     expect(isAutoSized({ budgetUsd: 500, perTradeUsd: 50, maxTrades: 3 })).toBe(false);
   });
 
-  it('legacyPresetOf recognises a pre-pacing saved config by its old fixed numbers', () => {
-    const rules = { ...DEFAULT_RULES, ...presetPatch('cautious', DEFAULT_LIMITS).rules };
+  it('legacyPresetOf recognises a pre-pacing saved config by the numbers it actually carried', () => {
+    // Built from LEGACY_SHAPE_V4, not from today's Careful. A pre-pacing blob was written
+    // when Careful meant a 70% floor, so a fixture built from the CURRENT preset describes
+    // a config that never existed — and would have hidden the day the live constants moved
+    // and this function quietly stopped recognising anything at all.
+    const rules = {
+      ...DEFAULT_RULES,
+      ...presetPatch('cautious', DEFAULT_LIMITS).rules,
+      ...LEGACY_SHAPE_V4.cautious,
+    };
     const limits = { ...DEFAULT_LIMITS, maxConcurrent: 2, maxConsecutiveLosses: 2, ...LEGACY_PACE.cautious };
     expect(legacyPresetOf(rules, limits)).toBe('cautious');
     expect(legacyPresetOf(rules, { ...limits, maxTrades: 4 })).toBeNull();

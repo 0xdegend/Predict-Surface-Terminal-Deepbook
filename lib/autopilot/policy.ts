@@ -129,21 +129,46 @@ export function tenorCeiling(chosen: readonly Tenor[]): Tenor | null {
   return ceiling < 0 ? null : TENOR_LADDER[ceiling];
 }
 
-/** A win-chance floor at or above this reads as a careful run (the same line the plan
- *  card draws), and a careful run takes the SUREST bet on offer rather than the soonest. */
-export const CAREFUL_MIN_PROB = 0.68;
+/**
+ * The floor below which a BAND is never worth buying, whatever its value looks like.
+ *
+ * Separate from `minProb` because the two shapes mean different things by a low price. A
+ * directional bet at 40% is a long shot. A band at 40% is an ordinary bet on BTC holding a
+ * range, and on 8-21 those were the best-priced thing on the venue: bands priced under 50%
+ * won 75% of the time (n=40) and returned +110% per $1 staked. A single win-chance floor
+ * applied to both shapes silently excluded them, which is how a wallet ran 26 bets without
+ * ever placing one. This floor only rules out genuine lottery tickets.
+ */
+export const MIN_RANGE_PROB = 0.25;
 
 /**
- * Order Kelly's per-market picks for a run. Anything under the trader's floor is out.
- * A careful run then takes the highest win chance first (soonest on a tie); any other
- * run keeps the soonest first, which is the order the picks arrive in.
+ * Does this pick clear the trader's win-chance floor?
+ *
+ * `minProb` is a DIRECTIONAL rule. Applying it to bands as well is what made "play it
+ * careful" mean "never buy a band", because a band that pays out most of the time is
+ * cheap, not probable, and cheap is the thing a probability floor removes first. Bands are
+ * held to MIN_RANGE_PROB instead and earn their place on value (`minEdge`).
  */
-export function rankPicks<T extends { prob: number; expiry: number }>(picks: readonly T[], minProb: number): T[] {
-  const ok = picks.filter((p) => p.prob >= minProb);
-  if (minProb >= CAREFUL_MIN_PROB) {
-    return [...ok].sort((a, b) => b.prob - a.prob || a.expiry - b.expiry);
-  }
-  return [...ok].sort((a, b) => a.expiry - b.expiry);
+export function clearsProbFloor(side: TradeSide, prob: number, rules: Pick<AutopilotRules, 'minProb'>): boolean {
+  return side === 'range' ? prob >= MIN_RANGE_PROB : prob >= rules.minProb;
+}
+
+/**
+ * Order Kelly's picks for a run: best VALUE first, soonest to settle on a tie.
+ *
+ * It used to put the highest win chance first on a careful run, and that was backwards.
+ * A binary is bought at its own win chance, so a 90% bet pays ~11% and still loses 100%
+ * when it misses: raising the win chance raises the price in lockstep and buys nothing.
+ * Measured on 343 settled bets on 8-21, binaries priced 70-80% returned +2.0% per $1 and
+ * 80%+ returned -3.9%, while 50-60% returned +32.5%. Sorting by win chance walked straight
+ * into the losing end of that.
+ *
+ * `edge` is the empirical rate minus the price paid, so it is the only field that says
+ * whether a bet is worth more than it costs. Ties break to the soonest market, which keeps
+ * the old behaviour where value is level and settles the run faster.
+ */
+export function rankPicks<T extends { edge: number; expiry: number }>(picks: readonly T[]): T[] {
+  return [...picks].sort((a, b) => b.edge - a.edge || a.expiry - b.expiry);
 }
 
 /**
@@ -320,7 +345,7 @@ export function gateTrade(
   now: number,
 ): GateResult {
   // --- the trader's rules (the "your rules" filter) ---
-  if (trade.prob < rules.minProb) return deny('below_min_prob');
+  if (!clearsProbFloor(trade.side, trade.prob, rules)) return deny('below_min_prob');
   if (rules.minEdge > 0 && trade.edge < rules.minEdge) return deny('below_min_edge');
   // Not a trader rule but a house one, and it fails closed: see MIN_TIME_TO_EXPIRY_MS.
   if (!hasTimeToTrade(trade.expiry, now)) return deny('too_close_to_expiry');

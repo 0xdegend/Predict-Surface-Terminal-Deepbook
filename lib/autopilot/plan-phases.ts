@@ -110,8 +110,17 @@ export function planPhases(rules: AutopilotRules, limits: AutopilotLimits): Plan
     {
       id: 'pick',
       title: 'Picks one',
+      // Value first, then the floor. The value bar is what actually decides which bet Kelly
+      // takes now that picks are ranked on it, so it leads; the win-chance floor is a
+      // backstop on direction only, which is why bands are described separately.
       detail: sides
-        ? `Only a bet the market itself prices at ${Math.round(rules.minProb * 100)}% or better to win, going ${sides}${lev}, one bet per market.`
+        ? `${
+            rules.minEdge > 0
+              ? `Only a bet worth at least ${Math.round(rules.minEdge * 100)} points more than it costs`
+              : 'The best-value bet she can find'
+          }, going ${sides}${lev}, one bet per market. Directional bets also need ${Math.round(
+            rules.minProb * 100,
+          )}% or better to win.`
         : 'No direction picked yet, so nothing would qualify.',
     },
     {

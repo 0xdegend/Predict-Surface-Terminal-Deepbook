@@ -30,8 +30,9 @@ import {
   LuSparkles,
   LuShare2,
   LuRefreshCw,
+  LuTriangleAlert,
 } from 'react-icons/lu';
-import { fetchTrackRecord, type TrackRecordCall } from '@/lib/copilot/receipts-client';
+import { fetchTrackRecord, type TrackRecordCall, type RecordingStatus } from '@/lib/copilot/receipts-client';
 import { KellyTrackRecordShareModal } from './kelly-track-record-share-modal';
 import type { TrackRecordShareData } from './kelly-track-record-share-card-canvas';
 import { KellyCallShareModal } from './kelly-call-share-modal';
@@ -110,6 +111,7 @@ export function KellyTrackRecordPanel() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-5">
+      <RecordingNotice status={data?.recording} />
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div className="glass-card mb-5 flex flex-col gap-5 overflow-hidden p-5 sm:flex-row sm:items-center sm:gap-6 sm:p-6">
         <div className="relative mx-auto flex h-24 w-24 flex-none items-center justify-center sm:mx-0 sm:h-28 sm:w-28">
@@ -401,6 +403,43 @@ function EmptyState({ tab }: { tab: Tab }) {
         <LuSparkles size={12} className="transition-colors duration-200 group-hover:text-accent" />
         Ask Kelly
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Says so when new calls are NOT being recorded.
+ *
+ * The record page has no way to tell a quiet week from a broken writer: both look like a
+ * list that stopped growing. On 2026-09-04 the Walrus writer wallet ran out of gas, every
+ * receipt POST failed into a swallowed catch, and three days of real Autopilot trades were
+ * missing from this page with nothing here saying why. A silent failure on a page whose
+ * whole job is "here is the evidence" is worse than a loud one.
+ *
+ * Renders nothing in the healthy case, and nothing when the check itself could not run:
+ * announcing a problem we only failed to look for is the same mistake in the other
+ * direction.
+ */
+function RecordingNotice({ status }: { status?: RecordingStatus }) {
+  if (!status || status.reason === 'ok' || status.reason === 'unreadable') return null;
+  const down = !status.ok;
+  const msg =
+    status.reason === 'unconfigured'
+      ? 'Recording is switched off, so new calls are not being added to this record.'
+      : down
+        ? 'New calls are not being recorded right now. Trades are still placed and settled as normal, but they will not appear here until recording is restored.'
+        : `Recording is nearly out of gas: room for about ${status.writesLeft} more calls.`;
+  return (
+    <div
+      className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 ${
+        down ? 'border-down/25 bg-down/8' : 'border-(--line) bg-white/[0.03]'
+      }`}
+    >
+      <LuTriangleAlert size={14} className={`mt-0.5 shrink-0 ${down ? 'text-down' : 'text-text-3'}`} aria-hidden />
+      <p className="text-[12px] leading-relaxed text-text-2">
+        <span className="font-medium text-text-1">{down ? 'Recording paused.' : 'Recording running low.'}</span>{' '}
+        {msg}
+      </p>
     </div>
   );
 }

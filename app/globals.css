@@ -116,6 +116,28 @@ select:focus-visible,
   outline: none;
 }
 
+/* And a modal panel, for the same reason one step up: it is a focus CONTAINER, not a
+   control. A dialog takes focus programmatically the moment it opens, so Escape and
+   screen readers land inside it instead of back on the page behind. Browsers still match
+   :focus-visible on that programmatic focus when the last input was a keyboard, which
+   drew the ring around the ENTIRE modal as it appeared — read as a glowing green border
+   on the whole card rather than as a focus indicator on anything. Every control inside
+   keeps its own ring, so nothing is lost for keyboard users.
+
+   This has to live here, unlayered. The panel already carries Tailwind's
+   `focus-visible:outline-none`, but that sits in @layer utilities and unlayered beats
+   layered whatever the specificity (see the note on .glass-inset below), so the utility
+   could never win against the rule above.
+
+   The second selector is for a dialog that parks focus on an inner wrapper rather than
+   the panel itself (the reward overlay focuses its bottom HUD). `:not([role])` keeps this
+   to plain containers, so a `role="button"` that is merely out of the tab order still
+   shows its ring when it is focused. */
+[role='dialog']:focus-visible,
+[role='dialog'] [tabindex='-1']:not([role]):focus-visible {
+  outline: none;
+}
+
 /* ------------------------------------------------------------------ *
  * Elevation system (§10.3). Depth comes from a near-black top-light
  * gradient + a crisp hairline + a 1px inner bevel — NOT drop shadows.

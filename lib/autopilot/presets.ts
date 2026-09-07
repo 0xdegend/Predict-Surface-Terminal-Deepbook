@@ -25,6 +25,9 @@ export type PresetId = 'cautious' | 'balanced' | 'bold';
  *  (see `paceFor`). */
 interface PresetShape {
   minProb: number;
+  /** How much better than its price a bet must look before Kelly takes it. This, not the
+   *  win-chance floor, is what separates a careful run from a bold one. */
+  minEdge: number;
   maxLeverage: number;
   tenors: Tenor[];
   sides: TradeSide[];
@@ -54,10 +57,20 @@ export const PRESETS: readonly AutopilotPreset[] = [
     // persisted and matched on.
     name: 'Careful',
     tagline: 'Play it safe',
-    blurb: 'Only high-confidence bets, no leverage, and it backs off fast if it goes cold.',
+    blurb: 'Only clear-value bets, small and few at a time, and it backs off fast if it goes cold.',
     risk: 1,
     shape: {
-      minProb: 0.7,
+      // 0.55, not the 0.70 this used to be. A high win-chance floor reads like safety and
+      // is the opposite: a binary costs its own win chance, so a 76% bet pays ~32% and
+      // still loses the lot when it misses, and you have to be right 76% of the time just
+      // to break even. Measured over 343 settled bets on 8-21, binaries priced 70-80%
+      // returned +2.0% per $1 and 80%+ returned -3.9%. The old floor also blocked ~86% of
+      // bands outright, which is the one shape that showed a real edge (+66.5% per $1).
+      // Careful now means SMALLER and FEWER, not surer: one fewer bet open at a time, the
+      // tightest losing streak cut-off, short windows only, and the highest value bar of
+      // the three before Kelly will take anything at all.
+      minProb: 0.55,
+      minEdge: 0.04,
       maxLeverage: 1,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
@@ -69,10 +82,11 @@ export const PRESETS: readonly AutopilotPreset[] = [
     id: 'balanced',
     name: 'Balanced',
     tagline: 'A steady mix',
-    blurb: 'Good-value bets with a little leverage. A sensible middle ground.',
+    blurb: 'Good-value bets, a few more of them. A sensible middle ground.',
     risk: 2,
     shape: {
-      minProb: 0.6,
+      minProb: 0.5,
+      minEdge: 0.02,
       maxLeverage: 2,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
@@ -87,7 +101,8 @@ export const PRESETS: readonly AutopilotPreset[] = [
     blurb: 'Takes longer shots at bigger payouts, trades more often, and uses more leverage.',
     risk: 3,
     shape: {
-      minProb: 0.55,
+      minProb: 0.45,
+      minEdge: 0,
       maxLeverage: 3,
       // Bold takes the daily and weekly markets too (live on 8-21 since 2026-09-04). A
       // careful or balanced trader adds them by name, in chat or under Customize.
@@ -188,7 +203,7 @@ export function presetPatch(id: PresetId, run: RunShape): { rules: Partial<Autop
   const s = PRESET_BY_ID[id].shape;
   const pace = paceFor(id, run);
   return {
-    rules: { minProb: s.minProb, maxLeverage: s.maxLeverage, tenors: [...s.tenors], sides: [...s.sides] },
+    rules: { minProb: s.minProb, minEdge: s.minEdge, maxLeverage: s.maxLeverage, tenors: [...s.tenors], sides: [...s.sides] },
     limits: {
       cooldownMs: pace.cooldownMs,
       maxConsecutiveLosses: s.maxConsecutiveLosses,
@@ -197,6 +212,24 @@ export function presetPatch(id: PresetId, run: RunShape): { rules: Partial<Autop
     },
   };
 }
+
+/**
+ * Preset odds floor + leverage as they stood BEFORE store schema version 5, frozen.
+ *
+ * A migration must never compare a saved blob against the LIVE preset constants. Those say
+ * what a preset means TODAY; a migration is asking what it meant when the blob was written.
+ * When the floors moved on 2026-09-07 (Careful 0.70 -> 0.55) every migration testing
+ * `r.minProb === PRESET_BY_ID.x.shape.minProb` stopped recognising its own configs and
+ * skipped silently, which does not fail loudly anywhere: it just leaves people on stale
+ * settings forever. Frozen tables are the fix, the same reason LEGACY_PACE exists.
+ *
+ * Only migrations read this. Nothing in the running app should.
+ */
+export const LEGACY_SHAPE_V4: Record<PresetId, { minProb: number; maxLeverage: number }> = {
+  cautious: { minProb: 0.7, maxLeverage: 1 },
+  balanced: { minProb: 0.6, maxLeverage: 2 },
+  bold: { minProb: 0.55, maxLeverage: 3 },
+};
 
 /**
  * The fixed count + gap each preset carried before pacing (store schema versions 1
@@ -213,6 +246,7 @@ function rulesMatch(rules: AutopilotRules, limits: AutopilotLimits, p: Autopilot
   const s = p.shape;
   return (
     Math.abs(rules.minProb - s.minProb) < 1e-9 &&
+    Math.abs(rules.minEdge - s.minEdge) < 1e-9 &&
     rules.maxLeverage === s.maxLeverage &&
     sameSet(rules.tenors, s.tenors) &&
     sameSet(rules.sides, s.sides) &&
@@ -226,7 +260,16 @@ function rulesMatch(rules: AutopilotRules, limits: AutopilotLimits, p: Autopilot
 export function legacyPresetOf(rules: AutopilotRules, limits: AutopilotLimits): PresetId | null {
   for (const p of PRESETS) {
     const legacy = LEGACY_PACE[p.id];
-    if (rulesMatch(rules, limits, p) && limits.maxTrades === legacy.maxTrades && limits.cooldownMs === legacy.cooldownMs) return p.id;
+    const old = LEGACY_SHAPE_V4[p.id];
+    const matches =
+      // The two fields that moved in v5, read from the frozen table rather than the live
+      // preset, and no minEdge check at all: the blob predates that field existing.
+      Math.abs(rules.minProb - old.minProb) < 1e-9 &&
+      rules.maxLeverage === old.maxLeverage &&
+      sameSet(rules.sides, p.shape.sides) &&
+      limits.maxConsecutiveLosses === p.shape.maxConsecutiveLosses &&
+      limits.maxConcurrent === p.shape.maxConcurrent;
+    if (matches && limits.maxTrades === legacy.maxTrades && limits.cooldownMs === legacy.cooldownMs) return p.id;
   }
   return null;
 }

@@ -133,3 +133,92 @@ export async function storeBlob(
 export function storeJson(value: unknown, opts?: StoreBlobOptions): Promise<StoreBlobResult> {
   return storeBlob(JSON.stringify(value), opts);
 }
+
+/* ------------------------------ writer health ----------------------------- */
+
+/**
+ * What one blob write costs in gas, in MIST, as a floor.
+ *
+ * Measured from the abort the writer actually produced when it ran dry:
+ * "insufficient SUI balance … to satisfy required budget 6611600". Rounded up, because the
+ * budget moves with the transaction and this is used to warn BEFORE the last write fails,
+ * not to price one exactly.
+ */
+const WRITE_GAS_MIST = 7_000_000n;
+
+/** Warn once the writer is down to roughly this many more writes. */
+const LOW_WATER_WRITES = 20n;
+
+export interface WriterHealth {
+  /** False when a write would fail right now (or the key is not configured at all). */
+  ok: boolean;
+  /** True when writes still work but the wallet is nearly dry. */
+  low: boolean;
+  /** SUI balance in MIST, or null when it could not be read. */
+  suiMist: bigint | null;
+  /** Roughly how many more receipts this wallet can pay for. */
+  writesLeft: number | null;
+  address: string | null;
+  reason: 'ok' | 'low_gas' | 'no_gas' | 'unconfigured' | 'unreadable';
+}
+
+/**
+ * Can the Walrus writer still pay for a write?
+ *
+ * This exists because the failure it detects is INVISIBLE. Receipt writes are
+ * fire-and-forget by design (recording a call must never slow a reply or block a trade), so
+ * when the writer wallet ran out of SUI on 2026-09-04 the POST simply 500'd into a
+ * swallowed catch. Autopilot went on trading, every trade went unrecorded, and the track
+ * record just quietly stopped growing for three days with nothing anywhere saying why.
+ * WAL was never the problem and still is not: it is plain gas.
+ *
+ * Read-only and cheap. Callers surface it; nothing here throws.
+ */
+export async function writerHealth(): Promise<WriterHealth> {
+  const address = process.env.WALRUS_WRITER_ADDRESS ?? null;
+  if (!process.env.WALRUS_WRITER_KEY) {
+    return { ok: false, low: false, suiMist: null, writesLeft: null, address, reason: 'unconfigured' };
+  }
+  let owner = address;
+  if (!owner) {
+    try {
+      owner = getWriterKeypair().toSuiAddress();
+    } catch {
+      return { ok: false, low: false, suiMist: null, writesLeft: null, address: null, reason: 'unconfigured' };
+    }
+  }
+  try {
+    const res = await fetch(`https://graphql.${walrusConfig.network}.sui.io/graphql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `{ address(address:"${owner}"){ balances(first:20){ nodes { coinType{repr} totalBalance } } } }`,
+      }),
+      cache: 'no-store',
+    });
+    const json = (await res.json()) as {
+      data?: { address?: { balances?: { nodes?: { coinType?: { repr?: string }; totalBalance?: string }[] } } };
+    };
+    const nodes = json.data?.address?.balances?.nodes ?? [];
+    const sui = nodes.find((n) => n.coinType?.repr?.endsWith('::sui::SUI'));
+    if (!sui?.totalBalance) {
+      // No SUI row at all means a wallet with no SUI, which is a real answer, not a failure.
+      return { ok: false, low: true, suiMist: 0n, writesLeft: 0, address: owner, reason: 'no_gas' };
+    }
+    const mist = BigInt(sui.totalBalance);
+    const left = mist / WRITE_GAS_MIST;
+    if (left < 1n) return { ok: false, low: true, suiMist: mist, writesLeft: 0, address: owner, reason: 'no_gas' };
+    return {
+      ok: true,
+      low: left < LOW_WATER_WRITES,
+      suiMist: mist,
+      writesLeft: Number(left),
+      address: owner,
+      reason: left < LOW_WATER_WRITES ? 'low_gas' : 'ok',
+    };
+  } catch {
+    // Could not check. Deliberately NOT reported as broken: claiming recording is down when
+    // we merely failed to look is the same class of mistake as the silence this replaces.
+    return { ok: true, low: false, suiMist: null, writesLeft: null, address: owner, reason: 'unreadable' };
+  }
+}

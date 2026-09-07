@@ -57,6 +57,7 @@ import {
   hasTimeToTrade,
   isLongTenor,
   rankPicks,
+  clearsProbFloor,
 } from '@/lib/autopilot/policy';
 import { useAutopilotStore, type OpenPosition } from '@/lib/store/autopilot-store';
 
@@ -111,6 +112,10 @@ export type AutopilotAcct = Pick<
 type ShapePick =
   | { kind: 'binary'; bet: BetSuggestion; prob: number }
   | { kind: 'range'; range: RangePick; prob: number };
+
+/** The pick's value edge (empirical rate minus what it costs), whichever shape it is.
+ *  This is what the run ranks on, so it has to read the same field off both. */
+const edgeOf = (sh: ShapePick): number => (sh.kind === 'range' ? sh.range.edge : (sh.bet.edge ?? 0));
 
 interface Args {
   markets: V2Market[];
@@ -391,10 +396,17 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
           : { kind: 'binary', bet: bet as BetSuggestion, prob: (bet as BetSuggestion).prob },
       );
       offered += shapes.length;
-      const clear = shapes.filter((sh) => sh.prob >= rules.minProb);
-      return clear.length > 0 ? [{ cand: c, shapes: clear, prob: clear[0].prob, expiry: c.market.expiry }] : [];
+      // Shape-aware: the win-chance floor is a DIRECTIONAL rule, and a band is held to
+      // MIN_RANGE_PROB and judged on value instead. Applying one floor to both is what
+      // stopped a careful run ever buying a band (see clearsProbFloor).
+      const clear = shapes.filter((sh) => clearsProbFloor(sh.kind === 'range' ? 'range' : sh.bet.isUp ? 'up' : 'down', sh.prob, rules));
+      return clear.length > 0
+        ? [{ cand: c, shapes: clear, prob: clear[0].prob, edge: edgeOf(clear[0]), expiry: c.market.expiry }]
+        : [];
     });
-    const ranked = rankPicks(picks, rules.minProb);
+    // Best value first, not highest win chance: a binary is bought AT its win chance, so
+    // sorting by it just buys the most expensive bets (see rankPicks).
+    const ranked = rankPicks(picks);
     if (ranked.length === 0) {
       // Everything on offer is under the floor. Said once per change of the candidate
       // set rather than every six seconds.
