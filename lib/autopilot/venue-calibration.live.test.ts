@@ -94,12 +94,25 @@ describe.skipIf(!RUN)('8-21 pricing sanity', () => {
       rows.push({ owner: String(e.owner ?? '').toLowerCase(), at: n(e.checkpoint_timestamp_ms), id, shape, isUp, strike, lower, higher, prob, pq, left: mk.expiry - n(e.checkpoint_timestamp_ms), px, won, stake: n((e as V2OrderEvent).net_premium ?? (e as Record<string, unknown>).premium) / 1e6 });
     }
     console.log(`\n  ${mints.length} mints in the scan, ${rows.length} on settled markets (${settled.size} markets read)`);
+    // Win rate alone cannot decide anything: a binary bought at 0.90 pays 11% when it wins
+    // and loses 100% when it does not, so a strategy can raise its win rate and still lose
+    // money. A unit stake returns (1 - price)/price on a win and -1 on a loss, and `prob`
+    // IS the price paid per unit (checked directly below: all rows agree with
+    // premium/quantity). So every bucket also reports realized return per $1 staked, which
+    // is the number that says whether an edge is real.
     const bucket = (label: string, sel: (r: Row) => boolean) => {
       const rs = rows.filter(sel);
       if (!rs.length) return;
       const wins = rs.filter((r) => r.won).length;
       const exp = rs.reduce((a, r) => a + r.prob, 0) / rs.length;
-      console.log(`  ${label.padEnd(26)} n=${String(rs.length).padStart(4)}  priced ${(exp * 100).toFixed(0).padStart(3)}%  won ${((wins / rs.length) * 100).toFixed(0).padStart(3)}%  (${wins}W/${rs.length - wins}L)`);
+      const roi = rs.reduce((a, r) => a + (r.won ? (1 - r.prob) / r.prob : -1), 0) / rs.length;
+      const pnl = rs.reduce((a, r) => a + (r.won ? r.stake * (1 - r.prob) / r.prob : -r.stake), 0);
+      const sign = roi >= 0 ? '+' : '';
+      console.log(
+        `  ${label.padEnd(26)} n=${String(rs.length).padStart(4)}  priced ${(exp * 100).toFixed(0).padStart(3)}%` +
+          `  won ${((wins / rs.length) * 100).toFixed(0).padStart(3)}%  (${String(wins).padStart(3)}W/${String(rs.length - wins).padStart(3)}L)` +
+          `  return ${(sign + (roi * 100).toFixed(1)).padStart(6)}%/$1  net ${(pnl >= 0 ? '+' : '') + pnl.toFixed(0)}`,
+      );
     };
     console.log('  --- by priced win chance ---');
     for (const [lo, hi] of [[0, 0.5], [0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 0.9], [0.9, 1.01]]) bucket(`${lo}-${hi}`, (r) => r.prob >= lo && r.prob < hi);
@@ -112,6 +125,14 @@ describe.skipIf(!RUN)('8-21 pricing sanity', () => {
     for (const [lo, hi, l] of [[0, 60_000, '< 1 min'], [60_000, 180_000, '1-3 min'], [180_000, 600_000, '3-10 min'], [600_000, 1e12, '> 10 min']] as const) bucket(String(l), (r) => r.left >= lo && r.left < hi);
     bucket('>=70%, < 3 min left', (r) => r.prob >= 0.7 && r.left < 180_000);
     bucket('>=70%, >= 3 min left', (r) => r.prob >= 0.7 && r.left >= 180_000);
+    // Does a HIGH win chance pay, at any tenor? This is the cut that decides whether
+    // "take the surest bet" is a strategy or a way to lose slowly.
+    console.log('  --- binaries only, by priced win chance (ranges excluded) ---');
+    for (const [lo, hi] of [[0, 0.5], [0.5, 0.6], [0.6, 0.7], [0.7, 0.8], [0.8, 1.01]])
+      bucket(`binary ${lo}-${hi}`, (r) => r.shape !== 'range' && r.prob >= lo && r.prob < hi);
+    console.log('  --- binaries only, short markets ---');
+    bucket('binary <3min, >=68%', (r) => r.shape !== 'range' && r.left < 180_000 && r.prob >= 0.68);
+    bucket('binary <3min, 50-68%', (r) => r.shape !== 'range' && r.left < 180_000 && r.prob >= 0.5 && r.prob < 0.68);
     const mism = rows.filter((r) => Math.abs(r.prob - r.pq) > 0.02).length;
     console.log(`  entry_probability vs premium/quantity: ${mism} of ${rows.length} differ by > 0.02`);
     console.log('\n  --- ours (deployer) ---');

@@ -93,6 +93,42 @@ export function fitsSession(expiry: number, armedAt: number, durationMs: number)
   return expiry <= armedAt + durationMs;
 }
 
+/** The windows shortest-first. Order is load-bearing: it defines what "or sooner" means. */
+export const TENOR_LADDER: readonly Tenor[] = ['soonest', 'hour', 'today', 'day', 'week'] as const;
+
+/**
+ * The windows a run may actually trade, given the ones the trader picked.
+ *
+ * A picked window is a CEILING, not an exact match: choosing "about an hour" means Kelly
+ * will not take anything settling later than that, and is free to take something settling
+ * sooner. Picking nothing still qualifies nothing.
+ *
+ * WHY (founder, 2026-09-07, from a real losing streak): with exact matching, a run set to
+ * the hourly window would pass over a 2-minute market it liked and wait for an hourly one,
+ * and the hourly bet is measurably the worse bet. Across 343 settled bets by every trader
+ * on 8-21, return per $1 staked by time left at mint was +29.5% under a minute, +9.0% at
+ * 1-3 minutes, +10.2% at 3-10 minutes, and -9.2% beyond ten. The far end of a trader's own
+ * window was where the money went.
+ *
+ * Widening DOWN the ladder is safe on the one axis that matters for consent: a shorter
+ * market settles sooner, so anything that satisfied `fitsSession` before still does, and a
+ * bet can only finish earlier than the trader expected, never later.
+ */
+export function eligibleTenors(chosen: readonly Tenor[]): ReadonlySet<Tenor> {
+  if (chosen.length === 0) return new Set();
+  let ceiling = -1;
+  for (const t of chosen) ceiling = Math.max(ceiling, TENOR_LADDER.indexOf(t));
+  return new Set(TENOR_LADDER.slice(0, ceiling + 1));
+}
+
+/** The longest window a run will take, or null when nothing is picked. Drives the plan
+ *  card, so what the trader reads is the same ceiling the gate enforces. */
+export function tenorCeiling(chosen: readonly Tenor[]): Tenor | null {
+  let ceiling = -1;
+  for (const t of chosen) ceiling = Math.max(ceiling, TENOR_LADDER.indexOf(t));
+  return ceiling < 0 ? null : TENOR_LADDER[ceiling];
+}
+
 /** A win-chance floor at or above this reads as a careful run (the same line the plan
  *  card draws), and a careful run takes the SUREST bet on offer rather than the soonest. */
 export const CAREFUL_MIN_PROB = 0.68;
@@ -292,7 +328,7 @@ export function gateTrade(
   // lists 1-day and 1-week markets). It is denied here rather than defaulted into 'today',
   // so nothing fires unattended on a horizon nobody opted into.
   const tenor = classifyTenor(trade.expiry - now);
-  if (tenor === null || !rules.tenors.includes(tenor)) return deny('tenor_not_allowed');
+  if (tenor === null || !eligibleTenors(rules.tenors).has(tenor)) return deny('tenor_not_allowed');
   // After the tenor check on purpose: a market outside the trader's windows is refused
   // for that reason first, so the log names the rule they set rather than the clock. A
   // daily or weekly bet is meant to outlive the run (see LONG_TENORS), so only the short

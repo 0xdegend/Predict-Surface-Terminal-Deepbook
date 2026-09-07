@@ -19,7 +19,7 @@
  * rendering concern. Numbers are always said out loud, never implied: the same rule
  * Kelly's setup conversation holds.
  */
-import { LONG_TENORS, type AutopilotLimits, type AutopilotRules, type Tenor } from './policy';
+import { LONG_TENORS, tenorCeiling, type AutopilotLimits, type AutopilotRules, type Tenor } from './policy';
 
 export type PlanPhaseId = 'watch' | 'pick' | 'stake' | 'stop';
 
@@ -40,16 +40,23 @@ const TENOR_WORDS: Record<Tenor, string> = {
   week: 'about a week',
 };
 
-const TENOR_ORDER: Tenor[] = ['soonest', 'hour', 'today', 'day', 'week'];
-
 function listWords(xs: string[]): string {
   if (xs.length === 0) return '';
   if (xs.length === 1) return xs[0];
   return `${xs.slice(0, -1).join(', ')} or ${xs[xs.length - 1]}`;
 }
 
+/**
+ * How the watch window reads on the plan card.
+ *
+ * The CEILING, not the list: a picked window is the longest bet Kelly will take, and she is
+ * free to take something settling sooner (see eligibleTenors). Listing the picked windows
+ * verbatim would describe a rule the engine no longer follows, and a trader who set "about
+ * an hour" would be surprised by a two-minute bet they were never told about.
+ */
 function windowWords(tenors: Tenor[]): string {
-  return listWords(TENOR_ORDER.filter((t) => tenors.includes(t)).map((t) => TENOR_WORDS[t]));
+  const top = tenorCeiling(tenors);
+  return top === null ? '' : TENOR_WORDS[top];
 }
 
 function sideWords(sides: AutopilotRules['sides']): string {
@@ -97,8 +104,8 @@ export function planPhases(rules: AutopilotRules, limits: AutopilotLimits): Plan
       detail: !windows
         ? 'No windows picked yet, so nothing would qualify.'
         : long
-          ? `Every open BTC market settling in ${windows}. A daily or weekly bet settles after the run ends, and Kelly scores it when it does.`
-          : `Every open BTC market settling in ${windows}, before your session ends.`,
+          ? `Every open BTC market settling in ${windows} or sooner. A daily or weekly bet settles after the run ends, and Kelly scores it when it does.`
+          : `Every open BTC market settling in ${windows} or sooner, before your session ends.`,
     },
     {
       id: 'pick',

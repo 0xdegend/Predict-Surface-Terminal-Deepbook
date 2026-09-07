@@ -23,6 +23,8 @@ import {
   fitsSession,
   hasTimeToTrade,
   rankPicks,
+  eligibleTenors,
+  tenorCeiling,
 } from './policy';
 
 const NOW = 1_800_000_000_000;
@@ -392,5 +394,62 @@ describe('daily and weekly windows outlive the session by design', () => {
     expect(gateTrade(dayBet, { ...rules, tenors: ['soonest', 'hour', 'today'] }, shortRun, runtime, NOW).code).toBe('tenor_not_allowed');
     const twoHours: ProposedTrade = { ...goodTrade, expiry: NOW + 2 * 60 * 60_000 };
     expect(gateTrade(twoHours, { ...rules, tenors: ['today'] }, shortRun, runtime, NOW).code).toBe('settles_after_session');
+  });
+});
+
+describe('eligibleTenors — a picked window is a ceiling, not an exact match', () => {
+  it('lets a run take anything settling sooner than its longest window', () => {
+    expect([...eligibleTenors(['hour'])].sort()).toEqual(['hour', 'soonest']);
+    expect([...eligibleTenors(['today'])].sort()).toEqual(['hour', 'soonest', 'today']);
+  });
+
+  it('fills in a rung the trader skipped', () => {
+    // Picking soonest + today but not hour is not a request to avoid hourly markets, it is
+    // a ceiling of "today". Enforcing the gap would leave the engine passing over a market
+    // that is strictly shorter than one it would happily take.
+    expect([...eligibleTenors(['soonest', 'today'])].sort()).toEqual(['hour', 'soonest', 'today']);
+  });
+
+  it('never widens UPWARD, which is the direction that could break consent', () => {
+    // The whole safety argument is that a shorter market settles sooner, so a bet can only
+    // finish earlier than the trader expected. A longer one could outlive the session.
+    expect(eligibleTenors(['soonest']).has('hour')).toBe(false);
+    expect(eligibleTenors(['hour']).has('today')).toBe(false);
+    expect(eligibleTenors(['today']).has('day')).toBe(false);
+    expect(eligibleTenors(['day']).has('week')).toBe(false);
+  });
+
+  it('still qualifies nothing when no window is picked', () => {
+    expect(eligibleTenors([]).size).toBe(0);
+  });
+
+  it('reports the ceiling the plan card should name', () => {
+    expect(tenorCeiling(['soonest', 'today'])).toBe('today');
+    expect(tenorCeiling(['week', 'soonest'])).toBe('week');
+    expect(tenorCeiling([])).toBeNull();
+  });
+});
+
+describe('gateTrade — the tenor ceiling', () => {
+  it('allows a 2-minute market to a run whose window is hourly', () => {
+    // The case that started this (founder, 2026-09-07): a run set to the hourly window
+    // passed over short markets and waited for an hourly one. Across 343 settled bets by
+    // every trader on 8-21, realized return per $1 staked was +29.5% with under a minute
+    // left at mint against -9.2% beyond ten minutes, so the far end of the trader's own
+    // window was the expensive end.
+    const hourly: AutopilotRules = { ...rules, tenors: ['hour'] };
+    const short: ProposedTrade = { ...goodTrade, expiry: NOW + 2 * 60_000 };
+    expect(gateTrade(short, hourly, limits, runtime, NOW)).toEqual({ allow: true, code: 'ok' });
+  });
+
+  it('still refuses a market past the ceiling', () => {
+    const hourly: AutopilotRules = { ...rules, tenors: ['hour'] };
+    const later: ProposedTrade = { ...goodTrade, expiry: NOW + 6 * 3_600_000 };
+    expect(gateTrade(later, hourly, limits, runtime, NOW).code).toBe('tenor_not_allowed');
+  });
+
+  it('refuses everything when no window is picked', () => {
+    const none: AutopilotRules = { ...rules, tenors: [] };
+    expect(gateTrade(goodTrade, none, limits, runtime, NOW).code).toBe('tenor_not_allowed');
   });
 });

@@ -44,6 +44,7 @@ import {
   autoPauseReason,
   autoStopReason,
   classifyTenor,
+  eligibleTenors,
   gateReasonLabel,
   gateTrade,
   settleOutcome,
@@ -338,12 +339,16 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // past "time is up" is not what the trader signed up for. A daily or weekly market is
     // the exception by design (LONG_TENORS): opting into that window is opting into a bet
     // that settles after the run. Said once when it rules out everything.
+    // The trader's windows are a ceiling: anything settling sooner is in play too, so a run
+    // set to the hourly window can still take a good 2-minute market instead of waiting for
+    // an hourly one. See eligibleTenors for the numbers behind that.
+    const eligible = eligibleTenors(rules.tenors);
     const sessionEnd = { armedAt: runtime.armedAt, durationMs: limits.armDurationMs };
     const allowed = candidates.filter((c) => {
       if (!hasTimeToTrade(c.market.expiry, now)) return false;
       if (runtime.firedMarkets[c.market.expiry_market_id] != null) return false;
       const tenor = classifyTenor(c.market.expiry - now);
-      if (tenor === null || !rules.tenors.includes(tenor)) return false;
+      if (tenor === null || !eligible.has(tenor)) return false;
       return isLongTenor(tenor) || fitsSession(c.market.expiry, sessionEnd.armedAt, sessionEnd.durationMs);
     });
     if (allowed.length === 0) {

@@ -55,16 +55,28 @@ describe('planPhases', () => {
     expect(detail('pick', { ...RULES, sides: ['up', 'down', 'range'] })).toContain('going UP, DOWN or range');
   });
 
-  it('lists the windows a trader actually picked', () => {
+  it('names the longest window and says Kelly may go sooner', () => {
+    // The card describes the CEILING, because that is the rule the engine follows: a picked
+    // window is the longest bet Kelly will take, not the only one (see eligibleTenors).
+    // Listing the picked windows verbatim would describe a rule that no longer exists.
     expect(detail('watch', { ...RULES, tenors: ['soonest'] })).toContain('the next few minutes');
     expect(detail('watch', { ...RULES, tenors: ['soonest'] })).toContain('before your session ends');
+
     const long = detail('watch', { ...RULES, tenors: ['soonest', 'day', 'week'] });
-    expect(long).toMatch(/the next few minutes, about a day or about a week/);
+    expect(long).toContain('about a week or sooner');
     expect(long).toContain('settles after the run ends');
     expect(long).not.toContain('before your session ends');
-    expect(detail('watch', { ...RULES, tenors: ['soonest', 'hour', 'today'] })).toMatch(
-      /the next few minutes, about an hour or later today/,
+
+    expect(detail('watch', { ...RULES, tenors: ['soonest', 'hour', 'today'] })).toContain(
+      'later today or sooner',
     );
+  });
+
+  it('names the ceiling even when the picked windows skip a rung', () => {
+    // ['soonest', 'today'] leaves out the hourly rung, but the engine will still take an
+    // hourly market because it is under the ceiling. The card has to say so, or it is
+    // promising a gap that is not enforced anywhere.
+    expect(detail('watch', { ...RULES, tenors: ['soonest', 'today'] })).toContain('later today or sooner');
   });
 
   it('mentions leverage only when there is some', () => {
