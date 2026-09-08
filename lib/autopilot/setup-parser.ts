@@ -234,9 +234,17 @@ export function isComplete(intent: SetupIntent): boolean {
  * Nothing here may overlap the STYLE slang above: "send it", "go big" and "yolo" all
  * mean BOLD to `parseSetup`, and stealing them for the start command would turn a
  * description of how to trade into an instruction to begin trading.
+ *
+ * The "again" phrasings are what someone reaches for once a run has finished and they
+ * want another on the same settings, and the setup card's own button says "Start again"
+ * there. A chip whose words this did not understand would post into the thread and get
+ * "I didn't catch that one", so the button and this list have to agree — see the test
+ * that feeds the card's exact labels through here. Bare "again" is deliberately NOT
+ * included: mid-setup it reads as "ask me that again", which is not an instruction to
+ * put money on the table.
  */
 const START_PHRASE =
-  /^(?:go|go ahead|start|start it|start it up|start trading|start the run|start autopilot|begin|begin trading|run it|kick it off|kick off|fire it up|let'?s go|do it)$/;
+  /^(?:go|go ahead|start|start it|start it up|start trading|start the run|start autopilot|start again|start another|begin|begin trading|run it|run it again|run another|go again|another run|one more run|kick it off|kick off|fire it up|let'?s go|let'?s go again|do it|do it again)$/;
 
 export function wantsStart(input: string): boolean {
   const cleaned = String(input ?? '')

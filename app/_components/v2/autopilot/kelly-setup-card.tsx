@@ -121,6 +121,15 @@ function listWords(xs: string[]): string {
  * every required piece has been stated by the trader, and nothing runs until they say
  * "start".
  */
+/** One tappable answer under Kelly's last message. `label` is what the trader reads and
+ *  `say` is what gets posted into the thread, which are not always the same word. */
+interface QuickChip {
+  label: string;
+  say: string;
+  /** The arm button, styled as the one action that matters here. */
+  primary?: boolean;
+}
+
 export function KellySetupCard({
   current,
   onApply,
@@ -148,6 +157,7 @@ export function KellySetupCard({
   const push = useAutopilotStore((s) => s.pushSetupTurn);
   const setIntent = useAutopilotStore((s) => s.setSetupIntent);
   const resetChat = useAutopilotStore((s) => s.resetSetupChat);
+  const hasRunBefore = useAutopilotStore((s) => s.history.length > 0);
   // The draft stays local on purpose: a half-typed word is not worth persisting, and
   // restoring one would put words in the box that the trader did not leave there.
   const [text, setText] = useState('');
@@ -270,7 +280,21 @@ export function KellySetupCard({
   }
 
   const status = busy ? 'Thinking' : done ? 'Ready when you are' : 'Listening';
-  const quick = turns.length > 0 && openGap ? GAP_CHIPS[openGap] : done ? ['Start'] : [];
+  // A run that has already finished changes one word: the button offers another go on the
+  // same settings rather than a first one. `history` is the persisted Results archive, so
+  // this survives a reload and a "Start over" of the conversation, which is right — having
+  // run before is a fact about the trader, not about this chat.
+  //
+  // `say` is carried separately from `label` on purpose. The chip posts its words into the
+  // thread and they go through `wantsStart`, which is a WHOLE-MESSAGE match: renaming the
+  // button without teaching the parser the new words would not throw anything, it would
+  // just answer "I didn't catch that one" and quietly refuse to arm.
+  const quick: QuickChip[] =
+    turns.length > 0 && openGap
+      ? GAP_CHIPS[openGap].map((label) => ({ label, say: label }))
+      : done
+        ? [{ label: hasRunBefore ? 'Start again' : 'Start', say: hasRunBefore ? 'Start again' : 'Start', primary: true }]
+        : [];
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -323,19 +347,19 @@ export function KellySetupCard({
         {/* Answers to whatever Kelly just asked, or Start once she has everything. */}
         {quick.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-            {quick.map((s) => (
+            {quick.map((c) => (
               <button
-                key={s}
+                key={c.label}
                 type="button"
                 disabled={busy}
-                onClick={() => void send(s)}
+                onClick={() => void send(c.say)}
                 className={`rounded-full px-3 py-1.5 text-[11.5px] transition-colors disabled:opacity-40 ${
-                  s === 'Start'
+                  c.primary
                     ? 'border border-(--accent-line) bg-(--accent-soft) font-medium text-accent hover:bg-up/15'
                     : 'glass-inset text-text-2 hover:border-(--accent-line) hover:text-text-1'
                 }`}
               >
-                {s}
+                {c.label}
               </button>
             ))}
           </div>

@@ -245,6 +245,29 @@ describe('wantsStart', () => {
     }
   });
 
+  it('understands the words the setup card\'s own button sends', () => {
+    // These are the exact labels KellySetupCard posts into the thread (see QuickChip).
+    // The chip's words go through wantsStart like anything typed, and a whole-message
+    // match means a renamed button does not fail loudly: it answers "I didn't catch that
+    // one" and silently refuses to arm. This test is the thing that notices.
+    for (const label of ['Start', 'Start again']) {
+      expect(wantsStart(label), `the card's "${label}" button would not arm`).toBe(true);
+    }
+  });
+
+  it('understands asking for another run in the words people actually use', () => {
+    for (const m of ['start again', 'run it again', 'go again', 'another run', 'one more run', 'do it again', 'start another']) {
+      expect(wantsStart(m), m).toBe(true);
+    }
+  });
+
+  it('still refuses a bare "again", which is not an instruction to bet', () => {
+    // Mid-setup "again" reads as "ask me that again". Arming is a money path, so an
+    // ambiguous word does not get to spend anything.
+    expect(wantsStart('again')).toBe(false);
+    expect(wantsStart('start over')).toBe(false);
+  });
+
   it('tolerates agreement in front and politeness behind', () => {
     for (const m of ['ok start', 'Okay, start.', 'yes go ahead', 'sure, begin', 'start now', 'start please', 'Start it up!']) {
       expect(wantsStart(m)).toBe(true);
