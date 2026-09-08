@@ -35,9 +35,22 @@ export function WalletInstantTrading({ onTopUpGas }: { onTopUpGas?: () => void }
   // Seed 0 = SSR snapshot; the client switches to the live clock at once.
   const now = useNow(0);
 
-  // Only while a session is actually carrying trades. Turn-on + duration live in the
-  // ticket; this dropdown block is just gas, the review-step toggle, and turning it off.
-  if (!acct.sessionsEnabled || !acct.sessionActive) return null;
+  // Nothing at all when the feature is dark on this deployment: an off-state would be
+  // advertising something that cannot be switched on.
+  if (!acct.sessionsEnabled) return null;
+
+  // Enabled but not carrying trades. This used to render nothing, and the silence was
+  // read as a bug: the same wallet showed instant trading ON in one browser and NOTHING
+  // in another, with no way to tell "off here" from "broken". The session key is an
+  // ephemeral key held in THIS origin's IndexedDB and it deliberately does not travel
+  // between browsers, devices, or origins (localhost and the live site included) — a key
+  // that roamed would be a far worse thing than an extra tap. So say which it is.
+  if (!acct.sessionActive) {
+    // A live local key that simply has not been funded yet is not "off": it is mid-setup,
+    // and telling someone to turn on what they just turned on would be wrong.
+    const settingUp = !!acct.sessionAddress && acct.sessionLive;
+    return <InstantTradingOff settingUp={settingUp} />;
+  }
 
   const busy = acct.busy === 'session';
   const gasLow = acct.sessionGasBase < SESSION_GAS_BUDGET;
@@ -112,6 +125,33 @@ export function WalletInstantTrading({ onTopUpGas }: { onTopUpGas?: () => void }
       </div>
 
       {acct.error && <GlassError message={acct.error} onDismiss={acct.clearError} />}
+    </div>
+  );
+}
+
+/**
+ * The quiet "not on in this browser" line.
+ *
+ * Deliberately not a button. Turning instant trading on happens at the point of a trade
+ * (SessionOptInRow in the mint dialog), because arming it is a permission the trader gives
+ * for a reason, not a setting to flip out of context. This just removes the mystery and
+ * says where it happens.
+ */
+function InstantTradingOff({ settingUp }: { settingUp: boolean }) {
+  return (
+    <div className="mt-0.5 flex flex-col gap-1 border-t border-line pt-2">
+      <div className="flex items-center gap-2 px-1.5">
+        <span className="grid h-5 w-5 place-items-center rounded-md bg-white/[0.05] text-text-3">
+          <LuZap size={11} />
+        </span>
+        <span className="text-[12px] font-medium text-text-1">Instant trading</span>
+        <span className="ml-auto text-[11px] text-text-3">{settingUp ? 'Setting up' : 'Off here'}</span>
+      </div>
+      <p className="px-1.5 pb-0.5 text-[11px] leading-relaxed text-text-3">
+        {settingUp
+          ? 'Almost ready. It starts as soon as your session key has gas for fees.'
+          : 'Turn it on from the trade ticket. It is set up per browser, so switching it on somewhere else does not carry over to here.'}
+      </p>
     </div>
   );
 }
