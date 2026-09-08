@@ -6,7 +6,7 @@ import type { AutopilotRules, AutopilotLimits } from './policy';
 // so this pure-module test doesn't pull in the Zustand store.
 const DEFAULT_RULES: AutopilotRules = {
   minProb: 0.5,
-  minEdge: 0.02,
+  minEdge: 0,
   tenors: ['soonest', 'hour'],
   sides: ['up', 'down', 'range'],
   maxLeverage: 2,

@@ -515,7 +515,11 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
           entryProb = quote.entryProb;
           qty = fromQuote(quote.quantityBase);
           cost = fromQuote(quote.premiumBase + quote.builderFeeBase);
-          if (entryProb < rules.minProb) {
+          // Shape-aware, like the candidate filter and the gate. This site was missed when
+          // the floor stopped applying to bands, so a band priced at 51% was still being
+          // measured against the DIRECTIONAL floor and held back with a message naming a
+          // rule that does not govern it.
+          if (!clearsProbFloor(proposed.side, entryProb, rules)) {
             holdOnce(
               `${proposed.marketId}:${proposed.side}:chain_price`,
               `Held back: the market prices it at ${pctOf(entryProb)} to win, under your ${pctOf(rules.minProb)} floor`,

@@ -499,3 +499,33 @@ describe('clearsProbFloor — the win-chance floor is a directional rule', () =>
     expect(gateTrade({ ...band, kind: 'binary', side: 'up' }, careful, limits, runtime, NOW).code).toBe('below_min_prob');
   });
 });
+
+describe('a Careful run can actually place a bet on a fair board', () => {
+  // The regression this guards: Careful shipped with a 0.55 floor and a 0.04 edge gate,
+  // and a live run looked at 70 markets over five minutes and placed nothing. `edge` is 0
+  // whenever the market is fairly priced (BetSuggestion.edge is absent on a plain pick),
+  // so an edge floor above zero silently means "only trade a mispricing".
+  const careful: AutopilotRules = {
+    minProb: 0.5,
+    minEdge: 0,
+    tenors: ['soonest', 'hour'],
+    sides: ['up', 'down', 'range'],
+    maxLeverage: 1,
+  };
+
+  it('takes an ordinary, fairly priced coin-flip-ish bet', () => {
+    const fair: ProposedTrade = { ...goodTrade, prob: 0.51, edge: 0, leverage: 1 };
+    expect(gateTrade(fair, careful, limits, runtime, NOW)).toEqual({ allow: true, code: 'ok' });
+  });
+
+  it('still refuses the side of the board that actually loses money', () => {
+    // Binaries priced under 50% returned -11.1% per $1 over 343 settled bets.
+    expect(gateTrade({ ...goodTrade, prob: 0.49, edge: 0, leverage: 1 }, careful, limits, runtime, NOW).code)
+      .toBe('below_min_prob');
+  });
+
+  it('takes a cheap band, which the floor does not govern', () => {
+    const band: ProposedTrade = { ...goodTrade, kind: 'range', side: 'range', prob: 0.38, edge: 0, leverage: 1 };
+    expect(gateTrade(band, careful, limits, runtime, NOW)).toEqual({ allow: true, code: 'ok' });
+  });
+});

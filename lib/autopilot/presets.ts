@@ -25,8 +25,22 @@ export type PresetId = 'cautious' | 'balanced' | 'bold';
  *  (see `paceFor`). */
 interface PresetShape {
   minProb: number;
-  /** How much better than its price a bet must look before Kelly takes it. This, not the
-   *  win-chance floor, is what separates a careful run from a bold one. */
+  /**
+   * How much better than its price a bet must look before Kelly takes it, as a HARD floor.
+   *
+   * Every preset ships this at 0, and that is deliberate. `edge` is "how often BTC actually
+   * landed there lately, minus what the market charges", and Kelly only reports a number at
+   * all when she finds a mispricing worth more than 3 points; on a fairly priced market the
+   * pick carries no edge field and Autopilot reads 0 (see BetSuggestion.edge). So any floor
+   * above zero does not mean "be choosier", it means "trade only when the venue is wrong" —
+   * and a well-priced board then yields nothing for an entire run. Shipping Careful at 0.04
+   * did exactly that: 70 markets looked at, nothing placed, the log full of "not enough
+   * value edge".
+   *
+   * Edge still decides WHICH bet gets taken (rankPicks sorts on it). It is a ranking signal
+   * with no useful middle, not a floor. Left here so a trader who wants "only mispricings"
+   * can ask for it under Customize.
+   */
   minEdge: number;
   maxLeverage: number;
   tenors: Tenor[];
@@ -60,17 +74,21 @@ export const PRESETS: readonly AutopilotPreset[] = [
     blurb: 'Only clear-value bets, small and few at a time, and it backs off fast if it goes cold.',
     risk: 1,
     shape: {
-      // 0.55, not the 0.70 this used to be. A high win-chance floor reads like safety and
-      // is the opposite: a binary costs its own win chance, so a 76% bet pays ~32% and
-      // still loses the lot when it misses, and you have to be right 76% of the time just
-      // to break even. Measured over 343 settled bets on 8-21, binaries priced 70-80%
-      // returned +2.0% per $1 and 80%+ returned -3.9%. The old floor also blocked ~86% of
-      // bands outright, which is the one shape that showed a real edge (+66.5% per $1).
-      // Careful now means SMALLER and FEWER, not surer: one fewer bet open at a time, the
-      // tightest losing streak cut-off, short windows only, and the highest value bar of
-      // the three before Kelly will take anything at all.
-      minProb: 0.55,
-      minEdge: 0.04,
+      // 0.50 — the boundary the data actually draws, not a "feels careful" number. A high
+      // win-chance floor reads like safety and is the opposite: a binary costs its own win
+      // chance, so a 76% bet pays ~32% and still loses the lot when it misses. Over 343
+      // settled bets on 8-21, binaries priced under 50% returned -11.1% per $1, 50-60%
+      // returned +32.5%, 70-80% returned +2.0% and 80%+ returned -3.9%. The sign changes
+      // at 50, so that is where the floor belongs; 0.55 (the first cut at this) sat inside
+      // the best bucket and held back exactly the bets worth taking.
+      //
+      // Careful means SMALLER and FEWER, not surer: fewest bets open at a time, tightest
+      // losing-streak cut-off, short windows only.
+      minProb: 0.5,
+      // NOT a gate. See the note on minEdge in PresetShape: `edge` is 0 by construction on
+      // a fairly priced market, so any floor above 0 means "only trade a mispricing", and
+      // a fair board then produces no trades at all for the whole run.
+      minEdge: 0,
       maxLeverage: 1,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
@@ -86,7 +104,7 @@ export const PRESETS: readonly AutopilotPreset[] = [
     risk: 2,
     shape: {
       minProb: 0.5,
-      minEdge: 0.02,
+      minEdge: 0,
       maxLeverage: 2,
       tenors: ['soonest', 'hour'],
       sides: ['up', 'down', 'range'],
@@ -101,7 +119,11 @@ export const PRESETS: readonly AutopilotPreset[] = [
     blurb: 'Takes longer shots at bigger payouts, trades more often, and uses more leverage.',
     risk: 3,
     shape: {
-      minProb: 0.45,
+      // Also 0.50: under it is measurably negative for directional bets (-11.1% per $1),
+      // and the cheap end that DOES pay is bands, which are not held to this floor at all
+      // (clearsProbFloor). Bold's boldness is its windows, pace and concurrency, not
+      // buying the losing side of the board.
+      minProb: 0.5,
       minEdge: 0,
       maxLeverage: 3,
       // Bold takes the daily and weekly markets too (live on 8-21 since 2026-09-04). A
@@ -229,6 +251,17 @@ export const LEGACY_SHAPE_V4: Record<PresetId, { minProb: number; maxLeverage: n
   cautious: { minProb: 0.7, maxLeverage: 1 },
   balanced: { minProb: 0.6, maxLeverage: 2 },
   bold: { minProb: 0.55, maxLeverage: 3 },
+};
+
+/**
+ * And the shapes as they stood under schema version 5 — the first pass at lowering the
+ * floors, which shipped a `minEdge` gate that turned out to stop a run trading at all
+ * (see the note on PresetShape.minEdge). Frozen for the same reason as the table above.
+ */
+export const LEGACY_SHAPE_V5: Record<PresetId, { minProb: number; minEdge: number }> = {
+  cautious: { minProb: 0.55, minEdge: 0.04 },
+  balanced: { minProb: 0.5, minEdge: 0.02 },
+  bold: { minProb: 0.45, minEdge: 0 },
 };
 
 /**

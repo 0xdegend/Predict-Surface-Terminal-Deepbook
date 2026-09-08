@@ -473,6 +473,25 @@ describe('migrateAutopilotState', () => {
     expect(out.limits).toEqual(custom.limits);
   });
 
+  it('v6 moves a v5 Careful off the edge gate that stopped it trading', () => {
+    // v5's 0.04 edge floor meant "only trade a mispricing", and a fairly priced board
+    // yields none, so a whole run placed nothing. A saved v5 Careful must not stay there.
+    const v5careful = {
+      rules: { ...DEFAULT_RULES, minProb: 0.55, minEdge: 0.04, maxLeverage: 1 },
+      limits: { ...DEFAULT_LIMITS },
+    };
+    const out = migrateAutopilotState(v5careful, 5) as { rules: { minProb: number; minEdge: number } };
+    expect(out.rules.minEdge).toBe(0);
+    expect(out.rules.minProb).toBe(PRESET_BY_ID.cautious.shape.minProb);
+  });
+
+  it('v6 leaves an edge gate the trader chose themselves', () => {
+    const own = { rules: { ...DEFAULT_RULES, minProb: 0.62, minEdge: 0.05 }, limits: { ...DEFAULT_LIMITS } };
+    const out = migrateAutopilotState(own, 5) as { rules: { minProb: number; minEdge: number } };
+    expect(out.rules.minEdge).toBe(0.05);
+    expect(out.rules.minProb).toBe(0.62);
+  });
+
   it('v5 moves a saved Careful off the 70% floor it was losing on', () => {
     const careful = {
       rules: { ...DEFAULT_RULES, minProb: 0.7, maxLeverage: 1, tenors: ['soonest', 'hour'], sides: ['up', 'down', 'range'] },

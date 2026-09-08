@@ -28,7 +28,7 @@ import {
   type TradeSide,
   TENOR_BUCKETS,
 } from '@/lib/autopilot/policy';
-import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, LEGACY_SHAPE_V4, type PresetId } from '@/lib/autopilot/presets';
+import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, LEGACY_SHAPE_V4, LEGACY_SHAPE_V5, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
 
 /** One line of Kelly's Auto-mode setup conversation. */
@@ -290,7 +290,31 @@ export function migrateAutopilotState(persisted: unknown, version: number): unkn
     }
   }
 
+  // Version 6 (2026-09-08): undo the v5 `minEdge` gate and drop the floors to 0.50.
+  // v5 set Careful to a 0.04 edge floor, and `edge` is 0 on a fairly priced market by
+  // construction, so a Careful run looked at 70 markets and placed nothing. Its 0.55 floor
+  // was also inside the best-performing band (binaries priced 50-60% returned +32.5% per
+  // $1). Configs still on the v5 numbers are moved onto the current ones; a floor the
+  // trader chose themselves is left alone.
+  if (version < 6 && state.rules) {
+    const r = state.rules;
+    const was = matchV5Preset(r);
+    if (was) {
+      const shape = PRESET_BY_ID[was].shape;
+      state = { ...state, rules: { ...r, minProb: shape.minProb, minEdge: shape.minEdge } };
+    }
+  }
+
   return state;
+}
+
+/** Which preset a v5 config was on, from the floor + edge gate it carried. */
+function matchV5Preset(r: AutopilotRules): PresetId | null {
+  for (const id of ['cautious', 'balanced', 'bold'] as PresetId[]) {
+    const old = LEGACY_SHAPE_V5[id];
+    if (Math.abs(r.minProb - old.minProb) < 1e-9 && Math.abs((r.minEdge ?? 0) - old.minEdge) < 1e-9) return id;
+  }
+  return null;
 }
 
 /** Which preset a pre-v5 config was on, from the win-chance floor + leverage it carried,
@@ -814,7 +838,7 @@ export const useAutopilotStore = create<AutopilotState>()(
     }),
     {
       name: 'skew-autopilot',
-      version: 5,
+      version: 6,
       /**
        * Carry an older blob forward instead of dropping it.
        *
