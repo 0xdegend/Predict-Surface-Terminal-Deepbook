@@ -2,11 +2,8 @@ import { V2_SESSIONS_ENABLED } from "@/config/predict";
 
 export interface TourStep {
   id: string;
-  /** Selector for the section to spotlight. */
   target: string;
-  /** Full heading (mobile card + used elsewhere); the desktop stepper uses `short`. */
   title: string;
-  /** Compact label for the bottom stepper card so all steps fit without scroll. */
   short: string;
   body: string;
 }
