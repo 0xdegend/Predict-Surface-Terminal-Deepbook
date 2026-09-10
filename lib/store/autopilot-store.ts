@@ -553,6 +553,11 @@ interface AutopilotState {
   /** Score and close ONE open position. `openedAt` picks it out when more than one bet
    *  sits on the same market; without it the first match is taken. */
   recordSettlement: (marketId: string, won: boolean, now: number, openedAt?: number) => void;
+  /** Close ONE open position early (redeem_live), before its market settles: bank the
+   *  proceeds, free the slot, update the streak, and log the reason. `proceedsUsd` is the
+   *  value recovered by the close; PnL is that minus the entry cost. Does NOT touch
+   *  `spentUsd` — an early close realizes a position, it does not re-open budget. */
+  recordEarlyClose: (marketId: string, proceedsUsd: number, reasonText: string, now: number, openedAt?: number) => void;
   /** Append an informational hold/skip line (engine dedupes; store just stores). */
   noteHold: (text: string, marketId: string, now: number) => void;
 
@@ -779,6 +784,36 @@ export const useAutopilotStore = create<AutopilotState>()(
               text: won ? `Won ${signedMoney(pnl)}` : `Lost ${signedMoney(pnl)}`,
               marketId,
             }),
+          };
+        }),
+
+      recordEarlyClose: (marketId, proceedsUsd, reasonText, now, openedAt) =>
+        set((s) => {
+          const idx = s.run.open.findIndex((p) => p.marketId === marketId && (openedAt == null || p.openedAt === openedAt));
+          const pos = idx >= 0 ? s.run.open[idx] : undefined;
+          if (!pos) return {};
+          // Realized from the value the close recovered. The engine passes the live mark;
+          // the exact on-chain fill can differ by spread/fee and reconciles when the
+          // positions feed refreshes. A banked profit resets the loss streak; a cut loss
+          // counts toward it, so a run that keeps cutting still trips its loss limit.
+          const pnl = proceedsUsd - (pos.cost ?? 0);
+          const won = pnl >= 0;
+          const run: Run = {
+            ...s.run,
+            open: s.run.open.filter((_, i) => i !== idx),
+            consecutiveLosses: won ? 0 : s.run.consecutiveLosses + 1,
+            realizedPnlUsd: s.run.realizedPnlUsd + pnl,
+            wins: won ? s.run.wins + 1 : s.run.wins,
+            losses: won ? s.run.losses : s.run.losses + 1,
+            settled: [...s.run.settled, toTradeResult(pos, won ? 'won' : 'lost', pnl)],
+          };
+          return {
+            run,
+            history:
+              s.status === 'stopped' && run.tradeCount > 0
+                ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), s.stopReason ?? 'manual', now))
+                : s.history,
+            log: appendLog(s.log, { id: nextId(now), at: now, kind: 'settled', text: `${reasonText} (${signedMoney(pnl)})`, marketId }),
           };
         }),
 

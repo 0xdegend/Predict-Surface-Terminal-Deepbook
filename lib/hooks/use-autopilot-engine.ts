@@ -30,7 +30,7 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 import { getV2MarketState } from '@/lib/api/v2/client';
 import { toFloat, fromQuote } from '@/config/scale';
 import { planBinaryBudgetMint, planRangeBudgetMint } from '@/lib/sui/v2/budget-mint';
-import { positionMarkPrice, valueV2Position, type V2PortfolioPosition } from '@/lib/portfolio/v2';
+import { positionMarkPrice, positionWinPayout, valueV2Position, type V2PortfolioPosition } from '@/lib/portfolio/v2';
 import { recordCall, binaryIntent, rangeIntent } from '@/lib/copilot/receipts-client';
 import { useV2Markets } from './use-v2-markets';
 import { useV2Pricers } from './use-v2-pricers';
@@ -40,6 +40,8 @@ import { usePredictAccountV2 } from './use-predict-account-v2';
 import { respondToIntent, type BetCandidate, type BetSuggestion } from '@/lib/copilot/respond';
 import { pickRange, shapeOrder, type RangePick } from '@/lib/copilot/range-pick';
 import { recommendation } from '@/lib/insights/market-read';
+import { closeDecision, isClose, leanTurnedAgainst, closeReasonLabel, type OpenRead } from '@/lib/autopilot/close-policy';
+import { useV2PortfolioPositions } from './use-v2-portfolio-positions';
 import {
   autoPauseReason,
   autoStopReason,
@@ -105,7 +107,7 @@ const RULE_HOLDS: ReadonlySet<GateCode> = new Set<GateCode>([
  *  firing (mintBudget, session-signed) share ONE in-flight lock and never overlap. */
 export type AutopilotAcct = Pick<
   ReturnType<typeof usePredictAccountV2>,
-  'mintBudget' | 'quoteMintBudget' | 'sessionCanTrade' | 'sessionLive'
+  'mintBudget' | 'quoteMintBudget' | 'redeemLive' | 'sessionCanTrade' | 'sessionLive' | 'accountId' | 'owner'
 >;
 
 /** One of Kelly's picks on one market, with the win chance the surface gives it. */
@@ -256,6 +258,23 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     acctRef.current = acct;
   });
 
+  // The connected account's REAL on-chain positions, so an early close can name the order
+  // it is closing: redeem_live needs the order id, which the run's lightweight OpenPosition
+  // record does not carry. Keyed `${marketId}:${side}` — Autopilot places at most one bet
+  // per market (firedMarkets), so that resolves one of its open positions to its chain order.
+  const { positions: chainPositions } = useV2PortfolioPositions(acct.accountId, acct.owner);
+  const chainOrdersRef = useRef<Map<string, { orderId: bigint; qtyBase: bigint }>>(new Map());
+  useEffect(() => {
+    const m = new Map<string, { orderId: bigint; qtyBase: bigint }>();
+    for (const p of chainPositions) {
+      if (p.marketId && p.orderId != null && p.qtyBase != null && p.qtyBase > 0n) {
+        const side = p.direction === 'Up' ? 'up' : p.direction === 'Down' ? 'down' : 'range';
+        m.set(`${p.marketId}:${side}`, { orderId: p.orderId, qtyBase: p.qtyBase });
+      }
+    }
+    chainOrdersRef.current = m;
+  }, [chainPositions]);
+
   // Feed-freshness debounce, the last hold we logged (so it doesn't repeat), a lock
   // so only one real fire is in flight at a time, and the set of markets we've already
   // resolved/attempted settlement for (avoids re-reading the same settled market).
@@ -322,6 +341,66 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     if (pause) {
       st.pause(pause, now);
       return;
+    }
+
+    // --- early-close pass: bank or cut a LIVE position the read turned against, before
+    //     even looking at opening a new one. Deliberately BEFORE the open-candidate filter,
+    //     so it still runs when the open side is starved (no new market fits the session) —
+    //     which is exactly when a lingering winner most needs banking. Real runs only: watch
+    //     mode holds no on-chain position to close. One signed action per tick, sharing
+    //     fireRef with the mint path so a close and a mint never overlap; `return` skips the
+    //     open pass this tick and the close IIFE frees the lock when it lands.
+    if (!dryRun && acct.sessionCanTrade && !fireRef.current) {
+      const lean = recommendation(insights);
+      const pricerByMarket = new Map(candidates.map((c) => [c.market.expiry_market_id, c.pricer]));
+      for (const pos of st.run.open) {
+        if (pos.expiry <= now || pos.qty == null || pos.cost == null) continue;
+        const pricer = pricerByMarket.get(pos.marketId);
+        if (!pricer) continue;
+        const vp: V2PortfolioPosition = {
+          key: pos.marketId,
+          direction: pos.side === 'up' ? 'Up' : pos.side === 'down' ? 'Down' : 'Range',
+          strike: pos.strike,
+          band: pos.side === 'range' && pos.lower != null && pos.higher != null ? { lower: pos.lower, higher: pos.higher } : undefined,
+          expiry: pos.expiry,
+          qty: pos.qty,
+          cost: pos.cost,
+          entryPrice: pos.entryProb,
+          leverage: pos.leverage,
+          settled: false,
+        };
+        const mark = positionMarkPrice(vp, pricer);
+        if (mark == null) continue;
+        const valued = valueV2Position(vp, mark);
+        const markValue = valued.markValue ?? 0;
+        const maxPayout = positionWinPayout(vp);
+        const read: OpenRead = {
+          side: pos.side,
+          markFrac: maxPayout > 0 ? markValue / maxPayout : 0,
+          inProfit: (valued.pnl ?? markValue - pos.cost) > 0,
+          leanAgainst: leanTurnedAgainst(pos.side, lean ?? null),
+          timeLeftMs: pos.expiry - now,
+        };
+        const code = closeDecision(read);
+        if (!isClose(code)) continue;
+        const order = chainOrdersRef.current.get(`${pos.marketId}:${pos.side}`);
+        if (!order) continue; // no on-chain order handle yet — retry when the positions feed catches up
+        fireRef.current = true;
+        const proceeds = markValue;
+        const openedAt = pos.openedAt;
+        const marketId = pos.marketId;
+        void (async () => {
+          try {
+            const digest = await acct
+              .redeemLive({ marketId, orderId: order.orderId, closeQuantity: order.qtyBase }, { silentSuccess: true })
+              .catch(() => null);
+            if (digest) useAutopilotStore.getState().recordEarlyClose(marketId, proceeds, closeReasonLabel(code), Date.now(), openedAt);
+          } finally {
+            fireRef.current = false;
+          }
+        })();
+        return;
+      }
     }
 
     // Kelly's best-value pick, but only over the windows the trader allows. A null tenor is
