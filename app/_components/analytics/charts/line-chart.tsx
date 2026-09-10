@@ -56,19 +56,31 @@ function Inner({
 }: Props & { width: number }) {
   const gid = useId().replace(/[:]/g, '');
   const [hi, setHi] = useState<number | null>(null);
-  const m = { top: 8, right: 12, bottom: 4, left: 36 };
-  const iw = Math.max(0, width - m.left - m.right);
-  const ih = Math.max(0, height - m.top - m.bottom);
+  const top = 8;
+  const right = 12;
+  const bottom = 4;
+  const ih = Math.max(0, height - top - bottom);
 
-  if (points.length < 2 || iw <= 0) return <svg width={width} height={height} />;
+  if (points.length < 2) return <svg width={width} height={height} />;
 
-  const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
-  const xScale = scaleLinear({ domain: [Math.min(...xs), Math.max(...xs)], range: [0, iw] });
   const yMin = Math.min(...ys);
   const yMax = Math.max(...ys);
   const make = yScaleType === 'sqrt' ? scaleSqrt : scaleLinear;
   const yScale = make({ domain: [Math.max(0, yMin * 0.95), yMax * 1.05], range: [ih, 0] });
+  const ticks = yScale.ticks(3);
+
+  // Left gutter sized to the WIDEST y-axis label so wide values (e.g. "$600.00") don't
+  // spill past the frame and clip to "00.00" — the labels are right-anchored 7px in from
+  // the plot, monospace at ~5.5px per char (9px font). Never narrower than the old 36px.
+  const labelPx = Math.max(3, ...ticks.map((t) => yFormat(t).length)) * 5.5;
+  const left = Math.max(36, Math.ceil(labelPx) + 12);
+
+  const iw = Math.max(0, width - left - right);
+  if (iw <= 0) return <svg width={width} height={height} />;
+
+  const xs = points.map((p) => p.x);
+  const xScale = scaleLinear({ domain: [Math.min(...xs), Math.max(...xs)], range: [0, iw] });
 
   const px = (p: ChartPoint) => xScale(p.x);
   const py = (p: ChartPoint) => yScale(p.y);
@@ -76,14 +88,13 @@ function Inner({
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
     const pt = localPoint(e);
     if (!pt) return;
-    const vx = pt.x - m.left;
+    const vx = pt.x - left;
     let best = 0;
     for (let i = 1; i < points.length; i++) if (Math.abs(px(points[i]) - vx) < Math.abs(px(points[best]) - vx)) best = i;
     setHi(best);
   }
 
   const active = hi != null ? points[hi] : null;
-  const ticks = yScale.ticks(3);
 
   return (
     <div className="relative">
@@ -100,7 +111,7 @@ function Inner({
             <stop offset="100%" stopColor={color} stopOpacity={0} />
           </linearGradient>
         </defs>
-        <Group left={m.left} top={m.top}>
+        <Group left={left} top={top}>
           <GridRows scale={yScale} width={iw} numTicks={3} stroke="rgba(255,255,255,0.05)" />
           {ticks.map((t) => (
             <text key={t} x={-7} y={yScale(t)} textAnchor="end" dominantBaseline="middle" fontSize={9} fontFamily="monospace" fill="var(--text-3)">
@@ -115,7 +126,7 @@ function Inner({
               const on = i === selectedIndex || i === hi;
               return (
                 <g key={i} onClick={onPick ? () => onPick(i) : undefined} className={onPick ? 'cursor-pointer' : ''}>
-                  <rect x={px(p) - 8} y={-m.top} width={16} height={height} fill="transparent" />
+                  <rect x={px(p) - 8} y={-top} width={16} height={height} fill="transparent" />
                   <circle cx={px(p)} cy={py(p)} r={on ? 4 : 2.5} fill={color} opacity={on ? 1 : 0.6} />
                   {i === selectedIndex && <circle cx={px(p)} cy={py(p)} r={7} fill="none" stroke={color} strokeWidth={1} opacity={0.4} />}
                 </g>
@@ -126,7 +137,7 @@ function Inner({
       </svg>
 
       {xCaptions && (
-        <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-text-3" style={{ paddingLeft: m.left, paddingRight: m.right }}>
+        <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-text-3" style={{ paddingLeft: left, paddingRight: right }}>
           <span>{xCaptions[0]}</span>
           <span>{xCaptions[1]}</span>
         </div>
@@ -135,7 +146,7 @@ function Inner({
       {active && (
         <div
           className="glass-tooltip pointer-events-none absolute z-10 -translate-x-1/2 px-2 py-1 font-mono text-[10px] tabular-nums text-text-1"
-          style={{ left: Math.min(Math.max(m.left + px(active), 44), width - 44), top: 0 }}
+          style={{ left: Math.min(Math.max(left + px(active), 44), width - 44), top: 0 }}
         >
           <span className="text-text-1">{yFormat(active.y)}</span>
           <span className="ml-1.5 text-text-3">{active.label}</span>
