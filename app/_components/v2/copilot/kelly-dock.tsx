@@ -37,8 +37,8 @@ import { CopilotRead } from './copilot-read';
 import { V2CopilotTicketModal } from './copilot-ticket-modal';
 import { parseIntent, placeConfirmation, parseAmountReply, extractStake, type CopilotIntent } from '@/lib/copilot/intents';
 import { recallMemories, recallMemoriesForAI, rememberFact } from '@/lib/copilot/memory-client';
-import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallReplyLines } from '@/lib/copilot/memory-greeting';
-import { firstVisitToday } from '@/lib/copilot/greeting-cadence';
+import { welcomeBackLines, MEMORY_GREETING_QUERY, MAX_GREETING_MEMORIES, recallReplyLines, rememberedName } from '@/lib/copilot/memory-greeting';
+import { firstVisitToday, readGreetingHint, cacheGreetingHint } from '@/lib/copilot/greeting-cadence';
 import { useKellyMemoryAuth } from '@/lib/hooks/use-kelly-memory-auth';
 import { useScrollLock } from '@/lib/hooks/use-scroll-lock';
 import { useVisualViewportBox } from '@/lib/hooks/use-keyboard-viewport';
@@ -585,6 +585,13 @@ function KellyPanel({
         } else {
           const saved = await rememberFact(owner, fact);
           const nm = fact.match(/^your name is (.+)$/i);
+          if (saved) {
+            // Seed the shared device-local greeting hint now, so the next visit greets by
+            // name even without a fresh memory sign-in (see the matching note in
+            // copilot-screen.tsx::answerMemory). A non-name fact keeps any known name.
+            const prev = readGreetingHint(owner);
+            cacheGreetingHint(owner, { name: rememberedName([fact]) ?? prev?.name ?? null, hasNotes: true });
+          }
           pushBot(
             saved
               ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']

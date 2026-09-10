@@ -1229,6 +1229,16 @@ export function V2CopilotScreen({
         } else {
           const saved = await rememberFact(owner, fact);
           const nm = fact.match(/^your name is (.+)$/i);
+          if (saved) {
+            // Seed the device-local greeting hint right now, so the NEXT visit greets by name
+            // even if the memory session cookie has expired. The async recall that normally
+            // seeds the hint runs only when signed in AND is skipped once the trader has
+            // spoken — i.e. exactly the turn where they give their name — so without this the
+            // name is saved server-side but never reaches the returning greeting. A non-name
+            // fact keeps any previously-known name and just marks that notes exist.
+            const prev = readGreetingHint(owner);
+            cacheGreetingHint(owner, { name: rememberedName([fact]) ?? prev?.name ?? null, hasNotes: true });
+          }
           pushBot(
             saved
               ? [nm ? `Nice to meet you, ${nm[1]}. I’ll remember that.` : 'Got it. I’ll remember that.']
