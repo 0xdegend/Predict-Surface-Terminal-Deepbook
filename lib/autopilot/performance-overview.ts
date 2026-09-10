@@ -8,8 +8,10 @@
  *
  * Two shapes come out. `overviewStats` is the KPI row (P&L, trades, win rate, best
  * streak, max drawdown). `overviewSeries` is the chart: cumulative P&L across the range
- * with the x axis in time and a symmetric y axis that always includes zero, so a flat
- * day still draws as a baseline with room either side rather than a collapsed line.
+ * with the x axis in time and a zero-anchored y axis fit to the data's real span (not
+ * forced symmetric), so a loss-heavy run uses the room below zero instead of hugging the
+ * centre. Today's x axis frames to the session's activity rather than the full 24h clock,
+ * so a few hours of trading fill the width instead of drawing as a flat day with a spike.
  */
 import { buildEquityCurve, type EquityTrade } from './equity';
 
@@ -27,16 +29,35 @@ export function startOfDay(now: number): number {
 }
 
 /**
- * The window a range covers, as [start, end] in ms. Today runs midnight to midnight so
- * the axis reads 00:00 to 24:00 and a trade at 09:14 sits where the clock says it does.
- * The week and month run back from now. ALL fits the trades themselves (with a day of
- * fallback room when there are none), so the whole record fills the width.
+ * The window a range covers, as [start, end] in ms. Today (1D) frames to the day's
+ * activity when it has any (a little before the first settlement to a little past the
+ * last, or now), so a clustered session fills the width; an empty day falls back to the
+ * full 00:00-24:00 clock. The week and month run back from now. ALL fits the trades
+ * themselves (with a day of fallback room when there are none), so the whole record
+ * fills the width.
  */
 export function rangeWindow(range: OverviewRange, now: number, trades: readonly EquityTrade[] = []): [number, number] {
   switch (range) {
     case '1D': {
-      const s = startOfDay(now);
-      return [s, s + DAY_MS];
+      // Frame today to its ACTIVITY, not the wall clock. A session that ran a few evening
+      // hours used to draw as a flat morning with a spike jammed into the last fifth,
+      // because cumulative P&L only moves when a trade settles. Now the window runs from a
+      // little before the first settlement to a little past the last (or now), so the curve
+      // fills the width and clustered wins read as a slope, not a cliff. An empty day keeps
+      // the full clock so it still reads as "today".
+      const dayStart = startOfDay(now);
+      const dayEnd = dayStart + DAY_MS;
+      const today = trades.filter((t) => isSettled(t) && t.at >= dayStart && t.at < dayEnd);
+      if (today.length === 0) return [dayStart, dayEnd];
+      let first = Infinity;
+      let last = -Infinity;
+      for (const t of today) {
+        if (t.at < first) first = t.at;
+        if (t.at > last) last = t.at;
+      }
+      const spanTrades = Math.max(last - first, 30 * 60_000); // a single trade still gets width
+      const pad = Math.max(30 * 60_000, spanTrades * 0.1);
+      return [Math.max(dayStart, first - pad), Math.min(dayEnd, Math.max(last, now) + pad * 0.5)];
     }
     case '7D':
       return [now - 7 * DAY_MS, now];
@@ -117,9 +138,12 @@ export interface OverviewPoint {
 
 export interface OverviewSeries {
   points: OverviewPoint[];
-  /** The y axis runs -yMax..yMax. */
-  yMax: number;
-  /** Top, zero, bottom labels. */
+  /** The y axis runs yBottom..yTop, fit to the data's real span and NOT forced
+   *  symmetric: a loss-heavy run gets more room below zero than above, so the line fills
+   *  the plot instead of hugging the centre. Both are zero-anchored: yTop >= 0 >= yBottom. */
+  yTop: number;
+  yBottom: number;
+  /** Top, zero, bottom labels (values yTop, 0, yBottom). */
   ticksY: { value: number; label: string }[];
   /** Time labels with their 0..1 position. */
   ticksX: { x: number; label: string }[];
@@ -137,6 +161,22 @@ export function niceCeil(v: number): number {
   const base = Math.pow(10, exp);
   const m = v / base;
   const step = m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10;
+  return step * base;
+}
+
+/**
+ * Round UP to a nice number on a finer ladder than niceCeil, and always strictly above
+ * `v` so the line never sits on the frame. This is what fits ONE side of the axis to the
+ * data: niceCeil's 1/2/5/10 ladder jumps 5.8K straight to 10K (a 70% overshoot that
+ * crushes the curve), where this lands on 6K. Used only for the axis domain; niceCeil
+ * stays as-is for anything that depends on its coarser rounding.
+ */
+export function niceBound(v: number): number {
+  if (!(v > 0)) return 0;
+  const exp = Math.floor(Math.log10(v));
+  const base = Math.pow(10, exp);
+  const m = v / base;
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((s) => s > m) ?? 10;
   return step * base;
 }
 
@@ -180,8 +220,22 @@ function xTicks(range: OverviewRange, [start, end]: [number, number]): { x: numb
   const span = end - start || 1;
   const at = (ms: number) => ({ x: (ms - start) / span, label: timeLabel(ms, range, end) });
   if (range === '1D') {
-    // 00:00, 04:00 ... 24:00, the same seven the clock face reads.
-    return Array.from({ length: 7 }, (_, i) => at(start + (i * DAY_MS) / 6));
+    // A full-day window (the empty state) keeps the seven clock marks 00:00..24:00.
+    if (end - start >= DAY_MS - 1) {
+      return Array.from({ length: 7 }, (_, i) => at(start + (i * DAY_MS) / 6));
+    }
+    // A framed-to-activity window gets adaptive clock ticks: pick a step (15m..6h) that
+    // yields a handful of marks, aligned to the local clock, labelled HH:MM.
+    const base = startOfDay(start);
+    const steps = [15, 30, 60, 120, 180, 240, 360].map((m) => m * 60_000);
+    const step = steps.find((s) => span / s <= 6) ?? steps[steps.length - 1];
+    const firstTick = base + Math.ceil((start - base) / step) * step;
+    const out: { x: number; label: string }[] = [];
+    for (let ms = firstTick; ms <= end + 1; ms += step) {
+      const d = new Date(ms);
+      out.push({ x: (ms - start) / span, label: `${pad2(d.getHours())}:${pad2(d.getMinutes())}` });
+    }
+    return out;
   }
   if (range === '7D') {
     // One per day, at that day's midnight, so the label sits where the day starts.
@@ -226,11 +280,39 @@ export function overviewSeries(trades: readonly EquityTrade[], range: OverviewRa
   const edge = Math.min(1, Math.max(points[points.length - 1].x, (Math.min(now, end) - start) / span));
   if (edge > points[points.length - 1].x) points.push({ x: edge, y: cum });
 
-  const yMax = swing > 0 ? niceCeil(swing * 1.15) : EMPTY_Y_MAX;
+  // Fit the axis to the curve's real span, zero-anchored and NOT symmetric, so a run that
+  // spent the week underwater uses the room below zero rather than being crushed into a
+  // thin band under the centre line (which is how a -5.8K drawdown drew as a near-flat
+  // line on a forced +/-10K axis). Each side rounds up to a nice number for its label.
+  //
+  // The `floor` keeps the QUIET side of a lopsided run from collapsing: when one late
+  // move dwarfs everything (a flat day, then a +6.7K spike), the tiny opposite side would
+  // otherwise sit a hair off the frame and jam the flat stretch against the edge. Giving
+  // the smaller side at least a sixth of the dominant side lifts zero clear so that
+  // stretch, and its small dips, have room to read.
+  let yTop: number;
+  let yBottom: number;
+  if (swing > 0) {
+    let hi = 0;
+    let lo = 0;
+    for (const p of points) {
+      if (p.y > hi) hi = p.y;
+      if (p.y < lo) lo = p.y;
+    }
+    const rawTop = niceBound(hi);
+    const rawBot = niceBound(-lo);
+    const floor = Math.max(rawTop, rawBot) * 0.15;
+    yTop = Math.max(rawTop, floor);
+    yBottom = -Math.max(rawBot, floor);
+  } else {
+    yTop = EMPTY_Y_MAX;
+    yBottom = -EMPTY_Y_MAX;
+  }
   return {
     points,
-    yMax,
-    ticksY: [yMax, 0, -yMax].map((value) => ({ value, label: fmtAxis(value) })),
+    yTop,
+    yBottom,
+    ticksY: [yTop, 0, yBottom].map((value) => ({ value, label: fmtAxis(value) })),
     ticksX: xTicks(range, window),
     window,
   };

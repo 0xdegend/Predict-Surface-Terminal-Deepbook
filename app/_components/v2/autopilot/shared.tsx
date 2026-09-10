@@ -39,6 +39,19 @@ export function signedUsd(v: number): string {
   return `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 }
 
+/**
+ * A signed dollar figure compacted for a headline glance: thousands become "$12.6K",
+ * millions "$1.2M", and anything under a thousand keeps whole dollars ("+$680"). The
+ * full cents figure still belongs in a title tooltip wherever this is shown.
+ */
+export function compactSignedUsd(v: number): string {
+  const sign = v < 0 ? '-' : '+';
+  const a = Math.abs(v);
+  if (a >= 1_000_000) return `${sign}$${(a / 1_000_000).toFixed(1)}M`;
+  if (a >= 1_000) return `${sign}$${(a / 1_000).toFixed(1)}K`;
+  return `${sign}$${Math.round(a)}`;
+}
+
 /** Color class for a signed number (a small dead-band reads flat as neutral). */
 export function pnlClass(v: number): string {
   return v > 0.005 ? 'text-up' : v < -0.005 ? 'text-down' : 'text-text-2';

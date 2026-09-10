@@ -37,7 +37,7 @@ import {
   type OverviewSeries,
 } from '@/lib/autopilot/performance-overview';
 import { LivePulse, RunModePill, Sparkline, StatusPill, useTickFlash } from './live';
-import { lifetimeStats, pnlClass, signedUsd, type SetupMode } from './shared';
+import { compactSignedUsd, lifetimeStats, pnlClass, signedUsd, type SetupMode } from './shared';
 
 /* ------------------------------- header ---------------------------------- */
 
@@ -295,12 +295,16 @@ export function PerformanceOverview({ history, now }: { history: RunResult[]; no
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-5">
-        <Kpi label="P&L" value={stats.trades > 0 ? signedUsd(stats.pnlUsd) : '$0.00'} valueClass={stats.trades > 0 ? pnlClass(stats.pnlUsd) : undefined} />
+      <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+        <Kpi
+          label="P&L"
+          value={stats.trades > 0 ? compactSignedUsd(stats.pnlUsd) : '$0'}
+          title={stats.trades > 0 ? signedUsd(stats.pnlUsd) : undefined}
+          valueClass={stats.trades > 0 ? pnlClass(stats.pnlUsd) : undefined}
+        />
         <Kpi label="Trades" value={num(stats.trades, 0)} />
         <Kpi label="Win rate" value={stats.winRate != null ? `${Math.round(stats.winRate * 100)}%` : '—'} />
         <Kpi label="Best streak" value={stats.bestStreak > 0 ? `${stats.bestStreak}W` : '—'} />
-        <Kpi label="Max drawdown" value={stats.maxDrawdown > 0 ? `-$${num(stats.maxDrawdown, 2)}` : '—'} valueClass={stats.maxDrawdown > 0 ? 'text-down' : undefined} />
       </div>
 
       <OverviewChart series={series} range={range} />
@@ -308,11 +312,11 @@ export function PerformanceOverview({ history, now }: { history: RunResult[]; no
   );
 }
 
-function Kpi({ label, value, valueClass }: { label: string; value: string; valueClass?: string }) {
+function Kpi({ label, value, valueClass, title }: { label: string; value: string; valueClass?: string; title?: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <span className="eyebrow leading-tight">{label}</span>
-      <span className={`font-mono text-[15px] leading-none tabular-nums ${valueClass ?? 'text-text-1'}`}>{value}</span>
+      <span title={title} className={`font-mono text-[15px] leading-none tabular-nums ${valueClass ?? 'text-text-1'}`}>{value}</span>
     </div>
   );
 }
@@ -349,10 +353,13 @@ function OverviewChart({ series, range }: { series: OverviewSeries; range: Overv
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
 
   const { w, h } = size;
-  const PAD = 6; // keeps the stroke and the marker inside the box at the extremes
-  const zeroY = h / 2;
+  const PAD = 10; // breathing room at top/bottom so the peak marker and a flat run don't hug the frame
+  // Asymmetric, data-fit domain (see performance-overview.ts): map yTop->top, yBottom->
+  // bottom, and place zero wherever it truly falls between them, so the curve fills the plot.
+  const span = series.yTop - series.yBottom || 1;
   const px = (x: number) => x * w;
-  const py = (v: number) => zeroY - (v / series.yMax) * (zeroY - PAD);
+  const py = (v: number) => PAD + ((series.yTop - v) / span) * (h - 2 * PAD);
+  const zeroY = py(0);
   const pts = series.points.map((p) => ({ x: px(p.x), y: py(p.y) }));
   const line = w > 0 && h > 0 ? monotonePath(pts) : '';
   const first = pts[0];
@@ -360,6 +367,13 @@ function OverviewChart({ series, range }: { series: OverviewSeries; range: Overv
   const area = line && last ? `${line} L ${last.x.toFixed(2)},${zeroY} L ${first.x.toFixed(2)},${zeroY} Z` : '';
   const flat = series.points.every((p) => p.y === 0);
   const endTone = last && last.y > zeroY + 0.5 ? 'var(--down)' : 'var(--accent)';
+  // A pill pinned to the line's end, the way a price chart tags the live price: it gives
+  // the ending its weight and tells the eye where "now" lands. Compact so it stays small
+  // (+$6.7K, not +$6,681.36 — the full figure is already in the KPI row above). It flips
+  // to the left of the dot when the line ends near the right edge so it never overflows.
+  const endY = series.points.length ? series.points[series.points.length - 1].y : 0;
+  const endLabel = compactSignedUsd(endY);
+  const flip = !!last && last.x > w * 0.72;
   const up = `url(#${uid}-up)`;
   const down = `url(#${uid}-down)`;
   const above = `url(#${uid}-above)`;
@@ -367,7 +381,7 @@ function OverviewChart({ series, range }: { series: OverviewSeries; range: Overv
 
   return (
     <div className="mt-5">
-      <div className="relative h-32 pr-12 sm:h-36">
+      <div className="relative h-40 pr-12 sm:h-48">
         <div ref={boxRef} className="absolute inset-y-0 left-0 w-[calc(100%-3rem)]">
           {w > 0 && h > 0 && (
             <svg key={range} width={w} height={h} className="overflow-visible" aria-hidden>
@@ -390,9 +404,13 @@ function OverviewChart({ series, range }: { series: OverviewSeries; range: Overv
                 </clipPath>
               </defs>
 
-              {[PAD, zeroY, h - PAD].map((gy) => (
-                <line key={gy} x1="0" x2={w} y1={gy} y2={gy} stroke="rgba(255,255,255,0.08)" strokeDasharray="2 4" />
+              {/* Top and bottom bounds stay faint and dashed; the zero line is drawn
+                  brighter and solid so the gain half and the loss half read as two
+                  distinct fields instead of one washed-out void. */}
+              {[PAD, h - PAD].map((gy) => (
+                <line key={gy} x1="0" x2={w} y1={gy} y2={gy} stroke="rgba(255,255,255,0.07)" strokeDasharray="2 4" />
               ))}
+              <line x1="0" x2={w} y1={zeroY} y2={zeroY} stroke="rgba(255,255,255,0.16)" />
 
               {!flat && (
                 <>
@@ -417,11 +435,27 @@ function OverviewChart({ series, range }: { series: OverviewSeries; range: Overv
             </svg>
           )}
         </div>
-        {series.ticksY.map((t, i) => (
+        {!flat && last && w > 0 && (
+          <div
+            className="pointer-events-none absolute z-10 rounded-md px-1.5 py-0.5 font-mono text-[10.5px] font-semibold leading-none tabular-nums shadow-sm"
+            style={{
+              top: last.y,
+              left: flip ? last.x - 8 : last.x + 8,
+              transform: `translate(${flip ? '-100%' : '0'}, -50%)`,
+              background: endTone,
+              color: 'var(--bg-0)',
+            }}
+          >
+            {endLabel}
+          </div>
+        )}
+        {series.ticksY.map((t) => (
           <span
             key={t.value}
             className="absolute right-0 w-10 text-right font-mono text-[10.5px] tabular-nums text-text-3"
-            style={{ top: i === 0 ? 0 : i === 1 ? '50%' : undefined, bottom: i === 2 ? 0 : undefined, transform: i === 1 ? 'translateY(-50%)' : i === 0 ? 'translateY(-50%)' : 'translateY(50%)' }}
+            // Positioned by the same py() as the gridlines, so each label sits on its line
+            // even now that zero is no longer at the vertical middle.
+            style={{ top: h > 0 ? py(t.value) : 0, transform: 'translateY(-50%)' }}
           >
             {t.label}
           </span>
