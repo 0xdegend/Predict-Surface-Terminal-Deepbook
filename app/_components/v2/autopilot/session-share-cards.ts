@@ -140,20 +140,14 @@ function drawSession(ctx: CanvasRenderingContext2D, d: SessionShareData, sans: s
   ctx.fillStyle = PAL.t3;
   ctx.fillText(recordLine(d), cx, 348);
 
-  // What happened, in one line.
-  ctx.font = `400 22px ${sans}`;
-  ctx.fillStyle = PAL.t2;
-  wrapLines(ctx, howLine(d), 760)
-    .slice(0, 2)
-    .forEach((line, i) => ctx.fillText(line, P, 420 + i * 30));
-
-  // Three stats, kept left of the fox.
+  // Three stats, kept left of the fox. They sit high because nothing runs between them
+  // and the hero any more: the result and the record already say what happened.
   const cells: [string, string, string][] = [
     ['STAKED', `${money(d.stakedUsd)} of ${money(d.budgetUsd)}`, PAL.t1],
     ['BEST TRADE', d.best ? fmtUsd(d.best.pnlUsd) : '—', d.best ? PAL.up : PAL.t3],
     ['WORST DIP', d.maxDrawdownUsd > 0 ? fmtUsd(-d.maxDrawdownUsd) : 'none', d.maxDrawdownUsd > 0 ? PAL.down : PAL.t2],
   ];
-  const stripY = 486;
+  const stripY = 452;
   ctx.strokeStyle = PAL.line;
   ctx.lineWidth = 1;
   ctx.beginPath();
