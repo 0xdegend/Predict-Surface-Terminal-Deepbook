@@ -17,6 +17,7 @@
 //
 // Pure (no React) so the mapping + the plain-language plan are unit-tested.
 import type { AutopilotRules, AutopilotLimits, Tenor, TradeSide } from './policy';
+import type { CloseConfig } from './close-policy';
 
 export type PresetId = 'cautious' | 'balanced' | 'bold';
 
@@ -328,6 +329,33 @@ export function matchPreset(rules: AutopilotRules, limits: AutopilotLimits): Pre
     }
   }
   return null;
+}
+
+/**
+ * How each style closes a LIVE position early (see lib/autopilot/close-policy). The three
+ * differ on purpose (founder, 2026-09-10):
+ *   - Careful banks solid gains early (+30% on the stake) and stops big losses (-40%),
+ *     and locks a near-win sooner (70% of payout). Capital preservation, at the cost of
+ *     some stopped positions that would have reverted.
+ *   - Balanced is read-driven with an 80% near-win lock and a soft -60% stop.
+ *   - Bold rides every position to settlement: all triggers off, the read ignored. A
+ *     binary's downside is already capped at its premium, so "don't close" is safe.
+ * A LONGER cutMinTimeMs makes a style slower to take a loss; Careful's is shorter so it
+ * can still stop out later in a market.
+ */
+export const CLOSE_CONFIG: Record<PresetId, CloseConfig> = {
+  cautious: { takeProfitOnCost: 0.3, deepItmFrac: 0.7, stopLossOnCost: 0.4, useRead: true, minTimeMs: 60_000, cutMinTimeMs: 90_000 },
+  balanced: { takeProfitOnCost: null, deepItmFrac: 0.8, stopLossOnCost: 0.6, useRead: true, minTimeMs: 60_000, cutMinTimeMs: 120_000 },
+  bold: { takeProfitOnCost: null, deepItmFrac: null, stopLossOnCost: null, useRead: false, minTimeMs: 60_000, cutMinTimeMs: 120_000 },
+};
+
+/**
+ * The close rules for a run: its preset's, or Balanced's when the run is Custom (the
+ * trader has hand-edited away from every preset). Keyed off the same matchPreset the
+ * store uses, so a run's close behaviour follows the style it shows.
+ */
+export function closeConfigFor(rules: AutopilotRules, limits: AutopilotLimits): CloseConfig {
+  return CLOSE_CONFIG[matchPreset(rules, limits) ?? 'balanced'];
 }
 
 function durationWords(ms: number): string {

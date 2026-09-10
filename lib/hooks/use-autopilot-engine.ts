@@ -41,6 +41,7 @@ import { respondToIntent, type BetCandidate, type BetSuggestion } from '@/lib/co
 import { pickRange, shapeOrder, type RangePick } from '@/lib/copilot/range-pick';
 import { recommendation } from '@/lib/insights/market-read';
 import { closeDecision, isClose, leanTurnedAgainst, closeReasonLabel, type OpenRead } from '@/lib/autopilot/close-policy';
+import { closeConfigFor } from '@/lib/autopilot/presets';
 import { useV2PortfolioPositions } from './use-v2-portfolio-positions';
 import {
   autoPauseReason,
@@ -350,7 +351,11 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     //     mode holds no on-chain position to close. One signed action per tick, sharing
     //     fireRef with the mint path so a close and a mint never overlap; `return` skips the
     //     open pass this tick and the close IIFE frees the lock when it lands.
-    if (!dryRun && acct.sessionCanTrade && !fireRef.current) {
+    // The run's style sets the close knobs (Careful banks early + hard stop, Balanced is
+    // read-driven, Bold rides — every trigger off). Bold short-circuits the whole pass.
+    const closeCfg = closeConfigFor(rules, limits);
+    const closeArmed = closeCfg.useRead || closeCfg.deepItmFrac != null || closeCfg.takeProfitOnCost != null || closeCfg.stopLossOnCost != null;
+    if (!dryRun && closeArmed && acct.sessionCanTrade && !fireRef.current) {
       const lean = recommendation(insights);
       const pricerByMarket = new Map(candidates.map((c) => [c.market.expiry_market_id, c.pricer]));
       for (const pos of st.run.open) {
@@ -377,11 +382,11 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
         const read: OpenRead = {
           side: pos.side,
           markFrac: maxPayout > 0 ? markValue / maxPayout : 0,
-          inProfit: (valued.pnl ?? markValue - pos.cost) > 0,
+          gainOnCost: pos.cost > 0 ? (valued.pnl ?? markValue - pos.cost) / pos.cost : 0,
           leanAgainst: leanTurnedAgainst(pos.side, lean ?? null),
           timeLeftMs: pos.expiry - now,
         };
-        const code = closeDecision(read);
+        const code = closeDecision(read, closeCfg);
         if (!isClose(code)) continue;
         const order = chainOrdersRef.current.get(`${pos.marketId}:${pos.side}`);
         if (!order) continue; // no on-chain order handle yet — retry when the positions feed catches up
