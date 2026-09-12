@@ -47,6 +47,7 @@ import {
   autoPauseReason,
   autoStopReason,
   classifyTenor,
+  debounceSessionLive,
   eligibleTenors,
   gateReasonLabel,
   gateTrade,
@@ -80,6 +81,22 @@ const FEED_STALE_MS = 30_000;
  *  (worst case: a Slush session that self-funded gas inside the authorize tx). The
  *  feed-stall check still applies during warmup — only the key/gas checks wait. */
 const HEALTH_WARMUP_MS = 35_000;
+/**
+ * How long the session key must read as DOWN before that ends a run.
+ *
+ * `sessionLive` is derived from a query whose key is built from the wrapper id and the
+ * session address, so any momentary change in either hands back `undefined` for a tick,
+ * and `isSessionLive(null)` is false. `autoStopReason` checks it first, so one such tick
+ * used to disarm a live run outright. That was nearly unreachable while the engine only
+ * ran on the Autopilot page; now that it drives from the layout it is reachable on every
+ * screen, and a run killed this way before its first trade leaves NOTHING behind, because
+ * `disarm` only archives a run that placed something and the auto-clear then wipes the log.
+ *
+ * So a key is only gone once it has stayed gone, exactly as a single quiet pricer does not
+ * stall the feed. A genuinely expired key still ends the run, just one window later, and
+ * nothing can trade in the meantime: firing is gated on `sessionCanTrade` independently.
+ */
+const SESSION_DOWN_GRACE_MS = 45_000;
 /** Keep a real position around this long after expiry to read its settlement; past
  *  it, retire the position unscored (a settlement we never saw can't count). */
 const SETTLE_GRACE_MS = 15 * 60_000;
@@ -212,8 +229,9 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
   const marketIds = useMemo(() => markets.map((m) => m.expiry_market_id), [markets]);
   const pricers = useV2Pricers(marketIds, pricerSeeds, 5_000);
   const spot = useV2Spot();
-  // Same shared queries the co-pilot uses (deduped by key). Enabled whenever this
-  // hook is mounted, which is only on the Autopilot page.
+  // Same shared queries the co-pilot uses (deduped by key). Enabled whenever this hook
+  // is mounted, which AutopilotEngineProvider limits to when there is a run to drive or
+  // the Autopilot panel is on screen (lib/autopilot/engine-gate).
   const { data: insights } = useBtcInsights({ enabled: true });
   const { data: candles } = useQuery<{ closes: number[] }>({
     queryKey: ['insights', 'btc', 'candles'],
@@ -276,10 +294,13 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     chainOrdersRef.current = m;
   }, [chainPositions]);
 
-  // Feed-freshness debounce, the last hold we logged (so it doesn't repeat), a lock
-  // so only one real fire is in flight at a time, and the set of markets we've already
-  // resolved/attempted settlement for (avoids re-reading the same settled market).
+  // Feed-freshness debounce, when the session key first read as down (the same idea
+  // applied to the key, see the health block below), the last hold we logged (so it
+  // doesn't repeat), a lock so only one real fire is in flight at a time, and the set of
+  // markets we've already resolved/attempted settlement for (avoids re-reading the same
+  // settled market).
   const lastLiveRef = useRef<number>(0);
+  const sessionDownSinceRef = useRef<number | null>(null);
   const lastHoldRef = useRef<string | null>(null);
   const fireRef = useRef(false);
   const settledRef = useRef<Set<string>>(new Set());
@@ -318,10 +339,17 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // disarms the run, and a gas-starved one pauses it.
     const warming = now - st.run.armedAt < HEALTH_WARMUP_MS;
     const feedFresh = now - lastLiveRef.current < FEED_STALE_MS;
-    const health: AutopilotHealth =
-      dryRun || warming
-        ? { sessionLive: true, gasOk: true, feedFresh }
-        : { sessionLive: acct.sessionLive, gasOk: acct.sessionLive ? acct.sessionCanTrade : true, feedFresh };
+    let health: AutopilotHealth;
+    if (dryRun || warming) {
+      // The key is not in play, so the down-clock must not be running either: leaving it
+      // ticking through the warmup would spend the grace before the first real read.
+      sessionDownSinceRef.current = null;
+      health = { sessionLive: true, gasOk: true, feedFresh };
+    } else {
+      const key = debounceSessionLive(acct.sessionLive, sessionDownSinceRef.current, now, SESSION_DOWN_GRACE_MS);
+      sessionDownSinceRef.current = key.downSince;
+      health = { sessionLive: key.live, gasOk: key.live ? acct.sessionCanTrade : true, feedFresh };
+    }
 
     const runtime = st.buildRuntime(now);
     const stop = autoStopReason(limits, runtime, health, now);
@@ -682,6 +710,7 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     if (running && startedRunRef.current !== runId) {
       startedRunRef.current = runId;
       lastLiveRef.current = Date.now(); // start the feed-freshness clock on arm
+      sessionDownSinceRef.current = null; // and the key's down-clock
       fireRef.current = false;
       settledRef.current.clear(); // a fresh run scores its own positions from scratch
     }

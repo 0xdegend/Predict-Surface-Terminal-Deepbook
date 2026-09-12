@@ -406,6 +406,38 @@ export function stakeFor(limits: AutopilotLimits, runtime: AutopilotRuntime): nu
 }
 
 /**
+ * Debounce the session-key read before it is allowed to end a run.
+ *
+ * `sessionLive` is not a fact, it is a query result. It comes from a read whose key is
+ * built from the wrapper id and the session address, and an absent result reads as
+ * expired, so any tick where that query has not answered yet says "the key is gone" about
+ * a key that is fine. `autoStopReason` checks it before anything else, so a single such
+ * tick ended a live run outright.
+ *
+ * That was nearly unreachable while the engine only ran on the Autopilot page, because it
+ * died with the panel. Driving from the layout makes it reachable on every screen, and a
+ * run killed before its first trade leaves no evidence at all: `disarm` only archives a
+ * run that placed something, and the auto-clear then wipes the log.
+ *
+ * So a key counts as gone only once it has STAYED gone, the same way one quiet pricer does
+ * not stall the feed. A genuinely expired key still stops the run, one window later, and
+ * nothing can trade in between: firing is gated on `sessionCanTrade` separately.
+ *
+ * Pure, and returns the next clock rather than holding one, so the caller keeps the ref
+ * and this stays testable.
+ */
+export function debounceSessionLive(
+  read: boolean,
+  downSince: number | null,
+  now: number,
+  graceMs: number,
+): { live: boolean; downSince: number | null } {
+  if (read) return { live: true, downSince: null };
+  const since = downSince ?? now;
+  return { live: now - since < graceMs, downSince: since };
+}
+
+/**
  * Decide whether Autopilot should disarm itself now. Returns the first terminal
  * condition that holds, or null to keep running. Ordered so the most
  * safety-critical reasons (the key or the feed) win over the routine ones

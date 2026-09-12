@@ -10,8 +10,8 @@
  *
  * Switching tabs is a history push, not a navigation. The page never remounts, so:
  *   - the chat thread survives a look at Autopilot and back;
- *   - a live Autopilot run keeps trading while you chat, because its engine lives in the
- *     Autopilot pane and that pane stays mounted once opened (hidden, not unmounted);
+ *   - a live Autopilot run keeps trading while you chat, and keeps trading anywhere else
+ *     in /v2 too, because its engine hangs off the layout (see autopilot/engine-provider);
  *   - each tab still has its own address for links, and the back button walks tabs.
  * A pane mounts the first time its tab is opened and stays mounted after that. Landing
  * on /v2/kelly/autopilot mounts only Autopilot; the chat comes in when you open it.
@@ -31,11 +31,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import type { IconType } from 'react-icons';
-import { LuMessageSquare, LuZap, LuBadgeCheck, LuPause } from 'react-icons/lu';
+import { LuMessageSquare, LuZap, LuBadgeCheck } from 'react-icons/lu';
 import { V2CopilotScreen } from '@/app/_components/v2/copilot/copilot-screen';
 import { AutopilotSkeleton } from '@/app/_components/v2/autopilot/skeleton';
-import { useAutopilotStore } from '@/lib/store/autopilot-store';
-import { useNow } from '@/lib/hooks/use-now';
+import { RunPill } from '@/app/_components/v2/autopilot/run-pill';
 import { MASCOT_SRC } from '@/lib/mascot';
 import { availableTabs, hrefForTab, tabFromPath, type KellyTab } from '@/lib/kelly/hub-tabs';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -200,7 +199,7 @@ function HubBar({
         </div>
 
         <div className="ml-auto flex min-w-0 items-center">
-          <RunChip onOpen={() => onSelect('autopilot')} onAutopilotTab={active === 'autopilot'} serverNow={serverNow} />
+          <RunPill onOpen={() => onSelect('autopilot')} disabled={active === 'autopilot'} serverNow={serverNow} />
         </div>
       </div>
     </div>
@@ -244,59 +243,5 @@ function HubTab({
       <Icon size={12} className={active ? 'text-accent' : undefined} />
       {TAB_LABEL[id]}
     </Link>
-  );
-}
-
-/* ---------------------------- live Autopilot read --------------------------- */
-
-const mmss = (ms: number): string => {
-  const s = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-};
-
-/**
- * A running Autopilot, in one line, visible from every tab: trading or paused, how
- * many bets it has placed, how long it has left. Tapping it opens the Autopilot tab.
- * Reads the shared store, which the Autopilot pane hydrates once it has been opened;
- * before that there is nothing running in this session, so there is nothing to show.
- */
-function RunChip({ onOpen, onAutopilotTab, serverNow }: { onOpen: () => void; onAutopilotTab: boolean; serverNow: number }) {
-  const status = useAutopilotStore((s) => s.status);
-  const tradeCount = useAutopilotStore((s) => s.run.tradeCount);
-  const armedAt = useAutopilotStore((s) => s.run.armedAt);
-  const armDurationMs = useAutopilotStore((s) => s.limits.armDurationMs);
-  const running = status === 'armed' || status === 'paused';
-  const now = useNow(serverNow);
-  if (!running) return null;
-  const left = mmss(Math.max(0, armedAt + armDurationMs - now));
-  const bets = `${tradeCount} bet${tradeCount === 1 ? '' : 's'}`;
-  const paused = status === 'paused';
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      disabled={onAutopilotTab}
-      title={paused ? 'Autopilot is paused until gas is topped up' : 'Autopilot is trading'}
-      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-        paused
-          ? 'border-[rgba(230,180,80,0.35)] bg-(--warn-soft) text-text-1'
-          : 'border-(--accent-line) bg-(--accent-soft) text-text-1'
-      } ${onAutopilotTab ? 'cursor-default' : 'hover:brightness-110'}`}
-    >
-      {paused ? (
-        <LuPause size={11} className="flex-none text-text-2" />
-      ) : (
-        <span className="relative flex h-2 w-2 flex-none">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:hidden" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-        </span>
-      )}
-      <span className="truncate">
-        {paused ? 'Autopilot paused' : 'Autopilot trading'}
-        <span className="hidden sm:inline">
-          {' '}· <span className="font-mono tabular-nums">{bets}</span> · <span className="font-mono tabular-nums">{left}</span> left
-        </span>
-      </span>
-    </button>
   );
 }

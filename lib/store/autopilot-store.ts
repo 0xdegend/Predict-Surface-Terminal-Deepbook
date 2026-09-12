@@ -350,15 +350,16 @@ const noopStorage: StateStorage = {
  * True once the persisted blob has been READ. Until then this store must not write.
  *
  * THE HOLE THIS CLOSES. `skipHydration: true` (see below) means the store boots at its
- * defaults, `history: []` among them, and waits for the panel to call `rehydrate()` in
- * a mount effect. But `persist` writes on EVERY `set()`, so anything that changed state
- * inside that window flushed the empty defaults straight over a trader's saved runs.
+ * defaults, `history: []` among them, and waits for AutopilotEngineProvider to call
+ * `rehydrate()` in a mount effect. But `persist` writes on EVERY `set()`, so anything
+ * that changed state inside that window flushed the empty defaults straight over a
+ * trader's saved runs.
  *
- * The window is not theoretical. Every effect inside `useAutopilotEngine` (called at the
- * top of the panel) runs before the panel's own rehydrate effect, and a store-file edit
- * during development hot-replaces this module, rebuilding the store at defaults while
- * the mounted panel's `[]` effect does not run again. One `set()` after either and the
- * archive is gone, with nothing in the code that looks like it deletes anything.
+ * The window is not theoretical. Every effect inside `useAutopilotEngine` (mounted by
+ * that same provider) can run before the provider's rehydrate effect, and a store-file
+ * edit during development hot-replaces this module, rebuilding the store at defaults
+ * while the mounted provider's `[]` effect does not run again. One `set()` after either
+ * and the archive is gone, with nothing in the code that looks like it deletes anything.
  *
  * Refusing writes until the read has happened makes the ordering irrelevant: the worst
  * a premature `set()` can now do is not be saved, which the next real one fixes.
@@ -917,9 +918,10 @@ export const useAutopilotStore = create<AutopilotState>()(
         hydrated = true;
         state?._resumeAfterReload();
       },
-      // The panel SSRs, so rehydrating automatically would mismatch (server renders the
-      // default idle state; the client would load a stopped run). Skip auto-hydration
-      // and let the panel rehydrate after mount, so first paint matches the server.
+      // The page SSRs, so rehydrating automatically would mismatch (server renders the
+      // default idle state; the client would load a stopped run). Skip auto-hydration and
+      // let AutopilotEngineProvider rehydrate after mount, ONCE per page load, so first
+      // paint matches the server and moving around /v2 never re-trips the reload guard.
       skipHydration: true,
     },
   ),

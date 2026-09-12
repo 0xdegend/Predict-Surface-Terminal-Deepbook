@@ -33,8 +33,6 @@ import { num } from '@/lib/format';
 import { fromQuote, toQuote } from '@/config/scale';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
-import { useAutopilotEngine } from '@/lib/hooks/use-autopilot-engine';
-import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useAutopilotStore, type RunResult } from '@/lib/store/autopilot-store';
 import type { Tenor, TradeSide } from '@/lib/autopilot/policy';
 import { type PresetId, isAutoSized, matchPreset, paceFor, perBetFor, presetPatch } from '@/lib/autopilot/presets';
@@ -42,6 +40,7 @@ import type { ResolvedSetup } from '@/lib/autopilot/setup-parser';
 import { topUpBase } from '@/lib/autopilot/funding';
 import { buildRunTape } from '@/lib/autopilot/run-tape';
 import { type SetupMode, type StartOutcome } from './shared';
+import { useAutopilotEngineContext, useAutopilotEngineWanted } from './engine-provider';
 import { CustomizeSection, MoneyCard, PlanDetails, PresetPicker } from './setup';
 import { AutopilotSkeleton } from './skeleton';
 import { PlanCard } from './plan-card';
@@ -73,8 +72,15 @@ const CLEAR_QUIET_MS = 5_000;
 const CLEAR_COUNTDOWN_MS = 10_000;
 
 export function AutopilotPanel({ markets, pricerSeeds }: Props) {
-  const acct = usePredictAccountV2(); // arming live trading approves the session key
-  const engine = useAutopilotEngine({ markets, pricerSeeds, acct }); // runs the armed loop
+  // The engine and the account both live in the /v2 layout now, so a run keeps trading
+  // when this panel is not on screen. Arming (owner-signed) and firing (session-signed)
+  // have to share ONE account instance, which is why it comes from there and not here.
+  const { acct, engine } = useAutopilotEngineContext();
+  // Keep the engine driving while this panel is open, even before a run is armed: the
+  // page shows the live market read. The seeds are the server snapshot, so a cold landing
+  // here paints real numbers instead of waiting for the first poll.
+  const seeds = useMemo(() => ({ markets, pricerSeeds }), [markets, pricerSeeds]);
+  useAutopilotEngineWanted(seeds);
   const now = useNow(1_000);
 
   const status = useAutopilotStore((s) => s.status);
@@ -116,15 +122,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
    * settled; `results` is the trader asking for it from the archive.
    */
   const [share, setShare] = useState<{ run: RunResult; context: 'finished' | 'results' } | null>(null);
-
-  // Load the persisted run + results after mount (see skipHydration in the store): a
-  // reload restores an in-progress run's open trades, and _resumeAfterReload lands it
-  // stopped so it never resumes placing trades on its own.
-  useEffect(() => {
-    // Whatever the read does, the page must fill in: a failed or empty read still ends
-    // the skeleton, with the defaults in place of a saved state.
-    void Promise.resolve(useAutopilotStore.persist.rehydrate()).finally(() => useAutopilotStore.setState({ hydrated: true }));
-  }, []);
 
   /**
    * Clear a finished run on its own, so nobody has to press "Clear log" to get their setup

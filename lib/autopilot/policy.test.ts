@@ -4,6 +4,7 @@ import {
   gateTrade,
   autoStopReason,
   autoPauseReason,
+  debounceSessionLive,
   pauseReasonLabel,
   settleOutcome,
   gateReasonLabel,
@@ -527,5 +528,42 @@ describe('a Careful run can actually place a bet on a fair board', () => {
   it('takes a cheap band, which the floor does not govern', () => {
     const band: ProposedTrade = { ...goodTrade, kind: 'range', side: 'range', prob: 0.38, edge: 0, leverage: 1 };
     expect(gateTrade(band, careful, limits, runtime, NOW)).toEqual({ allow: true, code: 'ok' });
+  });
+});
+
+describe('debounceSessionLive: one bad read must not end a live run', () => {
+  const GRACE = 45_000;
+
+  it('a key that reads live keeps the clock clear, and a recovered key forgets it was down', () => {
+    expect(debounceSessionLive(true, null, 1_000, GRACE)).toEqual({ live: true, downSince: null });
+    expect(debounceSessionLive(true, 500, 1_000, GRACE)).toEqual({ live: true, downSince: null });
+  });
+
+  it('holds the run through a blip: the first bad read starts the clock, it does not stop anything', () => {
+    // The read is false whenever its query has no answer yet, which happens for a tick any
+    // time the query key changes. That used to disarm a live run outright.
+    const first = debounceSessionLive(false, null, 1_000, GRACE);
+    expect(first).toEqual({ live: true, downSince: 1_000 });
+    expect(debounceSessionLive(false, first.downSince, 1_000 + GRACE - 1, GRACE).live).toBe(true);
+  });
+
+  it('stops the run once the key has STAYED down past the window', () => {
+    expect(debounceSessionLive(false, 1_000, 1_000 + GRACE, GRACE)).toEqual({ live: false, downSince: 1_000 });
+    // A key that is really gone still ends the run, just one window later than before.
+    expect(debounceSessionLive(false, 1_000, 1_000 + GRACE * 3, GRACE).live).toBe(false);
+  });
+
+  it('a recovery inside the window buys the next blip a full window of its own', () => {
+    const down = debounceSessionLive(false, null, 1_000, GRACE);
+    const up = debounceSessionLive(true, down.downSince, 2_000, GRACE);
+    expect(up.downSince).toBeNull();
+    expect(debounceSessionLive(false, up.downSince, 3_000, GRACE)).toEqual({ live: true, downSince: 3_000 });
+  });
+
+  it('feeds autoStopReason so a blip is not session_expired but a sustained outage is', () => {
+    const blip = debounceSessionLive(false, null, NOW, GRACE);
+    expect(autoStopReason(limits, runtime, { ...health, sessionLive: blip.live }, NOW)).toBeNull();
+    const gone = debounceSessionLive(false, NOW - GRACE, NOW, GRACE);
+    expect(autoStopReason(limits, runtime, { ...health, sessionLive: gone.live }, NOW)).toBe('session_expired');
   });
 });
