@@ -56,14 +56,10 @@ export function RunPill({ serverNow = 0, onOpen, disabled = false, className = '
 
   const inner = (
     <>
-      {paused ? (
-        <LuPause size={11} className="flex-none text-text-2" />
-      ) : (
-        <span className="relative flex h-2 w-2 flex-none">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:hidden" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
-        </span>
-      )}
+      {/* Only the held state carries an icon. A trading run used to lead with a pulsing
+          accent dot; the words and the accent border already say it is live, and a second
+          blinking thing in the corner next to Kelly's own launcher was one too many. */}
+      {paused && <LuPause size={11} className="flex-none text-text-2" />}
       <span className="truncate">
         {paused ? 'Autopilot paused' : 'Autopilot trading'}
         <span className="hidden sm:inline">
