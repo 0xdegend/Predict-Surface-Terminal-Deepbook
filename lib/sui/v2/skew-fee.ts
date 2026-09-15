@@ -15,7 +15,6 @@ import { Transaction, type TransactionResult } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
 import { predictV2Config, feeRouterV2Enabled, v2SkewFeeTarget } from '@/config/predict';
 import { addGenerateAuth, simulate, SIM_SENDER, type SimulateCapableClient } from './account';
-import { POS_INF_TICK, NEG_INF_TICK } from './ticks';
 
 const c = () => predictV2Config;
 const ACC = (module: string, fn: string) => `${c().packages.account}::${module}::${fn}` as const;
@@ -31,10 +30,8 @@ export function skewFeeBase(stake: bigint, feeBps: number): bigint {
   return (stake * BigInt(Math.round(feeBps))) / BPS_DENOM;
 }
 
-/** A binary leg carries a ±∞ sentinel tick; a range has two finite ticks. */
-export function isRangeTicks(lowerTick: bigint, higherTick: bigint): boolean {
-  return lowerTick !== NEG_INF_TICK && higherTick !== POS_INF_TICK;
-}
+/** Re-exported from ./ticks, where it lives beside the sentinels it tests. */
+export { isRangeTicks } from './ticks';
 
 export interface SkewFeeParams {
   wrapperId: string;

@@ -4,11 +4,12 @@ import { QuestsPanel } from '@/app/_components/rewards/quests-panel';
 export const metadata: Metadata = {
   title: 'Quests',
   description:
-    'Skew Quests: complete trading milestones to earn DUSDC rewards. A preview of the gamified trading layer coming to the Skew terminal.',
+    'Skew Quests: complete trading milestones to earn Skew Points. Progress tracks live from your own on-chain trading record; rewards open soon.',
 };
 
-// Same self-contained showcase as legacy /quests — the v2 layout provides the
-// chrome, and the cross-link stays inside the Latest shell.
+// The v2 layout provides the chrome; the cross-link stays inside the Latest shell.
+// The panel is a client component that reads the connected wallet's own record, so this
+// route stays a thin shell and never renders a trader's numbers on the server.
 export const dynamic = 'force-dynamic';
 
 export default function V2QuestsPage() {

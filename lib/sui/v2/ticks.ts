@@ -23,6 +23,15 @@ export const POS_INF_TICK = 1_073_741_823n;
 /** −∞ strike sentinel. */
 export const NEG_INF_TICK = 0n;
 
+/**
+ * A binary leg carries a ±∞ sentinel tick; a range has two finite ticks. Lives here,
+ * beside the sentinels it tests, so a pure consumer (the quest fold) can ask the
+ * question without pulling in a transaction builder.
+ */
+export function isRangeTicks(lowerTick: bigint, higherTick: bigint): boolean {
+  return lowerTick !== NEG_INF_TICK && higherTick !== POS_INF_TICK;
+}
+
 type IntLike = bigint | number | string;
 const bi = (v: IntLike): bigint => (typeof v === 'bigint' ? v : BigInt(v));
 

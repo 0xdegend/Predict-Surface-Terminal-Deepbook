@@ -46,10 +46,14 @@ export function RewardsHeader({
   icon: Icon,
   title,
   blurb,
+  /** What exactly is still coming. Quests track live progress now, so only their
+   *  rewards are pending; Competitions is still a preview in full. */
+  soonLabel,
 }: {
   icon: IconType;
   title: string;
   blurb: string;
+  soonLabel?: string;
 }) {
   return (
     <div className="rise mb-6">
@@ -58,7 +62,7 @@ export function RewardsHeader({
           <Icon size={20} className="text-[var(--accent)]" />
           {title}
         </h1>
-        <SoonPill />
+        <SoonPill label={soonLabel} />
       </div>
       <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-text-2">{blurb}</p>
     </div>
