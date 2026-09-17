@@ -19,7 +19,13 @@
 import { WebCryptoSigner, type ExportedWebCryptoKeypair } from '@mysten/webcrypto-signer';
 import { Transaction, coinWithBalance } from '@mysten/sui/transactions';
 import { bcs } from '@mysten/sui/bcs';
-import { predictV2Config, v2SessionTarget, V2_IS_821_PLUS } from '@/config/predict';
+import {
+  predictV2Config,
+  predictConfigFor,
+  v2SessionTarget,
+  KNOWN_V2_DEPLOYMENTS,
+  V2_IS_821_PLUS,
+} from '@/config/predict';
 import { addDeposit, simulate, SIM_SENDER, type SimulateCapableClient } from './account';
 import { addSetBuilderCode } from './builder-code';
 
@@ -157,8 +163,44 @@ export async function loadSessionAddress(owner: string): Promise<string | null> 
  * It is non-sensitive (addresses only, no key material), so it lives in localStorage,
  * which also survives an IndexedDB wipe (unlike the key itself). */
 
-function sessionAddrsKey(owner: string): string {
-  return `skew.sessionAddrs.${owner.toLowerCase()}.${predictV2Config.packages.predict}`;
+function sessionAddrsKey(owner: string, pkg: string = predictV2Config.packages.predict): string {
+  return `skew.sessionAddrs.${owner.toLowerCase()}.${pkg}`;
+}
+
+/**
+ * Has this wallet ever armed instant trading on an EARLIER release?
+ *
+ * Session keys are scoped to their deployment's package, which is right: a key authorized
+ * against 8-21 must never sign against 9-12. The side effect is that a redeploy makes a
+ * long-standing user look brand new, because every per-deployment record starts empty.
+ *
+ * That is not cosmetic. The confirm dialog pre-arms instant trading for a RETURNING trader
+ * and leaves it off for a first-timer, and it decided who was who from the CURRENT
+ * deployment's stored session alone. So after the 9-12 cutover, everyone who had been
+ * trading without a wallet pop-up silently went back to one on every trade, with nothing on
+ * screen to say why or that it could be turned back on. It reads as the app getting slower.
+ *
+ * The address list is per (owner, package) and survives the key itself, so an older
+ * release's entry is exactly the evidence needed. Addresses only, no key material, and
+ * nothing here is ever used to SIGN: the old key stays unusable, this only answers whether
+ * to offer the fast path without making them find the toggle.
+ */
+export function hadSessionOnEarlierRelease(owner: string | null | undefined): boolean {
+  if (!owner || typeof window === 'undefined') return false;
+  const current = predictV2Config.packages.predict;
+  for (const d of KNOWN_V2_DEPLOYMENTS) {
+    const pkg = predictConfigFor(d).packages.predict;
+    if (!pkg || pkg === current) continue;
+    try {
+      const raw = window.localStorage.getItem(sessionAddrsKey(owner, pkg));
+      if (!raw) continue;
+      const arr: unknown = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.some((a) => typeof a === 'string' && a)) return true;
+    } catch {
+      // A single unreadable entry must not decide the answer for the others.
+    }
+  }
+  return false;
 }
 
 function readAddrList(owner: string): string[] {

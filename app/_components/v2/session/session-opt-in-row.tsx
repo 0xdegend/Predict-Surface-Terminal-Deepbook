@@ -15,18 +15,25 @@
  * latency (local signing, no sponsor round-trip). Google needs the treasury gas drip to
  * self-fund, so it's hidden for Google when that drip is off.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { LuZap, LuInfo } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { sessionGasDrip } from '@/config/session-gas';
 import { Switch } from '../../ui/switch';
-import { DEFAULT_SESSION_GAS_FUNDING_BASE, type SessionDuration } from '@/lib/sui/v2/session';
+import {
+  DEFAULT_SESSION_GAS_FUNDING_BASE,
+  hadSessionOnEarlierRelease,
+  type SessionDuration,
+} from '@/lib/sui/v2/session';
 
 const DURATIONS: { key: SessionDuration; label: string }[] = [
   { key: '24h', label: '24 hours' },
   { key: '7d', label: '7 days' },
 ];
+
+/** A subscribe that never fires: the answer is about releases that are already over. */
+const NEVER_CHANGES = () => () => {};
 
 export function SessionOptInRow() {
   const acct = usePredictAccountV2();
@@ -41,8 +48,23 @@ export function SessionOptInRow() {
   const gaslessBlocked = acct.gasless && !sessionGasDrip.enabled;
   const eligible =
     acct.sessionsEnabled && !!acct.owner && acct.wrapperExists && !acct.sessionActive && !gaslessBlocked;
-  // A key that was authorized before and has now lapsed → a returning user.
-  const expired = !!acct.sessionAddress && acct.sessionExpiryMs != null && !acct.sessionLive;
+  // A returning user is anyone who has armed instant trading BEFORE, by either route:
+  //   - a key on THIS release that has since lapsed, or
+  //   - a key on an EARLIER release, which a redeploy invalidates wholesale.
+  // The second case used to be missed, and it is the common one right after a cutover: the
+  // per-deployment records all start empty, so a long-standing trader looked brand new and
+  // quietly went back to a wallet pop-up on every trade. See hadSessionOnEarlierRelease.
+  const lapsedHere = !!acct.sessionAddress && acct.sessionExpiryMs != null && !acct.sessionLive;
+  // localStorage read, during render, without setState-in-effect. The value cannot change
+  // while this dialog is open (it is about EARLIER releases), so the subscribe is a no-op;
+  // the snapshot is a primitive, so React can compare it, and the server snapshot is false
+  // so hydration never disagrees.
+  const lapsedByRedeploy = useSyncExternalStore(
+    NEVER_CHANGES,
+    () => hadSessionOnEarlierRelease(acct.owner),
+    () => false,
+  );
+  const expired = lapsedHere || lapsedByRedeploy;
 
   // Returning user → pre-arm (opt-out): they already chose faster trades once, so
   // re-enabling should cost nothing. Seeded once per mount (the dialog remounts this

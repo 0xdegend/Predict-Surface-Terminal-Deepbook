@@ -748,6 +748,19 @@ export function V2TradeTicket({
           Places instantly, no review. Cost still capped on-chain.
         </p>
       )}
+      {/* Why one tap did NOT apply, on the one occasion the trader has every reason to
+          expect it. Instant trading is on, skip-review is on, and the balance line right
+          above says the money is there, so a review step reads as the setting being
+          ignored. It is not: the money is in the WALLET, this bet has to move some into
+          the trading account first, and a deposit is owner-gated so the session key cannot
+          sign it. The fix is a one-off, so say that rather than only naming the problem. */}
+      {!oneTapPlace && instantTrade && acct.sessionCanTrade && shortfall > 0n && !insufficientFunds && (
+        <p className="text-[10px] leading-relaxed text-text-3">
+          This one moves {fmtQuote(fromQuote(shortfall))} {sym} from your wallet first, and only
+          your wallet can approve that. Add funds to your trading account once and the rest place
+          in one tap.
+        </p>
+      )}
       {shareBase && (
         <button
           type="button"
