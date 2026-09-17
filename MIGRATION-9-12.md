@@ -43,41 +43,44 @@ order.
 
 ## Before the day
 
-**1. Register the builder code on 9-12.**
+**1. Register the builder code on 9-12. DONE 2026-09-17.**
 
 A BuilderCode belongs to the registry that created it, and this registry is new, so 8-21's
 code does not carry over. Without one the fee rail earns nothing and, worse, the new board
 cannot tell a Skew trade from anyone else's, so the Skew leaderboard starts empty and stays
 empty. Config deliberately does not fall back to the 8-21 id.
 
-**Use index 1, not index 0.** The BuilderCode id is derived from (sender, index) through
-`0x2::derived_object::claim`, and that derivation collides ACROSS deployments: index 0 was
-spent registering on 8-21, so the same wallet cannot use it again here. Simulating index 0
-aborts with `EObjectAlreadyExists`. Every future release needs a fresh index too.
-
-Dry-run first. This simulates the real transaction from the address that will sign, submits
-nothing, and prints the exact object id the real one will create:
+The founder registered it on 2026-09-17. Verified on chain: owner is the intended wallet and
+the type prefix is 9-12's predict package.
 
 ```
-REGISTER_SENDER=0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4 \
-  REGISTER_INDEX=1 NEXT_PUBLIC_PREDICT_DEPLOYMENT=9-12 RUN_LIVE=1 \
-  npx vitest run lib/sui/v2/builder-code-register.live.test.ts
+NEXT_PUBLIC_BUILDER_CODE_ID_912=0x87dbf86e2915217eed2ef8c1abd25cf16d2236c659606f59f85d6da9ef6ba03f
 ```
-
-Simulated clean on 2026-09-17. For that signer at index 1 the code will be
-`0xad4d139bfb5f08ff90a56b898be836c5e39b39b1ae9383456b6bdc39bd8f18c7`. Signing from any other
-wallet, or at any other index, gives a different id, so re-run the dry run if either changes.
 
 Registration is **one way**. The signer becomes the code's permanent owner, there is no
-reassignment, and losing that key forfeits every future fee. Sign from the wallet that
-should own the revenue. Then set the result in `.env` and confirm it matches what the
-transaction actually created:
+reassignment, and losing that key forfeits every future fee. On mainnet, sign from a
+multisig.
 
-```
-NEXT_PUBLIC_BUILDER_CODE_ID_912=0xad4d139bfb5f08ff90a56b898be836c5e39b39b1ae9383456b6bdc39bd8f18c7
-```
+Two corrections worth keeping, because both cost real time here.
 
-There is no rush to get this in before the flip, for one specific reason: **nobody can trade
+**The index is per deployment, not global.** An earlier draft of this step said index 0 was
+"spent" on 8-21 and that the derivation collides across releases, and told you to use index
+1. That is wrong. 8-06 and 8-21 both used index 0 from the same wallet. Index 0 aborted with
+`EObjectAlreadyExists` on 9-12 only because the code had already been registered there
+minutes earlier. Check what exists on the target registry before reading anything into an
+abort. The id this draft predicted for index 1 was never created and is not ours.
+
+**Put the id under the right key.** `BUILDER_CODE_ENV_VAR` in `config/predict.ts` maps each
+deployment to its own env key. The 9-12 code was first pasted under
+`NEXT_PUBLIC_BUILDER_CODE_ID_821` and nothing errored, because the id is a real, resolvable,
+correctly typed BuilderCode that simply belongs to another registry. The 8-21 seed capture
+then filtered 8-21's mints through a 9-12 code, found **0 Skew rows on both read paths**, and
+burned twelve minutes before failing. The symptom to recognise is a board or capture
+reporting 0 Skew rows while owner discovery still returns wallets, since those come from
+`LEGACY_OWNERS` rather than from the code. `cutover-preflight.live.test.ts` asserts the
+code's type prefix matches the deployment's predict package, and would have caught it.
+
+There was no rush to get this in before the flip, for one specific reason: **nobody can trade
 on 9-12 until we hold its collateral**, and as of 2026-09-17 nobody outside Mysten does. The
 window in which a trade could go unattributed is empty. Do not rely on that indefinitely.
 

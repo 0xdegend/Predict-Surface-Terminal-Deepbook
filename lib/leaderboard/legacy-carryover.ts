@@ -21,6 +21,7 @@
  */
 import seed624 from './legacy-points-6-24.json';
 import seed806 from './legacy-points-8-06.json';
+import seed821 from './legacy-points-8-21.json';
 import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
 import { carriedSnapshots, type LegacyRow } from './seed-registry';
 import type { V2LeaderboardRow } from './v2';
@@ -35,7 +36,11 @@ export interface LegacySeed {
 }
 
 /** Every snapshot we hold, oldest first. Add the next one here and nowhere else. */
-const ALL_SEEDS: LegacySeed[] = [seed624 as unknown as LegacySeed, seed806 as unknown as LegacySeed];
+const ALL_SEEDS: LegacySeed[] = [
+  seed624 as unknown as LegacySeed,
+  seed806 as unknown as LegacySeed,
+  seed821 as unknown as LegacySeed,
+];
 
 /** The ones that apply right now: every seed EXCEPT one captured from the deployment we are
  *  reading live, whose trades are already in the live board and would otherwise be doubled. */

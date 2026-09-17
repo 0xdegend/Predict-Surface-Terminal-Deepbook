@@ -62,11 +62,13 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ACTIVE_V2_DEPLOYMENT, predictV2Config } from '@/config/predict';
-import { onchainOwnerOrders, onchainSkewOwners } from '@/lib/api/v2/onchain';
+import { onchainMarketState, onchainOwnerOrders, onchainSkewOwners } from '@/lib/api/v2/onchain';
 import { deriveV2HistoryFromOrders } from '@/lib/portfolio/v2';
 import type { PastPrediction } from '@/lib/portfolio/history';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
-import { emptyLbState, finalizeRows, foldOrderEvents } from './v2-aggregate';
+import { toFloat } from '@/config/scale';
+import { emptyLbState, finalizeRows, foldOrderEvents, type LbState } from './v2-aggregate';
+import { kv } from '@/lib/server/kv';
 import { fetchSkewEvents, skewRowsFromEvents } from './v2-onchain-events';
 import { LEGACY_OWNERS } from './legacy-carryover';
 import type { V2LeaderboardRow } from './v2';
@@ -104,6 +106,74 @@ const OWNER_EVENT_DEPTH = 3000;
 const CAPTURE_TIMEOUT_MS = Number(process.env.CAPTURE_TIMEOUT_MS ?? 45 * 60_000);
 
 const lc = (s: string) => s.toLowerCase();
+
+/** A scored board row in the shape a seed file stores. */
+function toSeedRow(r: V2LeaderboardRow): SeedRow {
+  return {
+    owner: r.owner,
+    points: r.points,
+    volume: r.volume,
+    trades: r.trades,
+    netPnl: r.netPnl ?? 0,
+    skewVolume: r.skewVolume ?? 0,
+    skewTrades: r.skewTrades ?? 0,
+    lastActiveMs: r.lastActiveMs ?? 0,
+  };
+}
+
+/** Accept a seed built only from re-reads, losing whatever has scrolled out of both. */
+const ALLOW_NO_KV = process.env.CAPTURE_ALLOW_NO_KV === '1';
+
+/**
+ * Source C: the retiring deployment's OWN accumulated board, read from the indexer's KV
+ * tally rather than re-read from chain.
+ *
+ * WHY A RE-READ IS NOT ENOUGH, AND NEVER WAS. Both live paths read the chain as it looks
+ * NOW, and both are windowed: the global scan saturates after a few days, and the per-owner
+ * fan-out reads a bounded tx depth. The tally is not a re-read. It accumulated forward,
+ * cycle by cycle, across the whole life of the deployment, so it holds trades that have
+ * since fallen out of every window a capture is able to open. Nothing read later can
+ * recover them.
+ *
+ * MEASURED ON 8-21, 2026-09-17. Identical owner sets, 704 rows either way with none unique
+ * to one side, so discovery was never the weak part. But the tally carried 1929 trades to
+ * the capture's 1151, and 537 of the 704 wallets were richer in it: the founder's own row
+ * read 88 trades against the capture's 68, and the busiest wallet 247 against 95. Seeding
+ * from the capture alone froze 60% of the board and silently dropped the rest, which is
+ * exactly what the first flip to 9-12 put on screen.
+ *
+ * SAFE AGAINST DOUBLE COUNTING. `finalizeRows` over the persisted state is the RAW slice
+ * for this deployment. The carryover overlay is applied by the API route at read time and
+ * is never baked into the tally, so folding this in cannot re-add an older seed.
+ *
+ * The entry is keyed by predict package and kept for a week, so it is readable only while
+ * the retired deployment's tally is still warm. That is the real deadline on a cutover
+ * capture, and it is why this runs at the flip rather than whenever someone gets to it.
+ */
+async function liveBoardRows(): Promise<SeedRow[]> {
+  const key = `lb:idx:${predictV2Config.packages.predict}`;
+  const missing = (why: string): SeedRow[] => {
+    if (!ALLOW_NO_KV) {
+      throw new Error(
+        `${why}\n\nThe live board tally is the only source for trades that have scrolled out of both read ` +
+          `windows; without it the seed freezes a fraction of the board and the rest is gone for good. ` +
+          `Pass KV_REST_API_URL / KV_REST_API_TOKEN, or set CAPTURE_ALLOW_NO_KV=1 to accept a windowed seed.`,
+      );
+    }
+    console.log(`  live board (KV)  SKIPPED: ${why}`);
+    return [];
+  };
+  if (!kv) return missing('no KV store is configured');
+  const persisted = (await kv.get(key)) as { state?: LbState; builtAtMs?: number } | null;
+  if (!persisted?.state) return missing(`no tally at ${key} (expired, or the app never ran on this deployment)`);
+  const rows = finalizeRows(persisted.state, predictV2Config.builderCodeId, Date.now(), 'skew');
+  const built = persisted.builtAtMs ? new Date(persisted.builtAtMs).toISOString() : 'unknown';
+  console.log(
+    `  live board (KV)  ${rows.length} rows, ${rows.reduce((t, r) => t + r.trades, 0)} trades, built ${built}`,
+  );
+  return rows.map(toSeedRow);
+}
+
 
 /**
  * Path B: read each Skew owner's own order history and score it with the SAME
@@ -228,6 +298,108 @@ function syntheticMarkets(ordersByOwner: Iterable<V2OrderEvent[]>): Map<string, 
   return map;
 }
 
+/** How many market reads run at once. Same reasoning as the owner fan-out: a public
+ *  endpoint throttles a wide burst, and a throttled read that retries is far cheaper than a
+ *  seed that quietly loses a trader's losing bets. */
+const MARKET_CONCURRENCY = 8;
+
+/** How long one market read may take before it is treated as failed and retried.
+ *
+ *  Measured at 48ms per market against a healthy endpoint, so this is ~400x the real cost
+ *  and only ever fires on a stall. It exists because the first run with market reads HUNG:
+ *  not one of the 1151 reads reported back in forty minutes, while a progress line prints
+ *  every 115. `inspectReturns` has no deadline of its own, so a connection that stops
+ *  answering parks its worker forever, and eight parked workers are indistinguishable from
+ *  slow progress. A read that cannot answer in twenty seconds has to become a retry. */
+const MARKET_READ_TIMEOUT_MS = 20_000;
+
+/** A deadline for the whole market phase, not just one read.
+ *
+ *  The per-read timeout bounds a single stall; this bounds a systemic one. If the endpoint
+ *  degrades, every read burns its four attempts and the phase alone would outlast the whole
+ *  capture budget. Past this point the remaining markets are marked unreadable instead,
+ *  which is the seed's pre-existing behaviour (unreadable = unsettled = no synthesized row),
+ *  so the capture degrades to the old, narrower seed rather than dying with nothing written.
+ *  The count is printed, so a phase that hit the deadline is never silent. */
+const MARKET_PHASE_BUDGET_MS = 8 * 60_000;
+
+function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+    work.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e as Error); },
+    );
+  });
+}
+
+/**
+ * Settlement price per market ($, or null while unsettled), plus each market's REAL expiry
+ * and tick size where the object still answers.
+ *
+ * WHY THE CAPTURE HAS TO DO THIS. `deriveV2HistoryFromOrders` takes a settlements map as
+ * its third argument and uses it to recover a SETTLED LOSS that carries no redeem event. A
+ * losing binary is worth nothing, so nobody ever redeems it and the owner scan has nothing
+ * to join. The live app passes that map (use-v2-history.ts builds it from
+ * `useV2MarketStates`), so a trader's history tab has been showing those losses all along.
+ * The capture did NOT pass it, and the first 8-21 seed therefore came out narrower than the
+ * tab it exists to preserve: the six real wallets were missing 17 settled losses between
+ * them, and every carried history would have overstated its owner's win rate.
+ *
+ * A market that will not answer is recorded as unsettled rather than failing the capture.
+ * That is exactly the behaviour the seed already had, so a failed read can only cost a
+ * synthesized row, never invent one. It is counted and printed, because a large count means
+ * the losses are going missing again and the number is the only way anyone would notice.
+ */
+async function readMarketStates(
+  ids: string[],
+  synthetic: Map<string, V2Market>,
+): Promise<{ markets: Map<string, V2Market>; settlements: Map<string, number | null>; unreadable: number }> {
+  const markets = new Map(synthetic);
+  const settlements = new Map<string, number | null>();
+  let unreadable = 0;
+  const started = Date.now();
+  let done = 0;
+  const step = Math.max(25, Math.floor(ids.length / 10));
+  const deadline = started + MARKET_PHASE_BUDGET_MS;
+  const queue = [...ids];
+  const worker = async () => {
+    for (let id = queue.pop(); id != null; id = queue.pop()) {
+      if (Date.now() > deadline) {
+        settlements.set(id, null);
+        unreadable += 1;
+        done += 1;
+        continue;
+      }
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const st = await withTimeout(onchainMarketState(id), MARKET_READ_TIMEOUT_MS, `market ${id.slice(0, 10)}`);
+          // The real object beats the stand-in: a synthesized loss takes its `settledAt`
+          // from the market's expiry, and the stand-in's expiry is only the newest event
+          // seen for it, which for a never-redeemed position is the mint itself.
+          if (st.market?.expiry) markets.set(id, st.market);
+          const sp = st.settlement?.settlement_price;
+          settlements.set(id, sp != null ? toFloat(sp) : null);
+          break;
+        } catch {
+          if (attempt >= 3) {
+            settlements.set(id, null);
+            unreadable += 1;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        }
+      }
+      done += 1;
+      if (done % step === 0 || done === ids.length) {
+        console.log(`  markets: ${done}/${ids.length} read  ${Math.round((Date.now() - started) / 1000)}s elapsed`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: MARKET_CONCURRENCY }, worker));
+  return { markets, settlements, unreadable };
+}
+
 /**
  * Redeems in this set whose MINT is not in it.
  *
@@ -270,6 +442,10 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     expect(predictV2Config.builderCodeId, 'builder code must be wired to attribute Skew trades').not.toBe('');
     const root = resolve(__dirname, '..', '..');
     const prev = previousSeed(root);
+    // Read FIRST. It needs no chain access, and it is the one source that cannot be
+    // reconstructed later, so a missing tally should cost seconds rather than being
+    // discovered after a sixteen-minute fan-out.
+    const liveRows = await liveBoardRows();
 
     // Sequential, not Promise.all. Path A alone is a ~160-request burst against the
     // public GraphQL endpoint; running the fan-out alongside it doubles the peak and
@@ -313,7 +489,31 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
       const deeper = deepRows.get(o)?.trades ?? 0;
       return deeper > shallow ? [`${o}: depth ${OWNER_TX_DEPTH}=${shallow} depth ${OWNER_TX_DEPTH * 3}=${deeper}`] : [];
     });
-    expect(truncated, `fan-out is truncating, raise OWNER_TX_DEPTH:\n  ${truncated.join('\n  ')}`).toEqual([]);
+    /**
+     * What truncation costs depends on whether the tally is there.
+     *
+     * Without it the fan-out IS a board source, so a truncated read silently understates a
+     * wallet's standing and the capture must stop. With it the board is bounded below by
+     * the tally (asserted after the merge), and truncation can no longer cost anyone
+     * points, volume or trades. What it still costs is HISTORY rows, which are derived from
+     * these same per-owner reads and have no second source, so it stays loud.
+     *
+     * Raising the depth is not the fix it looks like. On 8-21 the founder's wallet read 57
+     * trades at depth 400 and 68 at 1200, while the tally holds 88: the older trades are
+     * past any depth worth paying for across a thousand wallets, because the tally
+     * accumulated them live and a re-read simply cannot go back that far.
+     */
+    if (liveRows.length) {
+      if (truncated.length) {
+        console.log(
+          `\n  NOTE: fan-out truncating for ${truncated.length} of the busiest wallets. Standing is safe ` +
+            `(the tally backs the board); their HISTORY is short by the trades past the window:\n    ` +
+            truncated.join('\n    '),
+        );
+      }
+    } else {
+      expect(truncated, `fan-out is truncating, raise OWNER_TX_DEPTH:\n  ${truncated.join('\n  ')}`).toEqual([]);
+    }
 
     // Union, per owner, larger count wins. Whole rows rather than field-wise maxima, so
     // points / volume / PnL always come from one coherent read of one trader.
@@ -353,24 +553,44 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     }
 
     const capturedAt = new Date().toISOString();
-    const freshRows: SeedRow[] = rows.map((r) => ({
-      owner: r.owner,
-      points: r.points,
-      volume: r.volume,
-      trades: r.trades,
-      netPnl: r.netPnl ?? 0,
-      skewVolume: r.skewVolume ?? 0,
-      skewTrades: r.skewTrades ?? 0,
-      lastActiveMs: r.lastActiveMs ?? 0,
-    }));
-    // Source C. Whatever this run could not see is carried from the previous file.
-    const seedRows = mergeSeedRows(freshRows, prev?.rows ?? []);
+    const freshRows: SeedRow[] = rows.map(toSeedRow);
+    // Source C: the deployment's own accumulated board, which reaches past both windows.
+    const withLive = mergeSeedRows(liveRows, freshRows);
+    // Source D. Whatever this run could not see is carried from the previous file.
+    const seedRows = mergeSeedRows(withLive, prev?.rows ?? []);
     const seenNow = new Set(freshRows.map((r) => lc(r.owner)));
     const carriedOnly = seedRows.filter((r) => !seenNow.has(lc(r.owner))).length;
     console.log(
       `  previous seed    ${prev ? `${prev.rows.length} rows from ${prev.capturedAt}` : 'none'}` +
         `; ${carriedOnly} owners carried that neither path saw this run`,
     );
+
+    /**
+     * GATE: the seed is never less complete than the board traders were looking at.
+     *
+     * This is the property the whole capture exists to hold, and until 2026-09-17 nothing
+     * checked it. The first 8-21 seed passed every gate there was and still froze 1151 of
+     * the board's 1929 trades, because every gate compared the capture against ITSELF: path
+     * A against path B, this run against the previous file. Both re-read the chain through
+     * the same windows, so both were short by the same trades and agreed with each other
+     * perfectly. Nobody noticed until the flip put the shortfall on screen.
+     *
+     * The tally is the outside check. It is the number the board served, so a seed that
+     * falls short of it is by definition losing standing somebody had already earned.
+     */
+    if (liveRows.length) {
+      const seedBy = new Map(seedRows.map((r) => [lc(r.owner), r]));
+      const short = liveRows
+        .filter((r) => (seedBy.get(lc(r.owner))?.trades ?? 0) < r.trades)
+        .map((r) => `${lc(r.owner).slice(0, 14)}… board ${r.trades} → seed ${seedBy.get(lc(r.owner))?.trades ?? 0}`);
+      expect(
+        short,
+        `${short.length} wallets would carry FEWER trades than the live board showed them:\n  ${short.join('\n  ')}`,
+      ).toEqual([]);
+      const liveTrades = liveRows.reduce((t, r) => t + r.trades, 0);
+      const seedTrades = seedRows.reduce((t, r) => t + r.trades, 0);
+      console.log(`  vs live board    ${seedTrades} seed trades against ${liveTrades} the board showed`);
+    }
 
     // GATE: nobody loses standing against the previous seed. True by construction of the
     // merge, asserted anyway, because this is the one property a seed must never lose.
@@ -397,7 +617,17 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     }
 
     const byOwner: Record<string, PastPrediction[]> = {};
-    const markets = syntheticMarkets([...fan.ordersByOwner.values(), ...scanByOwner.values()]);
+    const allOrders = [...fan.ordersByOwner.values(), ...scanByOwner.values()];
+    const marketIds = [
+      ...new Set(
+        allOrders
+          .flat()
+          .map((o) => (o.expiry_market_id ? String(o.expiry_market_id) : ''))
+          .filter(Boolean),
+      ),
+    ];
+    console.log(`\n  markets          ${marketIds.length} distinct, reading each for settlement`);
+    const { markets, settlements, unreadable } = await readMarketStates(marketIds, syntheticMarkets(allOrders));
     let dropped = 0;
     let explained = 0;
     /**
@@ -414,20 +644,28 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     };
     for (const [owner, orders] of fan.ordersByOwner) {
       explained += orphanRedeems(orders);
-      const derived = priceable(deriveV2HistoryFromOrders(orders, markets));
+      const derived = priceable(deriveV2HistoryFromOrders(orders, markets, settlements));
       if (derived.length) byOwner[owner] = derived;
     }
     for (const [owner, orders] of scanByOwner) {
       if (byOwner[owner]) continue; // the fan-out already has a complete read for them
       explained += orphanRedeems(orders);
-      const derived = priceable(deriveV2HistoryFromOrders(orders, markets));
+      const derived = priceable(deriveV2HistoryFromOrders(orders, markets, settlements));
       if (derived.length) byOwner[owner] = derived;
     }
     const kept = Object.values(byOwner).flat().length;
     const unexplained = Math.max(0, dropped - explained);
+    // Losses recovered from settlement rather than from a redeem event. Printed because it
+    // is the only visible sign that the settlements map is doing its job: the number went
+    // from 0 (the argument was not passed) to the real count.
+    const synthesized = Object.values(byOwner)
+      .flat()
+      .filter((r) => String(r.key).endsWith('-settled-loss')).length;
     console.log(
       `\n  history          ${kept} rows kept, ${dropped} unpriceable dropped ` +
-        `(${explained} orphaned redeems, ${unexplained} unexplained)`,
+        `(${explained} orphaned redeems, ${unexplained} unexplained)` +
+        `\n                   ${synthesized} settled losses recovered from settlement (no redeem exists to join)` +
+        `\n                   ${unreadable} of ${marketIds.length} markets would not answer (counted as unsettled)`,
     );
 
     /**
