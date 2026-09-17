@@ -32,6 +32,7 @@ import { quote as fmtQuote, price, pct, countdown } from '@/lib/format';
 import { predictV2Config } from '@/config/predict';
 import { HUE, IconChip } from '../ui/metric';
 import { GlassError } from '../ui/glass-error';
+import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 const QUICK = [5, 10, 25];
 // Skip markets about to settle — no runway for the protection to matter.
@@ -76,7 +77,7 @@ export function V2VaultHedge() {
   const stakeBase = budget > 0 ? toQuote(budget) : 0n;
   const amount = mintAmountBase(stakeBase); // premium budget floor ($1.01 min)
   const entryProb = hedge?.fair ?? 0;
-  const probOk = entryProb > 0.005 && entryProb < 0.995;
+  const probOk = probabilityMintable(entryProb, chosen ?? undefined);
   const quantity = probOk ? quantityForStake(amount, entryProb, 1) : 0n; // max payout the budget buys
   const minQuantity = minQuantityForBudget(quantity);
   const feeBase = chosen ? BigInt(Math.round(toFloat(chosen.base_fee) * Number(quantity))) : 0n;

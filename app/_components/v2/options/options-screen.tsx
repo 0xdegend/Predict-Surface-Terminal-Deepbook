@@ -64,6 +64,7 @@ import type { SmileInput } from '@/lib/svi/surface';
 import type { Oracle } from '@/lib/api/types';
 import type { V2Market, PythObservation } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
+import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 // One-switch flip to production (no code change). While off, the page renders the
 // real surface + ladder blurred behind a "coming soon" card and spends zero Clawby
@@ -263,7 +264,7 @@ export function V2OptionsScreen({
     const higher = toFloat(snapStrikeToAdmission(fromFloat(em.highPrice), tick));
     if (!(lower > 0) || !(lower < higher)) return null;
     const chance = rangeFair(lower, higher, ladderPricer.forward, ladderPricer.svi);
-    if (!(chance > 0.005 && chance < 0.995)) return null;
+    if (!probabilityMintable(chance, selected)) return null;
     return { lower, higher, chance, netPayout: netPayoutMultiple(chance, feeRatesFor(selected, skewFeeBps)) };
   }, [selectedEm, intel.expectedMove, selected, ladderPricer, skewFeeBps]);
 

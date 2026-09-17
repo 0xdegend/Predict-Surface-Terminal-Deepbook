@@ -17,6 +17,7 @@ import { snapStrikeToAdmission, binaryTicks, rangeTicks, leverageScaled, maxCost
 import { quantityForStake, leverageSliderMax, minQuantityForBudget, mintAmountBase, MIN_STAKE_BASE } from './quote';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import type { V2Market } from '@/lib/api/v2/types';
+import { probabilityMintable } from './mint-policy';
 
 /** Deposit-buffer headroom — matches the trade tickets' SLIPPAGE_BPS. */
 const SLIPPAGE_BPS = 100;
@@ -69,7 +70,7 @@ export function planBinaryBudgetMint(p: BinaryBetParams): BinaryMintPlan {
 
   const upProb = upFair(strike, forward, svi);
   const entryProb = p.isUp ? upProb : 1 - upProb;
-  const probOk = entryProb > 0.005 && entryProb < 0.995;
+  const probOk = probabilityMintable(entryProb, market);
 
   // Cap leverage by the protocol's probability-scaled admission curve (not the
   // market-wide max), exactly as the ticket does.
@@ -156,7 +157,7 @@ export function planRangeBudgetMint(p: RangeBetParams): RangeMintPlan {
   const higher = toFloat(higherSnap);
 
   const entryProb = rangeFair(lower, higher, forward, svi);
-  const probOk = entryProb > 0.005 && entryProb < 0.995;
+  const probOk = probabilityMintable(entryProb, market);
 
   // Cap leverage by the protocol's probability-scaled admission curve (not the
   // market-wide max), exactly as the ticket does.

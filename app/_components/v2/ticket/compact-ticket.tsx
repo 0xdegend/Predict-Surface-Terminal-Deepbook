@@ -54,6 +54,7 @@ import { MintConfirmModal, type ConfirmRow } from '@/app/_components/mint-confir
 import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import type { SmileInput } from '@/lib/svi/surface';
 import type { V2Market } from '@/lib/api/v2/types';
+import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 /** The frozen recap a successful mint shows in the MintSuccessModal (parity with
  *  the rail ticket) — captured at mint time so it never re-renders behind it. */
@@ -209,7 +210,7 @@ function BinaryBody({
 
   const upProb = upFair(strike, forward, svi);
   const entryProb = isUp ? upProb : 1 - upProb;
-  const probOk = entryProb > 0.005 && entryProb < 0.995;
+  const probOk = probabilityMintable(entryProb, market);
 
   const closingSoon = isClosingSoon(market, now);
   const expired = isTooCloseToExpiry(market, now);
@@ -494,7 +495,7 @@ function RangeBody({
   const higher = bandSet ? rangeHigherPrice : atm + admStep;
 
   const entryProb = rangeFair(lower, higher, forward, svi);
-  const probOk = entryProb > 0.005 && entryProb < 0.995;
+  const probOk = probabilityMintable(entryProb, market);
 
   const closingSoon = isClosingSoon(market, now);
   const expired = isTooCloseToExpiry(market, now);

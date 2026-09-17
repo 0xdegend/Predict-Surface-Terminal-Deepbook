@@ -87,6 +87,7 @@ import { MintSuccessModal } from '@/app/_components/mint-success-modal';
 import { SuccessModal } from '@/app/_components/ui/success-modal';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
+import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
 // "Share this trade with a friend" is still being finished, so it's gated behind an env
@@ -339,7 +340,7 @@ export function V2TradeTicket({
 
   // A level is priceable while its odds stay off the 0%/100% extremes; the
   // stake only gates the mint itself, not the level pick.
-  const probOk = entryProb > 0.005 && entryProb < 0.995 && (!rangeMode || bandSet);
+  const probOk = probabilityMintable(entryProb, market) && (!rangeMode || bandSet);
   // The chain rejects any mint whose stake (net premium, before fees) is under
   // $1 — strike_exposure_config's min_net_premium — so a sub-$1 bet must never
   // reach the wallet.

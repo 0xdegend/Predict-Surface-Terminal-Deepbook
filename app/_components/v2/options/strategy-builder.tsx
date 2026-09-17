@@ -38,12 +38,14 @@ import { expectedMove } from '@/lib/insights';
 import { Term } from './vocab';
 import type { V2Market } from '@/lib/api/v2/types';
 import type { SviFloat } from '@/lib/svi/svi';
+import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 const DEFAULT_STAKE = 2;
-/** A leg is priceable only while its odds sit off the 0%/100% extremes — the same
- *  band the ticket gates on. Outside it, `payout = 1/prob` and the notional fee
- *  explode, so such a leg must never size a real bet. */
-const isQuotable = (prob: number) => prob > 0.005 && prob < 0.995;
+/** A leg is priceable only inside the band the protocol will actually mint, the same one
+ *  the ticket gates on. Outside it, `payout = 1/prob` and the notional fee explode, and the
+ *  chain refuses the mint outright, so such a leg must never size a real bet. */
+const isQuotable = (prob: number, market?: Parameters<typeof probabilityMintable>[1]) =>
+  probabilityMintable(prob, market);
 const sUsd = (v: number) => `${v < 0 ? '−' : '+'}$${num(Math.abs(v), 0)}`;
 
 /** A leg without its id — distributes over the union (unlike `Omit<Leg, 'id'>`,
