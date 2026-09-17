@@ -163,11 +163,11 @@ export const V2_READY = true;
  * '7-29' are permanently DEAD (frozen feeds, no mints). They remain here only for
  * reference / rollback-diagnosis. See the predict-refresh-8-06 notes for the full plan.
  */
-export type PredictDeployment = '6-24' | '7-29' | '8-06' | '8-21';
+export type PredictDeployment = '6-24' | '7-29' | '8-06' | '8-21' | '9-12';
 const _DEPLOYMENT_ENV = process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT;
 /** Every deployment this build can read, oldest first. Exported so a reader can answer
  *  "which deployment does this object belong to" instead of assuming the active one. */
-export const KNOWN_V2_DEPLOYMENTS: readonly PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21'];
+export const KNOWN_V2_DEPLOYMENTS: readonly PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21', '9-12'];
 const _KNOWN_DEPLOYMENTS = KNOWN_V2_DEPLOYMENTS;
 export const ACTIVE_V2_DEPLOYMENT: PredictDeployment = _KNOWN_DEPLOYMENTS.includes(
   _DEPLOYMENT_ENV as PredictDeployment,
@@ -201,9 +201,15 @@ export const V2_IS_729_PLUS: boolean = ACTIVE_V2_DEPLOYMENT !== '6-24';
  *
  * Guard behaviour on this rather than on `ACTIVE_V2_DEPLOYMENT === '8-21'` so the next
  * same-shape republish is a config block and nothing else, which is exactly what
- * `V2_IS_729_PLUS` bought us when 8-06 landed.
+ * `V2_IS_729_PLUS` bought us when 8-06 landed. 9-12 collected on that: it kept the
+ * leverage-free entry arity and the event structs, so it joined by index alone.
+ *
+ * Point (2) is 8-21's alone and nothing branches on it: 9-12's indexers are gone again
+ * and every consumer of this flag is about the protocol SHAPE (entry-function arity, the
+ * plp field list, the order-value stride), never about where reads come from.
  */
-export const V2_IS_821_PLUS: boolean = ACTIVE_V2_DEPLOYMENT === '8-21';
+export const V2_IS_821_PLUS: boolean =
+  KNOWN_V2_DEPLOYMENTS.indexOf(ACTIVE_V2_DEPLOYMENT) >= KNOWN_V2_DEPLOYMENTS.indexOf('8-21');
 
 export interface PredictV2Config {
   network: SuiNetwork;
@@ -687,6 +693,143 @@ const V2_TESTNET_821: PredictV2Config = {
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
+/**
+ * 9-12 — the deployment Mysten published on 2026-09-12 and recorded on `main` in
+ * packages/predict/deployment/deployment.testnet.json (manifest schemaVersion 8,
+ * sourceCommit 4d752fb8). The testnet manifest moved OFF the per-date branch and onto
+ * main with PR #1308; there is no `predict-testnet-9-12` branch to read.
+ *
+ * IT KILLED 8-21. Both ran side by side from 2026-09-12 (first MarketCreated 14:26 UTC)
+ * until 2026-09-16, when 8-21's oracle writers were switched off. Verified on chain
+ * 2026-09-17: the 8-21 pyth feed had not advanced in 17 hours and was frozen at
+ * $75,846.02, which is the number the terminal was showing behind a "live prices
+ * delayed" chip; the 9-12 feed was writing every ~500ms. So unlike the 8-21 cutover,
+ * this one is FORCED, and rollback buys a dead terminal rather than a working one.
+ *
+ * WHAT IT BRINGS:
+ *   - A NEW collateral coin. The quote type is no longer `dusdc::DUSDC` but `usdc::USDC`
+ *     (PR #1308, "reuse Testnet USDC" — that flag lets the NEXT redeploy keep this
+ *     currency rather than publishing another one). Its ticker is still DUSDC, so this is
+ *     a type rename and not a rebrand; see `quote` below. It is a fresh currency with a
+ *     fresh supply, unrelated to both the old DUSDC and the standard Sui testnet USDC,
+ *     and its TreasuryCap is address-owned by Mysten's deployer. There is no public mint
+ *     (the package exposes one private `usdc::init` and nothing else) and no swap from
+ *     the old coin, so every balance on 8-21 is stranded and funding is a Mysten ask.
+ *   - Pyth Lazer as the spot writer (`pythLazerPackage` / `pythLazerState` in the
+ *     manifest's oracleDependencies). Those are the WRITER's dependencies: the feed
+ *     object we read is still `propbook::pyth_feed::PythFeed` with the same
+ *     `lane.latest.value` shape, verified on chain, so the read layer is unchanged.
+ *
+ * WHAT IT TAKES AWAY: the ladder. Only 1m and 5m are `enabled` in the manifest, and the
+ * live market stream confirms it (50 consecutive MarketCreated events, all 1m or 5m).
+ * 8-21's hourly, daily and weekly markets do not exist here. Autopilot's day and week
+ * windows have nothing to trade until Mysten enables those cadences.
+ *
+ * Same protocol SHAPE as 8-21 (leverage still gone, same mint/redeem arity, same event
+ * structs plus additive fee fields), which is why V2_IS_821_PLUS covers it. The one
+ * difference is the HTTP indexers: 8-21's three `-v4` hosts are NXDOMAIN now and no
+ * replacement is documented, so this reads on chain like 7-29 and 8-06 did.
+ */
+const V2_TESTNET_912: PredictV2Config = {
+  network: 'testnet',
+  deployment: 'v2',
+  grpcUrl: 'https://fullnode.testnet.sui.io:443',
+  // 8-21's predict/propbook/account `-v4` indexers no longer resolve (NXDOMAIN, checked
+  // 2026-09-17) and the deployment README documents none, so everything reads on chain.
+  serverUrl: '',
+  oracleServerUrl: '',
+  packages: {
+    predict: '0x59d71119e990573a738dd3ff9c4c7d28d6893af69c87c1a7f3a2e90e280ce2f4',
+    account: '0x1e57d6554b99e4ca68330322c3e5c409ba1b681642726b603bf1be92c1840ca9',
+    propbook: '0xa83f9d7651de09672a40cea371c387bf954e0f3092947670d71428d4fbc9edd9',
+    // oracleDependencies.blockScholesOraclePackage — the same package 8-06 and 8-21
+    // pointed at, and still read by nothing in the app.
+    blockScholesOracle: '0x9d2cf38611d971a0e918b93fc0113d279f5c923f43e62c407a9ad0f9d82f6698',
+    fixedMath: '0xf3a38ba24fd40173af692cef151a43850f5935a3e026ae037fc19bb81974c6a8',
+    sessions: '0x1908eee49d7a08d74a537d7f23766b363a145517fe0d3e0d85635d1682831ffd',
+    // Freshly published, so published-at IS the type origin (same as 8-21).
+    sessionsEventOrigin: '0x1908eee49d7a08d74a537d7f23766b363a145517fe0d3e0d85635d1682831ffd',
+    deepbookCoreAccount: '0x2a3a5f51e1c566e0a77c667596a8212d036b44aeac32790991c9eb97580fabb1',
+  },
+  shared: {
+    protocolConfig: '0x422a45c31128e69d0310ab3bed28bd14f730acf9f5681f70936d20c60d26bfb0',
+    poolVault: '0x6fd178a49848387d60ccfd3e53bf06969929970246a3a7983ae5bb2a5ed52ee3',
+    registry: '0x85cfaa857f9dfca75f6ba624eead063c4a1bc9b701201b8f21e1f9c15833ccc4',
+    oracleRegistry: '0xf4ad65184b2e4e9d8e50d44b02a76c64e9607f63e3dbc362e110c99e20a17161',
+    accountRegistry: '0x511e11f7f5d5c1043d795180657603d59e06e90fbfcafd3f90c67ff0836bbd0c',
+    sessionsConfig: '0xc096b97289821b27badfdf758d614bbbfa386f93d3faa409ecc1fcc6075d1186',
+    // Unchanged from 8-21 — DeepBook core's own registry is not part of this republish.
+    deepbookRegistry: '0x7c256edbda983a2cd6f946655f4bf3f00a41043993781f8674a7046e8c0e11d1',
+  },
+  // A BuilderCode belongs to the registry that created it, and this registry is new, so
+  // 8-21's code does not carry over. Re-register from the founder wallet and set
+  // NEXT_PUBLIC_BUILDER_CODE_ID_912. Deliberately no fallback to the 8-21 env var: a
+  // stale id attaches a code this registry has never heard of, and the Skew board would
+  // then be unable to tell our trades from anyone else's. See the standing rule.
+  builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID_912 || '',
+  // skew_fee_v2 is framework-only (it moves the quote coin between accounts and never
+  // calls into the predict package) and is GENERIC over `quote.coinType`, so the same
+  // published package keeps working now that the quote coin is USDC. Re-verified on
+  // chain during cutover rather than assumed.
+  skewFeeV2PackageId:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID ||
+    '0xd3f63b410046b5fa709174f319eac07c1728bcdb192771aad89d79afc44adc71',
+  feeConfigV2Id:
+    process.env.NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID ||
+    '0xe791646b2e5761d650c0ddd3e4db656430e4d31863ccc13613c845572a6520fb',
+  // Leverage does not exist on this protocol, same as 8-21.
+  noLeverageWindowMs: 0,
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x6',
+  quote: {
+    // The Move TYPE changed (`dusdc::DUSDC` became `usdc::USDC`, `coinTypes.usdc` in the
+    // manifest) but the TICKER did not. The on-chain `coin_registry::Currency` reads
+    // symbol "DUSDC", name "DeepBook USDC", description "DeepBook Test USDC", and the
+    // deployment README says testnet "mints 100,000,000 test USDC with display symbol
+    // DUSDC". So this stays DUSDC: it is what the chain calls the coin, what a wallet
+    // shows, and what every piece of copy in the app already says. A type rename is not a
+    // rebrand, and calling it USDC here would put a name on screen that matches nothing
+    // the trader can see anywhere else.
+    //
+    // Every PTB builder takes `coinType` as a type argument (account deposit/withdraw,
+    // mint, redeem, and the generic skew_fee_v2 router), so the money path follows the
+    // line above with no code change.
+    coinType: '0xc028557a1ed49e42ed091e115aedefd70a442b184c18fbec5c48d5b6c0b8c184::usdc::USDC',
+    currencyId: '0x3122f737aa36d0a3a55a6b15a94578b52829d60d45b8d0f48c37f1739aed3ca2',
+    decimals: 6,
+    symbol: 'DUSDC',
+  },
+  plpCoinType: '0x59d71119e990573a738dd3ff9c4c7d28d6893af69c87c1a7f3a2e90e280ce2f4::plp::PLP',
+  deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0x8ef99c3d14e57612d09a67bcc9b5bff568a80992df6beca2bfcd922973192faa',
+    // Same two-feed shape as 7-29 / 8-06 / 8-21: value store, then svi store.
+    bsFeedIds: [
+      '0x1e5142471311505a7428b072230c9ffe8a747b3b9392720e39246af4aea08216',
+      '0x0f1cbefd1dd2ba08ae700a7067c32e0718edf926fa18cea80bd231c02d509ece',
+    ],
+  },
+  // TWO enabled cadences, down from 8-21's five. 1h, 1d, 1w and 1mo all ship
+  // `enabled: false` with tick 0 and are therefore not listed here, which is what makes
+  // `cadenceOf` classify every market against the ladder that actually exists. Verbatim
+  // from initialConfiguration.cadences.BTC, and confirmed against the live market stream.
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '10000000000', initialExpiryCash: '2000000000', windowSize: '2' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '10000000000', initialExpiryCash: '2000000000', windowSize: '2' },
+  ],
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+  // Left unset deliberately. 8-21's tally form dispenses the OLD dusdc::DUSDC, which this
+  // deployment cannot take, and as of 2026-09-17 nobody outside Mysten holds the new coin:
+  // the TreasuryCap owner holds 99.4M of the 200M supply, an internal bot holds 10M, one
+  // internal wallet holds 100k, and that is the entire distribution. Until there is a
+  // channel that actually funds a trader, the UI shows no faucet rather than sending
+  // someone somewhere that cannot help them.
+};
+
 /** Testnet deployments, selected with NEXT_PUBLIC_PREDICT_DEPLOYMENT. 8-06 is still the
  *  default: 8-21 is wired and selectable but not yet cut over. 6-24 and 7-29 are dead
  *  and kept only for reference and rollback diagnosis. Mainnet has one. */
@@ -695,6 +838,7 @@ const V2_TESTNET_BY_DEPLOYMENT: Record<PredictDeployment, PredictV2Config> = {
   '7-29': V2_TESTNET_729,
   '8-06': V2_TESTNET_806,
   '8-21': V2_TESTNET_821,
+  '9-12': V2_TESTNET_912,
 };
 
 function selectV2Config(network: SuiNetwork): PredictV2Config {
@@ -747,11 +891,34 @@ export function deploymentForPredictPackage(packageOrType: string): PredictDeplo
  * The deployment we migrated FROM, or null when there is nothing behind us.
  *
  * Only the immediately previous one. Funds could in principle be stranded further back, but
- * 6-24 and 7-29 are long dead and their balances were already swept forward, so offering to
- * check them would be a prompt about nothing for every trader who ever sees it.
+ * the older deployments are long dead and their balances were already swept forward, so
+ * offering to check them would be a prompt about nothing for every trader who ever sees it.
+ *
+ * Read off the known list rather than written out, so a new deployment inherits the sweep
+ * prompt by being added to that list. The old hand-written chain stopped at 8-21 and would
+ * have left 9-12 traders with no way back to the account holding their money.
  */
 export const PREVIOUS_V2_DEPLOYMENT: PredictDeployment | null =
-  ACTIVE_V2_DEPLOYMENT === '8-21' ? '8-06' : ACTIVE_V2_DEPLOYMENT === '8-06' ? '7-29' : null;
+  KNOWN_V2_DEPLOYMENTS[KNOWN_V2_DEPLOYMENTS.indexOf(ACTIVE_V2_DEPLOYMENT) - 1] ?? null;
+
+/**
+ * The `.env` key that holds our registered builder code for a deployment.
+ *
+ * A BuilderCode belongs to the registry that created it, so every republish needs its own,
+ * and each gets its own variable rather than overwriting one — a cutover that has to be
+ * rolled back must not have destroyed the old deployment's id on the way out.
+ *
+ * 6-24, 7-29 and 8-06 share the unsuffixed name because they predate the convention; from
+ * 8-21 on the deployment is in the key. Written out rather than derived from the deployment
+ * string so the historical exception is visible instead of being a rule with a hole in it.
+ */
+export const BUILDER_CODE_ENV_VAR: Record<PredictDeployment, string> = {
+  '6-24': 'NEXT_PUBLIC_BUILDER_CODE_ID',
+  '7-29': 'NEXT_PUBLIC_BUILDER_CODE_ID',
+  '8-06': 'NEXT_PUBLIC_BUILDER_CODE_ID',
+  '8-21': 'NEXT_PUBLIC_BUILDER_CODE_ID_821',
+  '9-12': 'NEXT_PUBLIC_BUILDER_CODE_ID_912',
+};
 
 export const predictV2Config: PredictV2Config = selectV2Config(ACTIVE_NETWORK);
 

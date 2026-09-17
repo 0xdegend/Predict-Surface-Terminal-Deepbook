@@ -33,7 +33,7 @@ import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { Transaction, coinWithBalance } from '@mysten/sui/transactions';
 import { isValidSuiAddress } from '@mysten/sui/utils';
-import { predictConfig } from '@/config/predict';
+import { predictConfig, predictV2Config } from '@/config/predict';
 import {
   STARTER_GRANT_BASE_DEFAULT,
   STARTER_GRANT_BALANCE_CEILING,
@@ -76,7 +76,20 @@ const SUI_CEILING = envBigInt('STARTER_GRANT_SUI_CEILING', 10_000_000n);
  *  (MIST). Default 0.1 SUI. */
 const SUI_GAS_RESERVE = envBigInt('STARTER_GRANT_SUI_RESERVE', 100_000_000n);
 
-const QUOTE = predictConfig.quote.coinType;
+/**
+ * The coin the grant drips: the one the LIVE deployment settles in, not the legacy
+ * terminal's.
+ *
+ * They were the same coin for every deployment up to 8-21, so reading it off the legacy
+ * config was invisible. 9-12 publishes its own `usdc::USDC`, and dripping the old
+ * `dusdc::DUSDC` would onboard a new trader with a coin the protocol they are about to
+ * trade on has never heard of: funded, welcomed, and unable to place a single bet.
+ *
+ * Until the treasury holds the new coin the breaker below answers 503 "Treasury is low",
+ * which is the honest state — no faucet rather than a useless one — and the grant starts
+ * working on its own the moment we are funded, with no code change.
+ */
+const QUOTE = predictV2Config.quote.coinType;
 const SUI = '0x2::sui::SUI';
 
 /** Lazily build the treasury keypair from STARTER_GRANT_PRIVATE_KEY (a

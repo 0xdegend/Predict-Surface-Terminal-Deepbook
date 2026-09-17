@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { resolveRecipe, SHARE_MIN_RUNWAY_MS } from './resolve-recipe';
 import type { TradeRecipe } from './trade-link';
 import type { V2Market } from '@/lib/api/v2/types';
+import { predictV2Config } from '@/config/predict';
 
 /** A midnight, so it lies on the 1-minute, 5-minute and hourly grid at once. Cadence is
  *  a function of the expiry (the longest ladder whose period divides it), so a fixture
@@ -104,8 +105,14 @@ describe('resolveRecipe — market selection', () => {
   });
 
   it('honours the requested tenor when multiple families are live', () => {
-    const res = resolveRecipe(binary({ tenor: '1h' }), [oneM('1m-a', 120), fiveM('5m-a', 120), oneH('1h-a', 300)], NOW);
-    expect(res.ok && res.trade.marketId).toBe('1h-a');
+    // Ask for the LONGEST family the venue actually runs, so the test keeps meaning what
+    // it says across deployments. 6-24 through 8-21 list an hourly ladder and the hourly
+    // market answers; 9-12 stops at five minutes, where the hourly-boundary fixture is
+    // itself a 5m market and the soonest of that family wins.
+    const hourly = predictV2Config.cadences.some((c) => c.name === '1h');
+    const markets = [oneM('1m-a', 120), fiveM('5m-a', 120), oneH('1h-a', 300)];
+    const res = resolveRecipe(binary({ tenor: hourly ? '1h' : '5m' }), markets, NOW);
+    expect(res.ok && res.trade.marketId).toBe(hourly ? '1h-a' : '5m-a');
     expect(res.ok && res.trade.adjustments).toEqual([]);
   });
 });

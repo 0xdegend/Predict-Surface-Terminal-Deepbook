@@ -15,6 +15,17 @@ import type { V2Market } from '@/lib/api/v2/types';
 
 const MIN = 60_000;
 
+/**
+ * What an HOURLY-boundary expiry is called on the deployment this build points at.
+ *
+ * `cadenceOf` answers against the ladder the venue actually lists, so the same expiry has
+ * a different name on different deployments: '1h' where an hourly ladder exists (6-24
+ * through 8-21), '5m' on 9-12, which schedules only the two short cadences. Deriving it
+ * keeps these fixtures about the RULE (longest ladder that divides the expiry wins) rather
+ * than about which ladders Mysten happened to enable the week they were written.
+ */
+const HOURLY_TAG = predictV2Config.cadences.some((c) => c.name === '1h') ? '1h' : '5m';
+
 /** Build a V2Market with sane defaults; `created`/`expiry` drive cadence. */
 function mkt(over: Partial<V2Market> & { expiry_market_id: string; expiry: number; checkpoint_timestamp_ms: number }): V2Market {
   return {
@@ -50,7 +61,7 @@ describe('cadenceOf', () => {
       mkt({ expiry_market_id: id, checkpoint_timestamp_ms: WEEK_BASE - 3 * 60 * MIN, expiry: WEEK_BASE + offset });
     expect(cadenceOf(at(61 * MIN, 'a'))).toBe('1m');
     expect(cadenceOf(at(65 * MIN, 'b'))).toBe('5m');
-    expect(cadenceOf(at(300 * MIN, 'c'))).toBe('1h');
+    expect(cadenceOf(at(300 * MIN, 'c'))).toBe(HOURLY_TAG);
   });
 
   it('ignores the creation time entirely', () => {
@@ -59,9 +70,9 @@ describe('cadenceOf', () => {
     // registry lookup, where there is no creation event to measure.
     const hourly = (created: number) =>
       mkt({ expiry_market_id: 'h', checkpoint_timestamp_ms: created, expiry: WEEK_BASE + 300 * MIN });
-    expect(cadenceOf(hourly(WEEK_BASE - 3 * 60 * MIN))).toBe('1h');
-    expect(cadenceOf(hourly(WEEK_BASE - 20_000 * MIN))).toBe('1h');
-    expect(cadenceOf(hourly(0))).toBe('1h');
+    expect(cadenceOf(hourly(WEEK_BASE - 3 * 60 * MIN))).toBe(HOURLY_TAG);
+    expect(cadenceOf(hourly(WEEK_BASE - 20_000 * MIN))).toBe(HOURLY_TAG);
+    expect(cadenceOf(hourly(0))).toBe(HOURLY_TAG);
   });
 
   it('ignores the expiry allocation, which no longer separates the ladders', () => {
@@ -128,8 +139,10 @@ describe('groupByCadence', () => {
     ];
     const g = groupByCadence(ms);
     expect(g['1m'].map((m) => m.expiry_market_id)).toEqual(['a']);
-    expect(g['5m'].map((m) => m.expiry_market_id)).toEqual(['b']);
-    expect(g['1h'].map((m) => m.expiry_market_id)).toEqual(['c']);
+    // 'c' joins the hourly bucket where one exists, and the 5-minute bucket where the
+    // venue's ladder stops there, which is the same rule as above seen from the group side.
+    expect(g['5m'].map((m) => m.expiry_market_id)).toEqual(HOURLY_TAG === '1h' ? ['b'] : ['b', 'c']);
+    expect(g['1h'].map((m) => m.expiry_market_id)).toEqual(HOURLY_TAG === '1h' ? ['c'] : []);
   });
 });
 

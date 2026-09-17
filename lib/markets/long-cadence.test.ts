@@ -104,14 +104,18 @@ describe('simple mode stays on the short rounds', () => {
   });
 });
 
+/** The longest ladder this venue lists. A midnight expiry sits on EVERY boundary, so it
+ *  must carry this name: '1h' on 8-06, '5m' on 9-12, which schedules only 1m and 5m. */
+const TOP: V2Cadence = [...CADENCE_ORDER].reverse().find((c) => LADDER.has(c)) ?? '1m';
+
 describe.skipIf(hasLong)(`cadenceOf where there is no long ladder (${ACTIVE_V2_DEPLOYMENT})`, () => {
-  it('calls a midnight expiry the hourly market', () => {
-    // Not a fallback or a rounding error: on a deployment with no daily cadence, the
-    // market expiring at midnight IS the hourly one, because hourly is the longest ladder
-    // whose period divides that expiry. The same expiry answers to a different name on
-    // 8-21 only because a longer ladder exists there to claim it.
-    expect(cadenceOf(at(DAY))).toBe('1h');
-    expect(cadenceOf(at(WEEK))).toBe('1h');
+  it('calls a midnight expiry by the longest ladder the venue runs', () => {
+    // Not a fallback or a rounding error. On a deployment with no daily cadence, the
+    // market expiring at midnight IS the longest listed one, because that is the longest
+    // ladder whose period divides that expiry. The same expiry answers to a different name
+    // on 8-21 only because a longer ladder exists there to claim it.
+    expect(cadenceOf(at(DAY))).toBe(TOP);
+    expect(cadenceOf(at(WEEK))).toBe(TOP);
     expect(cadenceOf(at(61 * MIN))).toBe('1m');
     expect(cadenceOf(at(65 * MIN))).toBe('5m');
   });

@@ -67,12 +67,17 @@ describe(`the active deployment block (${ACTIVE_V2_DEPLOYMENT})`, () => {
   });
 
   it('only claims HTTP indexers on a deployment that has them', () => {
-    // 7-29 and 8-06 ship none and read on-chain; 8-21 has three. A leftover serverUrl on
-    // a deployment without an indexer sends reads to a host that will never answer.
-    if (V2_IS_821_PLUS) {
+    // A leftover serverUrl on a deployment without an indexer sends reads to a host that
+    // will never answer, so this is keyed to the deployment rather than to the shape flag.
+    // 7-29, 8-06 and 9-12 ship none and read on chain; 8-21 alone had three, and its three
+    // `-v4` hosts stopped resolving once 9-12 replaced it.
+    if (ACTIVE_V2_DEPLOYMENT === '8-21') {
       expect(c.serverUrl).toContain('predict-server-v4');
       expect(c.oracleServerUrl).toContain('propbook-server-v4');
       expect(c.accountServerUrl).toContain('account-server-v4');
+    } else {
+      expect(c.serverUrl).toBe('');
+      expect(c.oracleServerUrl).toBe('');
     }
   });
 

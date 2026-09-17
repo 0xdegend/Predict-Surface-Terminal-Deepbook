@@ -1,32 +1,38 @@
 /**
- * cutover-preflight.live.test.ts — the gate that must be green before 8-21 goes live.
+ * cutover-preflight.live.test.ts — the gate that must be green before a new deployment
+ * goes live.
  *
- * The migration's one irreversible step is the leaderboard. Everything else rolls back with
- * an env var: point `NEXT_PUBLIC_PREDICT_DEPLOYMENT` back at 8-06 and the app is exactly
- * what it was. But trades that happen on 8-06 AFTER the final snapshot are captured nowhere.
- * They are not lost on chain, they are simply not in the file we carry forward, and nobody
- * notices, because a leaderboard that is short a few hundred trades still looks like a
- * leaderboard.
+ * A migration's one irreversible step is the leaderboard. Everything else rolls back with an
+ * env var: point `NEXT_PUBLIC_PREDICT_DEPLOYMENT` back at the old deployment and the app is
+ * exactly what it was. But trades that happened on it AFTER the final snapshot are captured
+ * nowhere. They are not lost on chain, they are simply not in the file we carry forward, and
+ * nobody notices, because a leaderboard that is short a few hundred trades still looks like
+ * a leaderboard.
  *
  * So the freshness of that snapshot is asserted here rather than written on a checklist.
  * Measured 2026-08-31: Skew trades land at roughly 3 per hour, so a snapshot taken the day
  * before cutover silently drops something like seventy trades.
  *
- * Run this LAST, immediately before flipping the env var:
+ * Everything is derived from the deployment this build points at, so the same gate serves
+ * every cutover. Run it LAST, immediately before flipping the env var:
  *
- *   NEXT_PUBLIC_PREDICT_DEPLOYMENT=8-21 RUN_LIVE=1 \
+ *   NEXT_PUBLIC_PREDICT_DEPLOYMENT=<incoming> RUN_LIVE=1 \
  *     npx vitest run lib/leaderboard/cutover-preflight.live.test.ts
  *
  * A failure here is not a bug to work around. It is the preflight doing its job: re-run the
- * capture (see the runbook, MIGRATION-8-21.md) and run this again.
+ * capture (see the runbook) and run this again.
  */
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { SuiGrpcClient } from '@mysten/sui/grpc';
-import { predictV2Config, ACTIVE_V2_DEPLOYMENT, V2_IS_821_PLUS } from '@/config/predict';
+import {
+  predictV2Config,
+  ACTIVE_V2_DEPLOYMENT,
+  PREVIOUS_V2_DEPLOYMENT,
+  BUILDER_CODE_ENV_VAR,
+} from '@/config/predict';
 import { LEGACY_SEEDS, LEGACY_OWNERS, LEGACY_TOTAL_POINTS } from './legacy-carryover';
 import { legacyHistoryByOwner } from '@/lib/portfolio/legacy-history-data';
-import pointsSeed806 from './legacy-points-8-06.json';
 
 const RUN = process.env.RUN_LIVE === '1';
 
@@ -39,8 +45,12 @@ const RUN = process.env.RUN_LIVE === '1';
  */
 const MAX_SEED_AGE_HOURS = Number(process.env.SEED_MAX_AGE_HOURS ?? 6);
 
-/** The deployment we are migrating AWAY from, whose final board must be captured. */
-const OUTGOING = '8-06';
+/**
+ * The deployment we are migrating AWAY from, whose final board must be captured. Read off
+ * the config chain rather than written here, so this gate cannot be left pointing at the
+ * previous migration's outgoing deployment and quietly approve a stale snapshot.
+ */
+const OUTGOING = PREVIOUS_V2_DEPLOYMENT;
 
 /**
  * Read a variable from `.env` directly.
@@ -67,18 +77,26 @@ function fromEnvFile(key: string): string {
   }
 }
 
-describe.skipIf(!RUN)('8-21 cutover preflight', () => {
+describe.skipIf(!RUN)(`${ACTIVE_V2_DEPLOYMENT} cutover preflight`, () => {
   it(`has a snapshot of ${OUTGOING} taken within the last ${MAX_SEED_AGE_HOURS}h`, () => {
-    const seed = pointsSeed806 as unknown as { capturedAt: string; rows: unknown[] };
+    expect(OUTGOING, 'no previous deployment — nothing to carry, and nothing to gate').not.toBeNull();
+    // Found through the carryover registry rather than imported, so adding a seed in one
+    // place is enough and this gate can never check a file the app does not actually load.
+    const seed = LEGACY_SEEDS.find((s) => s.deployment === OUTGOING);
+    expect(seed, `no ${OUTGOING} snapshot is registered in legacy-carryover — capture it first`).toBeDefined();
+    if (!seed || !OUTGOING) return;
+
     const ageHours = (Date.now() - new Date(seed.capturedAt).getTime()) / 3_600_000;
     const trades = Math.round(ageHours * 3); // measured rate, for a concrete failure message
+    const envVar = BUILDER_CODE_ENV_VAR[OUTGOING];
 
     console.log(`${OUTGOING} snapshot: ${seed.capturedAt} (${ageHours.toFixed(1)}h old, ${seed.rows.length} traders)`);
     expect(
       ageHours,
       `The ${OUTGOING} snapshot is ${ageHours.toFixed(1)}h old, so roughly ${trades} trades made since ` +
         `then would not carry over. Re-run the capture before cutting over:\n\n` +
-        `  env RUN_LIVE=1 CAPTURE_SEED=1 "$(grep '^NEXT_PUBLIC_BUILDER_CODE_ID=' .env)" \\\n` +
+        `  env RUN_LIVE=1 CAPTURE_SEED=1 NEXT_PUBLIC_PREDICT_DEPLOYMENT=${OUTGOING} \\\n` +
+        `    "$(grep '^${envVar}=' .env)" \\\n` +
         `    npx vitest run lib/leaderboard/capture-seed.live.test.ts\n`,
     ).toBeLessThan(MAX_SEED_AGE_HOURS);
   });
@@ -88,6 +106,8 @@ describe.skipIf(!RUN)('8-21 cutover preflight', () => {
     // rather than against a fixture.
     const carried = LEGACY_SEEDS.map((s) => s.deployment);
     console.log(`carrying: ${carried.join(' + ')} → ${LEGACY_OWNERS.length} traders, ${Math.round(LEGACY_TOTAL_POINTS)} points`);
+    // Every retired board, not just the one we are stepping off: a trader's standing is a
+    // career total, so dropping an older seed silently demotes anyone who earned on it.
     expect(carried).toContain('6-24');
     expect(carried).toContain(OUTGOING);
     expect(carried, 'a snapshot of the live deployment is being overlaid — the board would double').not.toContain(
@@ -110,16 +130,14 @@ describe.skipIf(!RUN)('8-21 cutover preflight', () => {
     );
   });
 
-  it('is pointed at 8-21, with a builder code registered on it', async () => {
-    // Phase 6. Without this the fee rail earns nothing and, worse, the new board cannot tell
-    // a Skew trade from anyone else's, so the Skew leaderboard starts empty and stays empty.
-    expect(ACTIVE_V2_DEPLOYMENT).toBe('8-21');
-    expect(V2_IS_821_PLUS).toBe(true);
-
-    const codeId = fromEnvFile('NEXT_PUBLIC_BUILDER_CODE_ID_821');
+  it(`has a builder code registered on ${ACTIVE_V2_DEPLOYMENT}`, async () => {
+    // Without this the fee rail earns nothing and, worse, the new board cannot tell a Skew
+    // trade from anyone else's, so the Skew leaderboard starts empty and stays empty.
+    const envVar = BUILDER_CODE_ENV_VAR[ACTIVE_V2_DEPLOYMENT];
+    const codeId = fromEnvFile(envVar);
     expect(
       codeId,
-      'NEXT_PUBLIC_BUILDER_CODE_ID_821 is not set in .env — register the builder code on 8-21 first (Phase 6)',
+      `${envVar} is not set in .env — register the builder code on ${ACTIVE_V2_DEPLOYMENT} first`,
     ).toMatch(/^0x[0-9a-f]{64}$/);
 
     const client = new SuiGrpcClient({ network: 'testnet', baseUrl: predictV2Config.grpcUrl });
@@ -131,16 +149,19 @@ describe.skipIf(!RUN)('8-21 cutover preflight', () => {
     console.log(`builder code ${codeId.slice(0, 12)}… → ${type || 'NOT FOUND'}`);
     console.log(`  owner ${String(json.owner ?? '?').slice(0, 12)}…  index ${String(json.index ?? '?')}`);
 
-    expect(type, 'the configured builder code does not exist on 8-21').toContain('builder_code::BuilderCode');
-    // The decisive check. A code from a previous deployment is a real, resolvable, correctly
-    // typed object — it simply belongs to a registry 8-21 has never heard of, so trades would
-    // attribute to nothing and the fee rail would earn nothing, silently.
-    expect(type, 'this builder code belongs to a DIFFERENT predict package than 8-21').toContain(
-      predictV2Config.packages.predict,
+    expect(type, `the configured builder code does not exist on ${ACTIVE_V2_DEPLOYMENT}`).toContain(
+      'builder_code::BuilderCode',
     );
+    // The decisive check. A code from a previous deployment is a real, resolvable, correctly
+    // typed object — it simply belongs to a registry this deployment has never heard of, so
+    // trades would attribute to nothing and the fee rail would earn nothing, silently.
+    expect(
+      type,
+      `this builder code belongs to a DIFFERENT predict package than ${ACTIVE_V2_DEPLOYMENT}`,
+    ).toContain(predictV2Config.packages.predict);
   }, 60_000);
 
-  it('resolves every 8-21 shared object it is about to trade against', async () => {
+  it('resolves every shared object it is about to trade against', async () => {
     const client = new SuiGrpcClient({ network: 'testnet', baseUrl: predictV2Config.grpcUrl });
     const ids = Object.entries(predictV2Config.shared).filter(([, v]) => !!v) as [string, string][];
     const res = await client.core.getObjects({ objectIds: ids.map(([, v]) => v), include: { json: true } });

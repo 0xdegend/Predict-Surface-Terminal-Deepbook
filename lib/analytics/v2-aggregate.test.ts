@@ -9,6 +9,12 @@ import {
   kpisFromData,
 } from './v2-aggregate';
 import type { V2Market, V2OrderEvent } from '@/lib/api/v2/types';
+import { predictV2Config } from '@/config/predict';
+
+/** What an hourly-boundary expiry is CALLED on this deployment. The fixtures below are
+ *  about the cadence tag being plumbed through the fold, not about which ladders the venue
+ *  runs: 6-24 through 8-21 list an hourly one, 9-12 stops at five minutes. */
+const HOURLY_TAG = predictV2Config.cadences.some((c) => c.name === '1h') ? '1h' : '5m';
 
 const POS_INF = 1073741823;
 
@@ -85,7 +91,7 @@ describe('flowRows', () => {
     expect(rows[0].stakeUsd).toBeCloseTo(5, 6);
     expect(rows[0].payoutUsd).toBeCloseTo(10, 6);
     expect(rows[0].leverage).toBe(2);
-    expect(rows[0].cadence).toBe('1h');
+    expect(rows[0].cadence).toBe(HOURLY_TAG);
   });
 
   it('skips redeems and mints with no owner', () => {
@@ -135,7 +141,7 @@ describe('marketCell / marketCells', () => {
     expect(c.forward).toBe(63_800); // pricer forward wins over spot
     expect(c.atmIv).toBe(0.42);
     expect(c.upShare).toBeCloseTo(0.75, 6); // 30 UP / 40 total
-    expect(c.cadence).toBe('1h');
+    expect(c.cadence).toBe(HOURLY_TAG);
   });
 
   it('falls back to the page spot when the pricer has no forward', () => {

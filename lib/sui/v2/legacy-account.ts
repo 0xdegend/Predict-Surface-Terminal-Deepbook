@@ -136,6 +136,25 @@ export function buildLegacyWithdrawTx(
 }
 
 /**
+ * Can the old account's balance be handed straight to the new one?
+ *
+ * Only when both deployments settle in the SAME coin. The move is one PTB that takes the
+ * `Coin<T>` the old package's `withdraw_funds` returns and passes it to the new package's
+ * `deposit_funds`, so the two type arguments have to agree. Every republish up to 8-21
+ * reused `dusdc::DUSDC` and they always did; 9-12 publishes its own `usdc::USDC`, and there
+ * they never can.
+ *
+ * That is not a bug to route around, it is the actual situation: the old coin has no use on
+ * the new deployment, there is no swap between them, and a trader's old balance can only be
+ * withdrawn back to their wallet (see `buildLegacyWithdrawTx`), not carried forward. A
+ * caller should offer the withdrawal and say so plainly rather than offering a move that
+ * cannot succeed.
+ */
+export function canMoveFunds(from: PredictDeployment): boolean {
+  return predictConfigFor(from).quote.coinType === predictV2Config.quote.coinType;
+}
+
+/**
  * Move everything from the old account into the new one, in a single transaction.
  *
  * `createAccount` decides whether the new account has to be made first. Pass what
@@ -158,6 +177,15 @@ export function buildLegacyMoveTx(p: {
 }): Transaction {
   const from = predictConfigFor(p.from);
   const to = predictV2Config;
+  // Fail here rather than on chain. Given mismatched coins this builds a PTB that hands a
+  // Coin<DUSDC> to deposit_funds<USDC>, which the chain rejects — after the trader has
+  // already been shown a banner, clicked it and approved a signature.
+  if (!canMoveFunds(p.from)) {
+    throw new Error(
+      `cannot move funds from ${p.from}: it settles in ${from.quote.coinType.split('::').pop()} and ` +
+        `this deployment settles in ${to.quote.coinType.split('::').pop()}. Withdraw to the wallet instead.`,
+    );
+  }
   const oldAcc = (m: string, f: string) => `${from.packages.account}::${m}::${f}` as const;
   const newAcc = (m: string, f: string) => `${to.packages.account}::${m}::${f}` as const;
 

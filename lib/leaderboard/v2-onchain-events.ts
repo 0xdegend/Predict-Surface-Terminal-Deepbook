@@ -67,25 +67,43 @@ const toMs = (iso?: string | null): number => {
 };
 
 /**
- * One POST to the public GraphQL endpoint, retrying a 429.
+ * One page of events, retrying the whole request while the endpoint is merely struggling.
  *
- * This walk is four event types deep and up to forty pages each, so a full scan is
- * ~160 requests in a burst and the public endpoint rate-limits it. Without a retry the
- * whole board read fails on the first throttled page, which is a bad trade: the data is
- * there, we just asked for it too quickly. Backoff is exponential from 400ms and gives
- * up after four tries so a genuinely down endpoint still fails fast rather than hanging
- * a request for minutes.
+ * This walk is four event types deep and up to forty pages each, so a full scan is ~160
+ * requests in a burst and the public endpoint pushes back on it. Retrying only a 429 was
+ * not enough: under that burst it also answers HTTP 200 with the GraphQL error "Failed to
+ * list events", and a bare 502 with an empty body. Both are the same thing as a 429 — the
+ * data is there, we asked too quickly — and either one killed the whole scan on one bad
+ * page out of a hundred and sixty. That cost a leaderboard capture on 2026-09-17, which is
+ * the one read in this codebase that cannot simply be run again later: it snapshots a
+ * deployment that is about to be left behind.
+ *
+ * So all three are retried together, on one bounded budget: exponential from 400ms, four
+ * attempts, then throw. A genuinely broken query still fails fast and still fails CLOSED,
+ * because the capture's own gates refuse to write a partial board.
  */
-async function postWithBackoff(body: string, signal?: AbortSignal): Promise<Response> {
+async function fetchPage(body: string, signal?: AbortSignal): Promise<GraphQLResponse> {
   let wait = 400;
+  let last = 'order-events query failed';
   for (let attempt = 0; ; attempt++) {
+    const retriable = attempt < 3;
+    let json: GraphQLResponse | null = null;
     const res = await fetch(graphqlUrl(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       signal,
       body,
     });
-    if (res.status !== 429 || attempt >= 3) return res;
+    if (res.ok) {
+      // A 200 can still carry a GraphQL error, and an overloaded endpoint sometimes
+      // answers 200 with a body that is not JSON at all.
+      json = await res.json().catch(() => null);
+      if (json && !json.errors?.length) return json;
+      last = json?.errors?.[0]?.message ?? 'order-events response was not readable';
+    } else {
+      last = `order-events query ${res.status}`;
+    }
+    if (!retriable) throw new Error(last);
     await new Promise((r) => setTimeout(r, wait));
     wait *= 2;
   }
@@ -101,13 +119,10 @@ async function pageEvents(structName: string, signal?: AbortSignal): Promise<V2O
   let cursor: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await postWithBackoff(
+    const json = await fetchPage(
       JSON.stringify({ query: EVENTS_QUERY, variables: { type, last: PAGE, before: cursor } }),
       signal,
     );
-    if (!res.ok) throw new Error(`order-events query ${res.status}`);
-    const json = (await res.json()) as GraphQLResponse;
-    if (json.errors?.length) throw new Error(json.errors[0]?.message ?? 'order-events query failed');
     const events = json.data?.events ?? {};
 
     for (const node of events.nodes ?? []) {
