@@ -141,7 +141,7 @@ export function buildLegacyWithdrawTx(
  * Only when both deployments settle in the SAME coin. The move is one PTB that takes the
  * `Coin<T>` the old package's `withdraw_funds` returns and passes it to the new package's
  * `deposit_funds`, so the two type arguments have to agree. Every republish up to 8-21
- * reused `dusdc::USDC` and they always did; 9-12 publishes its own `usdc::USDC`, and there
+ * reused `dusdc::DUSDC` and they always did; 9-12 publishes its own `usdc::USDC`, and there
  * they never can.
  *
  * That is not a bug to route around, it is the actual situation: the old coin has no use on

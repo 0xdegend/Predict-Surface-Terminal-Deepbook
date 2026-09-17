@@ -190,7 +190,10 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
       );
     }
     return legacyMove.hasFunds ? (
-      <MigrateAccountCard move={legacyMove} busy={acct.busy === 'legacy-move'} />
+      <MigrateAccountCard
+        move={legacyMove}
+        busy={acct.busy === 'legacy-move' || acct.busy === 'legacy-withdraw'}
+      />
     ) : (
       <CreateAccountCard busy={acct.busy === 'create'} onCreate={() => acct.createAccount()} />
     );
@@ -548,12 +551,22 @@ function MigrateAccountCard({
   move: ReturnType<typeof useLegacyMove>;
   busy: boolean;
 }) {
-  const sym = predictV2Config.quote.symbol;
-  const amount = `${fmtQuote(fromQuote(move.amount))} ${sym}`;
+  // The OLD release's ticker: from 9-12 the stranded balance is a different coin from the
+  // one traded here, and naming it with the active symbol is the exact confusion this card
+  // has to avoid.
+  const amount = `${fmtQuote(fromQuote(move.amount))} ${move.oldSym}`;
   const done = move.phase === 'done';
-  // Two steps, not the plain card's three: funding is not a separate step here, because the
-  // balance arrives in the same transaction that creates the account.
-  const steps = done ? ['Account ready', 'Trade'] : ['Create account', 'Trade'];
+  const canMove = move.canMove;
+  // Two steps when the balance rides along with account creation. When it cannot (the
+  // releases settle in different coins) creating the account and recovering the old balance
+  // are genuinely separate things, and the card must not imply one produces the other.
+  const steps = canMove
+    ? done
+      ? ['Account ready', 'Trade']
+      : ['Create account', 'Trade']
+    : done
+      ? ['Withdrawn', 'Fund & trade']
+      : ['Withdraw old balance', 'Fund & trade'];
 
   return (
     <div className="flex flex-1 items-center justify-center px-5 py-16">
@@ -577,15 +590,29 @@ function MigrateAccountCard({
             </h2>
             <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
               {done ? (
-                <>
-                  Your account is set up on the new release with your {amount} in it. Place a bet
-                  whenever you are ready.
-                </>
-              ) : (
+                canMove ? (
+                  <>
+                    Your account is set up on the new release with your {amount} in it. Place a bet
+                    whenever you are ready.
+                  </>
+                ) : (
+                  <>
+                    Your {amount} is back in your wallet. This release settles in a different coin,
+                    so you will need some of that to place a bet.
+                  </>
+                )
+              ) : canMove ? (
                 <>
                   Your <span className="text-text-1">{amount}</span> is still in your account on the
                   previous release. Setting up your account here brings it across in the same
                   transaction.
+                </>
+              ) : (
+                <>
+                  Your <span className="text-text-1">{amount}</span> is still in your account on the
+                  previous release. This release settles in a different coin, so that balance cannot
+                  come across and there is no swap between them. You can withdraw it back to your
+                  wallet.
                 </>
               )}
             </p>
@@ -626,11 +653,19 @@ function MigrateAccountCard({
             </Link>
           ) : (
             <button
-              onClick={() => void move.move()}
+              onClick={() => void (canMove ? move.move() : move.withdraw())}
               disabled={busy || !move.ready}
               className="inline-flex w-full items-center justify-center rounded-xl border border-(--accent-line) bg-(--accent-soft) px-4 py-3 text-[13px] font-semibold text-up transition-all duration-200 hover:bg-up/15 hover:shadow-[0_0_30px_-8px_var(--accent-glow)] disabled:opacity-50"
             >
-              {busy ? 'Migrating…' : move.phase === 'error' ? 'Try again' : 'Migrate'}
+              {busy
+                ? canMove
+                  ? 'Migrating…'
+                  : 'Withdrawing…'
+                : move.phase === 'error'
+                  ? 'Try again'
+                  : canMove
+                    ? 'Migrate'
+                    : 'Withdraw to wallet'}
             </button>
           )}
 

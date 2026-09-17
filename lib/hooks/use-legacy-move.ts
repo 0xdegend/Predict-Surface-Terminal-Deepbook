@@ -18,8 +18,8 @@
 import { useState } from 'react';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useLegacyFunds, qkLegacyFunds } from '@/lib/hooks/use-legacy-funds';
-import { buildLegacyMoveTx } from '@/lib/sui/v2/legacy-account';
-import { predictV2Config } from '@/config/predict';
+import { buildLegacyMoveTx, buildLegacyWithdrawTx } from '@/lib/sui/v2/legacy-account';
+import { predictV2Config, predictConfigFor } from '@/config/predict';
 
 export type LegacyMovePhase = 'idle' | 'moving' | 'done' | 'error';
 
@@ -38,7 +38,10 @@ export function useLegacyMove() {
   const acct = usePredictAccountV2();
   const owner = acct.owner ?? null;
   const legacy = useLegacyFunds(owner);
-  const sym = predictV2Config.quote.symbol;
+  /** The coin sitting on the OLD release. Not the active ticker: from 9-12 on these are
+   *  different coins, and calling the stranded balance by the new name is exactly the
+   *  confusion the banner exists to prevent. */
+  const oldSym = legacy.deployment ? predictConfigFor(legacy.deployment).quote.symbol : predictV2Config.quote.symbol;
 
   const [phase, setPhase] = useState<LegacyMovePhase>('idle');
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -72,7 +75,34 @@ export function useLegacyMove() {
     legacy.refetch();
     if (!ok) {
       // Atomic, so there is exactly one true thing to say: nothing moved.
-      setErrMsg(`We couldn't move your ${sym} just now. It is still in your old account.`);
+      setErrMsg(`We couldn't move your ${oldSym} just now. It is still in your old account.`);
+      setPhase('error');
+      return false;
+    }
+    setPhase('done');
+    return true;
+  }
+
+  /**
+   * Withdraw the old balance to the trader's WALLET.
+   *
+   * The only thing on offer when `canMove` is false. From 9-12 the old coin cannot enter
+   * the new account at all (different Move type, no swap), so "bring it across" is not a
+   * slower path, it is an impossible one. Getting the coin out of a dead account and into
+   * the wallet is the whole of what can be done, and it is still the trader's money.
+   */
+  async function withdraw() {
+    if (!owner || !legacy.wrapperId || !legacy.deployment) return false;
+    setErrMsg(null);
+    setPhase('moving');
+    const ok = await acct.runTx(
+      'legacy-withdraw',
+      buildLegacyWithdrawTx(legacy.wrapperId, amount, owner, legacy.deployment),
+      [qkLegacyFunds(owner, legacy.deployment)],
+    );
+    legacy.refetch();
+    if (!ok) {
+      setErrMsg(`We couldn't withdraw your ${oldSym} just now. It is still in your old account.`);
       setPhase('error');
       return false;
     }
@@ -81,8 +111,18 @@ export function useLegacyMove() {
   }
 
   return {
-    /** USDC still on the old release, base units. */
+    /** The old release's balance, base units. */
     amount,
+    /**
+     * Whether the balance can be carried into the new account, or only withdrawn to the
+     * wallet. False whenever the two releases settle in different coins (9-12 is the first).
+     * Callers MUST branch on this: the chain rejects the mismatched move only AFTER the
+     * trader has signed.
+     */
+    canMove: legacy.canMove,
+    /** How the old coin is written: the OLD release's ticker, not the active one. */
+    oldSym,
+    withdraw,
     /** True only when there is a real balance worth offering to move. */
     hasFunds,
     /** Which release the funds are on, or null when there is no previous deployment. */

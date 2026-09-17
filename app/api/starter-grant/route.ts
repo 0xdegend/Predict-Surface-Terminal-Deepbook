@@ -82,7 +82,7 @@ const SUI_GAS_RESERVE = envBigInt('STARTER_GRANT_SUI_RESERVE', 100_000_000n);
  *
  * They were the same coin for every deployment up to 8-21, so reading it off the legacy
  * config was invisible. 9-12 publishes its own `usdc::USDC`, and dripping the old
- * `dusdc::USDC` would onboard a new trader with a coin the protocol they are about to
+ * `dusdc::DUSDC` would onboard a new trader with a coin the protocol they are about to
  * trade on has never heard of: funded, welcomed, and unable to place a single bet.
  *
  * Until the treasury holds the new coin the breaker below answers 503 "Treasury is low",

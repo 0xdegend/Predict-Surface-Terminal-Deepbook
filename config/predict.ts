@@ -66,6 +66,8 @@ const TESTNET: PredictConfig = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
+    // The v1 app's own coin is dusdc::DUSDC, but this symbol still reaches LIVE v2
+    // screens (SuccessModal defaults to it), so it follows the app's display name.
     symbol: 'USDC',
   },
   plpCoinType: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::plp::PLP',
@@ -169,11 +171,20 @@ const _DEPLOYMENT_ENV = process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT;
  *  "which deployment does this object belong to" instead of assuming the active one. */
 export const KNOWN_V2_DEPLOYMENTS: readonly PredictDeployment[] = ['6-24', '7-29', '8-06', '8-21', '9-12'];
 const _KNOWN_DEPLOYMENTS = KNOWN_V2_DEPLOYMENTS;
+/**
+ * The fallback is the CURRENT release, never a historical one.
+ *
+ * It sat at '8-06' until 2026-09-17, long after 8-06's oracle writers were switched off and
+ * then 8-21's after it, so any environment missing the env var quietly pointed the whole app
+ * at a dead chain: frozen prices, an empty board, and mints that abort. A stale default
+ * fails in the most expensive way available, by looking like it works. Move this with every
+ * cutover, in the same commit that adds the new block.
+ */
 export const ACTIVE_V2_DEPLOYMENT: PredictDeployment = _KNOWN_DEPLOYMENTS.includes(
   _DEPLOYMENT_ENV as PredictDeployment,
 )
   ? (_DEPLOYMENT_ENV as PredictDeployment)
-  : '8-06';
+  : '9-12';
 
 /**
  * True for the newer protocol shape shipped from the 7-29 deployment onward (7-29 and
@@ -367,7 +378,11 @@ const V2_TESTNET: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'USDC',
+    // The ticker this release actually settled in. 9-12 publishes a DIFFERENT coin and the
+    // app displays that one as "USDC", so an old release must NOT borrow the new name: the
+    // only screens that read this are the legacy-funds ones, whose whole job is telling a
+    // trader that the balance stranded here is not the coin they now trade with.
+    symbol: 'DUSDC',
   },
   plpCoinType: '0xdb3ef5a5129920e59c9b2ae25a77eddb48acd0e1c6307b97073f0e076016446e::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -452,7 +467,11 @@ const V2_TESTNET_729: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'USDC',
+    // The ticker this release actually settled in. 9-12 publishes a DIFFERENT coin and the
+    // app displays that one as "USDC", so an old release must NOT borrow the new name: the
+    // only screens that read this are the legacy-funds ones, whose whole job is telling a
+    // trader that the balance stranded here is not the coin they now trade with.
+    symbol: 'DUSDC',
   },
   plpCoinType: '0xd94387c857ab56857f5f2750f2ba959fb007306f977a24290342433aef090298::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -540,7 +559,11 @@ const V2_TESTNET_806: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'USDC',
+    // The ticker this release actually settled in. 9-12 publishes a DIFFERENT coin and the
+    // app displays that one as "USDC", so an old release must NOT borrow the new name: the
+    // only screens that read this are the legacy-funds ones, whose whole job is telling a
+    // trader that the balance stranded here is not the coin they now trade with.
+    symbol: 'DUSDC',
   },
   plpCoinType: '0xfe742239a3b033f7d52ed5275f238c17d27498ca0ee5ea5672ea732eb3f4dbbb::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -662,7 +685,11 @@ const V2_TESTNET_821: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'USDC',
+    // The ticker this release actually settled in. 9-12 publishes a DIFFERENT coin and the
+    // app displays that one as "USDC", so an old release must NOT borrow the new name: the
+    // only screens that read this are the legacy-funds ones, whose whole job is telling a
+    // trader that the balance stranded here is not the coin they now trade with.
+    symbol: 'DUSDC',
   },
   plpCoinType: '0x421041754244cf0e985fb9c9f5e1f49428caf3df4cde3a7b266d8e18ea63597b::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -827,7 +854,7 @@ const V2_TESTNET_912: PredictV2Config = {
   featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
     ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
     : [],
-  // Left unset deliberately. 8-21's tally form dispenses the OLD dusdc::USDC, which this
+  // Left unset deliberately. 8-21's tally form dispenses the OLD dusdc::DUSDC, which this
   // deployment cannot take, and as of 2026-09-17 nobody outside Mysten holds the new coin:
   // the TreasuryCap owner holds 99.4M of the 200M supply, an internal bot holds 10M, one
   // internal wallet holds 100k, and that is the entire distribution. Until there is a

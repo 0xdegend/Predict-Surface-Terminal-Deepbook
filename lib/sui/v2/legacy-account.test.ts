@@ -1,7 +1,7 @@
 /**
  * The guard on carrying a stranded balance forward.
  *
- * Every republish up to 8-21 reused `dusdc::USDC`, so the one-PTB move from the old
+ * Every republish up to 8-21 reused `dusdc::DUSDC`, so the one-PTB move from the old
  * account to the new one always type-checked and nothing had to think about it. 9-12
  * publishes its own `usdc::USDC`, and a PTB that hands `withdraw_funds`'s `Coin<USDC>` to
  * `deposit_funds<USDC>` is rejected by the chain. This pins the check that catches that
@@ -47,5 +47,35 @@ describe('buildLegacyMoveTx refuses what the chain would reject', () => {
     const matched = KNOWN_V2_DEPLOYMENTS.filter((d) => canMoveFunds(d));
     expect(matched.length, 'no deployment shares the active coin, not even the active one').toBeGreaterThan(0);
     for (const d of matched) expect(() => buildLegacyMoveTx(args(d)), d).not.toThrow();
+  });
+});
+
+/**
+ * The 9-12 case, stated as data rather than as prose in a banner.
+ *
+ * On 2026-09-17 the migrate banner offered "Migrate" for a 26,646.18 balance that cannot
+ * move: 9-12 settles in `usdc::USDC` while the stranded coin is `dusdc::DUSDC`, and the PTB
+ * hands one to the other. The chain rejects that only AFTER a signature, so the UI must
+ * decide from `canMoveFunds` and not from the fact that a previous deployment exists.
+ */
+describe('the cutover that cannot carry a balance', () => {
+  it('refuses the move from every release settling in a different coin', () => {
+    for (const d of KNOWN_V2_DEPLOYMENTS) {
+      const sameCoin = predictConfigFor(d).quote.coinType === predictV2Config.quote.coinType;
+      expect(canMoveFunds(d), `${d}: canMoveFunds must follow the coin type, nothing else`).toBe(sameCoin);
+    }
+  });
+
+  it('names an old balance in the OLD release’s ticker, never the active one', () => {
+    // Both coins report "DUSDC" on chain and the app displays the active one as USDC, so a
+    // stranded balance shown as "USDC" would read as the coin the trader can actually bet
+    // with. Any release settling in a different coin must carry a different display ticker.
+    for (const d of KNOWN_V2_DEPLOYMENTS) {
+      if (canMoveFunds(d)) continue;
+      expect(
+        predictConfigFor(d).quote.symbol,
+        `${d} settles in a different coin, so its ticker must not match the active one`,
+      ).not.toBe(predictV2Config.quote.symbol);
+    }
   });
 });

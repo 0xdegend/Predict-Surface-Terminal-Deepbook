@@ -18,12 +18,21 @@
  * (see buildLegacyMoveTx). That is not just fewer prompts: it is atomic, so there is no
  * in-between state where the money has left the old account but has not arrived, and no
  * half-finished move to explain to someone whose balance is briefly nowhere.
+ *
+ * TWO CASES, AND THE BANNER MUST NOT CONFUSE THEM. Up to 8-21 every release settled in the
+ * same coin, so the balance could always be carried across and the banner only ever said
+ * "Migrate". 9-12 publishes its OWN collateral: the old `dusdc::DUSDC` cannot enter the new
+ * account, there is no swap, and the move would be rejected by the chain AFTER the trader
+ * signed it. So when `canMove` is false this offers the only thing that actually works,
+ * withdrawing the old coin to the wallet, and says plainly that it is not the coin they now
+ * trade with. It names the balance in the OLD release's ticker for the same reason: calling
+ * a stranded DUSDC balance "USDC" is precisely the misunderstanding worth preventing.
  */
 import { useState } from 'react';
 import { LuCircleFadingArrowUp } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useLegacyMove } from '@/lib/hooks/use-legacy-move';
-import { predictV2Config } from '@/config/predict';
+
 import { fromQuote } from '@/config/scale';
 import { quote as fmtQuote } from '@/lib/format';
 
@@ -52,8 +61,7 @@ export function LegacyFundsBanner() {
   const acct = usePredictAccountV2();
   const owner = acct.owner ?? null;
   const legacy = useLegacyMove();
-  const sym = predictV2Config.quote.symbol;
-  const { phase, errMsg, amount } = legacy;
+  const { phase, errMsg, amount, canMove, oldSym } = legacy;
 
   // Read once into state rather than on every render, so the value is stable across the
   // move and the banner cannot vanish mid-flow.
@@ -73,7 +81,7 @@ export function LegacyFundsBanner() {
   }
 
   const moving = phase === 'moving';
-  const label = `${fmtQuote(fromQuote(amount))} ${sym}`;
+  const label = `${fmtQuote(fromQuote(amount))} ${oldSym}`;
 
   return (
     <div className="glass-inset mb-4 flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -84,18 +92,30 @@ export function LegacyFundsBanner() {
         <p className="text-[11.5px] leading-relaxed text-text-2">
           {phase === 'done' ? (
             <>
-              <span className="font-medium text-text-1">Done.</span> You are on the new version,
-              with your {sym} in your trading account.
+              <span className="font-medium text-text-1">Done.</span>{' '}
+              {canMove ? (
+                <>You are on the new version, with your {oldSym} in your trading account.</>
+              ) : (
+                <>Your {oldSym} is back in your wallet.</>
+              )}
             </>
           ) : phase === 'error' ? (
             <span className="text-text-1">{errMsg}</span>
           ) : (
             <>
-              <span className="font-medium text-text-1">
-                A new version of Predict.
-              </span>{' '}
-              Your {label} is still in your account on the previous release, and migrating brings
-              it across in the same transaction.
+              <span className="font-medium text-text-1">A new version of Predict.</span>{' '}
+              {canMove ? (
+                <>
+                  Your {label} is still in your account on the previous release, and migrating
+                  brings it across in the same transaction.
+                </>
+              ) : (
+                <>
+                  Your {label} is still in your account on the previous release. This release
+                  settles in a different coin, so that balance cannot come across and there is no
+                  swap between them. You can withdraw it back to your wallet.
+                </>
+              )}
             </>
           )}
         </p>
@@ -111,11 +131,19 @@ export function LegacyFundsBanner() {
             Later
           </button>
           <button
-            onClick={() => void legacy.move()}
+            onClick={() => void (canMove ? legacy.move() : legacy.withdraw())}
             disabled={moving}
             className="rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-1.5 text-[11.5px] font-medium text-up transition-colors hover:bg-up/15 disabled:opacity-50"
           >
-            {moving ? 'Migrating…' : phase === 'error' ? 'Try again' : 'Migrate'}
+            {moving
+              ? canMove
+                ? 'Migrating…'
+                : 'Withdrawing…'
+              : phase === 'error'
+                ? 'Try again'
+                : canMove
+                  ? 'Migrate'
+                  : 'Withdraw to wallet'}
           </button>
         </div>
       )}

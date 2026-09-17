@@ -11,15 +11,24 @@
  * every redeploy, which is exactly when nobody wants a test in the way.
  */
 import { describe, it, expect } from 'vitest';
-import { ACTIVE_V2_DEPLOYMENT, predictV2Config as c, V2_IS_821_PLUS } from './predict';
+import { ACTIVE_V2_DEPLOYMENT, KNOWN_V2_DEPLOYMENTS, predictV2Config as c, V2_IS_821_PLUS } from './predict';
 
 describe(`the active deployment block (${ACTIVE_V2_DEPLOYMENT})`, () => {
-  it('still defaults to 8-06, so adding 8-21 changed nothing for users', () => {
-    // Conditional on the override being ABSENT. The point is that the default did not
-    // move, not that nobody may select 8-21 — selecting it deliberately is how every
-    // other assertion in this file gets exercised against the new block.
-    if (!process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT) expect(ACTIVE_V2_DEPLOYMENT).toBe('8-06');
-    expect(ACTIVE_V2_DEPLOYMENT).not.toBe('7-29');
+  it('defaults to the NEWEST release, never a retired one', () => {
+    // This assertion used to pin the default at 8-06 and call that a feature: adding a
+    // deployment block was supposed to change nothing until someone flipped the env var.
+    // The cost showed up on 2026-09-17. 8-06's writers had been off for weeks and 8-21's
+    // since 9-16, yet the fallback still said '8-06', so any environment missing the env
+    // var pointed the whole app at a dead chain: frozen prices, an empty board, aborting
+    // mints. It looked like a working app, which is the expensive way to fail.
+    //
+    // The rule is now the one that stays true: the default IS the newest release we know
+    // about. Conditional on the override being absent, because selecting an older block
+    // deliberately is how the rest of this file gets exercised.
+    const newest = KNOWN_V2_DEPLOYMENTS[KNOWN_V2_DEPLOYMENTS.length - 1];
+    if (!process.env.NEXT_PUBLIC_PREDICT_DEPLOYMENT) {
+      expect(ACTIVE_V2_DEPLOYMENT, 'the fallback must move with every cutover').toBe(newest);
+    }
   });
 
   it('never lets the predict package and the registry collide', () => {
