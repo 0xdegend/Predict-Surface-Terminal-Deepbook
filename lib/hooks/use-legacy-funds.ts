@@ -20,7 +20,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useV2ReadClient } from '@/lib/sui/grpc';
 import { PREVIOUS_V2_DEPLOYMENT } from '@/config/predict';
-import { readLegacyFunds, type LegacyFunds } from '@/lib/sui/v2/legacy-account';
+import { readLegacyFunds, canMoveFunds, type LegacyFunds } from '@/lib/sui/v2/legacy-account';
 
 export const qkLegacyFunds = (owner: string, deployment: string) =>
   ['v2', 'legacy-funds', deployment, owner] as const;
@@ -32,11 +32,26 @@ export interface LegacyFundsState {
   wrapperId: string | null;
   /** Which release the funds are on, or null when there is no previous deployment. */
   deployment: typeof PREVIOUS_V2_DEPLOYMENT;
+  /**
+   * Whether the balance can be carried into the current account, or only withdrawn to the
+   * wallet. False when the two releases settle in different coins, which 9-12 is the first
+   * to do: the one-PTB move hands the old `Coin<T>` to the new `deposit_funds`, so the
+   * types have to match. A caller MUST branch on this rather than always offering the move,
+   * because the chain rejects the mismatched transaction only after a signature is given.
+   */
+  canMove: boolean;
   isLoading: boolean;
   refetch: () => void;
 }
 
-const NOTHING: LegacyFunds = { deployment: '8-06', wrapperId: null, balanceBase: 0n };
+/** A zero result. `deployment` follows the config chain rather than naming a release: this
+ *  value is what a FAILED read returns, and a failed read must not claim funds are sitting
+ *  on a deployment we are not even looking at. */
+const nothing = (): LegacyFunds => ({
+  deployment: PREVIOUS_V2_DEPLOYMENT ?? '8-06',
+  wrapperId: null,
+  balanceBase: 0n,
+});
 
 export function useLegacyFunds(owner: string | null | undefined): LegacyFundsState {
   const client = useV2ReadClient();
@@ -50,7 +65,7 @@ export function useLegacyFunds(owner: string | null | undefined): LegacyFundsSta
       } catch {
         // Fail quiet, not loud. Claiming funds exist when we could not check would send a
         // trader looking for money that may not be there.
-        return NOTHING;
+        return nothing();
       }
     },
     enabled: !!owner && !!deployment,
@@ -64,6 +79,7 @@ export function useLegacyFunds(owner: string | null | undefined): LegacyFundsSta
     balanceBase: q.data?.balanceBase ?? 0n,
     wrapperId: q.data?.wrapperId ?? null,
     deployment,
+    canMove: !!deployment && canMoveFunds(deployment),
     isLoading: q.isLoading,
     refetch: () => void q.refetch(),
   };

@@ -90,6 +90,19 @@ const SATURATION_PROBE = 6;
  *  one-off and can afford to walk the whole stream. */
 const OWNER_EVENT_DEPTH = 3000;
 
+/**
+ * How long the whole capture may take.
+ *
+ * It was a flat fifteen minutes, sized against the 8-06 board. The 8-21 capture ran out of
+ * it on 2026-09-17 with nothing written: the fan-out is a few hundred wallets read five at
+ * a time, each one several round trips deep (owner txs, then session-key discovery, then
+ * keeper redeems), against an endpoint that throttles. That is inherently tens of minutes
+ * and it grows with every deployment, so the number is now generous and overridable rather
+ * than a guess that has to be edited each time. It is still a real ceiling: a capture that
+ * hangs should die, not run until someone notices.
+ */
+const CAPTURE_TIMEOUT_MS = Number(process.env.CAPTURE_TIMEOUT_MS ?? 45 * 60_000);
+
 const lc = (s: string) => s.toLowerCase();
 
 /**
@@ -107,9 +120,22 @@ const lc = (s: string) => s.toLowerCase();
  * enough can fall out of it. Path A sees them in the mint events regardless, so its
  * owners are folded in here and nobody is dropped from their own snapshot.
  */
-async function readOwners(owners: string[], txDepth: number): Promise<Map<string, V2OrderEvent[]>> {
+async function readOwners(owners: string[], txDepth: number, label = 'fan-out'): Promise<Map<string, V2OrderEvent[]>> {
   const ordersByOwner = new Map<string, V2OrderEvent[]>();
   const failed: string[] = [];
+  // Progress, because this is the long pole and it used to be a silent one. A capture that
+  // runs for half an hour with no output is indistinguishable from a capture that has hung,
+  // which is how the 2026-09-17 timeout was only understood after it had already failed.
+  const started = Date.now();
+  let done = 0;
+  const step = Math.max(10, Math.floor(owners.length / 20));
+  const tick = () => {
+    done += 1;
+    if (done % step && done !== owners.length) return;
+    const secs = Math.round((Date.now() - started) / 1000);
+    const eta = done ? Math.round((secs / done) * (owners.length - done)) : 0;
+    console.log(`  ${label}: ${done}/${owners.length} owners  ${secs}s elapsed  ~${eta}s left`);
+  };
 
   // Bounded concurrency with per-owner retries, and NO silent catch.
   //
@@ -127,10 +153,12 @@ async function readOwners(owners: string[], txDepth: number): Promise<Map<string
         try {
           const orders = await onchainOwnerOrders(o, txDepth);
           if (orders.length) ordersByOwner.set(o, orders);
+          tick();
           break;
         } catch (err) {
           if (attempt >= 3) {
             failed.push(`${o}: ${err instanceof Error ? err.message : String(err)}`);
+            tick();
             break;
           }
           await new Promise((r) => setTimeout(r, wait));
@@ -200,6 +228,32 @@ function syntheticMarkets(ordersByOwner: Iterable<V2OrderEvent[]>): Map<string, 
   return map;
 }
 
+/**
+ * Redeems in this set whose MINT is not in it.
+ *
+ * A position's ticks live on its mint; no redeem event carries them (verified against the
+ * live structs on 8-21 and 9-12). So a redeem whose mint fell outside the per-owner read
+ * window cannot be turned into a strike, and `deriveV2HistoryFromOrders` yields strike 0
+ * rather than failing. Those rows are dropped rather than carried, because a history tab
+ * showing a "$0" bet states something untrue.
+ *
+ * Counting them is what separates the two reasons a row can be unpriceable: an orphaned
+ * redeem, which is expected and grows as a deployment ages past the window, and a broken
+ * market map, which would zero the WHOLE seed. Only the second is a bug.
+ */
+function orphanRedeems(orders: V2OrderEvent[]): number {
+  const minted = new Set<string>();
+  for (const o of orders) {
+    if (o.kind === 'order_minted' && o.position_root_id != null) minted.add(String(o.position_root_id));
+  }
+  let n = 0;
+  for (const o of orders) {
+    if (!/redeemed/i.test(String(o.kind ?? ''))) continue;
+    if (o.position_root_id == null || !minted.has(String(o.position_root_id))) n += 1;
+  }
+  return n;
+}
+
 /** Source C: the seed already on disk for THIS deployment, if any. */
 function previousSeed(root: string): { rows: SeedRow[]; byOwner: Record<string, PastPrediction[]>; capturedAt: string } | null {
   const p = resolve(root, `lib/leaderboard/legacy-points-${ACTIVE_V2_DEPLOYMENT}.json`);
@@ -221,7 +275,18 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     // public GraphQL endpoint; running the fan-out alongside it doubles the peak and
     // reliably earns a 429 that costs more time than the sequencing does. Path A also
     // has to finish first so its owners can seed the fan-out's set.
-    const scanEvents = await fetchSkewEvents();
+    // Path A is four event streams walked in parallel, and on a busy deployment it is the
+    // first several minutes of the run with nothing to show for it. Report each stream's
+    // depth as it goes, so a slow endpoint looks slow rather than looking hung.
+    const aStart = Date.now();
+    console.log('  path A: walking the global order-event stream');
+    const seen = new Map<string, number>();
+    const scanEvents = await fetchSkewEvents(undefined, ({ struct, page, events }) => {
+      if (seen.get(struct) === page) return;
+      seen.set(struct, page);
+      if (page % 10 === 0) console.log(`    ${struct}: page ${page}, ${events} events`);
+    });
+    console.log(`  path A: ${scanEvents.length} Skew events in ${Math.round((Date.now() - aStart) / 1000)}s`);
     const scanRows = skewRowsFromEvents(scanEvents);
     // Everyone the previous seed knows is re-read too, at full depth, so a quiet wallet
     // gets its CURRENT count rather than a frozen one.
@@ -334,6 +399,7 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     const byOwner: Record<string, PastPrediction[]> = {};
     const markets = syntheticMarkets([...fan.ordersByOwner.values(), ...scanByOwner.values()]);
     let dropped = 0;
+    let explained = 0;
     /**
      * A row is only worth carrying if it can say what was bet. A redeem whose mint fell
      * outside the read has no ticks to price, and the deriver returns strike 0 rather
@@ -347,20 +413,43 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
       return keep.map((r) => ({ ...r, legacy: true }));
     };
     for (const [owner, orders] of fan.ordersByOwner) {
+      explained += orphanRedeems(orders);
       const derived = priceable(deriveV2HistoryFromOrders(orders, markets));
       if (derived.length) byOwner[owner] = derived;
     }
     for (const [owner, orders] of scanByOwner) {
       if (byOwner[owner]) continue; // the fan-out already has a complete read for them
+      explained += orphanRedeems(orders);
       const derived = priceable(deriveV2HistoryFromOrders(orders, markets));
       if (derived.length) byOwner[owner] = derived;
     }
     const kept = Object.values(byOwner).flat().length;
-    console.log(`\n  history          ${kept} rows kept, ${dropped} unpriceable dropped`);
+    const unexplained = Math.max(0, dropped - explained);
+    console.log(
+      `\n  history          ${kept} rows kept, ${dropped} unpriceable dropped ` +
+        `(${explained} orphaned redeems, ${unexplained} unexplained)`,
+    );
 
-    // GATE: a few unpriceable rows are an edge; many mean the market map is wrong and
-    // the whole seed would read "$0", which is how the first capture came out.
-    expect(dropped / Math.max(1, kept + dropped), 'too many unpriceable history rows').toBeLessThan(0.01);
+    /**
+     * GATE: every dropped row must be a redeem whose mint we could not see.
+     *
+     * This used to be a flat ratio, under 1% unpriceable. That was a PROXY for the thing
+     * it cares about — a broken market map, which zeroes the whole seed, and is how the
+     * first capture came out. The proxy fails for the wrong reason as a deployment ages:
+     * orphaned redeems accumulate as more mints fall outside the per-owner window, so 8-21
+     * tripped it at 3.4% with nothing whatsoever wrong.
+     *
+     * Testing the property directly is both stricter and more permissive. Stricter because
+     * ONE row dropped for a reason we cannot name now fails, where a ratio would have
+     * absorbed it. More permissive because a run where every drop is accounted for passes,
+     * however many there are. A broken market map produces drops that are not orphans, so
+     * it still fails here, and immediately.
+     */
+    expect(
+      unexplained,
+      `${unexplained} history rows were dropped for a reason other than a missing mint — ` +
+        `suspect the market map (the whole seed would read "$0")`,
+    ).toBe(0);
 
     // Source C for history: union by row key per wallet, fresh copy winning.
     const mergedHistory = prev ? mergeSeedHistory(byOwner, prev.byOwner) : byOwner;
@@ -386,5 +475,5 @@ describe.skipIf(!RUN)(`capture the ${ACTIVE_V2_DEPLOYMENT} seed`, () => {
     );
 
     expect(pointsSeed.rows.length).toBeGreaterThan(0);
-  }, 900_000);
+  }, CAPTURE_TIMEOUT_MS);
 });

@@ -109,10 +109,23 @@ async function fetchPage(body: string, signal?: AbortSignal): Promise<GraphQLRes
   }
 }
 
+/**
+ * Told after each page lands, so a caller can show progress.
+ *
+ * The full walk is four streams of up to forty pages against a throttling endpoint, which
+ * on a busy deployment is several silent minutes. Optional and unused on the request path;
+ * it exists for the seed capture, where the silence made a timeout impossible to diagnose.
+ */
+export type EventScanProgress = (info: { struct: string; page: number; events: number }) => void;
+
 /** Walk one event type newest-first, normalizing each node into the V2OrderEvent
  *  shape the shared aggregator understands (the Move struct json + a derived `kind`
  *  + the event timestamp). */
-async function pageEvents(structName: string, signal?: AbortSignal): Promise<V2OrderEvent[]> {
+async function pageEvents(
+  structName: string,
+  signal?: AbortSignal,
+  onPage?: EventScanProgress,
+): Promise<V2OrderEvent[]> {
   const type = `${predictV2Config.packages.predict}::order_events::${structName}`;
   const kind = EVENT_KIND[structName];
   const out: V2OrderEvent[] = [];
@@ -133,6 +146,7 @@ async function pageEvents(structName: string, signal?: AbortSignal): Promise<V2O
       out.push({ ...normalizeOrderEvent(j, kind), kind, checkpoint_timestamp_ms: toMs(node.timestamp) } as V2OrderEvent);
     }
 
+    onPage?.({ struct: structName, page: page + 1, events: out.length });
     if (!events.pageInfo?.hasPreviousPage || events.pageInfo.startCursor == null) break;
     cursor = events.pageInfo.startCursor;
   }
@@ -174,15 +188,21 @@ export function filterSkewEvents(all: V2OrderEvent[], builderCodeId: string): V2
  * `fetchSkewEvents` correctly returns nothing, which makes it useless for proving the
  * reader itself still parses the new event shape.
  */
-export async function fetchAllOrderEvents(signal?: AbortSignal): Promise<V2OrderEvent[]> {
-  return (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal)))).flat();
+export async function fetchAllOrderEvents(
+  signal?: AbortSignal,
+  onPage?: EventScanProgress,
+): Promise<V2OrderEvent[]> {
+  return (await Promise.all(Object.keys(EVENT_KIND).map((struct) => pageEvents(struct, signal, onPage)))).flat();
 }
 
 /** Every Skew-attributed order event in the scan window, unaggregated. */
-export async function fetchSkewEvents(signal?: AbortSignal): Promise<V2OrderEvent[]> {
+export async function fetchSkewEvents(
+  signal?: AbortSignal,
+  onPage?: EventScanProgress,
+): Promise<V2OrderEvent[]> {
   const builderCodeId = predictV2Config.builderCodeId;
   if (!builderCodeId) return [];
-  return filterSkewEvents(await fetchAllOrderEvents(signal), builderCodeId);
+  return filterSkewEvents(await fetchAllOrderEvents(signal, onPage), builderCodeId);
 }
 
 /**

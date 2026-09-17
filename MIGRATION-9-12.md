@@ -50,20 +50,31 @@ code does not carry over. Without one the fee rail earns nothing and, worse, the
 cannot tell a Skew trade from anyone else's, so the Skew leaderboard starts empty and stays
 empty. Config deliberately does not fall back to the 8-21 id.
 
+**Use index 1, not index 0.** The BuilderCode id is derived from (sender, index) through
+`0x2::derived_object::claim`, and that derivation collides ACROSS deployments: index 0 was
+spent registering on 8-21, so the same wallet cannot use it again here. Simulating index 0
+aborts with `EObjectAlreadyExists`. Every future release needs a fresh index too.
+
 Dry-run first. This simulates the real transaction from the address that will sign, submits
 nothing, and prints the exact object id the real one will create:
 
 ```
-REGISTER_SENDER=0x… NEXT_PUBLIC_PREDICT_DEPLOYMENT=9-12 RUN_LIVE=1 \
+REGISTER_SENDER=0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4 \
+  REGISTER_INDEX=1 NEXT_PUBLIC_PREDICT_DEPLOYMENT=9-12 RUN_LIVE=1 \
   npx vitest run lib/sui/v2/builder-code-register.live.test.ts
 ```
 
+Simulated clean on 2026-09-17. For that signer at index 1 the code will be
+`0xad4d139bfb5f08ff90a56b898be836c5e39b39b1ae9383456b6bdc39bd8f18c7`. Signing from any other
+wallet, or at any other index, gives a different id, so re-run the dry run if either changes.
+
 Registration is **one way**. The signer becomes the code's permanent owner, there is no
 reassignment, and losing that key forfeits every future fee. Sign from the wallet that
-should own the revenue. Then set the result in `.env`:
+should own the revenue. Then set the result in `.env` and confirm it matches what the
+transaction actually created:
 
 ```
-NEXT_PUBLIC_BUILDER_CODE_ID_912=0x…
+NEXT_PUBLIC_BUILDER_CODE_ID_912=0xad4d139bfb5f08ff90a56b898be836c5e39b39b1ae9383456b6bdc39bd8f18c7
 ```
 
 There is no rush to get this in before the flip, for one specific reason: **nobody can trade
