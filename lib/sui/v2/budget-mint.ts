@@ -29,7 +29,7 @@ export interface BinaryBetParams {
   /** Absolute strike ($); null → at-the-money (nearest admission tick to forward). */
   strikePrice: number | null;
   isUp: boolean;
-  stake: number; // DUSDC
+  stake: number; // USDC
   leverage: number;
 }
 
@@ -112,7 +112,7 @@ export interface RangeBetParams {
   /** Band edges ($). Pays if settlement lands in (lower, higher]; order is fixed here. */
   lower: number;
   higher: number;
-  stake: number; // DUSDC
+  stake: number; // USDC
   leverage: number;
 }
 

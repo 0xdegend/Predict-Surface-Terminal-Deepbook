@@ -7,7 +7,7 @@
  * the next mint attach ours? Attribution lives on the ACCOUNT, so this is the only
  * thing standing between a trade on Skew and a fee we never see.
  *
- * Admin side: who owns our code (immutable) and how much DUSDC is waiting.
+ * Admin side: who owns our code (immutable) and how much USDC is waiting.
  *
  * POLICY (the protocol's intended use, confirmed by the lead 2026-08-16) — we ensure
  * OUR code is on the account for every trade placed here: attach when the slot is empty
@@ -79,7 +79,7 @@ export function useBuilderCode(wrapperId: string | undefined): BuilderCodeStatus
 export interface BuilderCodeAdmin {
   /** Permanent owner of the code — the only address that can ever claim. */
   owner: string | null;
-  /** Unclaimed DUSDC, base units. */
+  /** Unclaimed USDC, base units. */
   claimable: bigint;
   /** The connected wallet is that owner. */
   isOwner: boolean;
@@ -145,7 +145,7 @@ export function useBuilderCodeAdmin(): BuilderCodeAdmin {
 }
 
 export interface BuilderFeeSummary {
-  /** Unclaimed DUSDC waiting on-chain right now (float). */
+  /** Unclaimed USDC waiting on-chain right now (float). */
   unclaimed: number;
   /** Sum of every fee ever swept, from the indexer's claim log (float). */
   claimedToDate: number;

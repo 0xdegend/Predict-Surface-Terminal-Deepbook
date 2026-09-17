@@ -94,7 +94,7 @@ export function buildRegisterBuilderCodeTx(index: bigint = 0n): Transaction {
 /**
  * Sweep all accrued builder fees to `recipient`. On-chain this is owner-gated
  * (`assert_owner`), so only the code's owner can sign it — but the DESTINATION is
- * free: the call returns a Coin<DUSDC> and this PTB decides where it lands. That
+ * free: the call returns a Coin<USDC> and this PTB decides where it lands. That
  * split matters: the claiming KEY is permanent, the treasury address is not.
  */
 export function buildClaimBuilderFeesTx(recipient: string): Transaction {
@@ -191,7 +191,7 @@ export async function findBuilderCodesByOwner(
 export interface BuilderCodeState {
   /** Permanent owner — the ONLY address that can claim. Cannot be changed. */
   owner: string;
-  /** DUSDC (base units) accrued and waiting to be swept. */
+  /** USDC (base units) accrued and waiting to be swept. */
   claimable: bigint;
 }
 

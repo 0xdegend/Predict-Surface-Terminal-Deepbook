@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * Vault deposit panel — supply DUSDC into the PLP vault, with an optional
+ * Vault deposit panel — supply USDC into the PLP vault, with an optional
  * crash-insurance hedge.
  *
- *  - Hedge OFF (default): plain predict::supply<DUSDC> → PLP to the wallet. No
+ *  - Hedge OFF (default): plain predict::supply<USDC> → PLP to the wallet. No
  *    manager, no oracle, no quote — the lowest-friction LP action.
  *  - Hedge ON: "PLP yield minus crash insurance" in one atomic transaction —
  *    most of the deposit is supplied into PLP, a small sleeve buys a downside
@@ -167,7 +167,7 @@ export function HedgePanel({ inputs, serverNow }: { inputs: SmileInput[]; server
             </>
           ) : (
             <>
-              Add DUSDC to the shared pool and earn a share of the trading fees. In return you get pool
+              Add USDC to the shared pool and earn a share of the trading fees. In return you get pool
               shares, whose value rises and falls with the pool. Take your money out any time below. Flip
               the switch to also buy crash protection.
             </>
@@ -356,7 +356,7 @@ function ActionButton({
     'not-deployed': 'Crash protection isn’t available on this network',
     'no-oracle': 'No live market to protect against right now',
     'enter-amount': 'Enter an amount',
-    insufficient: 'Not enough DUSDC in your wallet',
+    insufficient: 'Not enough USDC in your wallet',
     'supply-zero': 'Lower the protection budget',
     pricing: 'Getting the price…',
     unquotable: 'Couldn’t price the protection. Try again',

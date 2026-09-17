@@ -35,7 +35,7 @@ export function SuccessModal({
   title: string;
   /** Small label above the amount, e.g. "Received" / "Withdrawn". */
   eyebrow: string;
-  /** DUSDC amount (human units) to count up. */
+  /** USDC amount (human units) to count up. */
   amount: number;
   /** Currency symbol (defaults to the quote asset). */
   sym?: string;

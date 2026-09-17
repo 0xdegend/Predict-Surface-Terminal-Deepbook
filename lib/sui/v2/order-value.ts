@@ -3,7 +3,7 @@
  * settled-LOSS backstop for the portfolio.
  *
  * `expiry_market::order_value(market, Option<Pricer>, order_id): u64` — on 8-21,
- * `settled_order_payout(market, order_id): u64` — returns the DUSDC
+ * `settled_order_payout(market, order_id): u64` — returns the USDC
  * (base units) an order is worth. On a SETTLED market that is its INTRINSIC settlement
  * payout, NOT its unredeemed balance: a LOSER reads 0, a WINNER reads its full payout
  * whether or not the keeper has already paid it out. (Correction to a 2026-08-18 note that
@@ -38,7 +38,7 @@ export interface OrderValueEntry {
 }
 
 /**
- * The intrinsic settlement value (DUSDC base units) of each settled order, keyed by
+ * The intrinsic settlement value (USDC base units) of each settled order, keyed by
  * orderId.toString(). Missing from the map = we couldn't read it (fail-open: the caller must
  * NOT treat an absent entry as worthless). A present value of 0n = a settled LOSS (worth
  * nothing); a value > 0n = a win's payout (redeemed or not — this read can't distinguish).

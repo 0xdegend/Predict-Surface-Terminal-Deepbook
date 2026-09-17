@@ -40,7 +40,7 @@ export function buildCreateAccountTx(): Transaction {
   return tx;
 }
 
-/** Add a DUSDC deposit into the wrapper (generate_auth + deposit_funds). */
+/** Add a USDC deposit into the wrapper (generate_auth + deposit_funds). */
 export function addDeposit(tx: Transaction, wrapperId: string, amount: bigint): void {
   const auth = addGenerateAuth(tx);
   const coin = tx.add(coinWithBalance({ type: c().quote.coinType, balance: amount }));
@@ -63,7 +63,7 @@ export function buildDepositTx(wrapperId: string, amount: bigint): Transaction {
   return tx;
 }
 
-/** Withdraw DUSDC from the wrapper back to the owner's wallet. */
+/** Withdraw USDC from the wrapper back to the owner's wallet. */
 export function buildWithdrawTx(wrapperId: string, amount: bigint, owner: string): Transaction {
   const tx = new Transaction();
   const auth = addGenerateAuth(tx);
@@ -85,16 +85,16 @@ export function buildWithdrawTx(wrapperId: string, amount: bigint, owner: string
 export interface CashOutParams {
   /** The owner's AccountWrapper. Only needed when `fromAccount > 0`. */
   wrapperId: string;
-  /** DUSDC base units to withdraw from the account's free balance. */
+  /** USDC base units to withdraw from the account's free balance. */
   fromAccount: bigint;
-  /** DUSDC base units to take from the connected wallet's own coins. */
+  /** USDC base units to take from the connected wallet's own coins. */
   fromWallet: bigint;
-  /** External Sui address to receive the DUSDC. */
+  /** External Sui address to receive the USDC. */
   destination: string;
 }
 
 /**
- * Cash out DUSDC to an external wallet in ONE transaction: withdraw from the
+ * Cash out USDC to an external wallet in ONE transaction: withdraw from the
  * account's free balance (via the allowlisted `account::withdraw_funds`) and/or
  * take wallet coins, merge, and transfer the lot to `destination`. The v2 twin of
  * the legacy predict-tx `buildCashOutTx` — for zkLogin (Google) users moving funds
@@ -210,7 +210,7 @@ export async function readAccountId(
 
 /**
  * Free balance of `coinType` in the wrapper's account (base units). Defaults to
- * DUSDC; pass the PLP type to read custodied vault shares.
+ * USDC; pass the PLP type to read custodied vault shares.
  */
 export async function readBalance(
   client: SimulateCapableClient,

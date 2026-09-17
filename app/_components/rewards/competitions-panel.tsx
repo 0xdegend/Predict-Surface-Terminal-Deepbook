@@ -3,7 +3,7 @@
 /**
  * Competitions — a PREVIEW of Skew's seasonal trading races. Traders compete
  * over a fixed window (ranked by Points, the same metric the live leaderboard
- * already computes); the top finishers split a DUSDC prize pool funded by the
+ * already computes); the top finishers split a USDC prize pool funded by the
  * Skew fee treasury. Not live yet: the entrants, pool and standings are
  * illustrative, but the countdown is a real ticking clock to the next Monday so
  * the page feels alive. 100% client, no data, no wallet.
@@ -31,7 +31,7 @@ import {
   countdownParts,
 } from "./shared";
 
-const PRIZE_POOL = 2500; // illustrative DUSDC
+const PRIZE_POOL = 2500; // illustrative USDC
 const ENTRANTS = 128;
 
 // Season 01 opens after the DeepBook Predict mainnet launch — targeted for
@@ -110,7 +110,7 @@ export function CompetitionsPanel({ questsHref = "/quests" }: { questsHref?: str
       <RewardsHeader
         icon={LuSwords}
         title="Competitions"
-        blurb="Seasonal trading races where the best traders compete head-to-head. Climb the ranks over the season window and the top finishers split a DUSDC prize pool, funded by the community's trading fees."
+        blurb="Seasonal trading races where the best traders compete head-to-head. Climb the ranks over the season window and the top finishers split a USDC prize pool, funded by the community's trading fees."
       />
 
       {/* Season hero */}
@@ -147,7 +147,7 @@ export function CompetitionsPanel({ questsHref = "/quests" }: { questsHref?: str
                 <span className="eyebrow">Prize pool</span>
                 <div className="font-mono text-[28px] leading-none tracking-tight text-text-1 tabular-nums">
                   {num(PRIZE_POOL, 0)}
-                  <span className="ml-1.5 text-[13px] text-text-3">DUSDC</span>
+                  <span className="ml-1.5 text-[13px] text-text-3">USDC</span>
                 </div>
               </div>
             </div>
@@ -192,7 +192,7 @@ export function CompetitionsPanel({ questsHref = "/quests" }: { questsHref?: str
             <span className="eyebrow">{p.place}</span>
             <span className="text-[15px] leading-none text-text-1">
               {num((PRIZE_POOL * p.pct) / 100, 0)}
-              <span className="ml-1 text-[10px] text-text-3">DUSDC</span>
+              <span className="ml-1 text-[10px] text-text-3">USDC</span>
             </span>
             <span className="text-[10px] text-text-3">{p.pct}% of pool</span>
           </div>
@@ -317,7 +317,7 @@ function PodiumCard({ s, rank }: { s: Standing; rank: number }) {
           <span className="text-text-3">Prize</span>
           <span className="font-semibold text-text-1">
             {num(s.prize, 0)}
-            <span className="ml-1 text-[10px] text-text-3">DUSDC</span>
+            <span className="ml-1 text-[10px] text-text-3">USDC</span>
           </span>
         </div>
       </div>

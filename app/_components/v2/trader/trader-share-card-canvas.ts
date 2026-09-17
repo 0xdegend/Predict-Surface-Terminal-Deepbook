@@ -36,7 +36,7 @@ export interface TraderProfileShareData {
   rank: number | null;
   ranked: number; // size of the ranked field
   points: number;
-  volume: number; // DUSDC
+  volume: number; // USDC
   trades: number;
   /** Win rate over the trader's SETTLED bets (0..1); null when none have settled. */
   winRate: number | null;
@@ -53,9 +53,9 @@ export interface TraderPositionShareData {
   strike?: number;
   band?: { lower: number; higher: number };
   expiry?: number; // ms epoch
-  cost: number; // DUSDC paid
+  cost: number; // USDC paid
   odds: number; // 0..1 current implied probability
-  toWin: number; // DUSDC payout if it wins
+  toWin: number; // USDC payout if it wins
   leverage?: number;
 }
 
@@ -352,7 +352,7 @@ export function drawTraderProfileCard(
   drawStrip(b, [
     ['POINTS', num(d.points, 0), accent],
     ['WIN RATE', d.winRate != null ? pct(d.winRate, 0) : '—'],
-    ['VOLUME', `${compact(d.volume)}`, undefined, 'DUSDC'],
+    ['VOLUME', `${compact(d.volume)}`, undefined, 'USDC'],
     ['TRADES', num(d.trades, 0)],
   ]);
 
@@ -453,7 +453,7 @@ export function drawTraderPositionCard(
   ctx.fillText(payoutText, rx, 388 + payoutPx * 0.82);
   ctx.font = `500 16px ${sans}`;
   ctx.fillStyle = c.text3;
-  ctx.fillText('DUSDC', rx, 388 + payoutPx * 0.82 + 26);
+  ctx.fillText('USDC', rx, 388 + payoutPx * 0.82 + 26);
 
   drawFooter(b);
 }

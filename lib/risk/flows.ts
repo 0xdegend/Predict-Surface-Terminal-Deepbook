@@ -1,7 +1,7 @@
 /**
  * lib/risk/flows.ts — merge the vault's LP capital flows into one tape.
  *
- * Supplies are DUSDC flowing INTO the vault (PLP minted); withdrawals are DUSDC
+ * Supplies are USDC flowing INTO the vault (PLP minted); withdrawals are USDC
  * flowing OUT (PLP burned). We fold both event streams into a single time-sorted
  * list for the Vault Risk "flows" table. Amounts/shares stay @6dec base units —
  * de-scale (fromQuote) at render, never here.
@@ -15,7 +15,7 @@ export interface VaultFlow {
   ts: number;
   /** Supplier (in) / withdrawer (out) address. */
   account: string;
-  /** DUSDC amount, @6dec base units. */
+  /** USDC amount, @6dec base units. */
   amount: number;
   /** PLP shares minted (in) / burned (out), @6dec base units. */
   shares: number;

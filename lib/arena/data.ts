@@ -6,7 +6,7 @@
  * has to be *honest*, because the whole feature is a payout mechanic:
  *
  *   1. Top traders APPLY to found a faction; traders JOIN one.
- *   2. Every faction earns a share of the season's DUSDC prize pool, split into
+ *   2. Every faction earns a share of the season's USDC prize pool, split into
  *      two parts that encode the two rules the product promises:
  *        · BASE pool  — proportional to the faction's pooled Points, so raw
  *                       performance across the faction determines its cut.
@@ -60,14 +60,14 @@ export const SEASON = {
 } as const;
 
 /* ------------------------------------------------------------------ *
- * The prize pool. Illustrative DUSDC, funded by the 1% Skew fee treasury
+ * The prize pool. Illustrative USDC, funded by the 1% Skew fee treasury
  * (the same funding story the Quests/Competitions pages already tell).
  *   BASE   — split by pooled Points (performance).
  *   BONUS  — split by faction rank (top factions take more).
  * ------------------------------------------------------------------ */
-export const POOL_BASE = 36_000; // DUSDC — points-proportional
-export const POOL_BONUS = 84_000; // DUSDC — rank-weighted
-export const PRIZE_POOL = POOL_BASE + POOL_BONUS; // 120,000 DUSDC
+export const POOL_BASE = 36_000; // USDC — points-proportional
+export const POOL_BONUS = 84_000; // USDC — rank-weighted
+export const PRIZE_POOL = POOL_BASE + POOL_BONUS; // 120,000 USDC
 const BONUS_DECAY = 0.82; // geometric rank weighting for the bonus pool
 
 /* ------------------------------------------------------------------ *
@@ -76,11 +76,11 @@ const BONUS_DECAY = 0.82; // geometric rank weighting for the bonus pool
 export interface Member {
   addr: string; // deterministic — feeds WalletAvatar
   name: string;
-  volume: number; // DUSDC traded this season
+  volume: number; // USDC traded this season
   points: number; // season Points (Skew's ranking metric)
   /** member's share of the faction's Points (0–1), and their projected cut. */
   share: number;
-  prize: number; // DUSDC — memberShare × faction.totalPool
+  prize: number; // USDC — memberShare × faction.totalPool
 }
 
 export interface Faction {
@@ -96,8 +96,8 @@ export interface Faction {
   rank: number; // 1-based
   totalPoints: number; // whole faction (≥ Σ roster points; rest = unshown)
   totalVolume: number;
-  basePool: number; // DUSDC
-  bonusPool: number; // DUSDC
+  basePool: number; // USDC
+  bonusPool: number; // USDC
   totalPool: number; // basePool + bonusPool
   poolSharePct: number; // totalPool / PRIZE_POOL   (0–1)
   bonusSharePct: number; // bonusPool / POOL_BONUS   (0–1)  ← the "%" beside Bonus Pool

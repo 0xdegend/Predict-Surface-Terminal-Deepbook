@@ -15,7 +15,7 @@ export const MINT_COST_BUFFER_BPS = 102n; // → cost * 102 / 100
 
 /**
  * Given a chain-quoted `mintCost` (base units, @6dec) and the manager's current
- * free `tradingBalanceBase`, return how much DUSDC to deposit from the wallet in
+ * free `tradingBalanceBase`, return how much USDC to deposit from the wallet in
  * this transaction. `depositAmount` is also exactly what "leaves your wallet
  * now" — the rest of the cost is covered by the free balance already in the
  * manager.
@@ -29,7 +29,7 @@ export function fundingSplit(
   return { depositAmount, buffered };
 }
 
-/** The Skew builder fee on a given cost, in DUSDC base units. `feeBps` is read
+/** The Skew builder fee on a given cost, in USDC base units. `feeBps` is read
  *  live from the on-chain FeeConfig (100 = 1.00%). */
 export function skewFee(cost: bigint, feeBps: number): bigint {
   if (feeBps <= 0) return 0n;

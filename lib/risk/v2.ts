@@ -9,18 +9,18 @@
  * an honest SOLVENCY model: coverage of the pool against the gross payout it could
  * owe, and a conservative adverse-settlement stress derived from it.
  *
- * All amounts are DUSDC floats (already de-scaled by the caller via fromQuote).
+ * All amounts are USDC floats (already de-scaled by the caller via fromQuote).
  * Pure + deterministic so it unit-tests against fixed numbers.
  */
 import type { V2Market, V2OpenInterest } from '@/lib/api/v2/types';
 
-/** The vault's current standing, de-scaled to DUSDC floats. */
+/** The vault's current standing, de-scaled to USDC floats. */
 export interface VaultSnapshot {
   /** Full NAV: idle + capital deployed to open markets. */
   poolValue: number;
   /** PLP shares outstanding. */
   totalShares: number;
-  /** Free, immediately-withdrawable DUSDC. */
+  /** Free, immediately-withdrawable USDC. */
   idle: number;
   /** Capital currently backing open markets (the vault's own mark). */
   deployed: number;
@@ -32,9 +32,9 @@ export interface MarketExposure {
   expiry: number;
   /** Open orders on the market. */
   orders: number;
-  /** Gross max payout the pool could owe on this market's open bets (DUSDC). */
+  /** Gross max payout the pool could owe on this market's open bets (USDC). */
   maxPayout: number;
-  /** Leveraged portion the pool fronted and gets back on a win (DUSDC). */
+  /** Leveraged portion the pool fronted and gets back on a win (USDC). */
   floor: number;
   /** Share of the whole book's max payout (0..1) — for the bar width. */
   share: number;
@@ -47,7 +47,7 @@ export interface VaultRisk {
   utilization: number;
   /** Idle / pool value (0..1) — share withdrawable without waiting on settlement. */
   headroom: number;
-  /** Gross max payout across every open bet (DUSDC) — the worst-case outflow. */
+  /** Gross max payout across every open bet (USDC) — the worst-case outflow. */
   maxPayoutAtRisk: number;
   /**
    * poolValue / maxPayoutAtRisk. "If EVERY open bet won at once, the pool covers
@@ -103,9 +103,9 @@ export function computeVaultRisk(
 export interface StressPoint {
   /** Fraction of the max payout-at-risk assumed to resolve against the pool (0..1). */
   adverse: number;
-  /** DUSDC the pool would pay out under this stress. */
+  /** USDC the pool would pay out under this stress. */
   outflow: number;
-  /** Pool NAV after the outflow (DUSDC), floored at 0. */
+  /** Pool NAV after the outflow (USDC), floored at 0. */
   poolValueAfter: number;
   /** Share price after the outflow. */
   sharePriceAfter: number;
@@ -152,7 +152,7 @@ export function stressCurve(risk: VaultRisk, steps = 24): StressPoint[] {
 export interface SharePricePoint {
   timestamp_ms: number;
   share_price: number;
-  vault_value: number; // DUSDC
+  vault_value: number; // USDC
   total_shares: number; // PLP
 }
 

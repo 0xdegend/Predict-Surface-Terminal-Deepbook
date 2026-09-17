@@ -11,7 +11,7 @@ import { FLOAT_SCALING } from '@/config/scale';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { Oracle, PositionMintedEvent, PositionRedeemedEvent } from '@/lib/api/types';
 
-const Q = 1_000_000; // @6dec → 1 DUSDC
+const Q = 1_000_000; // @6dec → 1 USDC
 const E9 = FLOAT_SCALING;
 const SVI: SviFloat = { a: 0.0004, b: 0.001, rho: -0.2, m: 0, sigma: 0.05 };
 
@@ -28,7 +28,7 @@ function minted(over: Partial<PositionMintedEvent>): PositionMintedEvent {
   return {
     event_digest: 'd', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0,
-    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'DUSDC',
+    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'USDC',
     expiry: 0, strike: 0, is_up: true, quantity: 0, cost: 0, ask_price: 0,
     ...over,
   };
@@ -38,7 +38,7 @@ function redeemed(over: Partial<PositionRedeemedEvent>): PositionRedeemedEvent {
   return {
     event_digest: 'd', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0,
-    predict_id: '0xp', manager_id: '0xm', owner: '0xo', executor: '0xo', quote_asset: 'DUSDC',
+    predict_id: '0xp', manager_id: '0xm', owner: '0xo', executor: '0xo', quote_asset: 'USDC',
     expiry: 0, strike: 0, is_up: false, quantity: 0, payout: 0, bid_price: 0, is_settled: true,
     ...over,
   } as PositionRedeemedEvent;

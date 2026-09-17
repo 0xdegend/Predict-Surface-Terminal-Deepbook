@@ -81,7 +81,7 @@ const VAULT_ITEMS: MenuItem[] = [
 const MORE_ITEMS: MenuItem[] = [
   { href: '/v2/options', label: 'BTC Options', desc: 'Live surface · probability ladder · expected move', icon: IcoOptions },
   { href: '/v2/kelly', label: 'Kelly', desc: 'Talk to the surface · Autopilot · her record', icon: IcoKelly },
-  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: IcoQuests, soon: true },
+  { href: '/v2/quests', label: 'Quests', desc: 'Trade milestones · earn USDC', icon: IcoQuests, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: IcoArena, soon: true },
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: IcoDocs, footer: true },
 ];

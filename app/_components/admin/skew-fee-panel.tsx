@@ -245,7 +245,7 @@ export function SkewFeePanel() {
               value={assumed}
               onChange={(e) => setAssumed(e.target.value)}
               placeholder="500,000"
-              aria-label="Assumed monthly volume in DUSDC"
+              aria-label="Assumed monthly volume in USDC"
               className="w-32 bg-transparent font-mono text-[14px] tabular-nums text-text-1 outline-none placeholder:text-text-3"
             />
             <span className="text-[11px] text-text-3">/mo</span>

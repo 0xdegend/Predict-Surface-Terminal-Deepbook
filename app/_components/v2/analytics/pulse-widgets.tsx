@@ -21,7 +21,7 @@ export function V2KpiStrip({ kpis }: { kpis: Kpis }) {
   const leadUp = kpis.upShare >= 0.5;
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · recent" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" />
+      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · recent" value={kpis.totalBet} format={(n) => compact(n)} unit="USDC" />
       <Kpi icon={LuLayers} hue={HUE.blue} label="Live markets" value={kpis.activeMarkets} format={(n) => String(Math.round(n))} />
       <Kpi
         icon={LuScale}
@@ -32,7 +32,7 @@ export function V2KpiStrip({ kpis }: { kpis: Kpis }) {
         unit={leadUp ? 'UP' : 'DOWN'}
         valueClass={leadUp ? 'text-up' : 'text-down'}
       />
-      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="DUSDC" />
+      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="USDC" />
     </div>
   );
 }
@@ -110,7 +110,7 @@ export function V2HotMarkets({ cells, className = '' }: { cells: MarketCell[]; c
                 </div>
                 <div className="flex-none text-right">
                   <div className="font-mono text-[12px] tabular-nums text-text-1">
-                    {compact(c.volume)} <span className="text-[10px] text-text-3">DUSDC</span>
+                    {compact(c.volume)} <span className="text-[10px] text-text-3">USDC</span>
                   </div>
                   <div className={`text-[10px] font-medium ${leadUp ? 'text-up' : 'text-down'}`}>
                     {Math.round((leadUp ? c.upShare : 1 - c.upShare) * 100)}% {leadUp ? 'UP' : 'DN'}

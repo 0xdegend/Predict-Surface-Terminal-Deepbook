@@ -2,7 +2,7 @@
 
 /**
  * RewardProgressCard — admin view of the Founding Traders reward: how many of the
- * frozen allowlist have claimed, how much DUSDC that has paid out, and whether the
+ * frozen allowlist have claimed, how much USDC that has paid out, and whether the
  * reward treasury can still cover what's left. Data from
  * /api/v2/admin/reward-progress (aggregate + public on-chain balances only). Also
  * carries the short "how to fund" runbook so the operator has it in context. See
@@ -183,7 +183,7 @@ export function RewardProgressCard() {
             </summary>
             <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-4 text-[11px] leading-relaxed text-text-3 marker:text-text-3">
               <li>
-                Send DUSDC to the treasury address above until it covers the remaining{' '}
+                Send USDC to the treasury address above until it covers the remaining{' '}
                 <span className="text-text-2">{num(data.remainingCommittedDusdc, 0)} {sym}</span>. The
                 builder-fee earnings are the source, sweep them with{' '}
                 <code className="text-text-2">claim_all_builder_fees</code> into the treasury.

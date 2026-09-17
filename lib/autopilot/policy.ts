@@ -208,7 +208,7 @@ export interface ProposedTrade {
   edge: number;
   side: TradeSide;
   leverage: number;
-  /** The stake the engine would place, in DUSDC. */
+  /** The stake the engine would place, in USDC. */
   sizeUsd: number;
   /** Scoring detail (binary): the snapped strike (USD) the mint actually used, so a
    *  settled position can be marked won/lost later. Absent on a simulated pick. */
@@ -219,9 +219,9 @@ export interface ProposedTrade {
   /** Marking detail — carried onto the open position so live PnL uses the SAME math
    *  as the rest of the terminal (lib/portfolio/v2). Entry win chance (0..1). */
   entryProb?: number;
-  /** Sized notional (DUSDC) — what a win pays before the leverage floor. */
+  /** Sized notional (USDC) — what a win pays before the leverage floor. */
   qty?: number;
-  /** All-in entry cost (DUSDC): stake plus the fee charged at mint. */
+  /** All-in entry cost (USDC): stake plus the fee charged at mint. */
   cost?: number;
 }
 
@@ -242,9 +242,9 @@ export interface AutopilotRules {
 /** The always-on safety envelope. Budget is mirrored from the on-chain session
  *  budget; the rest are app-level caps on top of it. */
 export interface AutopilotLimits {
-  /** Total DUSDC Autopilot may deploy this run (mirrors the session budget). */
+  /** Total USDC Autopilot may deploy this run (mirrors the session budget). */
   budgetUsd: number;
-  /** DUSDC per trade. */
+  /** USDC per trade. */
   perTradeUsd: number;
   /** Hard cap on the number of trades this run. */
   maxTrades: number;
@@ -262,7 +262,7 @@ export interface AutopilotLimits {
 export interface AutopilotRuntime {
   /** When this run was armed (ms epoch). */
   armedAt: number;
-  /** DUSDC placed so far this run. */
+  /** USDC placed so far this run. */
   spentUsd: number;
   /** Trades placed so far this run. */
   tradeCount: number;

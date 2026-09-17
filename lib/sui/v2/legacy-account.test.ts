@@ -1,9 +1,9 @@
 /**
  * The guard on carrying a stranded balance forward.
  *
- * Every republish up to 8-21 reused `dusdc::DUSDC`, so the one-PTB move from the old
+ * Every republish up to 8-21 reused `dusdc::USDC`, so the one-PTB move from the old
  * account to the new one always type-checked and nothing had to think about it. 9-12
- * publishes its own `usdc::USDC`, and a PTB that hands `withdraw_funds`'s `Coin<DUSDC>` to
+ * publishes its own `usdc::USDC`, and a PTB that hands `withdraw_funds`'s `Coin<USDC>` to
  * `deposit_funds<USDC>` is rejected by the chain. This pins the check that catches that
  * before a trader is shown a banner and asked for a signature.
  */

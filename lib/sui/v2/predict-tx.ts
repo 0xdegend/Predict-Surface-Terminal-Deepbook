@@ -6,7 +6,7 @@
  * load_live_pricer and pass it into the call (the protocol prices per-tx).
  *
  * Verified signatures (predict-testnet-6-24): mint_exact_quantity is NOT generic
- * (DUSDC is baked into the pool); quantity is 6-dec base units (1e6 = $1 max
+ * (USDC is baked into the pool); quantity is 6-dec base units (1e6 = $1 max
  * payout); leverage/max_probability are 1e9-scaled; orders are u256 ids returned
  * by mint and consumed by redeem. `Auth` is consumed per call — see account.ts.
  */
@@ -38,11 +38,11 @@ export interface MintParams {
   /** Range as tick indices — use lib/sui/v2/ticks (binaryTicks / rangeTicks). */
   lowerTick: bigint;
   higherTick: bigint;
-  /** Max payout in DUSDC base units (1e6 = $1). */
+  /** Max payout in USDC base units (1e6 = $1). */
   quantity: bigint;
   /** 1e9-scaled (1e9 = 1x). */
   leverage: bigint;
-  /** All-in cost cap (DUSDC base units) — slippage guard. */
+  /** All-in cost cap (USDC base units) — slippage guard. */
   maxCost: bigint;
   /** Entry probability cap (1e9-scaled) — slippage guard. */
   maxProbability: bigint;
@@ -105,14 +105,14 @@ export interface MintBudgetParams {
   wrapperId: string;
   lowerTick: bigint;
   higherTick: bigint;
-  /** Net-premium budget (DUSDC base units) — the chain sizes the largest
+  /** Net-premium budget (USDC base units) — the chain sizes the largest
    *  lot-rounded quantity whose premium fits inside it. Fees charge on top. */
   amount: bigint;
   /** Odds guard: abort if the sized quantity lands below this (base units). */
   minQuantity: bigint;
   /** 1e9-scaled (1e9 = 1x). */
   leverage: bigint;
-  /** All-in cost cap in DUSDC base units — a slippage guard the 7-29 contract added
+  /** All-in cost cap in USDC base units — a slippage guard the 7-29 contract added
    *  to mint_exact_amount. Ignored on 6-24 (which has no such arg); defaults to no
    *  cap on 7-29 (the `amount` premium budget already bounds the spend). */
   maxCost?: bigint;

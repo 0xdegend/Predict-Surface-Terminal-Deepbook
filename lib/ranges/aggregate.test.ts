@@ -8,7 +8,7 @@ function minted(over: Partial<RangeMintedEvent>): RangeMintedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA',
-    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'DUSDC',
+    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'USDC',
     expiry: 100, lower_strike: 60e9, higher_strike: 65e9, quantity: 0, cost: 0, ask_price: 0,
     ...over,
   };
@@ -18,7 +18,7 @@ function redeemed(over: Partial<RangeRedeemedEvent>): RangeRedeemedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA',
-    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'DUSDC',
+    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'USDC',
     expiry: 100, lower_strike: 60e9, higher_strike: 65e9, quantity: 0, payout: 0,
     bid_price: 0, is_settled: false,
     ...over,

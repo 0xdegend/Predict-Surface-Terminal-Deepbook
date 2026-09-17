@@ -105,9 +105,9 @@ export interface OpenPosition {
   higher?: number;
   /** Marking detail so live PnL uses the terminal's own math (lib/portfolio/v2). */
   entryProb?: number;
-  /** Sized notional (DUSDC) — a win pays this minus the leverage floor. */
+  /** Sized notional (USDC) — a win pays this minus the leverage floor. */
   qty?: number;
-  /** All-in entry cost (DUSDC): stake plus mint fee. */
+  /** All-in entry cost (USDC): stake plus mint fee. */
   cost?: number;
   /** Leverage multiple (1 = none) — drives the leveraged mark/settlement floor. */
   leverage?: number;
@@ -126,12 +126,12 @@ export interface RunTradeResult {
   strike?: number;
   lower?: number;
   higher?: number;
-  /** Stake put in (DUSDC). */
+  /** Stake put in (USDC). */
   stake: number;
   /** Win chance at entry (0..1). */
   entryProb: number;
   outcome: 'won' | 'lost' | 'pending';
-  /** Realized PnL (DUSDC, signed); 0 for a pending trade. */
+  /** Realized PnL (USDC, signed); 0 for a pending trade. */
   pnlUsd: number;
   /** When it was placed (ms epoch). */
   at: number;
@@ -178,7 +178,7 @@ interface Run {
   lastTradeAt: number | null;
   firedMarkets: Record<string, number>;
   open: OpenPosition[];
-  /** Realized PnL (DUSDC) from settled positions this run — the "performance" tape. */
+  /** Realized PnL (USDC) from settled positions this run — the "performance" tape. */
   realizedPnlUsd: number;
   wins: number;
   losses: number;
@@ -457,7 +457,7 @@ const money = (v: number) => `$${v % 1 === 0 ? v.toFixed(0) : v.toFixed(2)}`;
 const signedMoney = (v: number) => `${v >= 0 ? '+' : '-'}$${Math.abs(v) % 1 === 0 ? Math.abs(v).toFixed(0) : Math.abs(v).toFixed(2)}`;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-/** What a settled position realizes (DUSDC), given its stored entry facts. A win
+/** What a settled position realizes (USDC), given its stored entry facts. A win
  *  pays the notional above the static leverage floor minus cost; a loss is -cost.
  *  Mirrors lib/portfolio/v2 (positionWinPayout/valueV2Position) with entry-derived
  *  floor, kept inline so the store stays free of the portfolio + SVI deps. */

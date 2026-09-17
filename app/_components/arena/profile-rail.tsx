@@ -138,10 +138,10 @@ function FactionProfile({ faction }: { faction: Faction }) {
         <StatTile label="Members" value={compact(faction.memberCount)} icon={LuUsers} />
         <StatTile label="Rank" value={`#${faction.rank}`} hue={rankHue} icon={LuTrophy} />
         <StatTile label="Pool share" value={sharePct(faction.poolSharePct)} />
-        <StatTile label="Bonus pool" value={compact(faction.bonusPool)} unit="DUSDC" hue="var(--warn)" icon={LuFlame} />
-        <StatTile label="Base pool" value={compact(faction.basePool)} unit="DUSDC" icon={LuCoins} />
+        <StatTile label="Bonus pool" value={compact(faction.bonusPool)} unit="USDC" hue="var(--warn)" icon={LuFlame} />
+        <StatTile label="Base pool" value={compact(faction.basePool)} unit="USDC" icon={LuCoins} />
         <StatTile label="Points" value={compact(faction.totalPoints)} />
-        <StatTile label="Volume" value={compact(faction.totalVolume)} unit="DUSDC" />
+        <StatTile label="Volume" value={compact(faction.totalVolume)} unit="USDC" />
       </div>
     </div>
   );

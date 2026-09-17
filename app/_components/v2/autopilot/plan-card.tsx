@@ -208,7 +208,7 @@ export function PlanCard({
           }`}
         >
           <p className={`leading-relaxed text-text-3 ${spacious ? 'text-[11px]' : 'text-[11px]'}`}>
-            {live == null ? '' : live ? 'Real DUSDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
+            {live == null ? '' : live ? 'Real USDC from your trading account.' : 'Watch mode: a live rehearsal, nothing is spent.'}
           </p>
           {learnMoreHref && (
             <a

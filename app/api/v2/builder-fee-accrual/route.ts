@@ -4,7 +4,7 @@ import { onchainBuilderFeeAccrual } from '@/lib/api/v2/onchain';
 
 /**
  * GET /api/v2/builder-fee-accrual — the per-trade builder-fee ACCRUAL timeline for the
- * app's configured code: `{ events: [{ ts, fee }] }`, ascending, `fee` in DUSDC.
+ * app's configured code: `{ events: [{ ts, fee }] }`, ascending, `fee` in USDC.
  *
  * The admin earnings chart used to plot the CLAIM log (a few sweep events), so a
  * cumulative line drew a straight ramp that implied constant earning. This is the real

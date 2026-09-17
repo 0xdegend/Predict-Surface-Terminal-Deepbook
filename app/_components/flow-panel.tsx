@@ -108,7 +108,7 @@ export function FlowPanel({
   // True for Google/zkLogin (Enoki) accounts — they're gasless and sponsored.
   const isEnoki = useIsEnokiWallet();
 
-  // One-click "fund my account" — drips DUSDC from the app treasury so a new user
+  // One-click "fund my account" — drips USDC from the app treasury so a new user
   // never has to leave for the public faucet (and, for EXTERNAL wallets only, a
   // little gas SUI — Google accounts are gasless so they don't need it). Falls
   // back to the faucet link if it's disabled or the grant fails.
@@ -180,7 +180,7 @@ export function FlowPanel({
   // Stake as a raw string so the field can be empty / mid-edit (a number-typed
   // input coerces "" → 0, which makes a fresh digit read as "02"). Parsed to a
   // number only where the math needs it (see `betAmount`).
-  const [betInput, setBetInput] = useState('1'); // DUSDC the user wants to bet (stake)
+  const [betInput, setBetInput] = useState('1'); // USDC the user wants to bet (stake)
   // Two-step guided flow: 1 = side & level, 2 = bet (+ review modal). A fresh
   // surface/table/card pick jumps straight to step 2 (see the selection sync).
   const [step, setStep] = useState<1 | 2>(1);
@@ -372,7 +372,7 @@ export function FlowPanel({
   const qtyBase = q?.quantity ?? 0n;
   const payoutDollars = q ? fromQuote(q.quantity) : 0;
 
-  // DUSDC that must come from the connected WALLET for this mint (the manager's
+  // USDC that must come from the connected WALLET for this mint (the manager's
   // free balance covers the rest; this is the buffered figure actually pulled).
   // Same math the "Leaves your wallet now" line shows, hoisted so the button can
   // gate on it.

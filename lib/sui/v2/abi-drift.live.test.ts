@@ -119,7 +119,7 @@ const CALLS: Record<string, Record<string, number>> = V2_IS_821_PLUS
  *
  * It is deliberately NOT patched here: the added parameter's meaning is not recoverable from
  * the ABI (both are bare u64), and picking a value for an unknown argument on a path that
- * moves a trader's DUSDC is precisely the guess this file exists to prevent. It needs the
+ * moves a trader's USDC is precisely the guess this file exists to prevent. It needs the
  * Move source or the official SDK to name it first.
  */
 const KNOWN_BROKEN: Record<string, Record<string, { weBuild: number; chainWants: number }>> = {

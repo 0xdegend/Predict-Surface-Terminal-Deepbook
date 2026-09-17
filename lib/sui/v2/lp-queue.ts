@@ -59,10 +59,10 @@ export interface LpQueueEntry {
   index: bigint;
   /** The requesting Account object's id (NOT the wallet address). */
   accountId: string;
-  /** Where the filled shares/DUSDC will be delivered (the account wrapper). */
+  /** Where the filled shares/USDC will be delivered (the account wrapper). */
   recipient: string;
   /**
-   * Escrowed amount, base units @6dec. DUSDC for a supply; PLP shares for a
+   * Escrowed amount, base units @6dec. USDC for a supply; PLP shares for a
    * withdraw (the two are NOT the same unit — never sum them together).
    */
   amount: bigint;

@@ -39,7 +39,7 @@ interface SimulateResult {
   FailedTransaction?: { status?: { error?: unknown } };
 }
 
-/** Both legs of a quote, in DUSDC base units (6 dec). */
+/** Both legs of a quote, in USDC base units (6 dec). */
 export interface TradeQuote {
   mintCost: bigint; // pay this to mint `quantity`
   redeemPayout: bigint; // receive this to redeem `quantity` now
@@ -69,7 +69,7 @@ export interface MarketQuoteInput {
   expiry: number | bigint;
   strike: bigint; // 1e9-scaled, on grid
   isUp: boolean;
-  quantity: bigint; // DUSDC base units
+  quantity: bigint; // USDC base units
 }
 
 export async function quoteMarket(
@@ -108,7 +108,7 @@ export interface StakeQuote extends TradeQuote {
 }
 
 /**
- * Solve for the position size whose mint cost equals a target DUSDC stake — so
+ * Solve for the position size whose mint cost equals a target USDC stake — so
  * the trader pays exactly the amount they picked and the *payout* floats instead
  * of the cost.
  *
@@ -130,7 +130,7 @@ export async function solveQuoteForStake(
   opts: { maxSteps?: number; tolBase?: bigint } = {},
 ): Promise<StakeQuote> {
   const maxSteps = opts.maxSteps ?? 4;
-  const tolBase = opts.tolBase ?? 2_000n; // 0.002 DUSDC — below display resolution
+  const tolBase = opts.tolBase ?? 2_000n; // 0.002 USDC — below display resolution
   let qty = qtyGuess > 0n ? qtyGuess : 1n;
   let q = await quoteFn(qty);
   for (let i = 0; i < maxSteps; i++) {

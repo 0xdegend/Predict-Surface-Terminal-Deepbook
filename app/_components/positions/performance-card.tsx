@@ -250,7 +250,7 @@ function EquityChart({ points }: { points: EquityPoint[] }) {
           </div>
           <span className={`font-mono text-[22px] leading-none tracking-tight tabular-nums ${positive ? 'text-up' : 'text-down'}`}>
             {signed(latest)}
-            <span className="ml-1.5 text-[11px] text-text-3">DUSDC</span>
+            <span className="ml-1.5 text-[11px] text-text-3">USDC</span>
           </span>
           <span className="font-mono text-[10px] text-text-3">
             {dateUTC(firstT, false)} → {dateUTC(lastT, false)} · {windowed.length} settled

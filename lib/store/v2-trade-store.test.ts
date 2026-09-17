@@ -24,7 +24,7 @@ describe('defaultStakeForBalance', () => {
     expect(defaultStakeForBalance(toQuote(9.99))).toBe(5);
     expect(defaultStakeForBalance(toQuote(5))).toBe(5);
     expect(defaultStakeForBalance(toQuote(4.99))).toBe(1);
-    expect(defaultStakeForBalance(toQuote(2))).toBe(1); // the reported ~1-2 DUSDC case
+    expect(defaultStakeForBalance(toQuote(2))).toBe(1); // the reported ~1-2 USDC case
     expect(defaultStakeForBalance(toQuote(1))).toBe(1);
   });
 

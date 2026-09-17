@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
 
 const QUOTE = predictV2Config.quote.coinType;
 const SUI = '0x2::sui::SUI';
-const DUSDC_UNIT = 1_000_000; // 6 decimals
+const USDC_UNIT = 1_000_000; // 6 decimals
 const SUI_UNIT = 1_000_000_000; // 9 decimals (MIST)
 /** How many claim digests to surface (public data; keeps per-address reads bounded). */
 const RECENT_CAP = 15;
@@ -79,7 +79,7 @@ export async function GET() {
   const [dusdcBase, suiBase] = address
     ? await Promise.all([balanceOf(address, QUOTE), balanceOf(address, SUI)])
     : [null, null];
-  const dusdc = dusdcBase == null ? null : Number(dusdcBase) / DUSDC_UNIT;
+  const dusdc = dusdcBase == null ? null : Number(dusdcBase) / USDC_UNIT;
   const sui = suiBase == null ? null : Number(suiBase) / SUI_UNIT;
 
   return NextResponse.json(

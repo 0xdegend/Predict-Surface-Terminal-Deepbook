@@ -6,7 +6,7 @@ function supply(over: Partial<LpSupplyEvent>): LpSupplyEvent {
   return {
     event_digest: '', digest: 'd', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', predict_id: '0xp',
-    supplier: '0xS', quote_asset: 'DUSDC', amount: 0, shares_minted: 0,
+    supplier: '0xS', quote_asset: 'USDC', amount: 0, shares_minted: 0,
     ...over,
   };
 }
@@ -14,7 +14,7 @@ function withdrawal(over: Partial<LpWithdrawalEvent>): LpWithdrawalEvent {
   return {
     event_digest: '', digest: 'd', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', predict_id: '0xp',
-    withdrawer: '0xW', quote_asset: 'DUSDC', amount: 0, shares_burned: 0,
+    withdrawer: '0xW', quote_asset: 'USDC', amount: 0, shares_burned: 0,
     ...over,
   };
 }

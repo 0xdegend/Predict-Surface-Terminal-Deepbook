@@ -106,7 +106,7 @@ function LopsidedRow({ cell, now, onTrade }: { cell: MarketCell; now: number; on
         <div className={`font-mono text-[13px] font-semibold tabular-nums ${leadUp ? 'text-up' : 'text-down'}`}>
           {leadPct}% {leadUp ? 'UP' : 'DN'}
         </div>
-        <div className="font-mono text-[10px] tabular-nums text-text-3">{compact(cell.totalCost)} DUSDC</div>
+        <div className="font-mono text-[10px] tabular-nums text-text-3">{compact(cell.totalCost)} USDC</div>
       </div>
     </button>
   );

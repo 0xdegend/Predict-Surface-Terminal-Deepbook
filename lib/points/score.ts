@@ -6,7 +6,7 @@
  * keep trading the inputs grow, so the score grows with activity.
  *
  * Three components, by design:
- *   1. Liquidity  — DUSDC put to work minting positions (rewards participation).
+ *   1. Liquidity  — USDC put to work minting positions (rewards participation).
  *   2. Performance — net profit, FLOORED AT ZERO: you always earn points, win or
  *                    lose; a loss simply contributes nothing here (never negative).
  *   3. Holding    — liquidity-weighted time in market (rewards conviction over
@@ -25,11 +25,11 @@ const DAY_MS = 86_400_000;
  * surfaced in the UI so the score is explainable. Phase-1 defaults.
  */
 export const POINTS_RATES = {
-  /** Points per DUSDC of mint volume. */
+  /** Points per USDC of mint volume. */
   perDusdcVolume: 1,
-  /** Points per DUSDC of net profit (losses floored at 0 → never negative). */
+  /** Points per USDC of net profit (losses floored at 0 → never negative). */
   perDusdcProfit: 2,
-  /** Points per (DUSDC · day) held — liquidity-weighted conviction. */
+  /** Points per (USDC · day) held — liquidity-weighted conviction. */
   perDusdcDayHeld: 0.1,
 } as const;
 
@@ -44,9 +44,9 @@ export interface PointsBreakdown {
   total: number;
 
   /* Raw inputs, for a transparent UI breakdown. */
-  /** Total DUSDC paid to mint. */
+  /** Total USDC paid to mint. */
   volume: number;
-  /** Net realized + unrealized PnL in DUSDC (signed — the real figure). */
+  /** Net realized + unrealized PnL in USDC (signed — the real figure). */
   netPnl: number;
   /** Liquidity-weighted average holding time, in days. */
   avgHoldDays: number;
@@ -58,11 +58,11 @@ export interface PointsBreakdown {
  * streams) feed the SAME formula + rates and therefore agree.
  */
 export interface PointsInput {
-  /** Total DUSDC paid to mint. */
+  /** Total USDC paid to mint. */
   volume: number;
-  /** Net PnL in DUSDC (signed). Floored at 0 inside the formula. */
+  /** Net PnL in USDC (signed). Floored at 0 inside the formula. */
   netPnl: number;
-  /** Σ (position cost in DUSDC · days held) — liquidity-weighted time in market. */
+  /** Σ (position cost in USDC · days held) — liquidity-weighted time in market. */
   dusdcDaysHeld: number;
 }
 

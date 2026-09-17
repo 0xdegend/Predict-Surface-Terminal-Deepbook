@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * useLegacyMove — the one place that moves a trader's DUSDC off a retired release.
+ * useLegacyMove — the one place that moves a trader's USDC off a retired release.
  *
  * Two surfaces need this and must not drift apart: the portfolio banner (for someone who
  * already has an account here) and the first-run create card (for someone who does not,
@@ -24,12 +24,12 @@ import { predictV2Config } from '@/config/predict';
 export type LegacyMovePhase = 'idle' | 'moving' | 'done' | 'error';
 
 /**
- * Below this, leave it alone (base units — 0.01 DUSDC).
+ * Below this, leave it alone (base units — 0.01 USDC).
  *
  * Deliberately tiny. The floor exists only to stop a rounding remainder of a fraction of a
  * cent putting a prompt in front of someone forever, since a withdraw can leave dust
  * behind. It is NOT a judgment about what is worth reclaiming: a real leftover balance is
- * the trader's money whatever its size, and the first wallet checked had 3.11 DUSDC on a
+ * the trader's money whatever its size, and the first wallet checked had 3.11 USDC on a
  * release nobody had looked at in a month.
  */
 export const MIN_RECLAIM_BASE = 10_000n;
@@ -81,7 +81,7 @@ export function useLegacyMove() {
   }
 
   return {
-    /** DUSDC still on the old release, base units. */
+    /** USDC still on the old release, base units. */
     amount,
     /** True only when there is a real balance worth offering to move. */
     hasFunds,

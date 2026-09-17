@@ -29,13 +29,13 @@ const DAY_MS = 86_400_000;
 export interface LeaderboardRow {
   /** Trader address (the human; aggregates across all their managers). */
   owner: string;
-  /** Total DUSDC paid to mint, summed over the window. */
+  /** Total USDC paid to mint, summed over the window. */
   volume: number;
   /** Number of mint events. */
   trades: number;
   /** Number of redeem events. */
   redeems: number;
-  /** Total DUSDC received from redeems, summed over the window. */
+  /** Total USDC received from redeems, summed over the window. */
   payout: number;
   /** Most recent activity (ms epoch) across mint + redeem. */
   lastActiveMs: number;
@@ -48,7 +48,7 @@ export interface LeaderboardRow {
 /** A minted lot awaiting redemption, for FIFO holding-time matching. */
 interface Lot {
   qty: number; // units (de-scaled)
-  costPerUnit: number; // DUSDC per unit
+  costPerUnit: number; // USDC per unit
   ts: number; // mint timestamp (ms)
 }
 

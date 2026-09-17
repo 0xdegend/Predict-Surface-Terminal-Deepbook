@@ -55,7 +55,7 @@ export interface QuestProgress {
   /** Where they are, in the metric's own unit. 0 when unavailable. */
   current: number;
   target: number;
-  /** Ready-to-render progress text, e.g. "32 / 50 DUSDC", "1 / 3 wins", "Complete". */
+  /** Ready-to-render progress text, e.g. "32 / 50 USDC", "1 / 3 wins", "Complete". */
   label: string;
   /** Points this quest pays on completion (not whether they have been paid). */
   points: number;

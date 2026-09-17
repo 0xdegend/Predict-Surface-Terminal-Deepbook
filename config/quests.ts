@@ -23,12 +23,13 @@
  */
 
 /**
- * How the settlement collateral is written in quest copy. One constant because the
- * protocol renamed the type from DUSDC to USDC for the mainnet publication graph, and
- * this app still points at a deployment that calls it DUSDC. When we migrate, this is
- * the only line in the catalog that moves.
+ * How the settlement collateral is written in quest copy. One constant so the ticker is
+ * never a literal scattered through the catalog. The protocol renamed the Move type from
+ * `dusdc::DUSDC` to `usdc::USDC` on 9-12, and the app now displays USDC even though the
+ * on-chain `coin_registry::Currency` still returns "DUSDC" (see the `quote` note in
+ * config/predict.ts for why that divergence is deliberate).
  */
-export const QUEST_COLLATERAL = 'DUSDC';
+export const QUEST_COLLATERAL = 'USDC';
 
 /** Grouping for the panel's filter tabs. Matches the shipped design. */
 export type QuestCategory = 'onboarding' | 'volume' | 'skill' | 'markets';

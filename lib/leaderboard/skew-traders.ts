@@ -19,7 +19,7 @@ import { fromQuote } from '@/config/scale';
 export interface SkewTraders {
   /** Lowercased addresses that have traded through Skew. */
   addresses: Set<string>;
-  /** Per-owner Skew-only stats (volume in DUSDC, trade count). */
+  /** Per-owner Skew-only stats (volume in USDC, trade count). */
   byOwner: Map<string, { skewVolume: number; skewTrades: number }>;
 }
 

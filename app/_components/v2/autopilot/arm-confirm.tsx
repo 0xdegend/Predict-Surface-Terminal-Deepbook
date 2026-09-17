@@ -62,7 +62,7 @@ export function ArmConfirmModal({
   presetId: PresetId | null;
   live: boolean;
   onSetLive: (on: boolean) => void;
-  /** What is already in the trading account (DUSDC). */
+  /** What is already in the trading account (USDC). */
   balanceUsd: number;
   /** What has to move in from the wallet before the run can cover its budget, or 0 when
    *  the account already covers it. The panel does the arithmetic; this only reads it. */
@@ -131,7 +131,7 @@ export function ArmConfirmModal({
             active={live}
             icon={LuRadioTower}
             label="Trade live"
-            sub="Real DUSDC"
+            sub="Real USDC"
             onClick={() => onSetLive(true)}
             tone="up"
           />
@@ -208,7 +208,7 @@ export function ArmConfirmModal({
  * The "instant trading is on" status, with a way to fully END the session. Ending sweeps
  * the session key's leftover SUI gas back to the wallet (so it can fund the next one) and
  * turns off one-tap trading everywhere, since the app and Autopilot share one session key.
- * Left-over DUSDC budget stays in the trading account. Guarded by an inline confirm because
+ * Left-over USDC budget stays in the trading account. Guarded by an inline confirm because
  * it costs a signature and affects the whole app.
  */
 function SessionStatusRow({

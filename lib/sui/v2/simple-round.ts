@@ -117,7 +117,7 @@ export interface SideQuote {
   entryProb: number;
   /** Payout ÷ stake (≈ 1 / entryProb at 1x). */
   multiplier: number;
-  /** DUSDC won if the side is right (base units) — full quantity at 1x. */
+  /** USDC won if the side is right (base units) — full quantity at 1x. */
   winBase: bigint;
   stakeBase: bigint;
   /** `mint_exact_amount` budget (base units). */

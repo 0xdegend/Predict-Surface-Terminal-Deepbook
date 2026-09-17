@@ -270,7 +270,7 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   // where you could have picked Watch instead.
   const fundingIssue =
     live && topUp > 0n && (acct.walletDusdcBase ?? 0n) < topUp
-      ? `Your wallet needs $${num(fromQuote(topUp), 2)} of DUSDC to top the run up to $${num(limits.budgetUsd, 0)}`
+      ? `Your wallet needs $${num(fromQuote(topUp), 2)} of USDC to top the run up to $${num(limits.budgetUsd, 0)}`
       : null;
   // Only a broken SETUP keeps you out of the confirm. Live-specific blockers are
   // deliberately NOT folded in here: the mode itself is now chosen inside the dialog,

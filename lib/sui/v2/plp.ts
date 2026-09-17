@@ -3,9 +3,9 @@
  *
  * Unlike the legacy inline supply/withdraw, v2 LP ops are QUEUED and filled at the
  * keeper's flush (NAV-priced), so the user actions only REQUEST:
- *   request_supply(amount DUSDC)  — pulls DUSDC from the account; PLP shares are
+ *   request_supply(amount USDC)  — pulls USDC from the account; PLP shares are
  *                                   delivered to the account at the next flush.
- *   request_withdraw(amount PLP)  — pulls PLP shares from the account; DUSDC is
+ *   request_withdraw(amount PLP)  — pulls PLP shares from the account; USDC is
  *                                   delivered to the account at the next flush.
  * Each returns a queue index used to cancel before the flush. Verified from
  * plp.move (predict-testnet-6-24). No public per-user request read exists, so the
@@ -22,13 +22,13 @@ const c = () => predictV2Config;
 
 export interface RequestSupplyParams {
   wrapperId: string;
-  /** DUSDC base units to commit to the vault. */
+  /** USDC base units to commit to the vault. */
   amount: bigint;
-  /** Optional: top up the account by this much DUSDC in the same PTB first. */
+  /** Optional: top up the account by this much USDC in the same PTB first. */
   deposit?: bigint;
 }
 
-/** Queue a vault deposit (DUSDC → PLP at next flush). */
+/** Queue a vault deposit (USDC → PLP at next flush). */
 export function buildRequestSupplyTx(p: RequestSupplyParams): Transaction {
   const tx = new Transaction();
   if (p.deposit && p.deposit > 0n) addDeposit(tx, p.wrapperId, p.deposit);
@@ -48,7 +48,7 @@ export function buildRequestSupplyTx(p: RequestSupplyParams): Transaction {
   return tx;
 }
 
-/** Queue a vault withdrawal (PLP shares → DUSDC at next flush). */
+/** Queue a vault withdrawal (PLP shares → USDC at next flush). */
 export function buildRequestWithdrawTx(wrapperId: string, plpAmount: bigint): Transaction {
   const tx = new Transaction();
   const auth = addGenerateAuth(tx);
@@ -93,12 +93,12 @@ export const buildCancelWithdrawTx = (wrapperId: string, index: bigint) =>
 /* -------------------------------- reads ---------------------------------- */
 
 export interface VaultState {
-  idleBalance: bigint; // DUSDC base units available for funding/withdrawals
+  idleBalance: bigint; // USDC base units available for funding/withdrawals
   plpTotalSupply: bigint; // PLP shares outstanding
   supplyPending: bigint; // count of un-flushed supply requests
   withdrawPending: bigint; // count of un-flushed withdraw requests
-  protocolReserve: bigint; // DUSDC base units
-  feeIncentiveReserve: bigint; // DUSDC base units
+  protocolReserve: bigint; // USDC base units
+  feeIncentiveReserve: bigint; // USDC base units
   stakedDeep: bigint;
 }
 

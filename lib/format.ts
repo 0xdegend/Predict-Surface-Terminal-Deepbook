@@ -44,7 +44,7 @@ export function price(value: number, decimals = 2): string {
   return num(value, decimals);
 }
 
-/** DUSDC amount with symbol. */
+/** USDC amount with symbol. */
 export function quote(value: number, decimals = 2): string {
   return `${num(value, decimals)}`;
 }
@@ -53,7 +53,7 @@ export function quote(value: number, decimals = 2): string {
  * A fee amount, which can be much smaller than the 2-decimal currency grid (a 1%
  * fee on a 0.42 bet is 0.0042). Shows the normal 2-decimal format at ≥ 0.01, but
  * for tiny fees keeps ~2 significant figures (0.0043, 0.00043) so it never
- * collapses to "0.00". Capped at DUSDC's 6-decimal precision; trailing zeros
+ * collapses to "0.00". Capped at USDC's 6-decimal precision; trailing zeros
  * trimmed.
  */
 export function feeAmount(value: number): string {

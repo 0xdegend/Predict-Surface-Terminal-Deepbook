@@ -5,7 +5,7 @@
  * The legacy server's `/managers/:id/summary` began 500ing when its ingestion
  * lost JSON-RPC (2026-07-08). The trading balance it carried is authoritative
  * ON-CHAIN, so we read it directly: a gas-free simulate of
- * `predict_manager::balance<DUSDC>` (signature verified live via GraphQL:
+ * `predict_manager::balance<USDC>` (signature verified live via GraphQL:
  * `balance<T>(&PredictManager): u64`). Feeds the portfolio's fallback summary.
  */
 import { Transaction } from '@mysten/sui/transactions';
@@ -20,7 +20,7 @@ interface SimResult {
   commandResults?: { returnValues: { bcs: Uint8Array }[] }[];
 }
 
-/** Free DUSDC sitting in the manager (base units), read from the chain. */
+/** Free USDC sitting in the manager (base units), read from the chain. */
 export async function readManagerTradingBalance(
   client: SimulateCapableClient,
   managerId: string,

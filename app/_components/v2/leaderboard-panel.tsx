@@ -318,7 +318,7 @@ export function V2LeaderboardPanel() {
           {/* Half the length it was. Two of the four things it used to say were already on
               screen: the header three lines up says "Every trade earns Points, win or lose.
               Winners just earn more.", which is "floored at zero, a loss never subtracts" in
-              words a trader actually uses, and the DUSDC in the first term is the same DUSDC
+              words a trader actually uses, and the USDC in the first term is the same USDC
               the quote-asset line names. "Authoritative PnL" went too: the number on your
               Portfolio is the real one, and calling it authoritative only raises the question
               of what this one is. Kept: the formula, the season's scope, and where to find

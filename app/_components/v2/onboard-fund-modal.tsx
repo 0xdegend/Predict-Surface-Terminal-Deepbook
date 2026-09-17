@@ -5,7 +5,7 @@
  *
  * A first-timer (connected wallet, no trading account yet) gets a single
  * "Fund & start" button that, back to back:
- *   1. drips a DUSDC starter grant to their wallet (plus a little gas SUI for
+ *   1. drips a USDC starter grant to their wallet (plus a little gas SUI for
  *      external wallets — Google/Enoki is gasless), and
  *   2. creates their trading account,
  * so they land ready to trade. There's deliberately NO deposit step: the first
@@ -62,7 +62,7 @@ export function OnboardFundModal() {
     symbol: sym,
   });
   // A returning trader after a redeploy is NOT a first-timer, even though they have no
-  // account on this release: their DUSDC is sitting in an account on the old one. This
+  // account on this release: their USDC is sitting in an account on the old one. This
   // modal says NOTHING about that case and must not try to. The portfolio owns the whole
   // migration story, in one place, where someone has gone looking for their balance.
   //
@@ -80,7 +80,7 @@ export function OnboardFundModal() {
   const [dismissedFor, setDismissedFor] = useState<string | null>(null);
 
   // First-timer = connected, the wrapper read SUCCEEDED, and it told us there is no trading
-  // account. (A wallet WITH an account that's just low on DUSDC is a top-up, handled by the
+  // account. (A wallet WITH an account that's just low on USDC is a top-up, handled by the
   // ticket's own grant CTA, not this modal.)
   //
   // `wrapperKnown` is the load-bearing part. `readWrapper` throws on a transport failure, so
@@ -150,7 +150,7 @@ export function OnboardFundModal() {
 
   const grantLabel = `${fmtQuote(fromQuote(starterGrant.displayBase))} ${sym}`;
   // Whether the grant will actually be paid. `fundAndStart` skips it when the trader already
-  // holds enough, so promising "2.00 DUSDC added to your wallet" to someone who is already
+  // holds enough, so promising "2.00 USDC added to your wallet" to someone who is already
   // funded is a bullet that quietly does not happen. Undefined balances (still loading) are
   // treated as 0, which errs toward offering the grant rather than hiding it.
   const alreadyFunded =

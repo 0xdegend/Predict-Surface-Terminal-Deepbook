@@ -145,7 +145,7 @@ export const getVaultSummary = (o?: GetOptions) =>
 export const getVaultPerformance = (range = 'ALL', o?: GetOptions) =>
   get<VaultPerformance>(`/predicts/${PID()}/vault/performance?range=${range}`, o);
 
-/** LP capital flows — DUSDC supplied into / withdrawn from the vault. */
+/** LP capital flows — USDC supplied into / withdrawn from the vault. */
 export const getLpSupplies = (limit = 100, o?: GetOptions) =>
   get<LpSupplyEvent[]>(`/lp/supplies?limit=${limit}`, o);
 

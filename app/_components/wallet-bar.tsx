@@ -246,7 +246,7 @@ function ConnectedMenu({
           onClick={onCashOut}
           className="ctrl-soft flex items-center justify-between rounded-xl px-3 py-2.5 text-[12px] text-text-2 transition-colors hover:text-up"
         >
-          Cash out DUSDC
+          Cash out USDC
           <LuSend size={13} />
         </button>
       )}

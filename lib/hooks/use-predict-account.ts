@@ -2,11 +2,11 @@
 
 /**
  * usePredictAccount — the one place the trader's on-chain account lives:
- * manager lookup, summary, positions, PnL, wallet DUSDC, plus the create /
+ * manager lookup, summary, positions, PnL, wallet USDC, plus the create /
  * redeem / withdraw transactions. Shared by the trade-ticket rail and the
  * Portfolio page so the tx logic and cache keys never drift apart.
  *
- * SCALING: every DUSDC amount the server returns for a manager/position is in
+ * SCALING: every USDC amount the server returns for a manager/position is in
  * base units (@6dec). We expose them already de-scaled to human floats, and a
  * single `tradingBalanceBase` bigint for tx math — so callers never re-scale.
  */
@@ -65,7 +65,7 @@ function txSuccessTitle(label: string): string {
   if (label === 'withdraw-plp') return 'Redeemed from vault';
   if (label === 'mint-range') return 'Range minted';
   if (label === 'redeem-range') return 'Range closed';
-  if (label === 'cash-out') return 'DUSDC sent';
+  if (label === 'cash-out') return 'USDC sent';
   if (label.startsWith('redeem')) return 'Position closed';
   return 'Transaction confirmed';
 }
@@ -325,8 +325,8 @@ export function usePredictAccount() {
   }
 
   /**
-   * Cash out DUSDC to an external wallet (for zkLogin / Google users who can't
-   * export a key). Drains the manager free balance first, then wallet DUSDC, up
+   * Cash out USDC to an external wallet (for zkLogin / Google users who can't
+   * export a key). Drains the manager free balance first, then wallet USDC, up
    * to `amountBase` (base units, @6dec), and transfers it to `destination` in one
    * gasless transaction. Returns null on bad input.
    */
@@ -407,8 +407,8 @@ export function usePredictAccount() {
     ]);
   }
 
-  /** Supply DUSDC into the PLP vault, un-hedged (plain liquidity provision).
-   *  `amount` is DUSDC base units (@6dec). No manager needed — PLP returns to
+  /** Supply USDC into the PLP vault, un-hedged (plain liquidity provision).
+   *  `amount` is USDC base units (@6dec). No manager needed — PLP returns to
    *  the wallet. The hedged path lives in HedgePanel via buildOpenHedgedTx. */
   async function supplyPlp(amount: bigint) {
     if (!owner || amount <= 0n) return null;
@@ -420,7 +420,7 @@ export function usePredictAccount() {
     ]);
   }
 
-  /** Redeem PLP back to wallet DUSDC (LP vault withdrawal). `plpAmount` is PLP
+  /** Redeem PLP back to wallet USDC (LP vault withdrawal). `plpAmount` is PLP
    *  base units (@6dec). The chain may reject amounts above the withdrawal
    *  limiter — callers should cap to the vault's available headroom. */
   async function withdrawPlp(plpAmount: bigint) {

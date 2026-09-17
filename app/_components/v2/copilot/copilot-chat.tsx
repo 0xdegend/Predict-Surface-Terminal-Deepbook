@@ -29,7 +29,7 @@ export interface ChatMessage {
   range?: RangeSuggestion;
   /** An onboarding step rendered as a one-tap button (create account / get tokens). */
   action?: OnboardAction;
-  /** A vault deposit rendered as a tap-to-confirm card (add DUSDC to the vault). */
+  /** A vault deposit rendered as a tap-to-confirm card (add USDC to the vault). */
   vaultDeposit?: VaultDepositAction;
   /** A snapshot the message can offer to share as an image card (fear & greed). */
   share?: ShareCard;

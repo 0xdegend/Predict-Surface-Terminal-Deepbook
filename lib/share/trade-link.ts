@@ -46,7 +46,7 @@ export interface TradeRecipe {
   /** range band edges, absolute $ (lower < higher). */
   lower?: number;
   higher?: number;
-  /** The sender's stake, in DUSDC. */
+  /** The sender's stake, in USDC. */
   stake: number;
   /** Leverage multiple (1 = none). */
   lev: number;

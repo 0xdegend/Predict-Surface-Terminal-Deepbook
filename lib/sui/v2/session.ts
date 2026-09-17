@@ -8,7 +8,7 @@
  * Predict trade wrappers directly — no wallet popup per trade. See the
  * sessions-delegated-trading note and https://github.com/MystenLabs/deepbookv3/tree/main/packages/sessions.
  *
- * The session can ONLY trade the DUSDC deposited into the wrapper; it cannot
+ * The session can ONLY trade the USDC deposited into the wrapper; it cannot
  * withdraw, cannot touch the main wallet, and cannot authorize/revoke (owner-only).
  * It is bounded by an on-chain expiry (≤30 days) and revocable in one tap.
  *
@@ -266,7 +266,7 @@ export interface AuthorizeSessionParams {
   wrapperId: string;
   sessionAddress: string;
   durationMs: number;
-  /** DUSDC base units to deposit into the wrapper for the session to trade with (owner
+  /** USDC base units to deposit into the wrapper for the session to trade with (owner
    *  funds; the session can only ever spend this). Omit/0 to authorize without funding. */
   depositBase?: bigint;
   /** SUI base units to send to the session key so it can pay gas (Slush path). Gasless

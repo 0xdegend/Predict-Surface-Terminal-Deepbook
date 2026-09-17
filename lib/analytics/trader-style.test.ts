@@ -3,12 +3,12 @@ import { classifyStyle, computeStyleStats } from './trader-style';
 import { FLOAT_SCALING } from '@/config/scale';
 import type { PositionSummary } from '@/lib/api/types';
 
-const Q = 1_000_000; // @6dec → 1 DUSDC
+const Q = 1_000_000; // @6dec → 1 USDC
 const E9 = FLOAT_SCALING;
 
 function pos(over: Partial<PositionSummary>): PositionSummary {
   return {
-    predict_id: '0xp', manager_id: '0xm', quote_asset: 'DUSDC', oracle_id: '0xA',
+    predict_id: '0xp', manager_id: '0xm', quote_asset: 'USDC', oracle_id: '0xA',
     underlying_asset: 'BTC', expiry: 0, strike: 0, is_up: true,
     minted_quantity: 0, redeemed_quantity: 0, open_quantity: 0,
     total_cost: 1 * Q, total_payout: 0, realized_pnl: 0, unrealized_pnl: 0,
@@ -29,7 +29,7 @@ describe('computeStyleStats', () => {
     expect(s.volume).toBeCloseTo(4);
     expect(s.avgBet).toBeCloseTo(2);
     expect(s.avgEntry).toBeCloseTo((0.2 * 3 + 0.8 * 1) / 4); // 0.35
-    expect(s.tailShare).toBeCloseTo(0.75); // the 3-DUSDC bet @0.2 is a longshot
+    expect(s.tailShare).toBeCloseTo(0.75); // the 3-USDC bet @0.2 is a longshot
     expect(s.favShare).toBeCloseTo(0.25);
     expect(s.upShare).toBeCloseTo(0.75);
     expect(s.markets).toBe(2);

@@ -93,8 +93,8 @@ export type CopilotIntent =
   | { kind: 'onboarding' }
   | { kind: 'create_account' }
   | { kind: 'get_tokens' }
-  // "Add 10 DUSDC to the vault / supply the liquidity pool" — deposit into the vault
-  // (async LP). `amount` is the DUSDC to queue (undefined → Kelly asks how much).
+  // "Add 10 USDC to the vault / supply the liquidity pool" — deposit into the vault
+  // (async LP). `amount` is the USDC to queue (undefined → Kelly asks how much).
   | { kind: 'vault_deposit'; amount?: number }
   // "Remember that I ..." → store a durable memory (Kelly's Walrus-backed memory);
   // `text` is the fact to save. "What do you remember about me?" → recall saved memories.
@@ -137,7 +137,7 @@ const START_TRADE_PHRASES = [
 // message carrying any of these is building a SPECIFIC trade, so it routes to the
 // guided wizard (which fills what's given and asks for the rest) even when phrased
 // without a "set up a trade" cue — e.g. "trade 66000 strike, 2x, 6 dusdc".
-const TRADE_PARAM = /\bstrike\s*(?:of|is|at|=|:)?\s*\$?\d|\bleverage\s*(?:of|is|at|=|:)?\s*\d|\b\d+(?:\.\d+)?\s*x\b|\b\d[\d,]*\s*dusdc\b/;
+const TRADE_PARAM = /\bstrike\s*(?:of|is|at|=|:)?\s*\$?\d|\bleverage\s*(?:of|is|at|=|:)?\s*\d|\b\d+(?:\.\d+)?\s*x\b|\b\d[\d,]*\s*d?usdc\b/;
 
 /**
  * Whole-word (or phrase) presence test, case-insensitive. Single words also match
@@ -237,11 +237,11 @@ function rangeWidthFrom(text: string): Conviction {
   return convictionFrom(text);
 }
 
-/** "What's my (wallet) balance? / how much DUSDC do I have?" — show their funds. */
+/** "What's my (wallet) balance? / how much USDC do I have?" — show their funds. */
 function wantsBalance(text: string): boolean {
   // "my money" is intentionally NOT here — it collides with "double my money"
   // (a payout target). "how much money do I have" still routes to balance.
-  return /\bbalance\b|how much (?:dusdc|money|funds|do i have)|\bmy (?:wallet|funds|dusdc)\b|how much.*\bwallet\b/.test(text);
+  return /\bbalance\b|how much (?:d?usdc|money|funds|do i have)|\bmy (?:wallet|funds|d?usdc)\b|how much.*\bwallet\b/.test(text);
 }
 
 /** "Did I win my last trade? / what's my win rate? / how's my loss rate?" — a read
@@ -331,13 +331,13 @@ export function placeConfirmation(message: string): { stake?: number; leverage?:
   // pending bet, not fall through to start a fresh wizard / navigate. Only counts
   // when it names NO strike and NO side — a strike or a direction makes it a new
   // spec (parseIntent → start_trade owns those); a plain size is a confirm.
-  const namesStrike = /\b\d[\d,]{3,}(?:\.\d+)?\b(?!\s*(?:x\b|dusdc\b))/.test(t);
+  const namesStrike = /\b\d[\d,]{3,}(?:\.\d+)?\b(?!\s*(?:x\b|d?usdc\b))/.test(t);
   const namesSide = has(t, UP_WORDS) || has(t, DOWN_WORDS);
   const sizedConfirm =
     !namesStrike &&
     !namesSide &&
     /^(?:trade|place|open|send|lock|buy|book|bet|stake|put|go)\b/.test(t) &&
-    /\$\d|\b\d[\d,]*(?:\.\d+)?\s*dusdc\b|\b\d+(?:\.\d+)?\s*x\b/.test(t);
+    /\$\d|\b\d[\d,]*(?:\.\d+)?\s*d?usdc\b|\b\d+(?:\.\d+)?\s*x\b/.test(t);
   if (!refConfirm && !bareConfirm && !sizedConfirm) return null;
 
   // Optional stake / leverage overrides for the pending bet. Leverage is read from
@@ -350,7 +350,7 @@ export function placeConfirmation(message: string): { stake?: number; leverage?:
     t.match(/\b(\d+(?:\.\d+)?)\s*x\b/);
   if (lev) out.leverage = parseFloat(lev[1]);
   const stakeM =
-    t.match(/\b(\d[\d,]*(?:\.\d+)?)\s*dusdc\b/) ??
+    t.match(/\b(\d[\d,]*(?:\.\d+)?)\s*d?usdc\b/) ??
     t.match(/\bwith\s+\$?(\d[\d,]*(?:\.\d+)?)\b/) ??
     t.match(/\$(\d[\d,]*(?:\.\d+)?)\b/) ??
     t.match(/\b(?:stake|bet|amount|risk|size|for)\s+\$?(\d[\d,]*(?:\.\d+)?)\b/);
@@ -375,7 +375,7 @@ export function isPlaceConfirmation(message: string): boolean {
 /**
  * Read a bet SIZE out of a reply that is basically just an amount — the answer to
  * Kelly's "how much do you want to bet?". Accepts "50", "$50", "50 dusdc",
- * "bet 10", "make it 30", "about 25 please". Returns the DUSDC amount, or null when
+ * "bet 10", "make it 30", "about 25 please". Returns the USDC amount, or null when
  * the message isn't an amount (so the caller can treat it as a normal message). A
  * bare leverage like "2x" is NOT an amount, so it returns null.
  */
@@ -385,14 +385,14 @@ export function parseAmountReply(message: string): number | null {
   const stripped = t
     .replace(/^(?:i(?:'|')?ll |i want to |i wanna |let'?s |make it |do |bet |stake |put |use |go |with |for |about |around |maybe )+/g, '')
     .trim();
-  const m = stripped.match(/^(\d+(?:\.\d+)?)\s*(?:dusdc|dollars?|bucks)?\.?\s*(?:please|thanks?)?$/);
+  const m = stripped.match(/^(\d+(?:\.\d+)?)\s*(?:d?usdc|dollars?|bucks)?\.?\s*(?:please|thanks?)?$/);
   if (!m) return null;
   const n = parseFloat(m[1]);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /**
- * Pull an explicit DUSDC amount named ANYWHERE in a request ("set up a $50 up
+ * Pull an explicit USDC amount named ANYWHERE in a request ("set up a $50 up
  * trade", "up bet 20 dusdc", "bet 10 up"). Requires a money marker ($ / dusdc / a
  * stake verb) so a 4-5 digit STRIKE (66000) or a leverage (2x) is never mistaken
  * for a stake. Returns null when no amount is named, which is the signal for Kelly
@@ -403,7 +403,7 @@ export function extractStake(message: string): number | null {
   const t = message.toLowerCase().replace(/,/g, '');
   const m =
     t.match(/\$(\d+(?:\.\d+)?)(?!\s*x)\b/) ??
-    t.match(/\b(\d+(?:\.\d+)?)\s*dusdc\b/) ??
+    t.match(/\b(\d+(?:\.\d+)?)\s*d?usdc\b/) ??
     t.match(/\b(?:bet|stake|staking|risk|wager|put)\s+\$?(\d+(?:\.\d+)?)(?!\s*x)\b/);
   if (!m) return null;
   const n = parseFloat(m[1]);
@@ -584,7 +584,7 @@ function adjustFrom(raw: string): { stake?: number; leverage?: number; strike?: 
     raw.match(/\b(?:make it|bet|stake|amount|wager|risk|size)\s*(?:to|of|=|:)?\s*\$(\d[\d,]*(?:\.\d+)?)/) ??
     raw.match(/\b(?:make it|stake|amount|wager|risk|bet)\s*(?:to|of|=|:)?\s*(\d[\d,]*(?:\.\d+)?)\b(?!\s*x)/) ??
     raw.match(/\$(\d[\d,]*(?:\.\d+)?)\b/) ??
-    raw.match(/\b(\d[\d,]*(?:\.\d+)?)\s*dusdc\b/);
+    raw.match(/\b(\d[\d,]*(?:\.\d+)?)\s*d?usdc\b/);
   if (stakeM && out.strike == null) {
     const n = parseFloat(stakeM[1].replace(/,/g, ''));
     if (!(out.leverage != null && n === out.leverage)) out.stake = n;
@@ -625,14 +625,14 @@ function wantsCreateAccount(text: string): boolean {
   return /\b(?:create|open|set ?up|make|start|register|activate|need|want|get)\b[^?]{0,20}\b(?:trading )?account\b/.test(text);
 }
 
-/** "Get test tokens / airdrop / faucet / fund my account / give me DUSDC." An
- *  ACQUISITION cue (get/give/claim/fund/airdrop/faucet), so "how much DUSDC do I
- *  have" (balance) and "what is DUSDC" (explain) are not swept in. */
+/** "Get test tokens / airdrop / faucet / fund my account / give me USDC." An
+ *  ACQUISITION cue (get/give/claim/fund/airdrop/faucet), so "how much USDC do I
+ *  have" (balance) and "what is USDC" (explain) are not swept in. */
 function wantsGetTokens(text: string): boolean {
-  return /\bairdrop\b|\bfaucet\b|\btest (?:tokens?|dusdc|money|funds|coins?)\b|\bfree (?:tokens?|dusdc|money|coins?)\b|\b(?:get|give|send|grab|claim|need|want|drip)\b[^?]{0,16}\b(?:dusdc|tokens?|test funds|test money)\b|\bfund (?:my )?(?:account|wallet)\b|\btop ?up\b[^?]{0,12}\b(?:account|wallet|balance)\b|\bstarter grant\b/.test(text);
+  return /\bairdrop\b|\bfaucet\b|\btest (?:tokens?|d?usdc|money|funds|coins?)\b|\bfree (?:tokens?|d?usdc|money|coins?)\b|\b(?:get|give|send|grab|claim|need|want|drip)\b[^?]{0,16}\b(?:d?usdc|tokens?|test funds|test money)\b|\bfund (?:my )?(?:account|wallet)\b|\btop ?up\b[^?]{0,12}\b(?:account|wallet|balance)\b|\bstarter grant\b/.test(text);
 }
 
-/** "Add 10 DUSDC to the vault / deposit into the liquidity pool / supply the pool /
+/** "Add 10 USDC to the vault / deposit into the liquidity pool / supply the pool /
  *  provide liquidity" — a request to DEPOSIT into the vault (async LP), which Kelly
  *  proposes and the trader confirms + signs. Requires a deposit verb AND a
  *  vault/LP/pool destination, and is NOT a withdrawal (those fall through — there's
@@ -648,12 +648,12 @@ function wantsVaultDeposit(text: string): { amount?: number } | null {
   return { amount: vaultAmount(text) };
 }
 
-/** Pull a DUSDC amount from a vault-deposit message: prefers a "N dusdc" / "$N"
+/** Pull a USDC amount from a vault-deposit message: prefers a "N usdc" / "$N"
  *  figure, else the first plain number. Undefined when none is named (Kelly then
  *  asks how much). */
 function vaultAmount(text: string): number | undefined {
   const m =
-    text.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:dusdc|dollars?|bucks?|usd)\b/) ??
+    text.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:d?usdc|dollars?|bucks?|usd)\b/) ??
     text.match(/\$(\d[\d,]*(?:\.\d+)?)/) ??
     text.match(/\b(\d[\d,]*(?:\.\d+)?)\b/);
   if (!m) return undefined;
@@ -762,7 +762,7 @@ function explainTopic(text: string): ExplainTopic | null {
   if (/settl(?:e|es|ed|ing|ement|ements)|how.{0,14}(?:expir|close)|when.{0,14}(?:it |they )?(?:pay|resolve)/.test(text)) return 'settlement';
   if (/if i lose|lose more|lose my|can i lose|what.{0,10}(?:happens|the).{0,14}los|\blosing\b/.test(text)) return 'loss';
   if (/\bfees?\b|\bcommission\b|how do you (?:make|earn) money|(?:make|makes) money|\brevenue\b|cost to (?:trade|bet)|\bcharge/.test(text)) return 'fees';
-  if (/\bdusdc\b|\bfaucet\b|testnet (?:funds|money|tokens|dusdc)|get (?:some )?(?:dusdc|funds|tokens|test)|free (?:dusdc|tokens|money)|what.{0,10}currency|real money/.test(text)) return 'funds';
+  if (/\bd?usdc\b|\bfaucet\b|testnet (?:funds|money|tokens|d?usdc)|get (?:some )?(?:d?usdc|funds|tokens|test)|free (?:d?usdc|tokens|money)|what.{0,10}currency|real money/.test(text)) return 'funds';
   if (/\bpayout\b|how.{0,14}(?:win|paid|payout)|how much.{0,16}win|what do i win|\bodds mean\b/.test(text)) return 'payout';
   if (/what (?:is|'s) (?:this|predict|deepbook)|how does (?:this|it|predict) work|what can you do|how do i (?:start|begin|bet|trade)/.test(text)) return 'predict';
   return null;
@@ -864,7 +864,7 @@ function wantsFindStrike(text: string): { price: number; dir?: BetDirection } | 
   if (!/\bfind\b|\bshow\b|\blocate\b|\bhighlight\b|\bwhere('?s| is)\b|point (?:me )?(?:to|out|at)|take me to|\bgo to\b|\bmark\b|pull up|bring up|\bdisplay\b|\bpick\b|\bchoose\b|\bselect\b|\bsearch\b/.test(text)) return null;
   // A sizing token (leverage / amount) means it's a trade SETUP, not a locate —
   // let it fall through to the wizard rather than just lighting the strike up.
-  if (/\bleverage\b|\b\d+(?:\.\d+)?\s*x\b|\b\d[\d,]*\s*dusdc\b/.test(text)) return null;
+  if (/\bleverage\b|\b\d+(?:\.\d+)?\s*x\b|\b\d[\d,]*\s*d?usdc\b/.test(text)) return null;
   const level = levelFrom(text);
   if (!level || level.kind !== 'strike') return null;
   return { price: level.price, dir: dirFrom(text) };
@@ -1009,7 +1009,7 @@ export function parseIntent(message: string): CopilotIntent {
   // trade-param branch so "find the strike at 64,730" isn't read as building one.
   const find = wantsFindStrike(raw);
   if (find) return { kind: 'find_strike', price: find.price, dir: find.dir };
-  // "Add 10 DUSDC to the vault / supply the liquidity pool" → a vault deposit Kelly
+  // "Add 10 USDC to the vault / supply the liquidity pool" → a vault deposit Kelly
   // proposes (the trader confirms + signs). BEFORE the trade branches so the amount
   // ("10 dusdc") isn't read as a bet, and before adjust/TRADE_PARAM which would
   // claim the number. The definitional "what is the vault" has no deposit verb, so

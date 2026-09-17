@@ -26,7 +26,7 @@ export interface PredictConfig {
   /** Sui system Clock object — always 0x6, but kept here so callers never inline it. */
   clockId: string;
   quote: {
-    /** Fully-qualified Coin type for the quote asset (DUSDC). */
+    /** Fully-qualified Coin type for the quote asset (USDC). */
     coinType: string;
     /** Currency / metadata object ID. */
     currencyId: string;
@@ -50,7 +50,7 @@ export interface PredictConfig {
    */
   skewFeePackageId: string;
   feeConfigId: string;
-  /** Optional: testnet DUSDC faucet request form (not the standard USDC faucet). */
+  /** Optional: testnet USDC faucet request form (not the standard USDC faucet). */
   faucetUrl?: string;
 }
 
@@ -66,7 +66,7 @@ const TESTNET: PredictConfig = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0xf5ea2b3749c65d6e56507cc35388719aadb28f9cab873696a2f8687f5c785138::plp::PLP',
   hedgePackageId: '0x188db05516fb336aae9efca852e23b2d593430332da5e56266deb84aecdfb787',
@@ -367,7 +367,7 @@ const V2_TESTNET: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0xdb3ef5a5129920e59c9b2ae25a77eddb48acd0e1c6307b97073f0e076016446e::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -452,7 +452,7 @@ const V2_TESTNET_729: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0xd94387c857ab56857f5f2750f2ba959fb007306f977a24290342433aef090298::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -540,7 +540,7 @@ const V2_TESTNET_806: PredictV2Config = {
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0xfe742239a3b033f7d52ed5275f238c17d27498ca0ee5ea5672ea732eb3f4dbbb::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -642,7 +642,7 @@ const V2_TESTNET_821: PredictV2Config = {
   // this deliberately does NOT fall back to the 8-06 env var: a stale id would attach a
   // code this registry has never heard of. See the builder-code-every-deployment rule.
   builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID_821 || '',
-  // skew_fee_v2 is framework-only (it moves DUSDC between accounts and never calls into
+  // skew_fee_v2 is framework-only (it moves USDC between accounts and never calls into
   // the predict package), so the SAME published package works across redeploys. Its
   // FeeConfig / AdminCap are per-object, not per-deployment, so they carry over too.
   // Both still get re-verified on chain during cutover rather than assumed.
@@ -658,11 +658,11 @@ const V2_TESTNET_821: PredictV2Config = {
   accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
   clockId: '0x6',
   quote: {
-    // DUSDC is unchanged across every deployment so far.
+    // USDC is unchanged across every deployment so far.
     coinType: '0xe95040085976bfd54a1a07225cd46c8a2b4e8e2b6732f140a0fc49850ba73e1a::dusdc::DUSDC',
     currencyId: '0xf3000dff421833d4bb8ed58fac146d691a3aaba2785aa1989af65a7089ca3e9c',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0x421041754244cf0e985fb9c9f5e1f49428caf3df4cde3a7b266d8e18ea63597b::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -709,8 +709,8 @@ const V2_TESTNET_821: PredictV2Config = {
  * WHAT IT BRINGS:
  *   - A NEW collateral coin. The quote type is no longer `dusdc::DUSDC` but `usdc::USDC`
  *     (PR #1308, "reuse Testnet USDC" — that flag lets the NEXT redeploy keep this
- *     currency rather than publishing another one). Its ticker is still DUSDC, so this is
- *     a type rename and not a rebrand; see `quote` below. It is a fresh currency with a
+ *     currency rather than publishing another one). Its on-chain ticker is still DUSDC;
+ *     the app displays USDC by choice, see `quote` below. It is a fresh currency with a
  *     fresh supply, unrelated to both the old DUSDC and the standard Sui testnet USDC,
  *     and its TreasuryCap is address-owned by Mysten's deployer. There is no public mint
  *     (the package exposes one private `usdc::init` and nothing else) and no swap from
@@ -783,13 +783,18 @@ const V2_TESTNET_912: PredictV2Config = {
   clockId: '0x6',
   quote: {
     // The Move TYPE changed (`dusdc::DUSDC` became `usdc::USDC`, `coinTypes.usdc` in the
-    // manifest) but the TICKER did not. The on-chain `coin_registry::Currency` reads
-    // symbol "DUSDC", name "DeepBook USDC", description "DeepBook Test USDC", and the
-    // deployment README says testnet "mints 100,000,000 test USDC with display symbol
-    // DUSDC". So this stays DUSDC: it is what the chain calls the coin, what a wallet
-    // shows, and what every piece of copy in the app already says. A type rename is not a
-    // rebrand, and calling it USDC here would put a name on screen that matches nothing
-    // the trader can see anywhere else.
+    // manifest) and the app now calls it USDC, which is a DELIBERATE DIVERGENCE from what
+    // the chain says. Live-verified 2026-09-17 by calling `0x2::coin_registry::symbol` on
+    // the currency object below: it still returns symbol "DUSDC", name "DeepBook USDC",
+    // description "DeepBook Test USDC", and the deployment README still says testnet
+    // "mints 100,000,000 test USDC with display symbol DUSDC".
+    //
+    // So this is a product choice, made by the founder on 2026-09-17, not a reading of the
+    // chain. The coin IS the testnet stand-in for USDC and is named "DeepBook USDC"; the
+    // DUSDC ticker is a leftover. The cost is that a wallet or explorer shows DUSDC for the
+    // same balance the app labels USDC. That is the known trade-off, and it is the reason
+    // this comment exists: if the mismatch ever needs closing, it closes HERE, in one line,
+    // and every screen follows because the UI reads `quote.symbol` rather than a literal.
     //
     // Every PTB builder takes `coinType` as a type argument (account deposit/withdraw,
     // mint, redeem, and the generic skew_fee_v2 router), so the money path follows the
@@ -797,7 +802,7 @@ const V2_TESTNET_912: PredictV2Config = {
     coinType: '0xc028557a1ed49e42ed091e115aedefd70a442b184c18fbec5c48d5b6c0b8c184::usdc::USDC',
     currencyId: '0x3122f737aa36d0a3a55a6b15a94578b52829d60d45b8d0f48c37f1739aed3ca2',
     decimals: 6,
-    symbol: 'DUSDC',
+    symbol: 'USDC',
   },
   plpCoinType: '0x59d71119e990573a738dd3ff9c4c7d28d6893af69c87c1a7f3a2e90e280ce2f4::plp::PLP',
   deepPackageId: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8',
@@ -822,7 +827,7 @@ const V2_TESTNET_912: PredictV2Config = {
   featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS
     ? process.env.NEXT_PUBLIC_FEATURED_WALLETS.split(',').map((s) => s.trim()).filter(Boolean)
     : [],
-  // Left unset deliberately. 8-21's tally form dispenses the OLD dusdc::DUSDC, which this
+  // Left unset deliberately. 8-21's tally form dispenses the OLD dusdc::USDC, which this
   // deployment cannot take, and as of 2026-09-17 nobody outside Mysten holds the new coin:
   // the TreasuryCap owner holds 99.4M of the 200M supply, an internal bot holds 10M, one
   // internal wallet holds 100k, and that is the entire distribution. Until there is a
@@ -851,8 +856,8 @@ function selectV2Config(network: SuiNetwork): PredictV2Config {
  *
  * Needed because a redeploy STRANDS money. Accounts are per deployment: the custody object,
  * the registry that derives it, and the coin sitting in it all belong to the release that
- * created them. Cutting over to 8-21 does not move a trader's DUSDC, it just stops the app
- * from ever looking at where the DUSDC is. So the app has to be able to read, and withdraw
+ * created them. Cutting over to 8-21 does not move a trader's USDC, it just stops the app
+ * from ever looking at where the USDC is. So the app has to be able to read, and withdraw
  * from, a deployment it is not otherwise using.
  */
 export function predictConfigFor(deployment: PredictDeployment): PredictV2Config {

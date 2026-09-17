@@ -32,7 +32,7 @@ describe('the undefined / zero distinction', () => {
     const r = evaluateQuest(def(), week({ volume: 0 }));
     expect(r.state).toBe('active');
     expect(r.progress).toBe(0);
-    expect(r.label).toBe('0 / 50 DUSDC');
+    expect(r.label).toBe('0 / 50 USDC');
   });
 
   it('treats a non-finite reading as unmeasured rather than as a number', () => {
@@ -80,7 +80,7 @@ describe('progress arithmetic', () => {
   });
 
   it('trims fold floats so a label reads 32 rather than 32.0000001', () => {
-    expect(evaluateQuest(def(), week({ volume: 32.000000001 })).label).toBe('32 / 50 DUSDC');
+    expect(evaluateQuest(def(), week({ volume: 32.000000001 })).label).toBe('32 / 50 USDC');
   });
 
   it('writes counted quests with their noun and money quests with the symbol', () => {
@@ -140,9 +140,9 @@ describe('the real catalog, against what the fold actually measures', () => {
     expect(by('fund-manager').state).toBe('complete'); // a trade proves a deposit
     expect(by('sharp-shooter').state).toBe('complete'); // 4 wins >= 3
     expect(by('market-maker').state).toBe('active'); // 120 of 250 lifetime
-    expect(by('market-maker').label).toBe('120 / 250 DUSDC');
+    expect(by('market-maker').label).toBe('120 / 250 USDC');
     // the weekly quest reads the WEEK, so a big lifetime total does not complete it
-    expect(by('volume-climber')).toMatchObject({ state: 'active', label: '40 / 50 DUSDC' });
+    expect(by('volume-climber')).toMatchObject({ state: 'active', label: '40 / 50 USDC' });
     expect(by('diamond-hands').state).toBe('active'); // never held one to settlement
     expect(by('explorer').label).toBe('2 / 3 markets');
     expect(earnedPoints(rows)).toBe(

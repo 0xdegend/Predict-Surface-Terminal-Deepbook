@@ -53,7 +53,7 @@ export interface SkewUserStats {
 
   /** Traders whose net realized PnL is positive, over `tradingUsers`. */
   netPositiveTraders: number;
-  /** Mean net PnL across trading users (DUSDC). */
+  /** Mean net PnL across trading users (USDC). */
   avgNetPnl: number;
 
   /** Resolved-close outcomes: live board tallies + Season-1 carryover history. */
@@ -63,7 +63,7 @@ export interface SkewUserStats {
   winRate: number; // 0..1
   lossRate: number; // 0..1
   /** Net realized PnL across users, live off the board (Season-1 carryover already folded
-   *  in, losing bets included). DUSDC, signed. */
+   *  in, losing bets included). USDC, signed. */
   realizedPnl: number;
 
   /** Top traders by net PnL (trading users only). */

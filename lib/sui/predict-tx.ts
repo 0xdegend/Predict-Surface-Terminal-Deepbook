@@ -9,10 +9,10 @@
  *  - create_manager(ctx): ID shares the manager internally → MUST be its own tx;
  *    a freshly created shared object cannot be an input in the same PTB.
  *  - mint withdraws `cost` from the manager's inner BalanceManager, so the
- *    manager must hold >= cost DUSDC. We deposit (optional) then mint in one PTB.
+ *    manager must hold >= cost USDC. We deposit (optional) then mint in one PTB.
  *  - redeem / redeem_range deposit the payout back INTO the manager (not wallet).
  *    Cashing out to the wallet is a separate predict_manager::withdraw.
- *  - quantity is in DUSDC base units (6 dec): 1_000_000 = 1 contract = $1 max payout.
+ *  - quantity is in USDC base units (6 dec): 1_000_000 = 1 contract = $1 max payout.
  */
 import { Transaction } from '@mysten/sui/transactions';
 import { coinWithBalance } from '@mysten/sui/transactions';
@@ -31,7 +31,7 @@ export function buildCreateManagerTx(): Transaction {
   return tx;
 }
 
-/** Deposit DUSDC from the wallet into the PredictManager (owner-gated). */
+/** Deposit USDC from the wallet into the PredictManager (owner-gated). */
 export function buildDepositTx(managerId: string, amount: bigint): Transaction {
   const tx = new Transaction();
   depositInto(tx, managerId, amount);
@@ -47,7 +47,7 @@ function depositInto(tx: Transaction, managerId: string, amount: bigint) {
   });
 }
 
-/** Withdraw DUSDC from the manager back to the owner's wallet. */
+/** Withdraw USDC from the manager back to the owner's wallet. */
 export function buildWithdrawFromManagerTx(
   managerId: string,
   amount: bigint,
@@ -65,16 +65,16 @@ export function buildWithdrawFromManagerTx(
 
 export interface CashOutParams {
   managerId: string;
-  /** DUSDC base units to pull from the manager's free balance. */
+  /** USDC base units to pull from the manager's free balance. */
   fromManager: bigint;
-  /** DUSDC base units to pull from the connected wallet. */
+  /** USDC base units to pull from the connected wallet. */
   fromWallet: bigint;
-  /** External Sui address to receive the DUSDC. */
+  /** External Sui address to receive the USDC. */
   destination: string;
 }
 
 /**
- * Cash out DUSDC to an external wallet in ONE transaction: withdraw from the
+ * Cash out USDC to an external wallet in ONE transaction: withdraw from the
  * manager's free balance and/or take wallet coins, merge, and transfer the lot
  * to `destination`. Used by zkLogin (Google) users to move winnings to a wallet
  * they fully control — executed gaslessly via the Enoki sponsor. The only Move
@@ -105,7 +105,7 @@ export function buildCashOutTx(p: CashOutParams): Transaction {
 /* --------------------------- PLP (LP vault) -------------------------- */
 
 /**
- * Supply DUSDC into the PLP vault (plain, un-hedged liquidity provision):
+ * Supply USDC into the PLP vault (plain, un-hedged liquidity provision):
  *   predict::supply<Quote>(&mut Predict, Coin<Quote>, &Clock, &mut TxContext): Coin<PLP>
  * Mirrors the verified withdraw ABI. No PredictManager needed — PLP is a wallet
  * coin, so the returned Coin<PLP> is transferred straight to the owner. The
@@ -125,9 +125,9 @@ export function buildSupplyTx(amount: bigint, owner: string): Transaction {
 }
 
 /**
- * Redeem PLP back to DUSDC. Verified against the deployed package ABI:
+ * Redeem PLP back to USDC. Verified against the deployed package ABI:
  *   predict::withdraw<Quote>(&mut Predict, Coin<PLP>, &Clock, &mut TxContext): Coin<Quote>
- * The returned DUSDC coin is transferred to the owner's wallet. `coinWithBalance`
+ * The returned USDC coin is transferred to the owner's wallet. `coinWithBalance`
  * auto-selects / splits the caller's PLP coins to the exact redeem amount.
  * Subject on-chain to the withdrawal limiter (see `available_withdrawal`).
  */
@@ -151,8 +151,8 @@ export interface MintParams {
   expiry: number | bigint;
   strike: bigint; // 1e9-scaled, on grid
   isUp: boolean;
-  quantity: bigint; // DUSDC base units (max payout)
-  /** Optional pre-deposit (DUSDC base units) folded into the same PTB. */
+  quantity: bigint; // USDC base units (max payout)
+  /** Optional pre-deposit (USDC base units) folded into the same PTB. */
   depositAmount?: bigint;
 }
 
@@ -226,9 +226,9 @@ export interface OpenHedgedParams {
   expiry: number | bigint; // hedge oracle expiry (must match the oracle)
   hedgeStrike: bigint; // 1e9-scaled, on grid
   hedgeIsUp: boolean; // false = downside "crash" binary
-  hedgeQuantity: bigint; // DUSDC base units (hedge contracts)
-  hedgeBudget: bigint; // DUSDC base units funding the hedge mint
-  supplyAmount: bigint; // DUSDC base units routed into PLP
+  hedgeQuantity: bigint; // USDC base units (hedge contracts)
+  hedgeBudget: bigint; // USDC base units funding the hedge mint
+  supplyAmount: bigint; // USDC base units routed into PLP
 }
 
 /**
@@ -270,9 +270,9 @@ export interface MintWithFeeParams {
   expiry: number | bigint;
   strike: bigint; // 1e9-scaled, on grid
   isUp: boolean;
-  quantity: bigint; // DUSDC base units (max payout)
+  quantity: bigint; // USDC base units (max payout)
   /**
-   * Single DUSDC coin handed to the router = the Skew fee + the deposit needed to
+   * Single USDC coin handed to the router = the Skew fee + the deposit needed to
    * fund the mint. The router splits the fee to the treasury, deposits the rest
    * into the manager, then mints. Size it with `feeRouterPayment` (lib/sui/funding).
    */

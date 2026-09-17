@@ -46,7 +46,7 @@ export function V2SentimentGauge({ sentiment, className = '' }: { sentiment: Sen
           <div className="text-right">
             <div className="eyebrow whitespace-nowrap text-text-3">Total bet</div>
             <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-text-2">
-              {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+              {compact(totalCost)} <span className="text-text-3">USDC</span>
             </div>
           </div>
           {/* Share the sentiment read as a poster for X — only meaningful once
@@ -103,7 +103,7 @@ function Side({
         <span className="font-mono text-[13px] tabular-nums">{pct}%</span>
       </div>
       <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] tabular-nums text-text-3">
-        {num(dollars, 0)} DUSDC · {count} {count === 1 ? 'bet' : 'bets'}
+        {num(dollars, 0)} USDC · {count} {count === 1 ? 'bet' : 'bets'}
       </div>
     </div>
   );

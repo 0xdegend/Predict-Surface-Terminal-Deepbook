@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { topUpBase } from './funding';
 
-const $ = (v: number) => BigInt(Math.round(v * 1e6)); // DUSDC has 6 decimals
+const $ = (v: number) => BigInt(Math.round(v * 1e6)); // USDC has 6 decimals
 
 describe('topUpBase', () => {
   it('moves the whole budget when the account is empty', () => {

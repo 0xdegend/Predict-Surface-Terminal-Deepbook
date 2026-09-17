@@ -3,7 +3,7 @@
 /**
  * SentimentGauge — the protocol's UP-vs-DOWN dollar imbalance (the literal
  * "skew" the app is named for). A single horizontal bar split by the share of
- * DUSDC staked UP vs DOWN over the rolling window, with the dollar totals and
+ * USDC staked UP vs DOWN over the rolling window, with the dollar totals and
  * bet counts on each side. Reuses the semantic up/down tokens; no new accent.
  */
 import { useState } from 'react';
@@ -48,7 +48,7 @@ export function SentimentGauge({ sentiment, className = '' }: { sentiment: Senti
           <div className="text-right">
             <div className="eyebrow whitespace-nowrap text-text-3">Total bet</div>
             <div className="whitespace-nowrap font-mono text-[13px] tabular-nums text-text-2">
-              {compact(totalCost)} <span className="text-text-3">DUSDC</span>
+              {compact(totalCost)} <span className="text-text-3">USDC</span>
             </div>
           </div>
           {/* Share the sentiment read as a poster for X. Only meaningful once
@@ -128,7 +128,7 @@ function Side({
         <span className="font-mono text-[13px] tabular-nums">{pct === null ? '—' : `${pct}%`}</span>
       </div>
       <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] tabular-nums text-text-3">
-        {num(dollars, 2)} DUSDC · {count} {count === 1 ? 'bet' : 'bets'}
+        {num(dollars, 2)} USDC · {count} {count === 1 ? 'bet' : 'bets'}
       </div>
     </div>
   );

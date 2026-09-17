@@ -17,11 +17,11 @@ import { fromQuote } from '@/config/scale';
 import type { V2PositionCashflow } from '@/lib/api/v2/types';
 
 export interface PositionCashflow {
-  /** Premium + mint fees (DUSDC). */
+  /** Premium + mint fees (USDC). */
   costBasis: number;
-  /** Live-close proceeds (net of fees) + settled payout (DUSDC). */
+  /** Live-close proceeds (net of fees) + settled payout (USDC). */
   payout: number;
-  /** payout − costBasis (DUSDC, signed). */
+  /** payout − costBasis (USDC, signed). */
   netPnl: number;
   raw: V2PositionCashflow;
 }

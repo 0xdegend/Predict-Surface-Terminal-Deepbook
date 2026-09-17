@@ -291,7 +291,7 @@ function ActionButton({
     unpriceable: 'Can’t price protection right now. Try again shortly',
     enter: 'Enter an amount',
     'too-small': `Minimum protection is $1`,
-    insufficient: 'Not enough DUSDC in your account or wallet',
+    insufficient: 'Not enough USDC in your account or wallet',
     ready: busy ? 'Buying protection…' : 'Buy crash protection',
   };
   return (

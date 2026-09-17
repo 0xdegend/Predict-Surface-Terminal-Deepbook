@@ -15,9 +15,9 @@ export { isRedeemableStatus, REDEEMABLE_STATUSES } from '@/lib/portfolio/history
 export interface PositionMetrics {
   contracts: number; // human contract count (each pays 1.00 if it wins)
   maxPayout: number; // = contracts
-  cost: number; // DUSDC paid (cost basis of the open lot)
-  value: number | null; // current mark value in DUSDC
-  pnl: number; // unrealized PnL in DUSDC (signed)
+  cost: number; // USDC paid (cost basis of the open lot)
+  value: number | null; // current mark value in USDC
+  pnl: number; // unrealized PnL in USDC (signed)
   pnlPct: number; // PnL / cost basis (signed ratio)
   entryPrice: number; // avg per-unit entry (0..1)
   markPrice: number | null; // current per-unit mark (0..1)

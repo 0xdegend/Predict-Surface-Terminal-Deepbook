@@ -57,7 +57,7 @@ const MORE: MoreItem[] = [
   { href: '/v2/kelly', label: 'Kelly', desc: 'Chat · Autopilot · Record', icon: IcoKelly },
   { href: '/v2/risk', label: 'Vault Risk', desc: 'Pool health & safety', icon: IcoRisk },
   { href: '/v2/analytics', label: 'Analytics', desc: 'Markets & activity', icon: IcoAnalytics },
-  { href: '/v2/quests', label: 'Quests', desc: 'Earn DUSDC', icon: IcoQuests, soon: true },
+  { href: '/v2/quests', label: 'Quests', desc: 'Earn USDC', icon: IcoQuests, soon: true },
   { href: '/v2/competitions', label: 'Degen Arena', desc: 'Factions clash', icon: IcoArena, soon: true },
   // Reference, not a destination tile → full-width footer row (keeps the grid even).
   { href: '/v2/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: IcoDocs, footer: true },

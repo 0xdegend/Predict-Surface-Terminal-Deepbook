@@ -1059,7 +1059,7 @@ export async function onchainSkewOwners(codeId: string, opts?: GetOptions, limit
 /**
  * Builder-fee CLAIM history for a code, from the `builder_code_events::BuilderFeesClaimed`
  * stream (kept when `builder_code_id === codeId`). Each event carries the swept `amount`
- * (DUSDC base units) and its tx timestamp — the on-chain source for the admin panel's
+ * (USDC base units) and its tx timestamp — the on-chain source for the admin panel's
  * claimed-to-date, lifetime, chart, and recent-claims. Only the code OWNER can claim, so
  * this stream is TINY and reaches back fully in a few pages. Newest-first. Verified live
  * 2026-08-09 against a real claim tx: `{amount, builder_code_id, owner}`, ts from the event.
@@ -1085,11 +1085,11 @@ export async function onchainBuilderCodeFees(codeId: string, limit = 200, opts?:
   return rows.sort((a, b) => b.checkpoint_timestamp_ms - a.checkpoint_timestamp_ms).slice(0, limit);
 }
 
-/** One accrued builder-fee event: a trade's `builder_fee` (float DUSDC) at its time. */
+/** One accrued builder-fee event: a trade's `builder_fee` (float USDC) at its time. */
 export interface BuilderFeeAccrualEvent {
   ts: number;
   fee: number;
-  /** Stake (net_premium, DUSDC) on a MINT — 0 on closes. The basis for the PROJECTED Skew
+  /** Stake (net_premium, USDC) on a MINT — 0 on closes. The basis for the PROJECTED Skew
    *  fee (a % of each bet placed through Skew): summed over a window it's the trading volume
    *  the fee would apply to. Every mint carries a builder fee (min_fee > 0), so it rides the
    *  same fee>0 filter with no volume lost. */
@@ -1645,7 +1645,7 @@ export async function onchainVaultProfit(limit = 200, opts?: GetOptions): Promis
     .filter((x): x is V2VaultProfit => x !== null);
 }
 
-/** Executed LP deposits (DUSDC → PLP at flush), newest-first. */
+/** Executed LP deposits (USDC → PLP at flush), newest-first. */
 export async function onchainVaultSupplyFills(limit = 30, opts?: GetOptions): Promise<V2VaultSupplyFill[]> {
   const evs = await queryEvents({ MoveEventType: vaultEventType('SupplyFilled') }, limit, opts);
   return evs
@@ -1666,7 +1666,7 @@ export async function onchainVaultSupplyFills(limit = 30, opts?: GetOptions): Pr
     .filter((x): x is V2VaultSupplyFill => x !== null);
 }
 
-/** Executed LP withdrawals (PLP → DUSDC at flush), newest-first. */
+/** Executed LP withdrawals (PLP → USDC at flush), newest-first. */
 export async function onchainVaultWithdrawFills(limit = 30, opts?: GetOptions): Promise<V2VaultWithdrawFill[]> {
   const evs = await queryEvents({ MoveEventType: vaultEventType('WithdrawFilled') }, limit, opts);
   return evs

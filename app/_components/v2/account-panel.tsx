@@ -2,7 +2,7 @@
 
 /**
  * V2AccountPanel — the trader's funds for the new deployment: account balance
- * (DUSDC) + custodied vault shares (PLP), with deposit (wallet → account) and
+ * (USDC) + custodied vault shares (PLP), with deposit (wallet → account) and
  * withdraw (account → wallet). Trading and vault flows draw from this balance.
  * Glass; plain copy; no orbs/borders.
  */
@@ -33,7 +33,7 @@ export function V2AccountPanel() {
       <h3 className="text-[14px] font-medium tracking-tight text-text-1">Account</h3>
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md">
-        <Stat label="Available" value={`$${fmt(dusdc)}`} sub="DUSDC" />
+        <Stat label="Available" value={`$${fmt(dusdc)}`} sub="USDC" />
         <Stat label="Vault shares" value={fmt(plp)} sub="PLP" />
       </div>
 
@@ -54,7 +54,7 @@ export function V2AccountPanel() {
             <ModeBtn active={mode === 'withdraw'} label="Withdraw" onClick={() => setMode('withdraw')} />
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[12px] text-text-2">{mode === 'add' ? 'DUSDC to add' : 'DUSDC to withdraw'}</span>
+            <span className="text-[12px] text-text-2">{mode === 'add' ? 'USDC to add' : 'USDC to withdraw'}</span>
             <div className="flex items-center gap-1">
               <span className="text-text-3">$</span>
               <input

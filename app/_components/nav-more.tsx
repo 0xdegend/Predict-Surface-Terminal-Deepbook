@@ -16,7 +16,7 @@ import type { IconType } from 'react-icons';
  * active). Shown only at lg+; mobile uses BottomNav.
  */
 const ITEMS: { href: string; label: string; desc: string; icon: IconType; soon?: boolean }[] = [
-  { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn DUSDC', icon: LuTarget, soon: true },
+  { href: '/quests', label: 'Quests', desc: 'Trade milestones · earn USDC', icon: LuTarget, soon: true },
   { href: '/competitions', label: 'Degen Arena', desc: 'Factions clash · prize pools', icon: LuSwords, soon: true },
   { href: '/docs', label: 'Docs', desc: 'How to trade · read the surface', icon: LuBookOpen },
 ];

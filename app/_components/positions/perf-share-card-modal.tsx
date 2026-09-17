@@ -159,7 +159,7 @@ export function PerfShareCardModal({
       const lead = effRange === 'All' ? 'My track record' : `My ${rangeDef.label.toLowerCase()}`;
       const text =
         `${lead} on @skew_sui: ${pct(data.winRate, 1)} win rate across ` +
-        `${data.settled} settled markets (${signed(data.realizedPnl)} DUSDC) 📈\n\n` +
+        `${data.settled} settled markets (${signed(data.realizedPnl)} USDC) 📈\n\n` +
         `Trade the live volatility surface yourself 👇`;
       // `url=` makes X render a link-preview card (the site OG image) so an image
       // rides along; a pasted card overrides it. No hashtags — keeps it personal.

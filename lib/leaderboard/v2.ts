@@ -18,16 +18,16 @@ export interface V2LeaderboardRow {
   owner: string;
   /** Points total (liquidity + performance + holding) from the shared formula. */
   points: number;
-  /** DUSDC premium staked over the indexed window. */
+  /** USDC premium staked over the indexed window. */
   volume: number;
   trades: number;
-  /** Net realized PnL over closed positions (DUSDC, signed). */
+  /** Net realized PnL over closed positions (USDC, signed). */
   netPnl?: number;
   /** Resolved-close outcomes over the in-scope closed positions (win = paid out more than
    *  its cost basis). Drives the admin's live win rate. Absent on legacy/carryover rows. */
   wins?: number;
   losses?: number;
-  /** DUSDC staked specifically through the Skew app (builder-code attributed). */
+  /** USDC staked specifically through the Skew app (builder-code attributed). */
   skewVolume?: number;
   /** Trades placed through the Skew app. */
   skewTrades?: number;
@@ -64,7 +64,7 @@ export interface LeaderboardStanding {
   total: number;
   points: number;
   volume: number;
-  /** Net realized PnL (signed DUSDC), when the board knows it. */
+  /** Net realized PnL (signed USDC), when the board knows it. */
   netPnl?: number;
   trades: number;
   /** Points needed to pass the trader one rank up (null at #1 or when unranked). */

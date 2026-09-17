@@ -1,7 +1,7 @@
 /**
  * POST /api/reward/claim — the Founding Traders reward payout rail.
  *
- * Sends the one-time reward (50 DUSDC) from the reward TREASURY to an eligible wallet.
+ * Sends the one-time reward (50 USDC) from the reward TREASURY to an eligible wallet.
  * The deposit into their Predict account is owner-gated on-chain (verified: a foreign
  * deposit aborts in account::assert_owner), so the treasury can only reach the WALLET;
  * the client then signs a gasless deposit wallet -> account. For external (Slush)
@@ -47,7 +47,7 @@ const envBigInt = (name: string, fallback: bigint): bigint => {
 const QUOTE = predictV2Config.quote.coinType;
 const SUI = '0x2::sui::SUI';
 
-/** Keep at least this much DUSDC in the treasury on top of this payout (base units). */
+/** Keep at least this much USDC in the treasury on top of this payout (base units). */
 const TREASURY_FLOOR = envBigInt('REWARD_TREASURY_FLOOR', 0n);
 /** SUI dripped to a low-SUI external wallet so it can sign the deposit (MIST). 0.05 SUI. */
 const SUI_DRIP = envBigInt('REWARD_SUI_BASE', 50_000_000n);

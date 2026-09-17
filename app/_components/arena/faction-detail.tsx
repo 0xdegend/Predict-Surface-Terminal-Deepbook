@@ -2,7 +2,7 @@
 
 /**
  * FactionDetail — one faction's members ("Degens"), ranked by Points. Each row
- * shows the member's share of the faction's Points and the DUSDC that share
+ * shows the member's share of the faction's Points and the USDC that share
  * projects to — making the second level of the payout model concrete:
  *   memberPrize = (memberPoints / factionPoints) × faction.totalPool
  */
@@ -23,7 +23,7 @@ export function FactionDetail({ faction }: { faction: Faction }) {
         <span>
           Members ranked by Points. Each member&apos;s prize is their share of{' '}
           <span className="text-text-2">{faction.name}</span>&apos;s Points times the faction&apos;s{' '}
-          <span className="font-mono text-text-2">{compact(faction.totalPool)} DUSDC</span> pool.
+          <span className="font-mono text-text-2">{compact(faction.totalPool)} USDC</span> pool.
         </span>
       </p>
 
@@ -67,7 +67,7 @@ export function FactionDetail({ faction }: { faction: Faction }) {
               {/* Est. prize */}
               <span className="text-right text-text-1">
                 {num(m.prize, 0)}
-                <span className="ml-1 text-[9px] text-text-3">DUSDC</span>
+                <span className="ml-1 text-[9px] text-text-3">USDC</span>
               </span>
             </div>
           ))}

@@ -2,7 +2,7 @@
  * lib/leaderboard/v2-aggregate.ts — the real Season-2 board, folded from order
  * events (the v2 stand-in for the legacy global mint/redeem streams).
  *
- * Per owner: DUSDC staked (volume) and trade count from their mints; net realized
+ * Per owner: USDC staked (volume) and trade count from their mints; net realized
  * PnL by joining each redeem to its mint via `position_root_id` (settled pays the
  * terminal amount, a live close nets fees, a liquidation pays nothing);
  * liquidity-weighted holding time; and a Skew-attributed subset (bets that carried
@@ -56,7 +56,7 @@ export interface OwnerAcc {
  *  pruned by the indexer. */
 export interface OpenMint {
   owner: string;
-  netPremium: number; // DUSDC (float)
+  netPremium: number; // USDC (float)
   quantity: number; // base units, for the closed-fraction
   mintMs: number;
   isSkew: boolean;

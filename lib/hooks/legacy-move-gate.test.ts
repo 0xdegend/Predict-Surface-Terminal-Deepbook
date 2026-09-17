@@ -71,7 +71,7 @@ describe('first-run screen selection', () => {
   it('ignores dust so a rounding remainder cannot pin a migration screen forever', () => {
     expect(screenFor(reads({ legacyBalance: MIN_RECLAIM_BASE - 1n }))).toBe('first-run');
     expect(screenFor(reads({ legacyBalance: MIN_RECLAIM_BASE }))).toBe('migrate');
-    // 3.11 DUSDC — the real leftover found on 7-29 — is well clear of the floor.
+    // 3.11 USDC — the real leftover found on 7-29 — is well clear of the floor.
     expect(screenFor(reads({ legacyBalance: 3_110_000n }))).toBe('migrate');
   });
 });

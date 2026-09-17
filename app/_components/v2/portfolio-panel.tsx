@@ -177,7 +177,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
   // plain test showed a returning trader the first-run card for an account they already
   // have. Failing to CHECK is not the same as knowing.
   if (acct.wrapperKnown && !acct.wrapperExists) {
-    // Someone arriving here after a redeploy still has DUSDC in their account on the old
+    // Someone arriving here after a redeploy still has USDC in their account on the old
     // release, and this early return means they never reach the banner further down. Ask
     // the old release BEFORE choosing a card rather than showing the first-run one and
     // swapping it: the two say very different things, and a flash between them is worse
@@ -357,7 +357,7 @@ export function V2PortfolioPanel({ serverNow }: { serverNow: number }) {
         <SmallStat
           icon={LuWalletMinimal}
           color={HUE.violet}
-          label="Wallet DUSDC"
+          label="Wallet USDC"
           value={acct.walletDusdcBase === undefined ? '…' : fmtQuote(fromQuote(acct.walletDusdcBase))}
         />
 
@@ -648,7 +648,7 @@ function MigrateAccountCard({
 
 /** First-run card: one transaction creates the shared trading account. */
 function CreateAccountCard({ busy, onCreate }: { busy: boolean; onCreate: () => void }) {
-  const steps = ['Create account', 'Fund DUSDC', 'Trade'];
+  const steps = ['Create account', 'Fund USDC', 'Trade'];
   return (
     <div className="flex flex-1 items-center justify-center px-5 py-16">
       <div className="glass-card relative w-full max-w-md overflow-hidden p-8 text-center">
@@ -671,7 +671,7 @@ function CreateAccountCard({ busy, onCreate }: { busy: boolean; onCreate: () => 
               Create your trading account
             </h2>
             <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
-              A personal vault that holds your DUSDC and positions on the new release. One
+              A personal vault that holds your USDC and positions on the new release. One
               transaction, then fund it and place your first bet.
             </p>
           </div>
@@ -759,7 +759,7 @@ function FundModal({
       variant="glass"
       maxWidthClass="max-w-sm"
       title={add ? 'Add funds' : 'Withdraw'}
-      subtitle={add ? 'Move DUSDC into your trading account' : 'Move funds back to your wallet'}
+      subtitle={add ? 'Move USDC into your trading account' : 'Move funds back to your wallet'}
       footer={
         <>
           <button
@@ -804,7 +804,7 @@ function FundModal({
                   setRaw(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))
                 }
                 placeholder="0"
-                aria-label="Amount in DUSDC"
+                aria-label="Amount in USDC"
                 className="w-32 bg-transparent text-[30px] leading-none text-text-1 outline-none placeholder:text-text-3"
               />
               <span className="text-[13px] text-text-3">{predictV2Config.quote.symbol}</span>

@@ -3,7 +3,7 @@
 /**
  * useStarterGrant — one-click "fund my account" for first-time traders.
  *
- * Asks /api/starter-grant to drip DUSDC to the connected wallet, then refetches
+ * Asks /api/starter-grant to drip USDC to the connected wallet, then refetches
  * the wallet balance so the low-balance banner clears itself. On any failure it
  * flips `failed` so the UI can fall back to the public faucet link — the grant
  * should never be a dead end. See config/starter-grant.ts.
@@ -21,7 +21,7 @@ import { predictConfig } from '@/config/predict';
 const SUI_DECIMALS = 1_000_000_000;
 
 export interface GrantSuccess {
-  /** DUSDC granted, in human units (already de-scaled). */
+  /** USDC granted, in human units (already de-scaled). */
   amount: number;
   /** SUI dripped for gas, in human units (0 when none — e.g. Google accounts). */
   sui: number;
@@ -31,7 +31,7 @@ export interface GrantSuccess {
 
 export interface StarterGrantOptions {
   /** Wallet-balance query keys to refetch on success so the low-balance CTA
-   *  clears itself. Defaults to the legacy wallet-DUSDC key; the v2 deployment
+   *  clears itself. Defaults to the legacy wallet-USDC key; the v2 deployment
    *  passes its own (`qkV2Account.walletDusdc`). */
   invalidateKeys?: readonly (readonly unknown[])[];
   /** Quote-asset symbol for the toast copy (defaults to the legacy config). */
@@ -43,7 +43,7 @@ export interface StarterGrantOptions {
  * are gasless via Enoki, so they never need gas SUI. The server still gates the
  * SUI drip on the recipient's actual balance. `opts` lets a second deployment
  * (v2) point the balance refetch + symbol at its own config while sharing the one
- * treasury/route (DUSDC is the same coin on both).
+ * treasury/route (USDC is the same coin on both).
  */
 export function useStarterGrant(owner: string | null, includeSui: boolean, opts?: StarterGrantOptions) {
   const queryClient = useQueryClient();
@@ -74,7 +74,7 @@ export function useStarterGrant(owner: string | null, includeSui: boolean, opts?
     try {
       const { amount, suiAmount, digest } = await claimStarterGrant(owner, includeSui);
       const sui = Number(BigInt(suiAmount)) / SUI_DECIMALS;
-      // Let the fullnode index the transfer, then refetch wallet DUSDC.
+      // Let the fullnode index the transfer, then refetch wallet USDC.
       await new Promise((r) => setTimeout(r, 1500));
       const keys = opts?.invalidateKeys ?? [qk.dusdcBalance(owner)];
       for (const key of keys) await queryClient.invalidateQueries({ queryKey: key });

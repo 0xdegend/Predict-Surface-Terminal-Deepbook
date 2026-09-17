@@ -39,9 +39,9 @@ export interface FlowRow {
   trader: string;
   cadence: V2Cadence;
   side: Side;
-  /** Premium staked (DUSDC). */
+  /** Premium staked (USDC). */
   stakeUsd: number;
-  /** Max payout / notional (DUSDC). */
+  /** Max payout / notional (USDC). */
   payoutUsd: number;
   leverage: number;
 }
@@ -136,7 +136,7 @@ export interface MarketCell {
   forward: number;
   /** ATM implied vol (expected swing), computed from the pricer in the hook. */
   atmIv: number;
-  /** Premium staked over the activity window (DUSDC). */
+  /** Premium staked over the activity window (USDC). */
   volume: number;
   /** Open bets right now (open order count). */
   oi: number;
@@ -147,7 +147,7 @@ export interface MarketCell {
 }
 
 /**
- * Sum minted premium + count from a market's ORDER events (DUSDC / count).
+ * Sum minted premium + count from a market's ORDER events (USDC / count).
  *
  * The orders feed is the same fast source that powers the flow tape and the
  * biggest-bet stat, so a bet lands in volume the instant it appears in "Latest
@@ -214,12 +214,12 @@ export function marketCells(
 /* --------------------------------- KPIs ----------------------------------- */
 
 export interface Kpis {
-  /** Premium staked across all markets over the activity window (DUSDC). */
+  /** Premium staked across all markets over the activity window (USDC). */
   totalBet: number;
   activeMarkets: number;
   /** Cost-weighted UP share across all recent directional flow. */
   upShare: number;
-  /** Largest single stake seen in the recent flow (DUSDC). */
+  /** Largest single stake seen in the recent flow (USDC). */
   biggestBet: number;
 }
 

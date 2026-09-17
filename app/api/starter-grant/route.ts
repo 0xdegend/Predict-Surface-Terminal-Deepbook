@@ -1,10 +1,10 @@
 /**
- * /api/starter-grant — app-run DUSDC drip faucet for first-time traders.
+ * /api/starter-grant — app-run USDC drip faucet for first-time traders.
  *
- * A fresh wallet lacks the trading asset (DUSDC). This route sends a small, fixed
- * amount of DUSDC from an app-controlled TREASURY wallet straight to the user's
+ * A fresh wallet lacks the trading asset (USDC). This route sends a small, fixed
+ * amount of USDC from an app-controlled TREASURY wallet straight to the user's
  * wallet, so they never have to leave for an external faucet. Their normal mint
- * then pulls that DUSDC from wallet → manager (the deposit is owner-gated, so the
+ * then pulls that USDC from wallet → manager (the deposit is owner-gated, so the
  * treasury can't fund a manager directly — a wallet transfer is the clean path).
  *
  * GAS: zkLogin (Google) accounts execute gaslessly via Enoki, so they need no SUI.
@@ -18,7 +18,7 @@
  * is gated server-side BEFORE we sign anything:
  *   1. one grant per address — durable, cross-instance ledger (lib/server/grant-store),
  *   2. an in-flight lock so two concurrent requests can't both pay one address,
- *   3. balance gate — skip wallets that already hold DUSDC,
+ *   3. balance gate — skip wallets that already hold USDC,
  *   4. global daily cap (shared counter),
  *   5. treasury circuit breaker — refuse when the treasury runs low.
  * Any refusal returns a `code` the client uses to fall back to the faucet link.
@@ -60,11 +60,11 @@ const envBigInt = (name: string, fallback: bigint): bigint => {
 
 /** Amount paid per grant (base units, @6dec). */
 const GRANT_BASE = envBigInt('STARTER_GRANT_BASE', STARTER_GRANT_BASE_DEFAULT);
-/** Only fund wallets below this DUSDC balance (base units, @6dec). */
+/** Only fund wallets below this USDC balance (base units, @6dec). */
 const BALANCE_CEILING = envBigInt('STARTER_GRANT_BALANCE_CEILING', STARTER_GRANT_BALANCE_CEILING);
 /** Max grants per UTC day across all users (circuit breaker on spend). */
 const DAILY_CAP = Number(process.env.STARTER_GRANT_DAILY_CAP ?? '200');
-/** Keep at least this much DUSDC in the treasury (base units) — refuse below it. */
+/** Keep at least this much USDC in the treasury (base units) — refuse below it. */
 const TREASURY_FLOOR = envBigInt('STARTER_GRANT_TREASURY_FLOOR', GRANT_BASE);
 
 /** SUI dripped to a low-SUI external wallet so it can pay its own gas (MIST, @9dec).
@@ -82,7 +82,7 @@ const SUI_GAS_RESERVE = envBigInt('STARTER_GRANT_SUI_RESERVE', 100_000_000n);
  *
  * They were the same coin for every deployment up to 8-21, so reading it off the legacy
  * config was invisible. 9-12 publishes its own `usdc::USDC`, and dripping the old
- * `dusdc::DUSDC` would onboard a new trader with a coin the protocol they are about to
+ * `dusdc::USDC` would onboard a new trader with a coin the protocol they are about to
  * trade on has never heard of: funded, welcomed, and unable to place a single bet.
  *
  * Until the treasury holds the new coin the breaker below answers 503 "Treasury is low",
@@ -169,19 +169,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    // 3) balance gate — never top up a wallet that already has DUSDC. Refuse
+    // 3) balance gate — never top up a wallet that already has USDC. Refuse
     //    WITHOUT marking it funded: the live balance IS the gate, and a balance
     //    read must never leave a permanent "funded" flag (that's what falsely
     //    blocked never-funded wallets). If they spend down later, they're
     //    re-evaluated fresh; only a confirmed payout marks the ledger.
     if ((await balanceOf(address, QUOTE)) >= BALANCE_CEILING) {
       return NextResponse.json(
-        { error: 'Wallet already holds enough DUSDC', code: 'already_funded' },
+        { error: 'Wallet already holds enough USDC', code: 'already_funded' },
         { status: 409 },
       );
     }
 
-    // 5) treasury circuit breaker — leave the DUSDC floor untouched.
+    // 5) treasury circuit breaker — leave the USDC floor untouched.
     const treasuryAddr = signer.toSuiAddress();
     if ((await balanceOf(treasuryAddr, QUOTE)) < TREASURY_FLOOR + GRANT_BASE) {
       return NextResponse.json(
@@ -193,7 +193,7 @@ export async function POST(req: Request) {
     // SUI drip (external wallets only): include it when the client asked AND the
     // recipient is near-zero on SUI AND the treasury can spare it on top of its
     // own gas reserve. Best-effort — if the treasury is low on SUI we still send
-    // the DUSDC rather than fail the whole grant.
+    // the USDC rather than fail the whole grant.
     const dripSui =
       includeSui &&
       (await balanceOf(address, SUI)) < SUI_CEILING &&

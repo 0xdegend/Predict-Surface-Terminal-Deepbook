@@ -523,7 +523,7 @@ function drawSentimentCard(
     g.font = `400 16px ${mono}`;
     g.fillStyle = C.t3;
     g.fillText(
-      `${num(cost, 2)} DUSDC · ${count} ${betWord(count)}`,
+      `${num(cost, 2)} USDC · ${count} ${betWord(count)}`,
       P + labelW + 20,
       y,
     );
@@ -540,7 +540,7 @@ function drawSentimentCard(
   ctx.stroke();
   ctx.font = `500 18px ${mono}`;
   ctx.fillStyle = C.t2;
-  const total = `${num(s.totalCost, 2)} DUSDC`;
+  const total = `${num(s.totalCost, 2)} USDC`;
   ctx.fillText(total, P, 606);
   // Measure in the mono font it was drawn with, then add the label after a gap.
   const totalW = ctx.measureText(total).width;

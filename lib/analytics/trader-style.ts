@@ -23,9 +23,9 @@ export interface StyleStats {
    *  Equals `positions` on the legacy binary-only path; larger once range bets are
    *  folded in, so a pure-range bettor can still clear MIN_SAMPLE. */
   sample: number;
-  /** DUSDC staked across binaries + ranges. */
+  /** USDC staked across binaries + ranges. */
   volume: number;
-  /** DUSDC per binary position. */
+  /** USDC per binary position. */
   avgBet: number;
   /** Cost-weighted average entry price, [0,1]. Low = longshots, high = favorites. */
   avgEntry: number;
@@ -157,7 +157,7 @@ export function emptyStyleAcc(): StyleAccumulator {
   };
 }
 
-/** One minted bet, already de-scaled: `cost` in DUSDC, `entry` in [0,1], `side` from
+/** One minted bet, already de-scaled: `cost` in USDC, `entry` in [0,1], `side` from
  *  the tick pair, `market` the distinct-market key. */
 export interface StyleMint {
   cost: number;

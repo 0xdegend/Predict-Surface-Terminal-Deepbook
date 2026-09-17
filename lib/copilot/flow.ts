@@ -41,7 +41,7 @@ export interface TradeFlow {
   marketId?: string;
   strikePrice?: number; // snapped admission-grid price
   isUp?: boolean;
-  amount?: number; // DUSDC
+  amount?: number; // USDC
   leverage?: number;
 }
 
@@ -156,7 +156,7 @@ export function extractSlots(message: string): FlowSlots {
   // Amount — "bet amount 6 dusdc", "6 dusdc", "stake 10", "bet 5", "amount of 6".
   const amt =
     t.match(/\b(?:bet amount|bet|amount|stake|wager|risk|size)\s*(?:of|is|=|:)?\s*\$?(\d[\d,]*(?:\.\d+)?)/) ??
-    t.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:dusdc|usdc|usd|dollars?)\b/);
+    t.match(/\$?(\d[\d,]*(?:\.\d+)?)\s*(?:d?usdc|usd|dollars?)\b/);
   if (amt) slots.amount = parseFloat(amt[1].replace(/,/g, ''));
 
   // Strike — the keyword may come BEFORE the number ("strike 66,000", "price 66k")
@@ -238,7 +238,7 @@ function questionFor(step: FlowStep, market: V2Market, pricer: LivePricer, ctx: 
     case 'direction':
       return [`Do you think BTC will settle ABOVE or BELOW $${num(flow.strikePrice ?? 0, 0)} when the market closes?`];
     case 'amount':
-      return [`How much do you want to bet? (in DUSDC, at least ${minStake()})`];
+      return [`How much do you want to bet? (in USDC, at least ${minStake()})`];
     case 'leverage': {
       const maxLev = maxLeverageFor(flow.strikePrice!, flow.isUp!, market, pricer);
       return [
@@ -361,9 +361,9 @@ export function startFlow(ctx: FlowContext, message?: string): FlowResult {
     const c = checkAmount(slots.amount);
     if (c.ok) {
       flow = { ...flow, amount: c.amount };
-      captured.push(`$${num(c.amount, 2)} DUSDC`);
+      captured.push(`$${num(c.amount, 2)} USDC`);
     } else if (c.kind === 'small') {
-      notes.push(`A bet needs to be at least ${minStake()} DUSDC, so I skipped the $${num(slots.amount, 2)} you gave.`);
+      notes.push(`A bet needs to be at least ${minStake()} USDC, so I skipped the $${num(slots.amount, 2)} you gave.`);
     }
   }
   if (slots.leverage != null) {
@@ -457,11 +457,11 @@ export function advanceFlow(flow: TradeFlow, message: string, ctx: FlowContext):
       if (!c.ok) {
         return reAsk([
           c.kind === 'nan'
-            ? 'How much DUSDC do you want to bet? Type an amount, e.g. 10.'
-            : `The smallest bet is ${minStake()} DUSDC. Type ${minStake()} or more.`,
+            ? 'How much USDC do you want to bet? Type an amount, e.g. 10.'
+            : `The smallest bet is ${minStake()} USDC. Type ${minStake()} or more.`,
         ]);
       }
-      return withNote(continueFrom({ ...flow, marketId, amount: c.amount }, market, pricer, ctx, `$${num(c.amount, 2)} DUSDC.`));
+      return withNote(continueFrom({ ...flow, marketId, amount: c.amount }, market, pricer, ctx, `$${num(c.amount, 2)} USDC.`));
     }
 
     case 'leverage': {

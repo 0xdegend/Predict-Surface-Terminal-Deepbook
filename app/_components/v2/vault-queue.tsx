@@ -11,7 +11,7 @@
  * `cancel_supply_request` / `cancel_withdraw_request` and returns the escrow to
  * your trading account immediately, without waiting for a flush.
  *
- * Amounts are NOT summable across sides: a supply escrows DUSDC, a withdraw escrows
+ * Amounts are NOT summable across sides: a supply escrows USDC, a withdraw escrows
  * PLP shares. The column is labelled per row for that reason.
  */
 import { useState } from 'react';
@@ -138,7 +138,7 @@ export function V2VaultQueue() {
                         </span>
                       )}
                     </Td>
-                    {/* A supply escrows DUSDC; a withdraw escrows PLP shares. */}
+                    {/* A supply escrows USDC; a withdraw escrows PLP shares. */}
                     <Td right>
                       <span className="text-text-1">{fmtQuote(fromQuote(r.entry.amount))}</span>{' '}
                       <span className="text-text-3">{isSupply ? sym : 'PLP'}</span>

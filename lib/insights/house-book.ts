@@ -37,7 +37,7 @@ export const STRETCHED_UTILIZATION = 0.75;
 
 /** This market's slice of the whole book. */
 export interface HouseSlice {
-  /** Max payout the pool could owe on THIS market's open bets (DUSDC). */
+  /** Max payout the pool could owe on THIS market's open bets (USDC). */
   atRiskUsd: number;
   /** Share of the whole book's max payout (0..1). */
   share: number;
@@ -46,13 +46,13 @@ export interface HouseSlice {
 }
 
 export interface HouseBook {
-  /** Full pool NAV (DUSDC) — idle plus capital deployed to open markets. */
+  /** Full pool NAV (USDC) — idle plus capital deployed to open markets. */
   poolUsd: number;
   /** Deployed / NAV (0..1) — how much of the pool is at work right now. */
   atWork: number;
-  /** Free, immediately-withdrawable DUSDC. */
+  /** Free, immediately-withdrawable USDC. */
   idleUsd: number;
-  /** Gross max payout across every open bet on every market (DUSDC). */
+  /** Gross max payout across every open bet on every market (USDC). */
   atRiskUsd: number;
   /**
    * poolUsd / atRiskUsd. "If every open bet won at once, the pool covers it N times."

@@ -118,7 +118,7 @@ export function StylesTab() {
                 </span>
                 <span className="flex-none text-right font-mono text-[12px] tabular-nums text-text-2">
                   {compact(t.volume)}
-                  <span className="ml-1 text-[10px] text-text-3">DUSDC</span>
+                  <span className="ml-1 text-[10px] text-text-3">USDC</span>
                 </span>
               </Link>
             ))}

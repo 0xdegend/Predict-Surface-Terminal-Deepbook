@@ -4,8 +4,8 @@
  * Your vault position — track the PLP stake the Hedge Vault supplied on your
  * behalf, see its yield, and redeem it. PLP is a wallet coin (not a manager
  * position), so value is read straight from the wallet balance × the vault's
- * live share price. Yield = current value − net DUSDC deposited (from the /lp
- * flow history). Withdraw burns PLP for DUSDC via the verified predict::withdraw
+ * live share price. Yield = current value − net USDC deposited (from the /lp
+ * flow history). Withdraw burns PLP for USDC via the verified predict::withdraw
  * entry, capped to the vault's withdrawal-limiter headroom.
  */
 import { useMemo, useState } from 'react';
@@ -46,7 +46,7 @@ export function VaultPositionPanel() {
   const priced = sharePrice > 0;
   const currentValue = plpFloat * sharePrice;
 
-  // Net DUSDC this wallet put in (supplied − withdrawn), the cost basis for yield.
+  // Net USDC this wallet put in (supplied − withdrawn), the cost basis for yield.
   const netDeposited = useMemo(() => {
     if (!owner || !flowsQ.data) return 0;
     const lc = owner.toLowerCase();
@@ -68,7 +68,7 @@ export function VaultPositionPanel() {
   const limiterCaps = priced && availableWithdrawal < currentValue - 1e-6;
 
   const amount = parseFloat(amountStr) || 0;
-  // Convert the desired DUSDC value to a PLP amount; if redeeming ~everything,
+  // Convert the desired USDC value to a PLP amount; if redeeming ~everything,
   // burn the full balance so no dust is left behind.
   const redeemAll = amount > 0 && amount >= currentValue - 1e-6;
   const plpToRedeem = redeemAll ? plpBase : priced ? toQuote(amount / sharePrice) : 0n;

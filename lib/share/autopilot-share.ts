@@ -22,16 +22,16 @@ export interface SessionShareTrade {
   strike?: number;
   lower?: number;
   higher?: number;
-  /** Stake put in (DUSDC). */
+  /** Stake put in (USDC). */
   stake: number;
   /** Win chance at entry (0..1). */
   entryProb: number;
-  /** Realized PnL (DUSDC, signed). */
+  /** Realized PnL (USDC, signed). */
   pnlUsd: number;
 }
 
 export interface SessionShareData {
-  /** Realized PnL for the run (DUSDC, signed). */
+  /** Realized PnL for the run (USDC, signed). */
   netUsd: number;
   wins: number;
   losses: number;
@@ -43,7 +43,7 @@ export interface SessionShareData {
   /** How long the run was armed for. */
   durationMs: number;
   budgetUsd: number;
-  /** Sum of every stake the run put in (DUSDC). */
+  /** Sum of every stake the run put in (USDC). */
   stakedUsd: number;
   /** The best WINNING trade, or null when nothing won. */
   best: SessionShareTrade | null;

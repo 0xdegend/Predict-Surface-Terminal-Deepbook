@@ -11,7 +11,7 @@ import type { MascotMood } from '@/lib/mascot';
 export interface RewardClaimView {
   open: boolean;
   phase: RewardClaimPhase;
-  /** DUSDC the trader receives. */
+  /** USDC the trader receives. */
   amount: number;
   sym: string;
   /** Treasury payout digest once it confirms (null in preview / before payout). */

@@ -43,7 +43,7 @@ function shareText(card: TraderShareCard): string {
       ? `${d.underlying} landing between $${price(d.band?.lower ?? 0)} and $${price(d.band?.higher ?? 0)}`
       : `${d.underlying} settling ${d.direction === 'Up' ? 'above' : 'below'} $${price(d.strike ?? 0)}`;
   return (
-    `${shortId(d.trader, 6, 4)} is betting ${bet} at ${pct(d.odds, 0)} odds to win ${fmtQuote(d.toWin)} DUSDC on @skew_sui 🎯\n\n` +
+    `${shortId(d.trader, 6, 4)} is betting ${bet} at ${pct(d.odds, 0)} odds to win ${fmtQuote(d.toWin)} USDC on @skew_sui 🎯\n\n` +
     `Copy the trade on the live volatility surface 👇`
   );
 }

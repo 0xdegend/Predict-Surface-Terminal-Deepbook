@@ -46,17 +46,17 @@ export interface V2PortfolioPosition {
   band?: { lower: number; higher: number };
   expiry?: number; // ms
   /**
-   * Contract count = the position's NOTIONAL (DUSDC). This is NOT what a win
+   * Contract count = the position's NOTIONAL (USDC). This is NOT what a win
    * pays once leverage is involved — the static floor is netted out on redeem.
    * Use `positionWinPayout` for any "you win / to win / pays" figure.
    */
   qty: number;
-  /** All-in entry cost (DUSDC): the stake plus the fees charged at mint. */
+  /** All-in entry cost (USDC): the stake plus the fees charged at mint. */
   cost?: number;
   entryPrice?: number; // 0..1 implied
   markPrice?: number; // 0..1 implied
-  markValue?: number; // DUSDC
-  pnl?: number; // DUSDC, signed
+  markValue?: number; // USDC
+  pnl?: number; // USDC, signed
   settled: boolean;
   won?: boolean;
   /** True for illustrative rows — the card shows a Sample chip and disables actions. */
@@ -69,7 +69,7 @@ export interface V2PortfolioPosition {
   marketId?: string;
   orderId?: bigint;
   qtyBase?: bigint;
-  /** Static dollar floor (DUSDC) encoded in the order — drives leveraged MTM. */
+  /** Static dollar floor (USDC) encoded in the order — drives leveraged MTM. */
   floorShares?: number;
   /** Leverage multiple (1 = none). */
   leverage?: number;
@@ -132,7 +132,7 @@ export function settledClaimState(p: V2PortfolioPosition, now: number): SettledC
 }
 
 /**
- * What this position ACTUALLY pays if it wins (DUSDC) — the notional `qty` minus
+ * What this position ACTUALLY pays if it wins (USDC) — the notional `qty` minus
  * the static leverage floor. Unleveraged ⇒ the full qty.
  *
  * A leveraged win never pays the full notional: you staked only `1/L` of the
@@ -452,7 +452,7 @@ export function buildV2Spark(
 }
 
 /**
- * The static leverage floor (DUSDC) — the "borrowed" portion of a leveraged
+ * The static leverage floor (USDC) — the "borrowed" portion of a leveraged
  * position that is netted out of the payout on a win. Prefer the indexer's
  * `floor_shares`, but DERIVE it from entry facts when that field is absent (the
  * positions feed doesn't reliably carry it): `entry_value·(1 − 1/L)` with
@@ -658,11 +658,11 @@ function demoTrade(
  *  settled split so the two never disagree. */
 export interface PortfolioSummary {
   openCount: number; // live (unsettled) bets
-  openValue: number; // their current mark value (DUSDC)
-  openExposure: number; // all-in cost staked in them (DUSDC)
-  unrealized: number; // signed PnL on the open bets (DUSDC)
+  openValue: number; // their current mark value (USDC)
+  openExposure: number; // all-in cost staked in them (USDC)
+  unrealized: number; // signed PnL on the open bets (USDC)
   unrealizedPct: number; // unrealized ÷ exposure
-  claimable: number; // settled winners' value waiting to redeem (DUSDC)
+  claimable: number; // settled winners' value waiting to redeem (USDC)
   claimableCount: number;
   settledLostCount: number; // settled losers not yet cleared
   best?: { label: string; pnl: number }; // best / worst open bet by PnL

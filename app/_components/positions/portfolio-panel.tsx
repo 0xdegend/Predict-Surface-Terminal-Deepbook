@@ -87,7 +87,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
   }
 
   if (!acct.managerId) {
-    const steps = ['Create account', 'Fund DUSDC', 'Trade'];
+    const steps = ['Create account', 'Fund USDC', 'Trade'];
     return (
       <div className="flex flex-1 items-center justify-center px-5 py-16">
         <div className="glass-card relative w-full max-w-md overflow-hidden p-8 text-center">
@@ -110,7 +110,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
                 Create your trading account
               </h2>
               <p className="mx-auto max-w-xs text-[12.5px] leading-relaxed text-text-3">
-                A personal vault that holds your DUSDC and positions. One transaction, then mint
+                A personal vault that holds your USDC and positions. One transaction, then mint
                 your first contract from the surface.
               </p>
             </div>
@@ -261,7 +261,7 @@ export function PortfolioPanel({ serverNow }: { serverNow: number }) {
         <SmallStat
           icon={LuWalletMinimal}
           color={HUE.violet}
-          label="Wallet DUSDC"
+          label="Wallet USDC"
           value={acct.dusdcBalance === undefined ? '…' : fmtQuote(fromQuote(acct.dusdcBalance))}
         />
 

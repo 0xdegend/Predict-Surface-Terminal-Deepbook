@@ -12,7 +12,7 @@
  * even if the reconstruction misses a trade. Pure + deterministic (pass `nowMs`).
  */
 
-/** One accrued builder-fee event: a trade's fee (float DUSDC) at its timestamp. */
+/** One accrued builder-fee event: a trade's fee (float USDC) at its timestamp. */
 export interface AccrualEvent {
   ts: number;
   fee: number;

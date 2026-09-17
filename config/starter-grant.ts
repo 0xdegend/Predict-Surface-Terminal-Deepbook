@@ -4,7 +4,7 @@
  * Gas is already sponsored (Enoki), so the only thing between a fresh zkLogin
  * wallet and its first trade is the trading asset. Instead of sending new users
  * to an external faucet form, an app-controlled treasury wallet drips a small,
- * fixed amount of DUSDC straight to their wallet — see /api/starter-grant.
+ * fixed amount of USDC straight to their wallet — see /api/starter-grant.
  *
  * Browser-safe values ONLY. The treasury private key and the authoritative grant
  * amount live server-side (STARTER_GRANT_* env, read in the route). The values
@@ -12,13 +12,13 @@
  * its own — it just asks the server, which enforces every cap.
  */
 
-/** Default grant size: 2 DUSDC (@6dec). The server reads STARTER_GRANT_BASE and
+/** Default grant size: 2 USDC (@6dec). The server reads STARTER_GRANT_BASE and
  *  falls back to this; the client uses it only to label the button. Keep both in
  *  sync via env if you change it. */
 export const STARTER_GRANT_BASE_DEFAULT = 2_000_000n;
 
-/** Below this wallet DUSDC balance we treat a user as "needs funding" and offer
- *  the grant / faucet (1 DUSDC @6dec). The server re-checks this before paying. */
+/** Below this wallet USDC balance we treat a user as "needs funding" and offer
+ *  the grant / faucet (1 USDC @6dec). The server re-checks this before paying. */
 export const STARTER_GRANT_BALANCE_CEILING = 1_000_000n;
 
 export const starterGrant = {

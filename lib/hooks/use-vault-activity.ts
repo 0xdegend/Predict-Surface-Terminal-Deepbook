@@ -3,9 +3,9 @@
 /**
  * useVaultActivity — recent EXECUTED LP flows for the vault, from the indexer's
  * `/vaults/:id/{supply-fills,withdraw-fills}` feeds (shipped ~2026-07, verified
- * live 2026-07-19). A deposit fills escrowed DUSDC into PLP shares at the keeper's
- * NAV; a withdrawal burns shares back to DUSDC. Both carry `dusdc_amount`, so the
- * whole ledger is in DUSDC and the net flow is summable.
+ * live 2026-07-19). A deposit fills escrowed USDC into PLP shares at the keeper's
+ * NAV; a withdrawal burns shares back to USDC. Both carry `dusdc_amount`, so the
+ * whole ledger is in USDC and the net flow is summable.
  *
  * This is the read-side history across ALL LPs — complementary to V2VaultQueue,
  * which shows the connected user's still-PENDING (cancellable) on-chain queue.
@@ -22,22 +22,22 @@ export interface VaultActivityRow {
   key: string;
   side: 'deposit' | 'withdraw';
   accountId: string;
-  /** DUSDC moved (into the pool for a deposit, out for a withdrawal). */
+  /** USDC moved (into the pool for a deposit, out for a withdrawal). */
   dusdc: number;
   /** PLP shares minted (deposit) or burned (withdraw). */
   shares: number;
-  /** Realized NAV for the fill = dusdc / shares (DUSDC per share). */
+  /** Realized NAV for the fill = dusdc / shares (USDC per share). */
   pricePerShare: number;
   ts: number;
 }
 
 export interface VaultActivity {
   rows: VaultActivityRow[];
-  /** DUSDC deposited over the shown window. */
+  /** USDC deposited over the shown window. */
   inflow: number;
-  /** DUSDC withdrawn over the shown window. */
+  /** USDC withdrawn over the shown window. */
   outflow: number;
-  /** inflow − outflow (DUSDC, signed). */
+  /** inflow − outflow (USDC, signed). */
   netFlow: number;
   loading: boolean;
 }

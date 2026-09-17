@@ -18,7 +18,7 @@ export function KpiStrip({ kpis, loading }: { kpis: AnalyticsKpis; loading: bool
 
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · last hour" value={kpis.totalBet} format={(n) => compact(n)} unit="DUSDC" loading={loading} />
+      <Kpi icon={LuCoins} hue={HUE.amber} label="Bet · last hour" value={kpis.totalBet} format={(n) => compact(n)} unit="USDC" loading={loading} />
       <Kpi icon={LuLayers} hue={HUE.blue} label="Live markets" value={kpis.activeMarkets} format={(n) => String(Math.round(n))} loading={loading} />
       <Kpi
         icon={LuScale}
@@ -30,7 +30,7 @@ export function KpiStrip({ kpis, loading }: { kpis: AnalyticsKpis; loading: bool
         valueClass={leadUp ? 'text-up' : 'text-down'}
         loading={loading}
       />
-      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="DUSDC" loading={loading} />
+      <Kpi icon={LuFlame} hue={HUE.coral} label="Biggest bet" value={kpis.biggestBet} format={(n) => compact(n)} unit="USDC" loading={loading} />
     </div>
   );
 }

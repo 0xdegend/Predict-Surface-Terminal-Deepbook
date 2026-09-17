@@ -309,7 +309,7 @@ export function LeaderboardPanel() {
       </div>
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
-        Points = liquidity (DUSDC minted) + performance (net profit, floored at
+        Points = liquidity (USDC minted) + performance (net profit, floored at
         zero, a loss never subtracts) + holding time, computed live from the
         event stream within the latest window, so every trader is ranked. Win
         rate &amp; authoritative PnL are on your{" "}

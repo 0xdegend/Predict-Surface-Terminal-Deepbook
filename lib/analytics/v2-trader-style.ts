@@ -17,7 +17,7 @@ import type { PositionSummary } from '@/lib/api/types';
 export interface V2ClassifiedTrader {
   owner: string;
   style: TraderStyle;
-  /** Total premium staked across their mints (DUSDC). */
+  /** Total premium staked across their mints (USDC). */
   volume: number;
 }
 
@@ -52,7 +52,7 @@ export function classifyV2Traders(ordersByMarket: Map<string, V2OrderEvent[]>, t
   const classified: V2ClassifiedTrader[] = [];
   for (const [owner, orders] of byOwner) {
     const positions: PositionSummary[] = [];
-    let rangeVolume = 0; // DUSDC float — the classifier adds this to binary volume
+    let rangeVolume = 0; // USDC float — the classifier adds this to binary volume
     let volume = 0;
     for (const o of orders) {
       const costFloat = fromQuote(Number(o.net_premium ?? 0));

@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     "on-chain trading",
     "DeFi",
     "trading terminal",
-    "DUSDC",
+    "USDC",
   ],
   authors: [{ name: siteConfig.name }],
   creator: siteConfig.name,

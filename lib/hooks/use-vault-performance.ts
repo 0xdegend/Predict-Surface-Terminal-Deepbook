@@ -21,7 +21,7 @@ import type { V2VaultFlush, V2VaultProfit } from '@/lib/api/v2/types';
 
 export interface SharePoint {
   t: number; // ms
-  price: number; // NAV per share (DUSDC)
+  price: number; // NAV per share (USDC)
 }
 
 export interface VaultPerformance {
@@ -29,7 +29,7 @@ export interface VaultPerformance {
   sharePriceNow: number | null;
   /** % change over the retained window (last vs first point). */
   changePct: number | null;
-  /** Realized LP profit summed over the window (DUSDC, signed). */
+  /** Realized LP profit summed over the window (USDC, signed). */
   lpProfitTotal: number;
   /** Number of settlements the LP profit sums over. */
   settlements: number;

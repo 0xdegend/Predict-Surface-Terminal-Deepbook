@@ -57,7 +57,7 @@ export function HotMarkets({ markets, loading, className = '' }: { markets: Mark
                 </div>
                 <div className="flex-none text-right">
                   <div className="font-mono text-[12px] tabular-nums text-text-1">
-                    {compact(m.volume)} <span className="text-[10px] text-text-3">DUSDC</span>
+                    {compact(m.volume)} <span className="text-[10px] text-text-3">USDC</span>
                   </div>
                   <div className={`text-[10px] font-medium ${leadUp ? 'text-up' : 'text-down'}`}>
                     {Math.round((leadUp ? m.upShare : 1 - m.upShare) * 100)}% {leadUp ? 'UP' : 'DN'}

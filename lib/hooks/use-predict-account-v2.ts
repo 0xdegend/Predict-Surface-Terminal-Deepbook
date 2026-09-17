@@ -165,7 +165,7 @@ export function usePredictAccountV2() {
   });
   const accountId = accountIdQ.data;
 
-  // Free DUSDC balance in the account (base units).
+  // Free USDC balance in the account (base units).
   const balanceQ = useQuery({
     queryKey: qkV2Account.balance(wrapperId ?? ''),
     queryFn: () => readBalance(client.core, wrapperId!),
@@ -265,10 +265,10 @@ export function usePredictAccountV2() {
 
   // The live Skew fee (a % of each bet, on TOP of the builder fee), read on-chain. We ride
   // the charge along inside the OWNER mint PTB; session trades can't carry it (the session
-  // key holds no DUSDC and can only call the sessions wrappers), so they stay fee-free.
+  // key holds no USDC and can only call the sessions wrappers), so they stay fee-free.
   const skewFeeRate = useSkewFeeV2();
 
-  // DUSDC still in the connected wallet (outside the trading account).
+  // USDC still in the connected wallet (outside the trading account).
   const walletDusdcQ = useQuery({
     queryKey: qkV2Account.walletDusdc(owner ?? ''),
     queryFn: async () => {
@@ -578,7 +578,7 @@ export function usePredictAccountV2() {
   /**
    * Start a delegated trading session explicitly (the standalone path; the trade-ticket
    * toggle bundles this into the first trade instead). Reuses the local key if present,
-   * else mints a fresh one; deposits `budgetBase` DUSDC into the wrapper for the session
+   * else mints a fresh one; deposits `budgetBase` USDC into the wrapper for the session
    * to trade with; and authorizes the key for `duration` (default 24h). Gas is handled by
    * resolveSessionGasFunding (treasury drip first, owner top-up as the Slush fallback), so
    * an explicit `gasFundingBase` override wins only when passed.
@@ -705,7 +705,7 @@ export function usePredictAccountV2() {
     wrapperKnown,
     balanceBase,
     plpBalanceBase,
-    /** Wallet-held DUSDC (base units) — undefined while the first read is in flight. */
+    /** Wallet-held USDC (base units) — undefined while the first read is in flight. */
     walletDusdcBase: walletDusdcQ.data,
     busy,
     error,
@@ -742,8 +742,8 @@ export function usePredictAccountV2() {
           ])
         : Promise.resolve(null),
     /**
-     * Cash out DUSDC to an EXTERNAL wallet (for zkLogin users who can't export a
-     * key). Drains the account free balance first, then wallet DUSDC, up to
+     * Cash out USDC to an EXTERNAL wallet (for zkLogin users who can't export a
+     * key). Drains the account free balance first, then wallet USDC, up to
      * `amountBase`, and transfers it to `destination` in one gasless tx. The
      * destination is allowlisted so the Enoki sponsor accepts the outbound
      * transfer. Returns null on bad input (nothing to send, or account funds

@@ -143,7 +143,7 @@ export function V2Season1Archive() {
 
       <p className="mt-4 text-[10px] leading-relaxed text-text-3">
         This is a frozen snapshot of the Season 1 ({SEASON_1_SOURCE}) Skew board, kept because that release
-        was retired and its board can no longer be recomputed. Points = liquidity (DUSDC staked) +
+        was retired and its board can no longer be recomputed. Points = liquidity (USDC staked) +
         performance (net profit, floored at zero) + holding time. Every Season 1 trader keeps these points
         as a starting baseline on the live{' '}
         <Link href="/v2/leaderboard" className="underline hover:text-text-2">

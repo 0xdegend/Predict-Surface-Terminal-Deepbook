@@ -10,7 +10,7 @@
  *
  * The sponsor is constrained to the Predict move-call targets below, so this
  * route can only ever pay gas for Predict actions — never arbitrary transfers.
- * (Note: it sponsors gas only; the user still spends their own DUSDC. For
+ * (Note: it sponsors gas only; the user still spends their own USDC. For
  * production you'd add rate-limiting / per-user caps on top.)
  */
 import { NextResponse } from 'next/server';

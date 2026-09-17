@@ -29,9 +29,9 @@ export interface ShareCardData {
   expiry: number; // ms epoch
   result: 'live' | 'won' | 'lost';
   decided: boolean;
-  pnl: number; // DUSDC, signed
+  pnl: number; // USDC, signed
   pnlPct: number; // ratio (e.g. 0.39 ⇒ +39%)
-  cost: number; // DUSDC
+  cost: number; // USDC
   contracts: number;
   entryPrice: number; // 0..1
   markPrice: number | null; // 0..1
@@ -413,7 +413,7 @@ function drawGlow(s: Ctx) {
 
   ctx.font = `500 26px ${mono}`;
   ctx.fillStyle = accent;
-  const pnlStr = `${signed(d.pnl)} DUSDC`;
+  const pnlStr = `${signed(d.pnl)} USDC`;
   ctx.fillText(pnlStr, P, roiBaseline + 56);
   ctx.font = `400 16px ${sans}`;
   ctx.fillStyle = c.text3;
@@ -456,7 +456,7 @@ function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
   ctx.fillText(`${signed(d.pnlPct * 100, 1)}%`, W / 2, 500);
   ctx.font = `500 22px ${mono}`;
   ctx.fillStyle = c.text2;
-  ctx.fillText(`${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`, W / 2, 538);
+  ctx.fillText(`${signed(d.pnl)} USDC ${d.decided ? 'realized' : 'unrealized'}`, W / 2, 538);
 
   ctx.textAlign = 'left';
 }
@@ -548,7 +548,7 @@ function drawCelebrate(s: Ctx, confetti = true) {
   ctx.font = `500 24px ${mono}`;
   ctx.fillStyle = win;
   ctx.fillText(
-    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    `${signed(d.pnl)} USDC ${d.decided ? 'realized' : 'unrealized'}`,
     W / 2,
     roiBaseline + 44,
   );
@@ -661,7 +661,7 @@ function drawSurface(s: Ctx) {
 
   ctx.font = `500 24px ${mono}`;
   ctx.fillStyle = accent;
-  ctx.fillText(`${signed(d.pnl)} DUSDC`, P, 350 + roiPx * 0.82 + 42);
+  ctx.fillText(`${signed(d.pnl)} USDC`, P, 350 + roiPx * 0.82 + 42);
 
   drawStatStrip(s);
 }
@@ -770,7 +770,7 @@ function drawSui(s: Ctx) {
   ctx.font = `500 26px ${mono}`;
   ctx.fillStyle = accent;
   ctx.fillText(
-    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    `${signed(d.pnl)} USDC ${d.decided ? 'realized' : 'unrealized'}`,
     P,
     roiBaseline + 50,
   );
@@ -826,7 +826,7 @@ function drawDeepBook(s: Ctx) {
 
   ctx.font = `500 24px ${mono}`;
   ctx.fillStyle = accent;
-  ctx.fillText(`${signed(d.pnl)} DUSDC`, P, roiBaseline + 42);
+  ctx.fillText(`${signed(d.pnl)} USDC`, P, roiBaseline + 42);
 
   drawStatStrip(s);
 }
@@ -889,7 +889,7 @@ function drawMascot(s: Ctx, variant: ShareVariant = 'mascot') {
   ctx.font = `500 26px ${mono}`;
   ctx.fillStyle = accent;
   ctx.fillText(
-    `${signed(d.pnl)} DUSDC ${d.decided ? 'realized' : 'unrealized'}`,
+    `${signed(d.pnl)} USDC ${d.decided ? 'realized' : 'unrealized'}`,
     P,
     roiBaseline + 50,
   );
@@ -1189,7 +1189,7 @@ function drawStatStrip({ ctx, c, sans, mono, d }: Ctx) {
   ctx.fillRect(P, stripY, W - 2 * P, 1);
 
   const cells: [string, string][] = [
-    ['COST', `${quote(d.cost)} DUSDC`],
+    ['COST', `${quote(d.cost)} USDC`],
     ['AVG ENTRY', pct(d.entryPrice, 1)],
     [d.decided ? 'SETTLED' : 'MARK', d.markPrice != null ? pct(d.markPrice, 1) : '—'],
   ];

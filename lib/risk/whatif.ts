@@ -7,7 +7,7 @@
  * reprice — answering "is PLP safe?".
  *
  * The shock shifts the forward (F' = F·(1+r)); SVI params are held fixed (an
- * instantaneous spot move). Liability is in DUSDC base units (6dec), comparable
+ * instantaneous spot move). Liability is in USDC base units (6dec), comparable
  * to the reported total_mtm, so we can calibrate the model against the chain.
  */
 import { upFair, impliedVol, timeToExpiryYears, type SviFloat } from '@/lib/svi/svi';
@@ -19,7 +19,7 @@ export interface OpenInterest {
   oracleId: string;
   strike: number; // float
   isUp: boolean;
-  netQty: number; // DUSDC base units (max payout), >= 0 kept
+  netQty: number; // USDC base units (max payout), >= 0 kept
 }
 
 /** Net open interest per (oracle, strike, side) for the given active oracles. */
@@ -62,7 +62,7 @@ function paramsByOracle(inputs: SmileInput[]): Map<string, OracleParams> {
 }
 
 /**
- * Vault liability (DUSDC base units) under a proportional spot shock `r`
+ * Vault liability (USDC base units) under a proportional spot shock `r`
  * (r = 0 → current). Each short position's liability = netQty · fairValue(side).
  */
 export function vaultLiability(

@@ -43,7 +43,7 @@ export function TraderStyleCard({ managerIds, enabled }: { managerIds: string[];
             <Evidence label="Avg price" value={pct(style.stats.avgEntry, 0)} />
             <Evidence label="Longshots" value={pct(style.stats.tailShare, 0)} />
             <Evidence label="Markets" value={String(style.stats.markets)} />
-            <Evidence label="Avg bet" value={`${num(style.stats.avgBet, 2)}`} unit="DUSDC" />
+            <Evidence label="Avg bet" value={`${num(style.stats.avgBet, 2)}`} unit="USDC" />
           </div>
         </>
       )}

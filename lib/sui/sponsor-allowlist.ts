@@ -33,7 +33,7 @@ export function ownedPackages(): Set<string> {
     // sessions package must be sponsorable or arming refuses. See sessions-delegated-trading.
     predictV2Config.packages.sessions,
     // Reclaiming funds stranded by a redeploy. Accounts are per deployment, so cutting over
-    // leaves a trader's DUSDC in the OLD account package, which is not the active one and so
+    // leaves a trader's USDC in the OLD account package, which is not the active one and so
     // is not in any of the ids above. Without this a Google user, who never holds SUI for
     // gas, is refused sponsorship on the one transaction that gets their own money back —
     // and the failure appears as a sponsor refusal, not as anything about the old release.
@@ -63,7 +63,7 @@ const SUI_FRAMEWORK = normalizeSuiAddress('0x2');
  *   - `coin::zero` / `balance::zero` / `coin::destroy_zero` — the zero / cleanup helpers.
  * Every one of these operates only on the SENDER's own coins/balances (passed as
  * arguments) and can't drain the sponsor, so they're safe to pay gas for. Without them
- * a gasless (Google/Enoki) trade whose DUSDC sits as an address balance is refused here
+ * a gasless (Google/Enoki) trade whose USDC sits as an address balance is refused here
  * before it ever reaches Enoki. As Sui migrates coins -> address balances this affects
  * more wallets. Kept EXACT (not all of 0x2) so the sponsor can't be turned into a
  * free-gas faucet for arbitrary coin shuffling — `0x2::coin::burn` etc. stay refused.

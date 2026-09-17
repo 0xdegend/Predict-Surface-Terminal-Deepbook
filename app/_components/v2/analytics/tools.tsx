@@ -222,7 +222,7 @@ export function V2SentimentTool({ sentiment, cells }: { sentiment: Sentiment; ce
                     <div className={`font-mono text-[13px] font-semibold tabular-nums ${leadUp ? 'text-up' : 'text-down'}`}>
                       {leadPct}% {leadUp ? 'UP' : 'DN'}
                     </div>
-                    <div className="font-mono text-[10px] tabular-nums text-text-3">{compact(c.volume)} DUSDC</div>
+                    <div className="font-mono text-[10px] tabular-nums text-text-3">{compact(c.volume)} USDC</div>
                   </div>
                 </button>
               );

@@ -34,7 +34,7 @@ export interface MarketCell {
   forward: number;
   /** ATM implied vol (at k=0), the headline "how jumpy" number. */
   atmIv: number;
-  /** DUSDC staked on this market in the flow window. */
+  /** USDC staked on this market in the flow window. */
   volume: number;
   /** Mint count in the window. */
   trades: number;
@@ -42,7 +42,7 @@ export interface MarketCell {
   openInterest: number;
   /** UP share of staked dollars, [0,1]; 0.5 when no flow. */
   upShare: number;
-  /** Total DUSDC staked (both sides). */
+  /** Total USDC staked (both sides). */
   totalCost: number;
   /** Nearest mintable strike to the forward — the click-to-trade pre-fill. */
   atmStrike: number;

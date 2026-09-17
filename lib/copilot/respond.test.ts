@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { respondToIntent, timeLeftLabel, type CopilotContext, type BetCandidate } from './respond';
 import { toQuote } from '@/config/scale';
+import { predictV2Config } from '@/config/predict';
 import { startOfUtcDay } from '@/lib/insights/events';
 import type { SviFloat } from '@/lib/svi/svi';
 import type { LivePricer } from '@/lib/sui/v2/pricer';
@@ -283,13 +284,13 @@ describe('respondToIntent — balance', () => {
   // toQuote(6dec): $250 = 250_000_000n, $40 = 40_000_000n.
   const funded = { connected: true, hasAccount: true, accountBase: 250_000_000n, walletBase: 40_000_000n };
 
-  it('shows the DUSDC total split across trading account + wallet', () => {
+  it('shows the USDC total split across trading account + wallet', () => {
     const r = respondToIntent({ kind: 'balance' }, ctx({ wallet: funded }));
     const blob = r.text.join(' ');
     expect(blob).toMatch(/\$290\.00/); // total
     expect(blob).toMatch(/\$250\.00/); // trading account
     expect(blob).toMatch(/\$40\.00/); // wallet
-    expect(blob).toMatch(/dusdc/i);
+    expect(blob).toContain(predictV2Config.quote.symbol);
   });
 
   it('when there is no trading account yet, shows the wallet balance', () => {
@@ -1027,7 +1028,7 @@ describe('respondToIntent — vault_deposit', () => {
     const r = respondToIntent({ kind: 'vault_deposit' }, ctx({ wallet: wallet() }));
     expect(r.vaultDeposit).toBeUndefined();
     expect(r.text.join(' ')).toMatch(/how much/i);
-    expect(r.text.join(' ')).toMatch(/100 DUSDC/);
+    expect(r.text.join(' ')).toMatch(/100 USDC/);
   });
 
   it('more than available → caps to what they hold and confirms that', () => {

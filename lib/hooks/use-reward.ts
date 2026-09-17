@@ -5,10 +5,10 @@
  * orchestration for the connected wallet.
  *
  * Claim is the two-step delivery the on-chain gating forces (deposit is owner-gated):
- *   1. the server treasury sends 50 DUSDC to the user's WALLET (/api/reward/claim),
+ *   1. the server treasury sends 50 USDC to the user's WALLET (/api/reward/claim),
  *   2. the USER signs a deposit wallet -> account (gasless for Google via Enoki; the
  *      server dripped a little SUI for external wallets so they can sign it).
- * If step 2 fails or is skipped, the 50 DUSDC is safe in the wallet and the trade
+ * If step 2 fails or is skipped, the 50 USDC is safe in the wallet and the trade
  * ticket auto-deposits it on the first mint — so a claim never loses funds. Signing +
  * gasless sponsorship reuse the account hook. See [[founding-traders-reward]].
  */

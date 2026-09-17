@@ -67,7 +67,7 @@ describe('sponsor-allowlist', () => {
   });
 
   it('allows a mixed Predict + framework redeem/send PTB (fund from an address balance, return change)', async () => {
-    // Mirrors the live failure: draw DUSDC from the address balance, deposit, send change back.
+    // Mirrors the live failure: draw USDC from the address balance, deposit, send change back.
     const kind = await kindOf(
       '0x2::coin::redeem_funds',
       `${PREDICT}::account::deposit_funds`,

@@ -4,13 +4,13 @@ import { pointsFromInput, POINTS_RATES } from '@/lib/points/score';
 import type { PositionMintedEvent, PositionRedeemedEvent, ManagerRow } from '@/lib/api/types';
 
 const DAY_MS = 86_400_000;
-const Q = 1_000_000; // @6dec → 1 unit/DUSDC
+const Q = 1_000_000; // @6dec → 1 unit/USDC
 
 function minted(over: Partial<PositionMintedEvent>): PositionMintedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0,
-    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'DUSDC',
+    predict_id: '0xp', manager_id: '0xm', trader: '0xt', quote_asset: 'USDC',
     expiry: 0, strike: 0, is_up: true, quantity: 0, cost: 0, ask_price: 0,
     ...over,
   };
@@ -20,7 +20,7 @@ function redeemed(over: Partial<PositionRedeemedEvent>): PositionRedeemedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0,
     tx_index: 0, event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0,
-    predict_id: '0xp', manager_id: '0xm', quote_asset: 'DUSDC', expiry: 0, strike: 0,
+    predict_id: '0xp', manager_id: '0xm', quote_asset: 'USDC', expiry: 0, strike: 0,
     is_up: true, quantity: 0, payout: 0, bid_price: 0, is_settled: true,
     ...over,
   } as PositionRedeemedEvent;
@@ -113,7 +113,7 @@ describe('aggregateLeaderboard', () => {
   });
 
   it('scores holding as liquidity-weighted days, FIFO-matched mint→redeem', () => {
-    // 10 DUSDC minted at t0, fully redeemed 2 days later → 10·2 = 20 DUSDC·days.
+    // 10 USDC minted at t0, fully redeemed 2 days later → 10·2 = 20 USDC·days.
     const r = aggregateLeaderboard(
       [minted({ trader: '0xH', cost: 10 * Q, quantity: 10 * Q, checkpoint_timestamp_ms: 0 })],
       [redeemed({ owner: '0xH', payout: 0, quantity: 10 * Q, checkpoint_timestamp_ms: 2 * DAY_MS })],

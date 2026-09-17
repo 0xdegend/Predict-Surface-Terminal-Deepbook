@@ -3,7 +3,7 @@
  * already moved off.
  *
  * A redeploy strands money. The AccountWrapper, the registry that derives its address, and
- * the DUSDC sitting inside it all belong to the release that created them, so cutting over
+ * the USDC sitting inside it all belong to the release that created them, so cutting over
  * to a new deployment does not move a trader's balance — it stops the app from ever looking
  * at where the balance is. Nothing is lost on chain, but from inside the app it may as well
  * be, because every read is pointed at the new registry.
@@ -13,7 +13,7 @@
  * can read one release while trading on another. That is the whole difference; the calls
  * themselves are the same ones account.ts makes.
  *
- * ONE TRANSACTION, not three. A PTB is not restricted to a single package, and the DUSDC
+ * ONE TRANSACTION, not three. A PTB is not restricted to a single package, and the USDC
  * that `withdraw_funds` returns on the old package is just a `Coin` — it can be handed
  * straight to `deposit_funds` on the new one without ever landing in the wallet. When the
  * trader has no account on the new release yet, the create goes in the same PTB: the
@@ -38,7 +38,7 @@ export interface LegacyFunds {
   deployment: PredictDeployment;
   /** The old wrapper, or null when this wallet never had an account there. */
   wrapperId: string | null;
-  /** DUSDC still in that account, in base units. 0n when there is nothing to reclaim. */
+  /** USDC still in that account, in base units. 0n when there is nothing to reclaim. */
   balanceBase: bigint;
 }
 
@@ -141,7 +141,7 @@ export function buildLegacyWithdrawTx(
  * Only when both deployments settle in the SAME coin. The move is one PTB that takes the
  * `Coin<T>` the old package's `withdraw_funds` returns and passes it to the new package's
  * `deposit_funds`, so the two type arguments have to agree. Every republish up to 8-21
- * reused `dusdc::DUSDC` and they always did; 9-12 publishes its own `usdc::USDC`, and there
+ * reused `dusdc::USDC` and they always did; 9-12 publishes its own `usdc::USDC`, and there
  * they never can.
  *
  * That is not a bug to route around, it is the actual situation: the old coin has no use on
@@ -178,7 +178,7 @@ export function buildLegacyMoveTx(p: {
   const from = predictConfigFor(p.from);
   const to = predictV2Config;
   // Fail here rather than on chain. Given mismatched coins this builds a PTB that hands a
-  // Coin<DUSDC> to deposit_funds<USDC>, which the chain rejects — after the trader has
+  // Coin<USDC> to deposit_funds<USDC>, which the chain rejects — after the trader has
   // already been shown a banner, clicked it and approved a signature.
   if (!canMoveFunds(p.from)) {
     throw new Error(

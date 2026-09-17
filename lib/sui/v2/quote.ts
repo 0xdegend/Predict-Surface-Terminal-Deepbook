@@ -69,7 +69,7 @@ function lotAlign(quantity: bigint): bigint {
   return (lots > 0n ? lots : 1n) * POSITION_LOT_BASE;
 }
 
-/** Quantity (base units) for a target max-payout in whole DUSDC. 1 → 1_000_000. */
+/** Quantity (base units) for a target max-payout in whole USDC. 1 → 1_000_000. */
 export function quantityForPayout(payoutDusdc: number): bigint {
   return lotAlign(BigInt(Math.round(payoutDusdc * 1_000_000)));
 }
@@ -88,7 +88,7 @@ export function quantityForStake(stakeBase: bigint, entryProb: number, leverage:
 }
 
 /**
- * What a WINNING position actually PAYS OUT (DUSDC base units) — the max-payout
+ * What a WINNING position actually PAYS OUT (USDC base units) — the max-payout
  * `quantity` minus the static leverage floor `entry_value·(1 − 1/L)` (with
  * `entry_value = entryProb·quantity`). Unleveraged (L ≤ 1) ⇒ the full quantity.
  *

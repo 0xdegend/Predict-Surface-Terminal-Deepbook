@@ -24,7 +24,7 @@ export interface StrikeVolume {
   direction: StrikeDir;
   strike?: number; // up / down (float $)
   band?: { lower: number; higher: number }; // range
-  volume: number; // summed net premium (DUSDC)
+  volume: number; // summed net premium (USDC)
   bets: number;
 }
 

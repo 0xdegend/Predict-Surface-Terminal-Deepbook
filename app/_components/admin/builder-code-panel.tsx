@@ -11,7 +11,7 @@
  * anyone else (`assert_owner`) — hiding the button is courtesy; that assert is the
  * lock.
  *
- * The claim DESTINATION, by contrast, is free: the call returns a Coin<DUSDC> and
+ * The claim DESTINATION, by contrast, is free: the call returns a Coin<USDC> and
  * the PTB decides where it lands. Permanent key, disposable destination — that
  * asymmetry is the whole treasury story and the copy says so.
  */

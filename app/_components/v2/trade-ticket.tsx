@@ -146,11 +146,11 @@ export function V2TradeTicket({
   const setArmInstant = useSessionPrefs((s) => s.setArmInstant);
   const sessionDuration = useSessionPrefs((s) => s.sessionDuration);
 
-  // First-run funding: a fresh wallet has no DUSDC (and, for external wallets, no
+  // First-run funding: a fresh wallet has no USDC (and, for external wallets, no
   // gas SUI). One tap drips a starter grant from the app treasury — the SAME
-  // route/treasury as legacy (DUSDC is the same coin on both deployments), just
+  // route/treasury as legacy (USDC is the same coin on both deployments), just
   // pointed at v2's wallet-balance query so the CTA below clears itself. Google/
-  // Enoki accounts are gasless → DUSDC only; external wallets also get gas SUI.
+  // Enoki accounts are gasless → USDC only; external wallets also get gas SUI.
   const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
     invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
     symbol: predictV2Config.quote.symbol,
@@ -363,7 +363,7 @@ export function V2TradeTicket({
     estCostBase + skewFeeDue < acct.balanceBase ? estCostBase + skewFeeDue : acct.balanceBase;
   // Can the trade actually be funded? The mint auto-deposits the shortfall from
   // the wallet in the same transaction, so the real ceiling is account + wallet
-  // DUSDC. If that's below the (slippage-padded) cost + fee the deposit would revert,
+  // USDC. If that's below the (slippage-padded) cost + fee the deposit would revert,
   // so we block the review up front instead of letting the user walk into a
   // guaranteed on-chain failure. Only judged once the wallet balance is known
   // (undefined while loading) so it never flashes on first paint.
@@ -372,7 +372,7 @@ export function V2TradeTicket({
     acct.walletDusdcBase !== undefined &&
     requiredBase > acct.balanceBase + acct.walletDusdcBase;
 
-  // The trader's spendable DUSDC = trading account + wallet (the mint auto-deposits
+  // The trader's spendable USDC = trading account + wallet (the mint auto-deposits
   // any wallet shortfall), i.e. exactly what they can stake. Undefined until the
   // wallet balance loads, so the readout waits rather than flash an account-only
   // figure that then jumps.

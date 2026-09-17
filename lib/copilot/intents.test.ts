@@ -675,7 +675,7 @@ describe('placeConfirmation (confirm + inline stake/leverage override)', () => {
 
   it('"trade it with 1 dusdc" carries the stake so the pending bet is placed at that size', () => {
     expect(placeConfirmation('trade it with 1 dusdc')).toEqual({ stake: 1 });
-    expect(placeConfirmation('trade it with 1 DUSDC')).toEqual({ stake: 1 });
+    expect(placeConfirmation('trade it with 1 USDC')).toEqual({ stake: 1 });
     expect(placeConfirmation('do it, 2 dusdc')).toEqual({ stake: 2 });
     expect(placeConfirmation('place it with $5')).toEqual({ stake: 5 });
     expect(placeConfirmation('trade it for 3 dusdc')).toEqual({ stake: 3 });
@@ -927,11 +927,55 @@ describe('extractName', () => {
   });
 });
 
+/**
+ * The app displays USDC (config/predict.ts `quote.symbol`) while the chain still calls the
+ * coin DUSDC, so a trader types whichever they have just read. Every money phrase must
+ * accept BOTH spellings: these regexes were written when only "dusdc" existed, and the
+ * 2026-09-17 rename to USDC would otherwise have silently stopped Kelly understanding the
+ * word her own replies put on screen.
+ */
+describe('Kelly reads the ticker the UI shows, and the one the chain shows', () => {
+  // Parity, not specific values: whatever a phrase means, it must mean exactly the same
+  // with either spelling. That is the property the rename could break, and it stays true
+  // even as these intents change shape.
+  const parity = (make: (t: string) => string) => {
+    const withD = parseIntent(make('dusdc'));
+    const withoutD = parseIntent(make('usdc'));
+    expect(withoutD, make('usdc')).toEqual(withD);
+    return withD;
+  };
+
+  it('reads a sized trade the same either way', () => {
+    expect(parity((t) => `trade it with 5 ${t}`).kind).not.toBe('unknown');
+  });
+
+  it('reads a sized bet the same either way', () => {
+    expect(parity((t) => `up bet 20 ${t}`).kind).not.toBe('unknown');
+  });
+
+  it('reads a balance question the same either way', () => {
+    expect(parity((t) => `how much ${t} do I have`).kind).toBe('balance');
+  });
+
+  it('reads a faucet ask the same either way', () => {
+    expect(parity((t) => `can I get some test ${t}`).kind).toBe('get_tokens');
+  });
+
+  it('reads an explain question the same either way', () => {
+    expect(parity((t) => `what is ${t}`).kind).toBe('explain');
+  });
+
+  it('reads an amount reply the same either way', () => {
+    expect(parseAmountReply('50 usdc')).toBe(parseAmountReply('50 dusdc'));
+  });
+});
+
 describe('parseAmountReply (the answer to "how much?")', () => {
   it('reads a plain amount, with or without $ / dusdc / lead-ins', () => {
     expect(parseAmountReply('50')).toBe(50);
     expect(parseAmountReply('$50')).toBe(50);
     expect(parseAmountReply('50 dusdc')).toBe(50);
+    expect(parseAmountReply('50 usdc')).toBe(50);
     expect(parseAmountReply('bet 10')).toBe(10);
     expect(parseAmountReply('make it 30')).toBe(30);
     expect(parseAmountReply('about 25 please')).toBe(25);

@@ -34,9 +34,9 @@ import type { V2OrderEvent } from '@/lib/api/v2/types';
 
 /** One direction's standing interest at a strike. */
 export interface BookSide {
-  /** Premium staked (DUSDC). */
+  /** Premium staked (USDC). */
   stakeUsd: number;
-  /** Max payout at risk (DUSDC) — the notional the book owes if this side wins. */
+  /** Max payout at risk (USDC) — the notional the book owes if this side wins. */
   notionalUsd: number;
   bets: number;
   /**
@@ -59,9 +59,9 @@ export interface BookStrike {
 export interface MarketBook {
   /** Strikes carrying interest, ascending. Empty when nothing has been minted. */
   strikes: BookStrike[];
-  /** Total premium staked on this market (DUSDC). */
+  /** Total premium staked on this market (USDC). */
   stakeUsd: number;
-  /** Total notional at risk across both sides (DUSDC). */
+  /** Total notional at risk across both sides (USDC). */
   notionalUsd: number;
   /** Distinct owners who minted here. */
   traders: number;

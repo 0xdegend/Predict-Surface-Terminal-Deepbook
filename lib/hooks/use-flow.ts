@@ -35,7 +35,7 @@ export interface UseFlow {
   tape: FlowEvent[];
   /** UP/DOWN dollar sentiment over the rolling window. */
   sentiment: Sentiment;
-  /** Adaptive DUSDC threshold above which a bet is "big" (window 90th pct). */
+  /** Adaptive USDC threshold above which a bet is "big" (window 90th pct). */
   whaleThreshold: number;
   loading: boolean;
   /** True during a background refetch (drives the refresh-pulse). */

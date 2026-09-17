@@ -2,7 +2,7 @@
  * lib/sui/reward.ts — client transport for the traders reward payout.
  *
  * Thin POST to /api/reward/claim (the server holds the treasury key and enforces every
- * gate). Returns the payout digest + amounts (base-unit strings — DUSDC @6dec, SUI
+ * gate). Returns the payout digest + amounts (base-unit strings — USDC @6dec, SUI
  * @9dec/MIST). The account DEPOSIT that follows is signed by the user (owner-gated),
  * built with lib/sui/v2/account.ts `buildDepositTx`; this call only moves the reward
  * treasury -> the user's wallet. See [[founding-traders-reward]].
@@ -19,7 +19,7 @@ export class RewardClaimError extends Error {
 
 export interface RewardClaimResult {
   digest: string;
-  /** DUSDC paid (base units, @6dec). */
+  /** USDC paid (base units, @6dec). */
   amount: string;
   /** SUI dripped for gas (base units, MIST) — '0' for gasless (Google) wallets. */
   suiAmount: string;

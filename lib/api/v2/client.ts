@@ -184,14 +184,14 @@ export const getVaultFlows = (vaultId: string, limit = 200, o?: GetOptions) =>
     ? Promise.resolve([] as V2VaultFlow[])
     : beta<V2VaultFlow[]>(`/vaults/${vaultId}/flows?limit=${limit}`, o);
 
-/** Executed LP deposits (escrowed DUSDC → PLP shares at NAV), newest-first. On
+/** Executed LP deposits (escrowed USDC → PLP shares at NAV), newest-first. On
  *  7-29 these are the `SupplyFilled` events. */
 export const getVaultSupplyFills = (vaultId: string, limit = 30, o?: GetOptions) =>
   V2_IS_729_PLUS
     ? onchainVaultSupplyFills(limit, o)
     : beta<V2VaultSupplyFill[]>(`/vaults/${vaultId}/supply-fills?limit=${limit}`, o);
 
-/** Executed LP withdrawals (PLP shares → DUSDC at NAV), newest-first. On 7-29
+/** Executed LP withdrawals (PLP shares → USDC at NAV), newest-first. On 7-29
  *  these are the `WithdrawFilled` events. */
 export const getVaultWithdrawFills = (vaultId: string, limit = 30, o?: GetOptions) =>
   V2_IS_729_PLUS

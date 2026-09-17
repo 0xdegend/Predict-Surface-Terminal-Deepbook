@@ -40,8 +40,8 @@ const mint = (o: Partial<V2OrderEvent> = {}): V2OrderEvent => ({
   checkpoint_timestamp_ms: 1_000,
   lower_tick: 6_380_200,
   higher_tick: POS_INF,
-  quantity: '10000000', // 10 DUSDC notional
-  net_premium: '5000000', // 5 DUSDC staked
+  quantity: '10000000', // 10 USDC notional
+  net_premium: '5000000', // 5 USDC staked
   leverage: 2_000_000_000, // 2×
   ...o,
 });
@@ -104,7 +104,7 @@ describe('flowRows', () => {
 });
 
 describe('marketVolumeFromOrders', () => {
-  it('sums minted premium (DUSDC) and mint count from the orders feed', () => {
+  it('sums minted premium (USDC) and mint count from the orders feed', () => {
     const orders = [
       mint({ net_premium: '30000000' }), // $30
       mint({ net_premium: '12000000' }), // $12

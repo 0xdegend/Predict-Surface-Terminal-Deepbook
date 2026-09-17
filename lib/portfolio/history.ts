@@ -34,9 +34,9 @@ export interface PastPrediction {
   settledAt: number; // ms — when it closed (last activity)
   result: 'won' | 'lost';
   contracts: number; // size that resolved
-  cost: number; // DUSDC staked (cost basis)
-  payout: number; // DUSDC returned
-  pnl: number; // DUSDC, signed (payout − cost)
+  cost: number; // USDC staked (cost basis)
+  payout: number; // USDC returned
+  pnl: number; // USDC, signed (payout − cost)
   roi: number; // ratio (pnl / cost)
   entryPrice: number; // 0..1 implied
   /** Leverage multiple used (e.g. 3 ⇒ 3×), when the trade was leveraged (v2 only).
@@ -52,8 +52,8 @@ export interface PastPrediction {
 
 export interface EquityPoint {
   t: number; // settledAt ms
-  cumulative: number; // running realized PnL after this trade (DUSDC, signed)
-  pnl: number; // this trade's PnL (DUSDC, signed)
+  cumulative: number; // running realized PnL after this trade (USDC, signed)
+  pnl: number; // this trade's PnL (USDC, signed)
   result: 'won' | 'lost';
   index: number; // 1-based trade number in chronological order
 }
@@ -88,8 +88,8 @@ export interface PerfWindow {
   wins: number;
   losses: number;
   winRate: number; // 0..1
-  realizedPnl: number; // DUSDC, signed
-  staked: number; // DUSDC cost basis
+  realizedPnl: number; // USDC, signed
+  staked: number; // USDC cost basis
   avgRoi: number; // realizedPnl / staked
   best: number; // best single-trade PnL
   streak: { count: number; won: boolean } | null;
@@ -167,8 +167,8 @@ export interface WinStats {
   wins: number;
   losses: number;
   winRate: number; // 0..1
-  realizedPnl: number; // DUSDC, signed — sum over closed
-  staked: number; // DUSDC total cost basis over closed
+  realizedPnl: number; // USDC, signed — sum over closed
+  staked: number; // USDC total cost basis over closed
   best: number; // best single PnL
   worst: number; // worst single PnL
   /** Current run from the most-recent close, e.g. { result:'won', count:3 }. */

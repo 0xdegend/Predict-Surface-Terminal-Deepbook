@@ -71,16 +71,16 @@ export interface CopilotContext {
    *  market's on-chain `forward` (a different feed the protocol settles against).
    *  Falls back to the forward when spot isn't loaded yet. */
   spot?: number | null;
-  /** The connected account's DUSDC, for a "what's my balance?" answer. Read from
+  /** The connected account's USDC, for a "what's my balance?" answer. Read from
    *  the same `usePredictAccountV2` the ticket uses. Base units (@6-dec).
    *  `walletBase` is undefined while it's still loading. */
   wallet?: {
     connected: boolean; // a wallet is connected
     hasAccount: boolean; // a trading account (wrapper) exists
-    accountBase: bigint; // DUSDC sitting in the trading account
-    walletBase: bigint | undefined; // DUSDC in the plain wallet
+    accountBase: bigint; // USDC sitting in the trading account
+    walletBase: bigint | undefined; // USDC in the plain wallet
     /** True ONLY for a brand-new, near-empty wallet the app can still auto-fund:
-     *  the starter grant is one-time and gated on no trading account yet + a DUSDC
+     *  the starter grant is one-time and gated on no trading account yet + a USDC
      *  balance under the ceiling (the server also handles the SUI-for-gas drip).
      *  When false the treasury would reject the grant, so we offer the faucet
      *  instead of a doomed drip. Computed in the screen (mirrors the trade ticket). */
@@ -179,7 +179,7 @@ export interface RangeSuggestion {
 export type OnboardAction = { kind: 'create_account' | 'get_tokens'; label: string };
 
 /** A vault deposit the chat renders as a tap-to-confirm card. Kelly proposes it; the
- *  trader taps to sign (the screen calls `acct.requestSupply`). `amount` is the DUSDC
+ *  trader taps to sign (the screen calls `acct.requestSupply`). `amount` is the USDC
  *  to queue into the async LP; `label` is the button text. */
 export type VaultDepositAction = { amount: number; label: string };
 
@@ -207,7 +207,7 @@ export interface CopilotReply {
   action?: OnboardAction;
   /** A vault deposit the chat renders as a tap-to-confirm card. The screen wires the
    *  tap to `acct.requestSupply` (Kelly proposes; the trader signs). Used by
-   *  "add 10 DUSDC to the vault". */
+   *  "add 10 USDC to the vault". */
   vaultDeposit?: VaultDepositAction;
   /** A snapshot the chat can offer to share as an image card (e.g. fear & greed). */
   share?: ShareCard;
@@ -1212,13 +1212,13 @@ function metricReply(metric: MetricKind, ctx: CopilotContext): CopilotReply {
 
 /* ------------------------------ my balance ------------------------------- */
 
-/** "What's my wallet balance?" — the connected account's DUSDC, plainly. Shows
+/** "What's my wallet balance?" — the connected account's USDC, plainly. Shows
  *  the trading-account balance (what funds bets) + the wallet balance + a total,
  *  since a mint pulls from both. */
 function balanceReply(ctx: CopilotContext): CopilotReply {
   const w = ctx.wallet;
   if (!w || !w.connected) {
-    return { text: ['Connect your wallet (top-right) and I’ll show your DUSDC balance.'] };
+    return { text: ['Connect your wallet (top-right) and I’ll show your USDC balance.'] };
   }
   if (w.walletBase === undefined) {
     return { text: ['One sec, I’m still loading your balance. Ask me again in a moment.'] };
@@ -1231,7 +1231,7 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
   if (total <= 0) {
     return {
       text: [
-        'Your DUSDC balance is $0.00 right now.',
+        'Your USDC balance is $0.00 right now.',
         'You’ll need some test tokens to place a bet. Say “get test tokens” and I’ll drop some into your wallet, then ask me to set up a trade.',
       ],
     };
@@ -1240,14 +1240,14 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
     // It's all in the plain wallet; the trading account opens on the first bet.
     return {
       text: [
-        `You’ve got ${fmt(wallet)} DUSDC in your wallet.`,
+        `You’ve got ${fmt(wallet)} USDC in your wallet.`,
         'It moves into your trading account the first time you place a bet. Say “set up a trade” whenever you’re ready.',
       ],
     };
   }
   return {
     text: [
-      `You’ve got ${fmt(total)} DUSDC ready to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`,
+      `You’ve got ${fmt(total)} USDC ready to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`,
       'Want to put it to work? Say “set up a trade”, or tell me a direction.',
     ],
   };
@@ -1260,7 +1260,7 @@ function balanceReply(ctx: CopilotContext): CopilotReply {
 function portfolioReply(ctx: CopilotContext): CopilotReply {
   const w = ctx.wallet;
   if (!w || !w.connected) {
-    return { text: ['Connect your wallet (top-right) and I’ll show how your bets are doing and your DUSDC balance.'] };
+    return { text: ['Connect your wallet (top-right) and I’ll show how your bets are doing and your USDC balance.'] };
   }
   const walletLoading = w.walletBase === undefined;
   const account = fromQuote(w.accountBase);
@@ -1273,8 +1273,8 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
     walletLoading
       ? `You've also got ${fmt(account)} free in your trading account.`
       : account > 0 && wallet > 0
-        ? `You've also got ${fmt(free)} DUSDC free to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
-        : `You've also got ${fmt(free)} DUSDC free to trade.`;
+        ? `You've also got ${fmt(free)} USDC free to trade, ${fmt(account)} in your trading account and ${fmt(wallet)} in your wallet.`
+        : `You've also got ${fmt(free)} USDC free to trade.`;
 
   // A "how am I doing / how's my performance" question is really about the RECORD,
   // not just the open book — so when the trader has settled bets, fold their win
@@ -1303,8 +1303,8 @@ function portfolioReply(ctx: CopilotContext): CopilotReply {
       "You don't have any open bets right now.",
       ...(rl ? [rl] : []),
       free > 0
-        ? `${fmt(free)} DUSDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
-        : 'Your DUSDC balance is $0.00. Say “get test tokens” and I’ll drop some in so you can place your first bet.',
+        ? `${fmt(free)} USDC is ready to trade${account > 0 && wallet > 0 && !walletLoading ? ` (${fmt(account)} in your trading account, ${fmt(wallet)} in your wallet)` : ''}.`
+        : 'Your USDC balance is $0.00. Say “get test tokens” and I’ll drop some in so you can place your first bet.',
       'Say “set up a trade” or tell me a direction whenever you’re ready.',
     ];
     // With a settled record, offer the shareable track-record card (same as the
@@ -1469,7 +1469,7 @@ function leaderboardStandingReply(focus: 'status' | 'improve', ctx: CopilotConte
     return {
       text: [
         'You’re not on the leaderboard yet. It picks you up the moment you place your first bet.',
-        'Points come from three things: 1 per DUSDC you stake, 2 per DUSDC of profit you win, and a small daily bonus for holding. So the way on is simple: place a trade. Say “set up a trade” or “safe up bet” and I’ll line one up.',
+        'Points come from three things: 1 per USDC you stake, 2 per USDC of profit you win, and a small daily bonus for holding. So the way on is simple: place a trade. Say “set up a trade” or “safe up bet” and I’ll line one up.',
       ],
     };
   }
@@ -1487,7 +1487,7 @@ function leaderboardStandingReply(focus: 'status' | 'improve', ctx: CopilotConte
       : top.key === 'performance'
         ? 'Your winning bets are doing the most for you there.'
         : top.key === 'liquidity'
-          ? 'Most of that is from how much DUSDC you’ve put to work.'
+          ? 'Most of that is from how much USDC you’ve put to work.'
           : 'A lot of that is from holding your positions instead of flipping them early.';
 
   const rankLine = `You’re #${s.rank} of ${s.total} on the leaderboard, with ${fmtPts(s.points)} points.`;
@@ -1499,18 +1499,18 @@ function leaderboardStandingReply(focus: 'status' | 'improve', ctx: CopilotConte
         : `You’re neck and neck with #${s.rank - 1}.`;
 
   // The improvement advice, ranked by upside: profit is the richest lever (2 points
-  // per DUSDC, double staking), holding rewards conviction, volume is the steady base.
+  // per USDC, double staking), holding rewards conviction, volume is the steady base.
   const winTip =
     s.netPnl != null && s.netPnl < 0
-      ? 'The biggest lever is winning: every DUSDC of profit is worth 2 points, double what staking earns. Your bets are down overall so profit isn’t adding points yet, but losses never take points away, so a few wins move you up fast.'
+      ? 'The biggest lever is winning: every USDC of profit is worth 2 points, double what staking earns. Your bets are down overall so profit isn’t adding points yet, but losses never take points away, so a few wins move you up fast.'
       : s.netPnl != null && s.netPnl > 0
-        ? 'The biggest lever is winning, and you’re already doing it: every DUSDC of profit is worth 2 points, double what staking earns. Keep that up and it compounds.'
-        : 'The biggest lever is winning: every DUSDC of profit is worth 2 points, double what staking earns. Ask me for a safe bet or “analyze BTC” before you place one to tilt the odds your way.';
+        ? 'The biggest lever is winning, and you’re already doing it: every USDC of profit is worth 2 points, double what staking earns. Keep that up and it compounds.'
+        : 'The biggest lever is winning: every USDC of profit is worth 2 points, double what staking earns. Ask me for a safe bet or “analyze BTC” before you place one to tilt the odds your way.';
   // A tailored second lever: nudge holding when they flip fast, else scale size.
   const flipsFast = s.holdingPts < s.liquidityPts * 0.1;
   const secondTip = flipsFast
     ? 'Second, hold your bets to the close instead of flipping them early. There’s a small bonus for every day a position stays open, and it adds up.'
-    : 'Second is size: every DUSDC you stake is another point, win or lose, so bigger or more frequent bets steadily lift you.';
+    : 'Second is size: every USDC you stake is another point, win or lose, so bigger or more frequent bets steadily lift you.';
 
   if (focus === 'improve') {
     const closer =
@@ -1559,7 +1559,7 @@ const EXPLAINERS: Record<ExplainTopic, string[]> = {
     'The pool that pays winners earns a separate spread, which goes to the people who supply that pool, not to the app. No hidden costs and no subscription.',
   ],
   funds: [
-    'You bet with DUSDC. A test-dollar on Sui testnet, not real money. Grab some free from the faucet and it lands in your wallet ready to trade.',
+    'You bet with USDC. A test-dollar on Sui testnet, not real money. Grab some free from the faucet and it lands in your wallet ready to trade.',
     'Ask me “what’s my balance” any time to see how much you have.',
   ],
   payout: [
@@ -1608,14 +1608,14 @@ const EXPLAINERS: Record<ExplainTopic, string[]> = {
   ],
   points: [
     'The leaderboard runs on Points, and they build up as you trade. Three things earn them: how much you put into bets, how much profit you make, and how long you hold your positions.',
-    'In numbers: 1 point per DUSDC you bet, 2 points per DUSDC of profit (a losing bet just earns nothing here, it never takes points away), and a small bonus of 0.1 point per DUSDC for each day you keep a position open. So you climb by betting more, winning, and holding real positions instead of instantly flipping them. Check the Ranks tab to see where you stand.',
+    'In numbers: 1 point per USDC you bet, 2 points per USDC of profit (a losing bet just earns nothing here, it never takes points away), and a small bonus of 0.1 point per USDC for each day you keep a position open. So you climb by betting more, winning, and holding real positions instead of instantly flipping them. Check the Ranks tab to see where you stand.',
   ],
   safety: [
-    'Your funds stay yours. The app is non-custodial, so it never holds your money or your keys. Your DUSDC sits in your own wallet, and every trade is a transaction you approve and sign yourself, so nobody can move your money for you.',
-    'And right now you’re on Sui testnet, so you’re trading with free test-DUSDC, not real money. You can experiment with zero risk. Ask me “how do I get test tokens?” to start.',
+    'Your funds stay yours. The app is non-custodial, so it never holds your money or your keys. Your USDC sits in your own wallet, and every trade is a transaction you approve and sign yourself, so nobody can move your money for you.',
+    'And right now you’re on Sui testnet, so you’re trading with free test-USDC, not real money. You can experiment with zero risk. Ask me “how do I get test tokens?” to start.',
   ],
   rewards: [
-    'Quests and Competitions are on the way. Quests will hand out DUSDC for hitting trading milestones, and Competitions (the Degen Arena) will pit factions against each other for prize pools.',
+    'Quests and Competitions are on the way. Quests will hand out USDC for hitting trading milestones, and Competitions (the Degen Arena) will pit factions against each other for prize pools.',
     'They’re not live yet, you’ll see them as a preview in the app. For now, trading is what climbs the leaderboard, ask me “how do points work?” for that, and I’ll flag it here once the rewards go live.',
   ],
 };
@@ -1722,7 +1722,7 @@ function helpReply(): CopilotReply {
 // The `action` cards run the real flow in the screen (createAccount / grant); nothing
 // here signs or spends. Plain language, no jargon.
 
-/** Free DUSDC across the trading account + wallet (human units). */
+/** Free USDC across the trading account + wallet (human units). */
 function readyFunds(w: NonNullable<CopilotContext['wallet']>): number {
   return fromQuote(w.accountBase) + (w.walletBase != null ? fromQuote(w.walletBase) : 0);
 }
@@ -1799,12 +1799,12 @@ function createAccountReply(ctx: CopilotContext): CopilotReply {
 function getTokensReply(ctx: CopilotContext): CopilotReply {
   const w = ctx.wallet;
   if (!w || !w.connected) {
-    return { text: ['To get test tokens, first tap Connect (top right) to sign in, then I’ll drop some DUSDC into your wallet.'] };
+    return { text: ['To get test tokens, first tap Connect (top right) to sign in, then I’ll drop some USDC into your wallet.'] };
   }
   if (w.grantEligible) {
     return {
       text: [
-        'I can get you some free test tokens (DUSDC) to trade with, plus a little gas. It’s play money on testnet, not real funds.',
+        'I can get you some free test tokens (USDC) to trade with, plus a little gas. It’s play money on testnet, not real funds.',
         'Want me to send some to your wallet?',
       ],
       action: { kind: 'get_tokens', label: 'Get test tokens' },
@@ -1817,13 +1817,13 @@ function getTokensReply(ctx: CopilotContext): CopilotReply {
   return { text: ['I can only auto-send test tokens to a brand-new wallet, and yours is already set up. You can top up from the testnet faucet instead.'] };
 }
 
-/** DUSDC amount with clean formatting: whole numbers show no decimals, else two. */
+/** USDC amount with clean formatting: whole numbers show no decimals, else two. */
 function fmtDusdc(amount: number): string {
-  return `${num(amount, amount % 1 === 0 ? 0 : 2)} DUSDC`;
+  return `${num(amount, amount % 1 === 0 ? 0 : 2)} USDC`;
 }
 
 /**
- * "Add 10 DUSDC to the vault / supply the liquidity pool" — Kelly proposes a deposit
+ * "Add 10 USDC to the vault / supply the liquidity pool" — Kelly proposes a deposit
  * into the async LP and hands back a tap-to-confirm card; the trader signs it (the
  * screen calls acct.requestSupply). State-aware from ctx.wallet (mirrors onboarding):
  * not connected → guidance; no account → offer to create one first; out of funds →
@@ -1848,7 +1848,7 @@ function vaultDepositReply(ctx: CopilotContext, amount?: number): CopilotReply {
   if (spendable <= 0) {
     if (w.grantEligible) {
       return {
-        text: ['To add to the vault you’ll need some DUSDC first, and your wallet’s empty. Want me to drop in some free test tokens to get you going?'],
+        text: ['To add to the vault you’ll need some USDC first, and your wallet’s empty. Want me to drop in some free test tokens to get you going?'],
         action: { kind: 'get_tokens', label: 'Get test tokens' },
       };
     }

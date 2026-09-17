@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * BalancePill — the trader's DUSDC balance in the top chrome, linking to the Portfolio.
+ * BalancePill — the trader's USDC balance in the top chrome, linking to the Portfolio.
  *
  * On the v2 terminal this shows the TOTAL a trader can actually bet with — trading
  * account + wallet — because the mint auto-deposits any wallet shortfall, so the two
@@ -82,8 +82,8 @@ function V2TotalPill() {
 
   if (!mounted || !acct.owner) return null;
 
-  const acctBase = acct.balanceBase; // trading account DUSDC
-  const walletBase = acct.walletDusdcBase; // wallet DUSDC — undefined while the first read is in flight
+  const acctBase = acct.balanceBase; // trading account USDC
+  const walletBase = acct.walletDusdcBase; // wallet USDC — undefined while the first read is in flight
   const ready = walletBase !== undefined;
   const totalBase = acctBase + (walletBase ?? 0n);
 
@@ -149,7 +149,7 @@ function BreakdownRow({
 
 /* ---------------------------- legacy: wallet only ---------------------------- */
 
-/** The original wallet-DUSDC pill, kept for the legacy chrome (6-24). Uses the SAME
+/** The original wallet-USDC pill, kept for the legacy chrome (6-24). Uses the SAME
  *  query key as usePredictAccount (`qk.dusdcBalance`), so TanStack dedupes the fetch. */
 function WalletOnlyPill() {
   const account = useCurrentAccount();

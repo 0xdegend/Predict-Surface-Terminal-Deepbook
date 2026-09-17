@@ -194,7 +194,7 @@ export function V2TradeScreen({
  */
 function MobileFundBanner() {
   const acct = usePredictAccountV2();
-  // The SAME one-tap grant the ticket uses: gasless (DUSDC only) for Enoki/Google,
+  // The SAME one-tap grant the ticket uses: gasless (USDC only) for Enoki/Google,
   // plus gas SUI for external wallets; refetch the v2 wallet balance so this clears.
   const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
     invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
@@ -203,7 +203,7 @@ function MobileFundBanner() {
 
   // Offer to any connected wallet that's broke across account + wallet. NOT gated
   // on "no trading account yet": a wallet can create a free gasless account and
-  // still have zero DUSDC (that exact case was hiding this banner). The server
+  // still have zero USDC (that exact case was hiding this banner). The server
   // self-heals stale markers, so a genuinely empty wallet claims; a really-funded
   // one falls back to the faucet. Mirrors the ticket's grantCta gate exactly.
   const eligible =

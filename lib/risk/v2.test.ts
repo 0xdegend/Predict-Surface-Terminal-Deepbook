@@ -30,7 +30,7 @@ const oi = (count: number, qtyBase: string, floorBase = '0'): V2OpenInterest => 
 describe('computeVaultRisk', () => {
   const markets = [mkt('0xA', 2_000), mkt('0xB', 1_000), mkt('0xC', 3_000)];
   const oiMap = new Map<string, V2OpenInterest>([
-    ['0xA', oi(6, '75600000')], // 75.6 DUSDC — the real market #2
+    ['0xA', oi(6, '75600000')], // 75.6 USDC — the real market #2
     ['0xB', oi(2, '24400000')], // 24.4
     ['0xC', oi(0, '0')], // no open orders → excluded
   ]);

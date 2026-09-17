@@ -34,7 +34,7 @@ export interface FlowEvent {
   isUp: boolean;
   /** Contracts traded (each pays at most $1). */
   quantity: number;
-  /** DUSDC moved: cost paid on a mint, payout received on a redeem. */
+  /** USDC moved: cost paid on a mint, payout received on a redeem. */
   amount: number;
   /** Per-unit price in [0,1]: ask on a mint, bid on a redeem. */
   price: number;
@@ -117,15 +117,15 @@ export function buildFlowTape(
 
 /** UP-vs-DOWN dollar imbalance over a set of MINTS (bets being placed). */
 export interface Sentiment {
-  /** DUSDC staked on UP. */
+  /** USDC staked on UP. */
   upCost: number;
-  /** DUSDC staked on DOWN. */
+  /** USDC staked on DOWN. */
   downCost: number;
   upCount: number;
   downCount: number;
   /** upCost / (upCost + downCost), in [0,1]. 0.5 when no flow. */
   upShare: number;
-  /** Total DUSDC staked across both sides. */
+  /** Total USDC staked across both sides. */
   totalCost: number;
 }
 

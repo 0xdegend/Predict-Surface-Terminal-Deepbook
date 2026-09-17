@@ -35,10 +35,10 @@ export interface PerfShareData {
   wins: number;
   losses: number;
   settled: number;
-  realizedPnl: number; // DUSDC, signed
-  staked: number; // DUSDC
+  realizedPnl: number; // USDC, signed
+  staked: number; // USDC
   avgRoi: number; // ratio (realizedPnl / staked)
-  best: number; // best single-trade PnL (DUSDC, signed)
+  best: number; // best single-trade PnL (USDC, signed)
   streak: { count: number; won: boolean } | null;
   /** Chronological cumulative realized-PnL values (oldest→newest) for the curve. */
   curve: number[];
@@ -236,7 +236,7 @@ function drawEquityChart(s: Ctx, x: number, y: number, w: number, h: number) {
   const finalPnl = d.curve.length ? d.curve[d.curve.length - 1] : d.realizedPnl;
   ctx.font = `600 20px ${mono}`;
   ctx.fillStyle = finalPnl >= 0 ? c.up : c.down;
-  ctx.fillText(`${signed(finalPnl)} DUSDC`, x, y + 28);
+  ctx.fillText(`${signed(finalPnl)} USDC`, x, y + 28);
 
   const plotY = y + 46;
   const plotH = y + h - plotY;
@@ -409,7 +409,7 @@ function drawSpotlight({ ctx, c, accent, sans, mono, d }: Ctx) {
   // Realized PnL.
   ctx.font = `500 22px ${mono}`;
   ctx.fillStyle = d.realizedPnl >= 0 ? c.up : c.down;
-  ctx.fillText(`${signed(d.realizedPnl)} DUSDC realized`, W / 2, afterHero + 84);
+  ctx.fillText(`${signed(d.realizedPnl)} USDC realized`, W / 2, afterHero + 84);
 
   ctx.textAlign = 'left';
 }

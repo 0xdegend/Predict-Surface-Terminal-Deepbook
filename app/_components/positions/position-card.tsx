@@ -215,7 +215,7 @@ export function PositionCard({
                 <span className="text-[30px] leading-none tracking-tight">
                   {signed(m.pnl)}
                 </span>
-                <span className="text-[11px] text-text-3">DUSDC</span>
+                <span className="text-[11px] text-text-3">USDC</span>
               </span>
               <span
                 className={`text-[12px] ${positive ? "text-up" : "text-down"}`}
@@ -255,7 +255,7 @@ export function PositionCard({
               icon={LuTrendingUp}
               label={decided ? (won ? "Payout" : "Final") : "Value"}
               value={m.value != null ? fmtQuote(m.value) : "—"}
-              sub="DUSDC"
+              sub="USDC"
             />
           </div>
 
@@ -270,12 +270,12 @@ export function PositionCard({
             <MiniMetric
               icon={LuDollarSign}
               label="Cost"
-              value={`${fmtQuote(m.cost)} DUSDC`}
+              value={`${fmtQuote(m.cost)} USDC`}
             />
             <MiniMetric
               icon={LuShieldCheck}
               label="Max payout"
-              value={`${fmtQuote(m.maxPayout)} DUSDC`}
+              value={`${fmtQuote(m.maxPayout)} USDC`}
             />
             <MiniMetric
               icon={LuActivity}

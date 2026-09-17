@@ -7,13 +7,13 @@
  *     SVI params (a, b, rho, m, sigma) are u64/i64 integers scaled by 1e9.
  *     Use toFloat / fromFloat.
  *
- *  2. Quote decimals = 6   → DUSDC amounts (mint cost, payouts, balances) are
- *     u64 integers in base units (1 DUSDC = 1_000_000).
+ *  2. Quote decimals = 6   → USDC amounts (mint cost, payouts, balances) are
+ *     u64 integers in base units (1 USDC = 1_000_000).
  *     Use toQuote / fromQuote.
  *
  * Rule of thumb:
  *   - Anything that is a *price of the underlying* or an *SVI param* → FLOAT_SCALING.
- *   - Anything that is an *amount of DUSDC* → quote decimals.
+ *   - Anything that is an *amount of USDC* → quote decimals.
  *
  * On-chain values are u64/i64. We accept `number | bigint | string` on the way in
  * (server JSON gives numbers, chain reads give bigints/strings) and always return
@@ -89,18 +89,18 @@ export function i64ToFloat(field: { magnitude: IntLike; negative: boolean }): nu
 }
 
 /* ------------------------------------------------------------------ *
- * Quote scale (DUSDC, 6 decimals) — amounts
+ * Quote scale (USDC, 6 decimals) — amounts
  * ------------------------------------------------------------------ */
 
 const QUOTE_UNIT_BI = 10n ** BigInt(predictConfig.quote.decimals);
 const QUOTE_UNIT = Number(QUOTE_UNIT_BI);
 
-/** base units (u64) → human DUSDC float. e.g. 1_000_000 → 1.0 */
+/** base units (u64) → human USDC float. e.g. 1_000_000 → 1.0 */
 export function fromQuote(base: IntLike): number {
   return toNumber(base) / QUOTE_UNIT;
 }
 
-/** human DUSDC float → base units bigint (for coin amounts headed to chain). */
+/** human USDC float → base units bigint (for coin amounts headed to chain). */
 export function toQuote(value: number): bigint {
   return BigInt(Math.round(value * QUOTE_UNIT));
 }

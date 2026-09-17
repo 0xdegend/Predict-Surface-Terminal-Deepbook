@@ -179,7 +179,7 @@ type CopilotRecord = {
 };
 
 /**
- * The starter grant funds a near-empty wallet: gated purely on a DUSDC balance
+ * The starter grant funds a near-empty wallet: gated purely on a USDC balance
  * (account + wallet) under the ceiling. It is NOT gated on "no trading account
  * yet" — a wallet can create a free gasless account and still be broke, and the
  * server now self-heals stale "already funded" markers, so a genuinely empty
@@ -296,7 +296,7 @@ export function V2CopilotScreen({
   const queryClient = useQueryClient();
   const readSpot = () => pythSpot(queryClient.getQueryData<PythObservation | null>(qkV2.pythLatest) ?? null);
 
-  // The connected account's DUSDC, for a "what's my balance?" answer. The surface
+  // The connected account's USDC, for a "what's my balance?" answer. The surface
   // already subscribes to this hook (for its position pins), and it only refetches
   // ~every 12s, so reading it here adds no meaningful re-render load.
   const acct = usePredictAccountV2();
@@ -325,7 +325,7 @@ export function V2CopilotScreen({
   });
   // One-tap "get test tokens" for onboarding — the SAME app-treasury starter grant
   // the trade ticket uses, pointed at v2's wallet-balance query so balances refresh.
-  // Gasless (Google) accounts get DUSDC only; external wallets also get gas SUI.
+  // Gasless (Google) accounts get USDC only; external wallets also get gas SUI.
   const grant = useStarterGrant(acct.owner ?? null, !acct.gasless, {
     invalidateKeys: acct.owner ? [qkV2Account.walletDusdc(acct.owner)] : [],
     symbol: predictV2Config.quote.symbol,
@@ -641,7 +641,7 @@ export function V2CopilotScreen({
     }
   }
 
-  // Confirm a vault deposit from a chat card → queue DUSDC into the async LP, the
+  // Confirm a vault deposit from a chat card → queue USDC into the async LP, the
   // SAME flow the Vault panel runs (acct.requestSupply, topping up from the wallet in
   // the same tx when the trading account is short). Kelly proposed it; this is where
   // the trader's tap signs it. Gated on a connected wallet + a trading account, and
@@ -854,7 +854,7 @@ export function V2CopilotScreen({
         id: `grant-${grant.success!.digest}`,
         role: 'assistant',
         text: [
-          `Done. ${fmtQuote(grant.success!.amount)} test DUSDC is in your wallet${sui}.`,
+          `Done. ${fmtQuote(grant.success!.amount)} test USDC is in your wallet${sui}.`,
           funded
             ? 'You’re funded and ready. Tell me a direction and I’ll set up a bet.'
             : 'Now say “create my trading account” (or tap the button) and you’re ready to bet.',
@@ -925,7 +925,7 @@ export function V2CopilotScreen({
       awaitingAmountRef.current = { kind: 'bet', bet };
       setThinking(true);
       replyTimer.current = setTimeout(() => {
-        pushBot([`How much DUSDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
+        pushBot([`How much USDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
         setThinking(false);
       }, 350);
       return;
@@ -960,7 +960,7 @@ export function V2CopilotScreen({
             : !walletKnown
               ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
+                ? 'you’ll need a little more USDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
       setThinking(true);
       replyTimer.current = setTimeout(() => {
@@ -1010,7 +1010,7 @@ export function V2CopilotScreen({
       awaitingAmountRef.current = { kind: 'range', range };
       setThinking(true);
       replyTimer.current = setTimeout(() => {
-        pushBot([`How much DUSDC do you want to put on this range bet ($${num(range.lower, 0)}–$${num(range.higher, 0)})? Type an amount, like 10.`]);
+        pushBot([`How much USDC do you want to put on this range bet ($${num(range.lower, 0)}–$${num(range.higher, 0)})? Type an amount, like 10.`]);
         setThinking(false);
       }, 350);
       return;
@@ -1045,7 +1045,7 @@ export function V2CopilotScreen({
             : !walletKnown
               ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
+                ? 'you’ll need a little more USDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
       setThinking(true);
       replyTimer.current = setTimeout(() => {

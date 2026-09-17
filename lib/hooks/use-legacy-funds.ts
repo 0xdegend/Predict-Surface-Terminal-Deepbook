@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * useLegacyFunds — DUSDC a trader still has sitting in the PREVIOUS deployment's account.
+ * useLegacyFunds — USDC a trader still has sitting in the PREVIOUS deployment's account.
  *
  * A redeploy strands money. Accounts are per release, so cutting over does not move a
  * balance, it just stops the app from looking at where the balance is. The trader sees their

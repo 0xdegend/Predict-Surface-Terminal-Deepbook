@@ -40,7 +40,7 @@ const V2_ABORTS: Record<string, string> = {
   'strike_exposure:7': 'Market data isn’t ready for this market yet. Try again in a second.',
   // account
   'account:0': 'This account belongs to a different wallet. Reconnect the one that created it.',
-  'account:1': 'Not enough balance in your account. Deposit a bit more DUSDC first.',
+  'account:1': 'Not enough balance in your account. Deposit a bit more USDC first.',
   'account:2': 'Couldn’t authorize with your wallet. Reconnect and retry.',
   // predict_account (per-account position registry)
   'predict_account:0': 'This position already exists.',

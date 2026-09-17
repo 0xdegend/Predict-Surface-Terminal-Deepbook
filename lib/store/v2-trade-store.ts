@@ -106,7 +106,7 @@ interface V2TradeState {
   rangeHigherPrice: number | null;
   /** First tapped absolute level while building a band (null once the band is set). */
   rangeAnchorPrice: number | null;
-  /** Amount the trader wants to pay (DUSDC). */
+  /** Amount the trader wants to pay (USDC). */
   stake: number;
   /** Leverage multiple (1 = none). */
   leverage: number;

@@ -138,7 +138,7 @@ function PortfolioPreview() {
         <PreviewStat icon={LuTrendingUp} color={HUE.teal} label="Total PnL" value="+1,204.32" tone="up" />
         <PreviewStat icon={LuLayers} color={HUE.blue} label="Open exposure" value="$3,920.00" />
         <PreviewStat icon={LuCoins} color={HUE.amber} label="Trading account balance" value="$4,560.18" />
-        <PreviewStat icon={LuWalletMinimal} color={HUE.violet} label="Wallet DUSDC" value="$2,000.00" />
+        <PreviewStat icon={LuWalletMinimal} color={HUE.violet} label="Wallet USDC" value="$2,000.00" />
 
         {/* Points — feature stat, mirrors PointsTile */}
         <div className="glass-inset relative col-span-2 flex flex-col gap-2 overflow-hidden p-4 lg:col-span-1">
@@ -251,7 +251,7 @@ function PreviewPositionCard({
             <span className="eyebrow">Unrealized PnL</span>
             <span className={`flex items-baseline gap-1.5 ${up ? 'text-up' : 'text-down'}`}>
               <span className="text-[30px] leading-none tracking-tight">{pnl}</span>
-              <span className="text-[11px] text-text-3">DUSDC</span>
+              <span className="text-[11px] text-text-3">USDC</span>
             </span>
             <span className={`text-[12px] ${up ? 'text-up' : 'text-down'}`}>{pnlPct}</span>
           </div>

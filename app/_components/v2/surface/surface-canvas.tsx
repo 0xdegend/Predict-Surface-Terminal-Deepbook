@@ -1101,7 +1101,7 @@ function PositionPinLabel({ p }: { p: V2PortfolioPosition }) {
         {p.leverage != null && p.leverage > 1 && <span className="text-text-3">{p.leverage}×</span>}
       </div>
       <div className="mt-0.5 font-mono text-[11.5px] tabular-nums" style={{ color: pnlColor }}>
-        {p.pnl == null ? '—' : `${signed(pnl, 2)} DUSDC`}
+        {p.pnl == null ? '—' : `${signed(pnl, 2)} USDC`}
         {p.deltaPp != null && <span className="ml-1 text-[9px] text-text-3">({signed(p.deltaPp, 1)}pt)</span>}
       </div>
     </div>

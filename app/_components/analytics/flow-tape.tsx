@@ -88,7 +88,7 @@ export function FlowTape() {
           <span className="eyebrow">Trader</span>
           <span className="eyebrow hidden sm:block">Market</span>
           <span className="eyebrow hidden text-right sm:block">Price</span>
-          <span className="eyebrow text-right">DUSDC</span>
+          <span className="eyebrow text-right">USDC</span>
           <span className="eyebrow text-right">Age</span>
         </div>
 

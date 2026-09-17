@@ -2,7 +2,7 @@
  * lib/rewards/eligibility.ts — the Founding Traders reward allowlist.
  *
  * A FROZEN snapshot (reward-snapshot.json) of the wallets eligible for the one-time
- * 50 DUSDC gift: everyone who had placed a bet through Skew at capture time, minus the
+ * 50 USDC gift: everyone who had placed a bet through Skew at capture time, minus the
  * venue bot (never a Skew trader) and every team/admin wallet. Frozen on purpose —
  * eligibility can't drift and a wallet created after the announcement can never farm
  * the reward. The claim rail (Phase 1) checks membership here before the treasury pays,
@@ -38,7 +38,7 @@ const SNAP = snapshot as RewardSnapshot;
 /** Campaign id — also the KV claim-marker namespace, so campaigns never collide. */
 export const REWARD_CAMPAIGN = SNAP.campaign;
 export const REWARD_TITLE = SNAP.title;
-/** The gift size in DUSDC base units (@6dec). The server is authoritative; the client
+/** The gift size in USDC base units (@6dec). The server is authoritative; the client
  *  uses it only to label the experience. */
 export const REWARD_BASE_UNITS = BigInt(SNAP.rewardBaseUnits);
 export const REWARD_DUSDC = SNAP.rewardDusdc;

@@ -3,14 +3,14 @@ import { computePoints, POINTS_RATES } from './score';
 import type { PositionSummary } from '@/lib/api/types';
 
 const DAY_MS = 86_400_000;
-const Q = 1_000_000; // @6dec → 1 DUSDC
+const Q = 1_000_000; // @6dec → 1 USDC
 
 /** Minimal PositionSummary for scoring (only the fields computePoints reads). */
 function pos(over: Partial<PositionSummary>): PositionSummary {
   return {
     predict_id: '0x0',
     manager_id: '0x0',
-    quote_asset: 'DUSDC',
+    quote_asset: 'USDC',
     oracle_id: '0x0',
     underlying_asset: 'BTC',
     expiry: 0,
@@ -62,7 +62,7 @@ describe('computePoints', () => {
   });
 
   it('scores holding as liquidity-weighted days in market', () => {
-    // 100 DUSDC held for 10 days, fully closed (open_quantity 0 → end = last_activity_at)
+    // 100 USDC held for 10 days, fully closed (open_quantity 0 → end = last_activity_at)
     const b = computePoints([pos({ total_cost: 100 * Q, first_minted_at: 0, last_activity_at: 10 * DAY_MS })], 999);
     expect(b.avgHoldDays).toBeCloseTo(10);
     expect(b.holding).toBeCloseTo(100 * 10 * POINTS_RATES.perDusdcDayHeld);
@@ -86,7 +86,7 @@ describe('computePoints', () => {
     expect(b.netPnl).toBe(10); // 20 + (-10)
     expect(b.liquidity).toBe(150 * POINTS_RATES.perDusdcVolume);
     expect(b.performance).toBe(10 * POINTS_RATES.perDusdcProfit);
-    // holding: 100·1 + 50·2 = 200 DUSDC·days
+    // holding: 100·1 + 50·2 = 200 USDC·days
     expect(b.holding).toBeCloseTo(200 * POINTS_RATES.perDusdcDayHeld);
     expect(b.total).toBeCloseTo(b.liquidity + b.performance + b.holding);
   });

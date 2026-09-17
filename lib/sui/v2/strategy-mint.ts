@@ -27,9 +27,9 @@ export interface PlannedLeg {
   params: Omit<MintBudgetParams, 'wrapperId'>;
   /** Fair chance used to size this leg (0..1). */
   entryProb: number;
-  /** The staked premium for this leg (DUSDC base units). */
+  /** The staked premium for this leg (USDC base units). */
   stakeBase: bigint;
-  /** Estimated all-in cost (stake + fee), DUSDC base units. */
+  /** Estimated all-in cost (stake + fee), USDC base units. */
   estCostBase: bigint;
   /** Entry probability sits inside the quotable band. */
   probOk: boolean;
@@ -51,7 +51,7 @@ export function planStrategyMints(input: {
   market: V2Market;
   pricer: { forward: number; svi: SviFloat };
   legs: Leg[];
-  /** The trading account's current DUSDC balance (base units). */
+  /** The trading account's current USDC balance (base units). */
   balanceBase: bigint;
 }): StrategyMintPlan {
   const { market, pricer, legs, balanceBase } = input;

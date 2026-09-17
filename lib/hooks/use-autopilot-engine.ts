@@ -150,17 +150,17 @@ export interface AutopilotOpenView {
   strike?: number;
   lower?: number;
   higher?: number;
-  /** Stake put in (DUSDC). */
+  /** Stake put in (USDC). */
   stake: number;
-  /** All-in entry cost (DUSDC). */
+  /** All-in entry cost (USDC). */
   cost: number;
   /** Win chance at entry (0..1). */
   entryProb: number;
   /** Win chance right now (0..1). */
   currentProb: number;
-  /** Current mark value (DUSDC). */
+  /** Current mark value (USDC). */
   markValue: number;
-  /** Live unrealized PnL (DUSDC, signed). */
+  /** Live unrealized PnL (USDC, signed). */
   pnlUsd: number;
   /** Probability move since entry, in percentage points (signed). */
   deltaPp: number;
@@ -171,15 +171,15 @@ export interface AutopilotOpenView {
 /** The run's live performance tape (open + settled). */
 export interface AutopilotPerf {
   openCount: number;
-  /** Sum of open positions' entry cost (DUSDC at risk right now). */
+  /** Sum of open positions' entry cost (USDC at risk right now). */
   atRiskUsd: number;
-  /** Sum of open positions' current mark value (DUSDC). */
+  /** Sum of open positions' current mark value (USDC). */
   markValueUsd: number;
-  /** Sum of open positions' live PnL (DUSDC, signed). */
+  /** Sum of open positions' live PnL (USDC, signed). */
   unrealizedPnlUsd: number;
-  /** Realized PnL from settled positions this run (DUSDC, signed). */
+  /** Realized PnL from settled positions this run (USDC, signed). */
   realizedPnlUsd: number;
-  /** realized + unrealized (DUSDC, signed). */
+  /** realized + unrealized (USDC, signed). */
   netPnlUsd: number;
   wins: number;
   losses: number;

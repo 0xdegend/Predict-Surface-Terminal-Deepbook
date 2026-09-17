@@ -27,7 +27,7 @@ function minted(over: Partial<PositionMintedEvent>): PositionMintedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0, tx_index: 0,
     event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0, predict_id: '0xp', manager_id: '0xm',
-    trader: '0xt', quote_asset: 'DUSDC', expiry: inputs[0].oracle.expiry, strike: 66000 * 1e9, is_up: true,
+    trader: '0xt', quote_asset: 'USDC', expiry: inputs[0].oracle.expiry, strike: 66000 * 1e9, is_up: true,
     quantity: 1_000_000, cost: 500_000, ask_price: 500_000_000, ...over,
   };
 }
@@ -35,7 +35,7 @@ function redeemed(over: Partial<PositionRedeemedEvent>): PositionRedeemedEvent {
   return {
     event_digest: '', digest: '', sender: '', checkpoint: 0, checkpoint_timestamp_ms: 0, tx_index: 0,
     event_index: 0, package: '', oracle_id: '0xA', onchain_timestamp: 0, predict_id: '0xp', manager_id: '0xm',
-    owner: '0xo', executor: '0xo', quote_asset: 'DUSDC', expiry: inputs[0].oracle.expiry, strike: 66000 * 1e9, is_up: true,
+    owner: '0xo', executor: '0xo', quote_asset: 'USDC', expiry: inputs[0].oracle.expiry, strike: 66000 * 1e9, is_up: true,
     quantity: 0, payout: 0, bid_price: 0, is_settled: false, ...over,
   };
 }

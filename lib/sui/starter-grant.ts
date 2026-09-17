@@ -1,5 +1,5 @@
 /**
- * lib/sui/starter-grant.ts — client transport for the app-run DUSDC drip faucet.
+ * lib/sui/starter-grant.ts — client transport for the app-run USDC drip faucet.
  *
  * Thin POST to /api/starter-grant (the server holds the treasury key and enforces
  * every cap). The caller refetches the wallet balance on success and falls back
@@ -20,8 +20,8 @@ export class StarterGrantError extends Error {
  * Request a starter grant for `address`. `includeSui` asks the server to also
  * drip a little gas SUI — pass true ONLY for external wallets (Google/zkLogin is
  * gasless, so they never need it); the server still gates on actual SUI balance.
- * Resolves with the executed digest, the DUSDC paid, and the SUI dripped (all
- * base-unit strings — DUSDC @6dec, SUI @9dec/MIST). Throws StarterGrantError.
+ * Resolves with the executed digest, the USDC paid, and the SUI dripped (all
+ * base-unit strings — USDC @6dec, SUI @9dec/MIST). Throws StarterGrantError.
  */
 export async function claimStarterGrant(
   address: string,

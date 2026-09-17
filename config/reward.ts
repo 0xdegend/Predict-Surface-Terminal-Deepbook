@@ -23,5 +23,5 @@ export const REWARD_VISIBLE = REWARD_ENABLED || REWARD_PREVIEW;
 /** Campaign id — must match the snapshot's `campaign` (the KV claim namespace). */
 export const REWARD_CAMPAIGN = process.env.NEXT_PUBLIC_REWARD_CAMPAIGN ?? 'founding-traders';
 
-/** Display amount for the experience copy (DUSDC). The server is authoritative. */
+/** Display amount for the experience copy (USDC). The server is authoritative. */
 export const REWARD_DISPLAY_DUSDC = Number(process.env.NEXT_PUBLIC_REWARD_DUSDC ?? '50');

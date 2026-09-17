@@ -133,7 +133,7 @@ function BinaryBody({
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
   const [view, setView] = useState<"glance" | "ticket">("glance");
-  const [betInput, setBetInput] = useState(1); // DUSDC stake (matches the rail ticket)
+  const [betInput, setBetInput] = useState(1); // USDC stake (matches the rail ticket)
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active?.oracle ?? null;
@@ -488,7 +488,7 @@ function BinaryBody({
               ? [
                   {
                     label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`,
-                    value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC`,
+                    value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} USDC`,
                   },
                 ]
               : []),
@@ -523,7 +523,7 @@ function RangeBody({
   const setTicketMode = useSurfaceStore((s) => s.setTicketMode);
   const pulseFill = useSurfaceStore((s) => s.pulseFill);
 
-  const [betInput, setBetInput] = useState(1); // DUSDC stake (matches the rail ticket)
+  const [betInput, setBetInput] = useState(1); // USDC stake (matches the rail ticket)
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const oracle = active?.oracle ?? null;
@@ -751,7 +751,7 @@ function RangeBody({
               ? [
                   {
                     label: `Skew fee (${(feeBps / 100).toFixed(2)}%)`,
-                    value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} DUSDC`,
+                    value: `${feeAmount(fromQuote(skewFee(q.mintCost, feeBps)))} USDC`,
                   },
                 ]
               : []),

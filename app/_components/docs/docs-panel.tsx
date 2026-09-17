@@ -6,7 +6,7 @@
  * on mobile) tracks the section in view via IntersectionObserver and jumps on
  * click. Language is deliberately plain — every finance/crypto term is explained
  * in everyday words, and only the words a user actually sees in the app (UP/DOWN,
- * range, DUSDC, SUI, wallet) are kept. Instrument-styled per §10.1 (no
+ * range, USDC, SUI, wallet) are kept. Instrument-styled per §10.1 (no
  * editorial/serif look): hairline-delimited sections, glass cards, mono values.
  */
 import { useEffect, useState } from "react";
@@ -183,8 +183,8 @@ function GettingStarted() {
           option is to sign in with Google, it&apos;s free and you won&apos;t
           pay any network fees. You can also connect a Sui wallet like Slush.
         </FlowStep>
-        <FlowStep n={2} title="Get some DUSDC">
-          You bet using <b className="text-text-1">DUSDC</b>. New accounts get a
+        <FlowStep n={2} title="Get some USDC">
+          You bet using <b className="text-text-1">USDC</b>. New accounts get a
           small amount automatically the first time, so you can start right
           away.
         </FlowStep>
@@ -199,7 +199,7 @@ function GettingStarted() {
         </FlowStep>
       </Flow>
       <Callout tone="info" title="It's all Test tokens">
-        Skew runs on Sui Testnet. The DUSDC you trade with has{" "}
+        Skew runs on Sui Testnet. The USDC you trade with has{" "}
         <b className="text-text-1">no real-world value</b> it&apos;s there so
         you can learn the ropes without any risk.
       </Callout>
@@ -397,7 +397,7 @@ function VaultRisk() {
       </Lead>
       <Cards>
         <Card icon={LuVault} hue={HUE.teal} title="Join the pool">
-          Add DUSDC to the pool and earn a cut whenever people trade. Deposits
+          Add USDC to the pool and earn a cut whenever people trade. Deposits
           and withdrawals join a short queue and go through at the next pool
           update, at the price per share at that moment. See{" "}
           <Anchor href="/v2/vault">Vault</Anchor>.
@@ -458,7 +458,7 @@ function Faq() {
           .
         </QA>
         <QA q="How do I get coins to trade with?">
-          New accounts get a small amount of DUSDC automatically the first time.
+          New accounts get a small amount of USDC automatically the first time.
           If that&apos;s ever unavailable, Skew points you to a free faucet, a
           page that hands out test tokens..
         </QA>

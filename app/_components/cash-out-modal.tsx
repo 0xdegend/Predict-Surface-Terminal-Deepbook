@@ -1,9 +1,9 @@
 'use client';
 
 /**
- * CashOutModal — lets a zkLogin (Google) user move their DUSDC to an external
+ * CashOutModal — lets a zkLogin (Google) user move their USDC to an external
  * wallet they fully control. They can't export a key, so this is their exit:
- * one gasless transaction that drains the manager free balance + wallet DUSDC and
+ * one gasless transaction that drains the manager free balance + wallet USDC and
  * transfers it to a destination Sui address (see usePredictAccount.cashOut).
  *
  * Three steps: form → confirm → animated success. zkLogin has no wallet popup to
@@ -27,7 +27,7 @@ export function CashOutModal({ open, onClose }: { open: boolean; onClose: () => 
   const acct = usePredictAccountV2();
   const sym = predictV2Config.quote.symbol;
 
-  // Account free balance + wallet DUSDC (walletDusdcBase is undefined while its
+  // Account free balance + wallet USDC (walletDusdcBase is undefined while its
   // first read is in flight). This is the NEW deployment's account model — the
   // legacy usePredictAccount had no wrapper on this network, so cashOut returned
   // null and the button did nothing.

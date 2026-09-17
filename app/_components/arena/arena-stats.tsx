@@ -21,10 +21,10 @@ export function ArenaStatStrip({ mode, you, faction }: { mode: 'hub' | 'detail';
         <StatTile label="Members" value={compact(faction.memberCount)} icon={LuUsers} />
         <StatTile label="Rank" value={`#${faction.rank}`} hue={rankHue} icon={LuTrophy} />
         <StatTile label="Pool share" value={sharePct(faction.poolSharePct)} />
-        <StatTile label="Bonus pool" value={compact(faction.bonusPool)} unit="DUSDC" hue="var(--warn)" icon={LuFlame} />
-        <StatTile label="Base pool" value={compact(faction.basePool)} unit="DUSDC" icon={LuCoins} />
+        <StatTile label="Bonus pool" value={compact(faction.bonusPool)} unit="USDC" hue="var(--warn)" icon={LuFlame} />
+        <StatTile label="Base pool" value={compact(faction.basePool)} unit="USDC" icon={LuCoins} />
         <StatTile label="Points" value={compact(faction.totalPoints)} />
-        <StatTile label="Volume" value={compact(faction.totalVolume)} unit="DUSDC" />
+        <StatTile label="Volume" value={compact(faction.totalVolume)} unit="USDC" />
         <StatTile label="X Profile" value={<span className="text-[12px] text-text-1">{faction.handle}</span>} icon={LuGlobe} />
         <StatTile label="Website" value={<span className="text-[12px] text-text-1">{faction.website ?? '—'}</span>} />
         <StatTile label="Member since" value={<span className="text-[12px] text-text-1">{faction.memberSince}</span>} icon={LuCalendar} />

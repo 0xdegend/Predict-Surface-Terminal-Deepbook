@@ -29,7 +29,7 @@ describe.skipIf(!RUN)(`legacy account reads from ${ACTIVE_V2_DEPLOYMENT} (live)`
     const funds = await readLegacyFunds(core, OWNER, '8-06');
     console.log(
       `${OWNER.slice(0, 12)}… on 8-06: wrapper ${funds.wrapperId?.slice(0, 12) ?? 'none'}, ` +
-        `balance ${Number(funds.balanceBase) / 1e6} DUSDC`,
+        `balance ${Number(funds.balanceBase) / 1e6} USDC`,
     );
     expect(funds.deployment).toBe('8-06');
     // This wallet has traded on 8-06, so it must have an account there. A null wrapper would
@@ -73,7 +73,7 @@ describe.skipIf(!RUN)(`legacy account reads from ${ACTIVE_V2_DEPLOYMENT} (live)`
       simulateTransaction: (o: unknown) => Promise<{ Transaction?: { status?: { success?: boolean; error?: unknown } } }>;
     }).simulateTransaction({ transaction: tx, include: { effects: true }, checksEnabled: false }));
     const status = res.Transaction?.status;
-    console.log(`withdraw ${Number(funds.balanceBase) / 1e6} DUSDC → simulate success=${status?.success}`);
+    console.log(`withdraw ${Number(funds.balanceBase) / 1e6} USDC → simulate success=${status?.success}`);
     expect(status?.success, `withdraw would abort: ${JSON.stringify(status?.error ?? {})}`).toBe(true);
   }, 60_000);
 
@@ -86,7 +86,7 @@ describe.skipIf(!RUN)(`legacy account reads from ${ACTIVE_V2_DEPLOYMENT} (live)`
 
   it('moves the whole balance to the new account in ONE transaction', async () => {
     // The claim the banner's single signature rests on. A PTB may call into more than one
-    // package, and the DUSDC `withdraw_funds` returns on the old package is just a Coin, so
+    // package, and the USDC `withdraw_funds` returns on the old package is just a Coin, so
     // it can be handed straight to `deposit_funds` on the new one. When there is no account
     // on the new release yet the create rides along too, because the registry returns the
     // wrapper BY VALUE — it is deposited into first and shared last.
@@ -114,7 +114,7 @@ describe.skipIf(!RUN)(`legacy account reads from ${ACTIVE_V2_DEPLOYMENT} (live)`
     }).simulateTransaction({ transaction: tx, include: { commandResults: true }, checksEnabled: false });
     const status = res.Transaction?.status;
     console.log(
-      `move ${Number(funds.balanceBase) / 1e6} DUSDC from ${PREVIOUS_V2_DEPLOYMENT} -> ${ACTIVE_V2_DEPLOYMENT}` +
+      `move ${Number(funds.balanceBase) / 1e6} USDC from ${PREVIOUS_V2_DEPLOYMENT} -> ${ACTIVE_V2_DEPLOYMENT}` +
         ` (${target.exists ? 'existing account' : 'creating account'}) → success=${status?.success}`,
     );
     expect(status?.success, `move would abort: ${JSON.stringify(status?.error ?? {})}`).toBe(true);

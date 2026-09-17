@@ -31,7 +31,7 @@ export type FlowTrend = 'building' | 'steady' | 'fading';
 export interface FlowBucket {
   /** Bucket start (ms epoch). */
   startMs: number;
-  /** Premium staked in this bucket (DUSDC). */
+  /** Premium staked in this bucket (USDC). */
   stakeUsd: number;
   upStakeUsd: number;
   downStakeUsd: number;
@@ -44,7 +44,7 @@ export interface FlowHistory {
   /** Oldest first, evenly spaced, with empty buckets present so gaps read as gaps. */
   buckets: FlowBucket[];
   bucketMs: number;
-  /** Total premium minted across the window (DUSDC). */
+  /** Total premium minted across the window (USDC). */
   stakeUsd: number;
   bets: number;
   /** Distinct owners who minted across the whole window. */

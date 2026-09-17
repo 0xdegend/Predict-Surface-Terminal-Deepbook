@@ -33,7 +33,7 @@ export interface AiContext {
   /** The soonest tradeable expiry, in minutes (rounded), or null when none live. */
   nextExpiryMins?: number | null;
   wallet?: { connected: boolean; hasAccount: boolean; balance: number } | null;
-  /** The trader's settled track record + last result (already de-scaled to DUSDC). */
+  /** The trader's settled track record + last result (already de-scaled to USDC). */
   record?: {
     total: number;
     wins: number;
@@ -98,7 +98,7 @@ export function formatAiContext(c: AiContext): string {
   if (c.wallet) {
     if (!c.wallet.connected) lines.push('Wallet: not connected.');
     else if (!c.wallet.hasAccount) lines.push('Wallet: connected, but no trading account yet.');
-    else lines.push(`Wallet: connected, ${usd2(c.wallet.balance)} DUSDC free to trade.`);
+    else lines.push(`Wallet: connected, ${usd2(c.wallet.balance)} USDC free to trade.`);
   }
   if (c.record) {
     if (c.record.total === 0) lines.push('Track record: no settled bets yet.');

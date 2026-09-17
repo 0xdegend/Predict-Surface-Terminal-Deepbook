@@ -10,7 +10,7 @@ import {
 import { FLOAT_SCALING } from '@/config/scale';
 import type { PositionSummary } from '@/lib/api/types';
 
-const Q = 1_000_000; // @6dec → 1 DUSDC
+const Q = 1_000_000; // @6dec → 1 USDC
 const E9 = FLOAT_SCALING;
 
 const foldAll = (mints: StyleMint[]) => {

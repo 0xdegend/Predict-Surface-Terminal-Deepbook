@@ -51,7 +51,7 @@ describe('formatAiContext', () => {
     expect(out).toContain('$64,912');
     expect(out).toContain('leaning up (clear)');
     expect(out).toContain('62 out of 100 (Greed)');
-    expect(out).toContain('$12.40 DUSDC');
+    expect(out).toContain('$12.40 USDC');
     expect(out).toContain('57% win rate'); // 4/7 → 57%
     expect(out).toContain('DOWN $64,650');
     expect(out).toContain('-$5.00');

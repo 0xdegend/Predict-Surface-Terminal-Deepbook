@@ -40,7 +40,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   // Stake as a raw string so the field can be empty / mid-edit (a number-typed
   // input coerces "" → 0, which makes a fresh digit read as "02"). Parsed where
   // the math needs it (see `betAmount`).
-  const [betInput, setBetInput] = useState('1'); // DUSDC the user wants to bet (stake)
+  const [betInput, setBetInput] = useState('1'); // USDC the user wants to bet (stake)
 
   // Everyone reviews the trade in a modal before minting (the in-app preview
   // gasless Google/zkLogin accounts always needed, now shown for all wallets).
@@ -124,7 +124,7 @@ export function RangeTicket({ active, now }: { active: SmileInput; now: number }
   const qtyBase = q?.quantity ?? 0n;
   const payoutDollars = q ? fromQuote(q.quantity) : 0;
 
-  // DUSDC pulled from the connected WALLET for this mint (manager free balance
+  // USDC pulled from the connected WALLET for this mint (manager free balance
   // covers the rest). Gate the button on it so a wallet that can't cover its
   // share can't fire a doomed mint.
   const walletNow = q

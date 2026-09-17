@@ -663,7 +663,7 @@ function KellyPanel({
             const sized: BetSuggestion = { ...fresh.bet, amount: stake ?? fresh.bet.amount, leverage: leverage ?? fresh.bet.leverage };
             maybeRecordCall(fresh); // a fresh re-recommendation is a new Kelly call — log it too
             const amt = sized.amount;
-            const stakeStr = amt == null ? '' : ` with your ${Number.isInteger(amt) ? amt : amt.toFixed(2)} DUSDC`;
+            const stakeStr = amt == null ? '' : ` with your ${Number.isInteger(amt) ? amt : amt.toFixed(2)} USDC`;
             setMessages((m) => [
               ...m,
               {
@@ -767,7 +767,7 @@ function KellyPanel({
     // park the bet; their next plain amount reply (parseAmountReply) sizes + places it.
     if (bet.amount == null || bet.amount <= 0) {
       awaitingAmountRef.current = bet;
-      pushBot([`How much DUSDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
+      pushBot([`How much USDC do you want to put on this ${bet.isUp ? 'UP' : 'DOWN'} $${num(bet.strikePrice, 0)} bet? Type an amount, like 10.`]);
       return;
     }
 
@@ -799,7 +799,7 @@ function KellyPanel({
             : !walletKnown
               ? 'I’m still loading your balance, so place it from the ticket'
               : !fundable
-                ? 'you’ll need a little more DUSDC, so top up and place it from the ticket'
+                ? 'you’ll need a little more USDC, so top up and place it from the ticket'
                 : 'finish placing it from the ticket';
       pushBot([`I’ve opened your ticket: ${why}.`]);
       return;
@@ -826,7 +826,7 @@ function KellyPanel({
     }
   }
 
-  // Confirm a vault deposit from a chat card → queue DUSDC into the async LP, the SAME
+  // Confirm a vault deposit from a chat card → queue USDC into the async LP, the SAME
   // flow the Vault panel runs (acct.requestSupply, topping up from the wallet in the
   // same tx when the trading account is short). Kelly proposed it; this is the trader's
   // tap signing it. A missing account is handed off to the Trade tab (like onboarding).
@@ -843,7 +843,7 @@ function KellyPanel({
     const amt = toQuote(amount);
     const spendable = acct.balanceBase + (acct.walletDusdcBase ?? 0n);
     if (amt > spendable) {
-      pushBot([`That’s more than you have available right now (${num(fromQuote(spendable), 2)} DUSDC across your account and wallet). Try a smaller amount.`]);
+      pushBot([`That’s more than you have available right now (${num(fromQuote(spendable), 2)} USDC across your account and wallet). Try a smaller amount.`]);
       return;
     }
     const shortfall = amt > acct.balanceBase ? amt - acct.balanceBase : 0n;
@@ -853,7 +853,7 @@ function KellyPanel({
       pushBot(
         digest
           ? [
-              `Done. Your ${Number.isInteger(amount) ? amount : amount.toFixed(2)} DUSDC is queued into the vault and starts earning at the next vault update.`,
+              `Done. Your ${Number.isInteger(amount) ? amount : amount.toFixed(2)} USDC is queued into the vault and starts earning at the next vault update.`,
               'You can track it or cancel it any time from the Vault page.',
             ]
           : ['That didn’t go through, so nothing was added to the vault. You can try again, or do it from the Vault page.'],

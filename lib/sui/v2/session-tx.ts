@@ -15,7 +15,7 @@
  *
  * A session can therefore ONLY call these four wrappers on the wrapper (no deposit,
  * no withdraw, no builder-code attach — those stay owner-gated). It trades against
- * the DUSDC the owner pre-deposited; there is no `deposit`/`attachBuilderCode` here.
+ * the USDC the owner pre-deposited; there is no `deposit`/`attachBuilderCode` here.
  *
  * Sessions exist only on the 8-06 (7-29+) deployment, so these always use the
  * 7-29+ argument shape (max_cost on mint_exact_amount; the auth-less, registry-

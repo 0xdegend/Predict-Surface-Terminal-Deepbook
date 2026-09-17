@@ -34,7 +34,7 @@ export interface MintQuoteParams {
   marketId: string;
   lowerTick: bigint;
   higherTick: bigint;
-  /** Net-premium budget (DUSDC base units), the same `amount` the real mint spends. */
+  /** Net-premium budget (USDC base units), the same `amount` the real mint spends. */
   amount: bigint;
   /** 1e9-scaled (1e9 = 1x). */
   leverage: bigint;

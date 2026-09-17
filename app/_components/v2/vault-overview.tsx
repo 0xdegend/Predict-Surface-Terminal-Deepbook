@@ -177,7 +177,7 @@ export function V2VaultOverview() {
 }
 
 /**
- * A DUSDC / share amount that fits tight mobile cards: full precision on ≥sm
+ * A USDC / share amount that fits tight mobile cards: full precision on ≥sm
  * (desktop has the room), compact (9.91M / 11.09K) below that. A pure CSS swap,
  * so it's SSR-safe (no hydration flip on mount).
  */

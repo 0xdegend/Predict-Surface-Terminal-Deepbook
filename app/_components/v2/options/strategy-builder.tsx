@@ -122,7 +122,7 @@ export function StrategyBuilder({
   }
 
   // Placement guards: the mints deposit any shortfall from the wallet, so the real
-  // ceiling is the wallet DUSDC covering the total deposit.
+  // ceiling is the wallet USDC covering the total deposit.
   // Every leg must be priceable before the payoff/stats mean anything — an out-of-
   // band leg has an exploding payout + fee, so we flag it and hold back the numbers.
   const allQuotable = !model || model.strategy.legs.every((e) => isQuotable(e.prob));
@@ -513,7 +513,7 @@ function PlaceButton({
     : !allQuotable
       ? 'Move legs closer to price'
       : insufficient
-        ? 'Not enough DUSDC'
+        ? 'Not enough USDC'
         : `Place ${legs.length} bet${legs.length === 1 ? '' : 's'} · $${num(netCost, 0)}`;
   return (
     <button type="button" onClick={onPlace} disabled={!canPlace} className={`${base} ${enabled}`}>

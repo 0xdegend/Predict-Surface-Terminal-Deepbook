@@ -107,7 +107,7 @@ export function PrizeTile({ className = '' }: { className?: string }) {
       </span>
       <div className="font-mono text-[30px] leading-none tabular-nums text-text-1">
         {num(PRIZE_POOL, 0)}
-        <span className="ml-1.5 text-[12px] text-text-3">DUSDC</span>
+        <span className="ml-1.5 text-[12px] text-text-3">USDC</span>
       </div>
       <span className="text-[10px] text-text-3">Funded by the 1% Skew fee treasury</span>
     </div>

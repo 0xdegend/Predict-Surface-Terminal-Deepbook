@@ -2,7 +2,7 @@
 
 /**
  * V2VaultActivity — recent EXECUTED LP flows across all LPs (deposits filled into
- * shares, withdrawals filled back to DUSDC), from the indexer's supply/withdraw
+ * shares, withdrawals filled back to USDC), from the indexer's supply/withdraw
  * fill feeds. It's the read-side history of the pool's money moving, and the
  * complement to V2VaultQueue (which shows the connected user's still-pending,
  * cancellable on-chain queue). Server data — renders for any visitor.

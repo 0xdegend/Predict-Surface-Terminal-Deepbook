@@ -13,13 +13,13 @@ import type { MarketCell } from '@/lib/analytics/market-grid';
 import type { FlowEvent, Sentiment } from '@/lib/analytics/flow';
 
 export interface AnalyticsKpis {
-  /** DUSDC bet across live markets in the last hour. */
+  /** USDC bet across live markets in the last hour. */
   totalBet: number;
   /** Count of live (tradeable) markets. */
   activeMarkets: number;
   /** UP share of recent staked dollars, [0,1]. */
   upShare: number;
-  /** The single biggest bet in the recent window (DUSDC). */
+  /** The single biggest bet in the recent window (USDC). */
   biggestBet: number;
 }
 

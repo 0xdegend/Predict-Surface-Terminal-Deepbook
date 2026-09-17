@@ -97,7 +97,7 @@ export function StatTile({
 }
 
 /* ------------------------------------------------------------------ *
- * PoolCell — a right-aligned two-line prize cell: the DUSDC amount over a
+ * PoolCell — a right-aligned two-line prize cell: the USDC amount over a
  * small sub-figure (a share % or a live delta). Used for the Bonus/Base pool
  * columns in the hub table.
  * ------------------------------------------------------------------ */
@@ -114,7 +114,7 @@ export function PoolCell({
     <span className="flex flex-col items-end gap-0.5 font-mono tabular-nums">
       <span className="text-[13px] leading-none text-text-1">
         {compact(amount)}
-        <span className="ml-1 text-[9px] text-text-3">DUSDC</span>
+        <span className="ml-1 text-[9px] text-text-3">USDC</span>
       </span>
       <span className="text-[10px] leading-none" style={{ color: subColor }}>
         {sub}

@@ -78,7 +78,7 @@ describe.skipIf(!RUN)('v2 analytics aggregate (live testnet)', () => {
     expect(sentiment.upShare).toBeLessThanOrEqual(1);
 
     console.log(
-      `recent markets ${markets.length} (${active.length} live) · recent volume ${kpis.totalBet.toFixed(2)} DUSDC · ` +
+      `recent markets ${markets.length} (${active.length} live) · recent volume ${kpis.totalBet.toFixed(2)} USDC · ` +
         `biggest ${kpis.biggestBet.toFixed(2)} · sentiment ${(sentiment.upShare * 100).toFixed(1)}% UP ` +
         `(${sentiment.upCount}↑ / ${sentiment.downCount}↓) · ${flow.length} recent bets`,
     );

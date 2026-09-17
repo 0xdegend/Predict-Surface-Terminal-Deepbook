@@ -10,7 +10,7 @@ import { QUESTS } from '@/config/quests';
 const WED = Date.UTC(2026, 8, 16, 12, 0, 0);
 const MON = Date.UTC(2026, 8, 14, 0, 0, 0);
 
-const DUSDC = 1_000_000; // 6 decimals, matches config/scale
+const USDC = 1_000_000; // 6 decimals, matches config/scale
 
 const life = (s: MetricSource[]) => s.find((x) => x.window === 'lifetime')!.metrics;
 const week = (s: MetricSource[]) => s.find((x) => x.window === 'week')!.metrics;
@@ -24,8 +24,8 @@ function mint(over: Partial<V2OrderEvent> = {}): V2OrderEvent {
     checkpoint_timestamp_ms: WED,
     lower_tick: '5000',
     higher_tick: String(POS_INF_TICK),
-    quantity: String(100 * DUSDC),
-    net_premium: String(40 * DUSDC),
+    quantity: String(100 * USDC),
+    net_premium: String(40 * USDC),
     ...over,
   };
 }
@@ -36,8 +36,8 @@ function redeem(over: Partial<V2OrderEvent> = {}): V2OrderEvent {
     position_root_id: '1',
     expiry_market_id: '0xmarket1',
     checkpoint_timestamp_ms: WED + 60_000,
-    quantity_closed: String(100 * DUSDC),
-    payout_amount: String(100 * DUSDC),
+    quantity_closed: String(100 * USDC),
+    payout_amount: String(100 * USDC),
     ...over,
   };
 }
@@ -122,7 +122,7 @@ describe('redeems: only a settled close rode to the oracle', () => {
     const early = redeem({
       kind: 'live_order_redeemed',
       payout_amount: undefined,
-      redeem_amount: String(70 * DUSDC),
+      redeem_amount: String(70 * USDC),
     });
     const m = life(sourcesFromActivity({ orders: [mint(), early], nowMs: WED }));
     expect(m.settledCloses).toBe(0);
@@ -134,15 +134,15 @@ describe('redeems: only a settled close rode to the oracle', () => {
     const early = redeem({
       kind: 'live_order_redeemed',
       payout_amount: undefined,
-      redeem_amount: String(70 * DUSDC),
-      trading_fee: String(2 * DUSDC),
-      builder_fee: String(1 * DUSDC),
+      redeem_amount: String(70 * USDC),
+      trading_fee: String(2 * USDC),
+      builder_fee: String(1 * USDC),
     });
     expect(life(sourcesFromActivity({ orders: [mint(), early], nowMs: WED })).netPnl).toBe(27);
   });
 
   it('a liquidation pays nothing and is never a win', () => {
-    const ko = redeem({ kind: 'liquidated_order_redeemed', payout_amount: String(99 * DUSDC) });
+    const ko = redeem({ kind: 'liquidated_order_redeemed', payout_amount: String(99 * USDC) });
     const m = life(sourcesFromActivity({ orders: [mint(), ko], nowMs: WED }));
     expect(m.wins).toBe(0);
     expect(m.netPnl).toBe(-40);
@@ -150,8 +150,8 @@ describe('redeems: only a settled close rode to the oracle', () => {
 
   it('a partial close only realizes its share of the cost basis', () => {
     const half = redeem({
-      quantity_closed: String(50 * DUSDC),
-      payout_amount: String(50 * DUSDC),
+      quantity_closed: String(50 * USDC),
+      payout_amount: String(50 * USDC),
     });
     // half of a 40 basis is 20, against a 50 payout
     expect(life(sourcesFromActivity({ orders: [mint(), half], nowMs: WED })).netPnl).toBe(30);
