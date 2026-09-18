@@ -16,7 +16,7 @@
  *
  * These are REAL funds, and zkLogin wallets are cheap to mint, so every payout
  * is gated server-side BEFORE we sign anything:
- *   1. one grant per address — durable, cross-instance ledger (lib/server/grant-store),
+ *   1. one grant per address PER COIN — durable, cross-instance ledger (grant-store),
  *   2. an in-flight lock so two concurrent requests can't both pay one address,
  *   3. balance gate — skip wallets that already hold USDC,
  *   4. global daily cap (shared counter),
@@ -39,6 +39,7 @@ import {
   STARTER_GRANT_BALANCE_CEILING,
 } from '@/config/starter-grant';
 import {
+  grantScope,
   getGranted,
   clearGranted,
   isRealPayoutMarker,
@@ -92,6 +93,16 @@ const SUI_GAS_RESERVE = envBigInt('STARTER_GRANT_SUI_RESERVE', 100_000_000n);
 const QUOTE = predictV2Config.quote.coinType;
 const SUI = '0x2::sui::SUI';
 
+/**
+ * The once-per-address ledger is scoped to the coin above, so "already funded" means
+ * "already funded IN THE COIN THIS DEPLOYMENT SETTLES IN" rather than "has ever been paid
+ * anything". Without the scope, 9-12's `usdc::USDC` inherited every `dusdc::DUSDC` marker
+ * and turned the whole existing user base away with `already_funded` while their old
+ * balance was worthless and unswappable. Derived from config, so a future deployment that
+ * mints its own collateral opens a fresh ledger on deploy with no migration.
+ */
+const LEDGER_SCOPE = grantScope(QUOTE);
+
 /** Lazily build the treasury keypair from STARTER_GRANT_PRIVATE_KEY (a
  *  `suiprivkey1...` bech32 string). Returns null when unconfigured. */
 let treasury: Ed25519Keypair | null | undefined;
@@ -134,13 +145,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid address', code: 'bad_request' }, { status: 400 });
   }
 
-  // 1) one grant per address — durable, but SELF-HEALING. A wallet is refused only
-  //    when its marker is a REAL prior payout (the marker stores the payout tx
-  //    digest, written only after the transfer confirmed on-chain). A stale/false
-  //    marker — e.g. the old balance-gate's '1' sentinel that flagged a wallet
-  //    "funded" without ever paying it — is cleared here so a genuinely
-  //    never-funded wallet gets its grant instead of being blocked forever.
-  const priorMarker = await getGranted(address);
+  // 1) one grant per address PER COLLATERAL COIN — durable, but SELF-HEALING. A wallet
+  //    is refused only when its marker is a REAL prior payout OF THIS COIN (the marker
+  //    stores the payout tx digest, written only after the transfer confirmed on-chain).
+  //    A stale/false marker — e.g. the old balance-gate's '1' sentinel that flagged a
+  //    wallet "funded" without ever paying it — is cleared here so a genuinely
+  //    never-funded wallet gets its grant instead of being blocked forever. Markers from
+  //    a previous deployment's coin live under a different scope and are never read here,
+  //    so a trader the faucet funded in a now-dead coin can claim the live one.
+  const priorMarker = await getGranted(LEDGER_SCOPE, address);
   if (isRealPayoutMarker(priorMarker)) {
     return NextResponse.json(
       { error: 'This wallet already claimed its starter grant', code: 'already_funded' },
@@ -148,7 +161,7 @@ export async function POST(req: Request) {
     );
   }
   if (priorMarker) {
-    await clearGranted(address);
+    await clearGranted(LEDGER_SCOPE, address);
   }
 
   // 4) global daily cap.
@@ -221,7 +234,7 @@ export async function POST(req: Request) {
 
     // Persist the marker + bump the counter only after success, so a failed
     // payout leaves no permanent mark and can be retried.
-    await markGranted(address, digest);
+    await markGranted(LEDGER_SCOPE, address, digest);
     await bumpDaily();
     return NextResponse.json({
       digest,

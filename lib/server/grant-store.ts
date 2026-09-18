@@ -14,7 +14,8 @@
  * the hard anti-double-fund backstop either way.
  *
  * Three pieces of state, keyed per address / per UTC day:
- *   grant:done:<addr>  permanent "already funded" marker (set only after payout)
+ *   grant:done:<scope>:<addr>  permanent "already funded" marker (set only after payout),
+ *                      scoped to the COLLATERAL COIN the grant paid in — see grantScope
  *   grant:lock:<addr>  short-lived in-flight lock (NX + TTL) — kills the race
  *                      where two concurrent requests both pass the done-check
  *   grant:daily:<day>  shared daily payout counter (global spend circuit breaker)
@@ -38,14 +39,38 @@ const LOCK_TTL = 120;
 /** Daily counter lifetime (a touch over 24h so the key self-expires). */
 const DAY_TTL = 60 * 60 * 26;
 
-const doneKey = (addr: string) => `grant:done:${addr}`;
+/**
+ * Ledger namespace for the coin a grant pays in.
+ *
+ * The "already funded" marker MUST be scoped to the collateral, not just the address. A
+ * deployment that publishes its own coin makes every prior payout worthless: 9-12 replaced
+ * `dusdc::DUSDC` with `usdc::USDC`, so every wallet the faucet had ever funded held a dead
+ * coin, yet an address-only marker still read as a genuine payout and refused them the USDC
+ * grant they now needed — funded, welcomed, and unable to place a single bet, with no way
+ * out but manual KV surgery. Scoping by coin makes each collateral its own once-per-address
+ * ledger: a DUSDC payout can never block a USDC grant, and the NEXT deployment that mints
+ * its own coin gets a fresh ledger for free, with no code change and nothing to delete.
+ *
+ * The tag is readable on purpose (`usdc-c02855`, `dusdc-e95040`) because the operator
+ * diagnostic for this ledger is an Upstash GET on the key — an opaque hash would hide which
+ * deployment a marker belongs to. Module name + package prefix keeps it one key segment
+ * (no `:`) and distinct across packages that reuse a module name.
+ */
+export function grantScope(coinType: string): string {
+  const [pkg = '', module] = coinType.split('::');
+  const short = pkg.replace(/^0x/, '').slice(0, 6).toLowerCase();
+  const mod = (module ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return mod || short ? `${mod || 'coin'}-${short || 'none'}` : 'unscoped';
+}
+
+const doneKey = (scope: string, addr: string) => `grant:done:${scope}:${addr}`;
 const lockKey = (addr: string) => `grant:lock:${addr}`;
 const utcDay = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 const dayKey = () => `grant:daily:${utcDay()}`;
 
 /* ---------------- in-process fallback (no Redis configured) ---------------- */
 
-const memDone = new Map<string, string>(); // addr -> payout digest (or '1' sentinel)
+const memDone = new Map<string, string>(); // `${scope}:${addr}` -> payout digest (or '1' sentinel)
 const memLock = new Map<string, number>(); // addr -> expiry epoch ms
 let memDay = '';
 let memCount = 0;
@@ -60,28 +85,28 @@ function memRollDay() {
 
 /* ------------------------------- public API ------------------------------- */
 
-/** Has this address already been funded? (permanent marker) */
-export async function hasGranted(address: string): Promise<boolean> {
-  if (redis) return (await redis.exists(doneKey(address))) === 1;
-  return memDone.has(address);
+/** Has this address already been funded IN THIS COIN? (permanent marker) */
+export async function hasGranted(scope: string, address: string): Promise<boolean> {
+  if (redis) return (await redis.exists(doneKey(scope, address))) === 1;
+  return memDone.has(`${scope}:${address}`);
 }
 
 /** The stored "funded" marker value, or null if none. A real payout stores its
  *  tx DIGEST; the old balance-gate stored the sentinel '1'. The route uses this
  *  to tell a genuine prior payout from a stale/false marker (self-healing). */
-export async function getGranted(address: string): Promise<string | null> {
-  if (redis) return (await redis.get<string | number>(doneKey(address)))?.toString() ?? null;
-  return memDone.get(address) ?? null;
+export async function getGranted(scope: string, address: string): Promise<string | null> {
+  if (redis) return (await redis.get<string | number>(doneKey(scope, address)))?.toString() ?? null;
+  return memDone.get(`${scope}:${address}`) ?? null;
 }
 
 /** Remove a "funded" marker — used to heal a stale/false one so a genuinely
  *  never-funded wallet isn't blocked forever. */
-export async function clearGranted(address: string): Promise<void> {
+export async function clearGranted(scope: string, address: string): Promise<void> {
   if (redis) {
-    await redis.del(doneKey(address));
+    await redis.del(doneKey(scope, address));
     return;
   }
-  memDone.delete(address);
+  memDone.delete(`${scope}:${address}`);
 }
 
 /** True only when a marker is a GENUINE payout record: the executed transfer's
@@ -118,25 +143,39 @@ export async function releaseLock(address: string): Promise<void> {
 
 /** Persist the permanent "funded" marker. Call only after a successful payout
  *  (or when we decide a wallet never needs funding). */
-export async function markGranted(address: string, digest = '1'): Promise<void> {
+export async function markGranted(scope: string, address: string, digest = '1'): Promise<void> {
   if (redis) {
-    await redis.set(doneKey(address), digest, { ex: DONE_TTL });
+    await redis.set(doneKey(scope, address), digest, { ex: DONE_TTL });
     return;
   }
-  memDone.set(address, digest);
+  memDone.set(`${scope}:${address}`, digest);
 }
 
 /**
  * Every wallet that has claimed the starter grant, lowercased. Enumerated from the
  * permanent `grant:done:*` markers via a cursor SCAN (bounded per iteration so it
- * never blocks the store), deduped. The markers are keyed by address only, so this
- * list already spans every deployment (6-24 / 7-29 / 8-06). Cached briefly in-process
- * because the leaderboard route asks for it on every request; falls back to the
- * in-process ledger when no Redis is configured (local dev). Never throws — a store
- * hiccup yields the last good list (or empty), so the board still renders.
+ * never blocks the store), deduped.
+ *
+ * This list is CUMULATIVE ACROSS DEPLOYMENTS by design (the leaderboard badges anyone who
+ * onboarded through the app, whenever they did). Markers used to be keyed by address alone;
+ * they are now scoped by collateral coin (see grantScope), so both shapes coexist in the
+ * store — `grant:done:<addr>` written before the 9-12 coin swap, `grant:done:<scope>:<addr>`
+ * after. `addressFromDoneKey` reads the address out of either, so no historical claimer
+ * drops off the board and the old markers can be left to age out on their own TTL rather
+ * than being deleted. Cached briefly in-process because the leaderboard route asks for it on
+ * every request; falls back to the in-process ledger when no Redis is configured (local dev).
+ * Never throws — a store hiccup yields the last good list (or empty), so the board renders.
  */
 const CLAIMERS_TTL_MS = 5 * 60_000;
 let claimersCache: { at: number; list: string[] } | null = null;
+
+/** The address out of a done-marker key body, for BOTH shapes: a legacy un-scoped
+ *  `<addr>` (no colon — the whole thing is the address) and a scoped `<scope>:<addr>`
+ *  (the address is the final segment). Scope tags never contain a colon, so the last
+ *  colon is an unambiguous split point. */
+function addressFromDoneKey(body: string): string {
+  return body.slice(body.lastIndexOf(':') + 1).toLowerCase();
+}
 
 export async function listFaucetClaimers(): Promise<string[]> {
   if (claimersCache && Date.now() - claimersCache.at < CLAIMERS_TTL_MS) return claimersCache.list;
@@ -149,12 +188,12 @@ export async function listFaucetClaimers(): Promise<string[]> {
       let guard = 0;
       do {
         const [next, keys] = await redis.scan(cursor, { match: `${prefix}*`, count: 500 });
-        for (const k of keys) seen.add(k.slice(prefix.length).toLowerCase());
+        for (const k of keys) seen.add(addressFromDoneKey(k.slice(prefix.length)));
         cursor = next;
       } while (cursor !== '0' && ++guard < 1000);
       list = [...seen];
     } else {
-      list = [...memDone.keys()].map((a) => a.toLowerCase());
+      list = [...new Set([...memDone.keys()].map(addressFromDoneKey))];
     }
     claimersCache = { at: Date.now(), list };
     return list;
