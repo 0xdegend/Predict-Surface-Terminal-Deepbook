@@ -28,24 +28,24 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 
 const DESKTOP_MQ = '(min-width: 1024px)';
 
-type TicketProps = { market: V2Market | null; pricer?: LivePricer; serverNow: number };
+type TicketProps = { market: V2Market | null; pricer?: LivePricer; pricerUnavailable?: boolean; serverNow: number };
 
 /** Desktop right-rail ticket. Renders nothing on mobile (the sheet takes over). */
-export function V2TicketRail({ market, pricer, serverNow }: TicketProps) {
+export function V2TicketRail({ market, pricer, pricerUnavailable, serverNow }: TicketProps) {
   const isDesktop = useMediaQuery(DESKTOP_MQ);
   if (!isDesktop) return null;
   return (
     // Positioned so the stale-feed overlay can blur + block the ticket (and its
     // "Loading live price…" state) when the upstream spot feed freezes.
     <div className="relative">
-      <V2TradeTicket market={market} pricer={pricer} serverNow={serverNow} />
+      <V2TradeTicket market={market} pricer={pricer} pricerUnavailable={pricerUnavailable} serverNow={serverNow} />
       <StaleFeedOverlay />
     </div>
   );
 }
 
 /** Mobile slide-up trade ticket. Renders nothing on desktop. */
-export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
+export function V2TradeSheet({ market, pricer, pricerUnavailable, serverNow }: TicketProps) {
   const isDesktop = useMediaQuery(DESKTOP_MQ);
   const open = useV2TradeStore((s) => s.ticketSheetOpen);
   const close = useV2TradeStore((s) => s.closeTicketSheet);
@@ -115,6 +115,7 @@ export function V2TradeSheet({ market, pricer, serverNow }: TicketProps) {
           <V2TradeTicket
             market={market}
             pricer={pricer}
+            pricerUnavailable={pricerUnavailable}
             serverNow={serverNow}
             mobile
             chart={

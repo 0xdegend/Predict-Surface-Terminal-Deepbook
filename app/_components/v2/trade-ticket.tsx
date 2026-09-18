@@ -108,12 +108,15 @@ const fmtMult = (m: number) =>
 export function V2TradeTicket({
   market,
   pricer,
+  pricerUnavailable,
   serverNow,
   mobile = false,
   chart,
 }: {
   market: V2Market | null;
   pricer?: LivePricer;
+  /** The protocol refused to price, as opposed to the read still being in flight. */
+  pricerUnavailable?: boolean;
   serverNow: number;
   /** Mobile sheet: stay on step 1 (chart + strike) instead of jumping to the bet
    *  step on an external pick, and render `chart` at the top of binary step 1. */
@@ -268,6 +271,26 @@ export function V2TradeTicket({
     return <div className="card px-4 py-6 text-[13px] text-text-3">Pick a market to trade.</div>;
   }
   if (!pricer) {
+    // A refusal is not a delay, and showing one as the other is the worse mistake: a
+    // spinner says "nearly there" and a trader keeps waiting on a market that cannot be
+    // priced at all. Seen 2026-09-18, when every live market aborted the protocol's own
+    // `pricing::assert_inputs_pricing_safe` while the spot feed stayed perfectly healthy,
+    // so the stale-feed overlay never fired and this sat on "Loading live price…".
+    // Said HERE and nowhere else. This is where a trader is looking when they try to place a
+    // bet, and it is the thing the outage actually stops, so it carries the whole
+    // explanation rather than a terse line pointing at a banner somewhere else.
+    if (pricerUnavailable) {
+      return (
+        <div className="card flex flex-col gap-1.5 px-4 py-6">
+          <p className="text-[13px] font-medium text-text-1">Pricing is unavailable right now.</p>
+          <p className="text-[11.5px] leading-relaxed text-text-3">
+            The market is live and the price feed is fine, but the protocol is not quoting odds, so
+            no trade can be placed. Nothing is wrong with your wallet or your balance. Trading
+            resumes on its own as soon as quoting does.
+          </p>
+        </div>
+      );
+    }
     return <div className="card px-4 py-6 text-[13px] text-text-3">Loading live price…</div>;
   }
 

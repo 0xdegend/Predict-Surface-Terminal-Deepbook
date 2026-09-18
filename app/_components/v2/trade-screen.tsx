@@ -20,6 +20,7 @@ import { useV2Markets } from '@/lib/hooks/use-v2-markets';
 import { useBtcInsights } from '@/lib/hooks/use-btc-insights';
 import { useV2Pricer } from '@/lib/hooks/use-v2-pricer';
 import { useV2Pricers } from '@/lib/hooks/use-v2-pricers';
+import { useV2PricingOutage } from '@/lib/hooks/use-v2-pricing-outage';
 import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { useNow } from '@/lib/hooks/use-now';
 import { usePrefetchPythHistory, usePythTapeFeed } from '@/lib/hooks/use-v2-pyth-history';
@@ -84,6 +85,10 @@ export function V2TradeScreen({
   // scrub's resolution — at 20s a 4-minute rewind would be a dozen coarse steps.
   // It doubles as a livelier surface. Bounded: only the handful of active markets.
   const pricers = useV2Pricers(marketIds, pricerSeeds, 5_000);
+  // Markets exist but the protocol will not quote any of them. Said ONCE, in the ticket:
+  // that is where a trader is looking when they try to place a bet, and it is the thing the
+  // outage actually stops. A second copy at the top of the page only repeats itself at them.
+  const pricingDown = useV2PricingOutage(marketIds);
 
   // Surface inputs from the live pricers (≥2 expiries needed to form a surface).
   // buildSurface only reads oracle_id/expiry/underlying_asset, so a minimal cast is safe.
@@ -155,7 +160,7 @@ export function V2TradeScreen({
             {/* The ticket owns its heading now (guide first, then the title) — see
                 V2TradeTicket. */}
             <div data-tour="ticket" className="hidden flex-col gap-4 lg:flex">
-              <V2TicketRail market={selected} pricer={pricer} serverNow={serverNow} />
+              <V2TicketRail market={selected} pricer={pricer} pricerUnavailable={pricingDown} serverNow={serverNow} />
             </div>
             {/* Odds ⇆ Analysis, COLLAPSED by default (V2OddsCollapse). The ticket's
                 chance slider already gives the odds; this is opt-in depth. Odds is the
@@ -176,7 +181,7 @@ export function V2TradeScreen({
     {/* Mobile trade ticket — slides up over the page when a market is picked.
         Renders nothing on desktop (the rail ticket takes over), and nothing while
         paused (there's no market to pick). */}
-    {!paused && <V2TradeSheet market={selected} pricer={pricer} serverNow={serverNow} />}
+    {!paused && <V2TradeSheet market={selected} pricer={pricer} pricerUnavailable={pricingDown} serverNow={serverNow} />}
     </>
   );
 }
@@ -487,4 +492,6 @@ function PickerPaused() {
     </div>
   );
 }
+
+
 
