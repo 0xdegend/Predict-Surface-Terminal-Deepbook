@@ -226,6 +226,17 @@ export async function writerHealth(): Promise<WriterHealth> {
     // networks without a second table of ids to drift out of date.
     // A missing row means a wallet holding none of that coin, which is a real answer rather
     // than a failure to look, so it counts as zero.
+    //
+    // `totalBalance` here is coin objects PLUS the address balance (Sui's accumulator), and
+    // that total is the number we want. Do not "correct" this to the coin-object balance:
+    // on 2026-09-21 the writer held 1.0639 SUI in its address balance and 0.0015 in coins,
+    // and transactions signed by it paid a 20,000,000 MIST gas budget perfectly happily, so
+    // the total was what it could actually spend. The SDK draws on both for ordinary coin
+    // arguments too. Two local tools disagree and neither is authoritative here: `sui client
+    // balance` and `sui client gas` list only coin OBJECTS (they showed 0.00 SUI against a
+    // healthy wallet), and the `walrus` CLI's own coin selection cannot see address balances
+    // at all, which is why `walrus get-wal` fails with "could not find SUI coins with
+    // sufficient balance" on a wallet that is fine.
     const balanceOf = (suffix: string): bigint => {
       const row = nodes.find((n) => n.coinType?.repr?.endsWith(suffix));
       try {
