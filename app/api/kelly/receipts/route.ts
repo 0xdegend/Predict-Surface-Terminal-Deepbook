@@ -104,8 +104,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     const claim = claimFromIntent(intent, priced, ACTIVE_V2_DEPLOYMENT);
     const { id, blobId } = await mintCallReceipt({ claim, source: intent.source });
     return NextResponse.json({ ok: true, id, blobId });
-  } catch {
-    // Fail soft — a Walrus hiccup should never surface to the trader (the call was made anyway).
+  } catch (e) {
+    // Fail soft for the TRADER: a Walrus hiccup must never surface in the UI, because the
+    // call was made either way and the receipt is evidence, not the trade.
+    //
+    // Loud for the OPERATOR, though. On 2026-09-21 this returned a bare 502 and the only
+    // thing in the terminal was "POST /api/kelly/receipts 502", which says a write failed
+    // but not that the writer was out of WAL — the actual message ("Insufficient balance of
+    // …::wal::WAL … Required: 1344546, Available: 879287") named the whole problem and was
+    // thrown away here. Diagnosing it meant reproducing it. It should cost one glance.
+    console.error(`[kelly:receipts] store failed, ${(e as Error)?.message ?? e}`);
     return NextResponse.json({ ok: false, error: 'store_failed' }, { status: 502 });
   }
 }

@@ -146,6 +146,17 @@ export function storeJson(value: unknown, opts?: StoreBlobOptions): Promise<Stor
  */
 const WRITE_GAS_MIST = 7_000_000n;
 
+/**
+ * What one blob write costs in STORAGE, in FROST (WAL has 9 decimals), as a floor.
+ *
+ * Measured the same way, from the abort the writer produced on 2026-09-21: "Insufficient
+ * balance of …::wal::WAL … Required: 1344546, Available: 879287". Rounded up.
+ *
+ * This tracks `walrusConfig.defaultEpochs`: storage is bought by the epoch, so keeping a
+ * blob for longer costs proportionally more. Raise the epochs and raise this with them.
+ */
+const WRITE_WAL_FROST = 1_500_000n;
+
 /** Warn once the writer is down to roughly this many more writes. */
 const LOW_WATER_WRITES = 20n;
 
@@ -156,10 +167,15 @@ export interface WriterHealth {
   low: boolean;
   /** SUI balance in MIST, or null when it could not be read. */
   suiMist: bigint | null;
-  /** Roughly how many more receipts this wallet can pay for. */
+  /** WAL balance in FROST, or null when it could not be read. */
+  walFrost: bigint | null;
+  /**
+   * Roughly how many more receipts this wallet can pay for: the SMALLER of what its gas
+   * and its storage can cover, because a write needs both and runs out at the first one.
+   */
   writesLeft: number | null;
   address: string | null;
-  reason: 'ok' | 'low_gas' | 'no_gas' | 'unconfigured' | 'unreadable';
+  reason: 'ok' | 'low_gas' | 'no_gas' | 'low_wal' | 'no_wal' | 'unconfigured' | 'unreadable';
 }
 
 /**
@@ -170,21 +186,27 @@ export interface WriterHealth {
  * when the writer wallet ran out of SUI on 2026-09-04 the POST simply 500'd into a
  * swallowed catch. Autopilot went on trading, every trade went unrecorded, and the track
  * record just quietly stopped growing for three days with nothing anywhere saying why.
- * WAL was never the problem and still is not: it is plain gas.
+ *
+ * A write costs TWO things, and this checks both. It used to check only gas, on the stated
+ * belief that "WAL was never the problem". On 2026-09-21 it was: the wallet held 1.06 SUI
+ * and 0.00088 WAL against the 0.00134 a write needs, so every POST failed while this
+ * function cheerfully reported 152 writes left and the live test that asserts on it passed.
+ * A health check that reads one of two required resources is not a weaker check, it is a
+ * confident wrong answer, which is worse than the silence it was written to replace.
  *
  * Read-only and cheap. Callers surface it; nothing here throws.
  */
 export async function writerHealth(): Promise<WriterHealth> {
   const address = process.env.WALRUS_WRITER_ADDRESS ?? null;
   if (!process.env.WALRUS_WRITER_KEY) {
-    return { ok: false, low: false, suiMist: null, writesLeft: null, address, reason: 'unconfigured' };
+    return { ok: false, low: false, suiMist: null, walFrost: null, writesLeft: null, address, reason: 'unconfigured' };
   }
   let owner = address;
   if (!owner) {
     try {
       owner = getWriterKeypair().toSuiAddress();
     } catch {
-      return { ok: false, low: false, suiMist: null, writesLeft: null, address: null, reason: 'unconfigured' };
+      return { ok: false, low: false, suiMist: null, walFrost: null, writesLeft: null, address: null, reason: 'unconfigured' };
     }
   }
   try {
@@ -200,25 +222,52 @@ export async function writerHealth(): Promise<WriterHealth> {
       data?: { address?: { balances?: { nodes?: { coinType?: { repr?: string }; totalBalance?: string }[] } } };
     };
     const nodes = json.data?.address?.balances?.nodes ?? [];
-    const sui = nodes.find((n) => n.coinType?.repr?.endsWith('::sui::SUI'));
-    if (!sui?.totalBalance) {
-      // No SUI row at all means a wallet with no SUI, which is a real answer, not a failure.
-      return { ok: false, low: true, suiMist: 0n, writesLeft: 0, address: owner, reason: 'no_gas' };
+    // Matched on the type SUFFIX, not a full address, so this reads the right WAL on both
+    // networks without a second table of ids to drift out of date.
+    // A missing row means a wallet holding none of that coin, which is a real answer rather
+    // than a failure to look, so it counts as zero.
+    const balanceOf = (suffix: string): bigint => {
+      const row = nodes.find((n) => n.coinType?.repr?.endsWith(suffix));
+      try {
+        return row?.totalBalance ? BigInt(row.totalBalance) : 0n;
+      } catch {
+        return 0n;
+      }
+    };
+    const mist = balanceOf('::sui::SUI');
+    const frost = balanceOf('::wal::WAL');
+
+    // A write spends gas AND storage, so it runs out at whichever comes first. Reporting
+    // the gas figure alone is how a wallet with a full tank and no WAL passed as healthy.
+    const gasWrites = mist / WRITE_GAS_MIST;
+    const walWrites = frost / WRITE_WAL_FROST;
+    const left = gasWrites < walWrites ? gasWrites : walWrites;
+    /** Which of the two is the binding constraint, and therefore the one to top up. */
+    const short: 'gas' | 'wal' = gasWrites <= walWrites ? 'gas' : 'wal';
+
+    if (left < 1n) {
+      return {
+        ok: false,
+        low: true,
+        suiMist: mist,
+        walFrost: frost,
+        writesLeft: 0,
+        address: owner,
+        reason: short === 'gas' ? 'no_gas' : 'no_wal',
+      };
     }
-    const mist = BigInt(sui.totalBalance);
-    const left = mist / WRITE_GAS_MIST;
-    if (left < 1n) return { ok: false, low: true, suiMist: mist, writesLeft: 0, address: owner, reason: 'no_gas' };
     return {
       ok: true,
       low: left < LOW_WATER_WRITES,
       suiMist: mist,
+      walFrost: frost,
       writesLeft: Number(left),
       address: owner,
-      reason: left < LOW_WATER_WRITES ? 'low_gas' : 'ok',
+      reason: left < LOW_WATER_WRITES ? (short === 'gas' ? 'low_gas' : 'low_wal') : 'ok',
     };
   } catch {
     // Could not check. Deliberately NOT reported as broken: claiming recording is down when
     // we merely failed to look is the same class of mistake as the silence this replaces.
-    return { ok: true, low: false, suiMist: null, writesLeft: null, address: owner, reason: 'unreadable' };
+    return { ok: true, low: false, suiMist: null, walFrost: null, writesLeft: null, address: owner, reason: 'unreadable' };
   }
 }

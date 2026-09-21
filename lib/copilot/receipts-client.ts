@@ -102,7 +102,12 @@ export async function recordCall(intent: CallIntent): Promise<void> {
 export interface RecordingStatus {
   ok: boolean;
   low: boolean;
-  reason: 'ok' | 'low_gas' | 'no_gas' | 'unconfigured' | 'unreadable';
+  /**
+   * A write costs both gas and storage, so it can stop for either. The `_wal` pair means
+   * the writer is out of storage (WAL) while still holding gas, which is what happened on
+   * 2026-09-21 and read as perfectly healthy until the check learned to look at both.
+   */
+  reason: 'ok' | 'low_gas' | 'no_gas' | 'low_wal' | 'no_wal' | 'unconfigured' | 'unreadable';
   writesLeft: number | null;
   address: string | null;
 }

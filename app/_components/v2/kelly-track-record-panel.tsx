@@ -416,6 +416,10 @@ function EmptyState({ tab }: { tab: Tab }) {
  * missing from this page with nothing here saying why. A silent failure on a page whose
  * whole job is "here is the evidence" is worse than a loud one.
  *
+ * The copy stays off the subject of WHICH resource ran out. A write needs two of them and
+ * the reader needs neither: what they came here to know is whether the list in front of
+ * them is complete. Which one to top up belongs to the operator, and travels in `reason`.
+ *
  * Renders nothing in the healthy case, and nothing when the check itself could not run:
  * announcing a problem we only failed to look for is the same mistake in the other
  * direction.
@@ -428,7 +432,7 @@ function RecordingNotice({ status }: { status?: RecordingStatus }) {
       ? 'Recording is switched off, so new calls are not being added to this record.'
       : down
         ? 'New calls are not being recorded right now. Trades are still placed and settled as normal, but they will not appear here until recording is restored.'
-        : `Recording is nearly out of gas: room for about ${status.writesLeft} more calls.`;
+        : `Recording is running low: room for about ${status.writesLeft} more calls.`;
   return (
     <div
       className={`mb-4 flex items-start gap-3 rounded-xl border px-4 py-3 ${

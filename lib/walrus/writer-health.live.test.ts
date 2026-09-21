@@ -9,6 +9,12 @@
  * growing for three days. Nothing in the app or the test suite could tell that apart from a
  * quiet week. This is the check that can.
  *
+ * It could not, at first. On 2026-09-21 the wallet ran out of WAL instead, with gas to
+ * spare, and this test passed green while every single write was failing: it asserted on a
+ * health check that only ever looked at gas. Both balances are printed below now, for the
+ * same reason the assertion covers both. A green run here is a claim that the next trade
+ * gets recorded, and that claim has to be worth something.
+ *
  * Reads only. Run it when the record looks thin, and before leaning on receipts for a demo.
  */
 import { describe, it, expect } from 'vitest';
@@ -29,18 +35,23 @@ for (const k of ['WALRUS_WRITER_KEY', 'WALRUS_WRITER_ADDRESS']) {
 }
 
 describe.skipIf(process.env.RUN_LIVE !== '1')('Kelly receipt writer', () => {
-  it('has gas to record calls with', async () => {
+  it('can pay for a receipt, in gas AND in storage', async () => {
     const { writerHealth } = await import('./client');
     const h = await writerHealth();
-    const sui = h.suiMist == null ? 'unknown' : (Number(h.suiMist) / 1e9).toFixed(6);
-    console.log(`\n  writer ${h.address}\n  SUI ${sui}  ~${h.writesLeft ?? '?'} receipts left  (${h.reason})`);
+    const amt = (v: bigint | null) => (v == null ? 'unknown' : (Number(v) / 1e9).toFixed(6));
+    console.log(
+      `\n  writer ${h.address}\n  SUI ${amt(h.suiMist)}  WAL ${amt(h.walFrost)}` +
+        `\n  ~${h.writesLeft ?? '?'} receipts left  (${h.reason})`,
+    );
     if (h.reason === 'unreadable') {
-      console.log('  could not reach the balance API — not treated as a failure');
+      console.log('  could not reach the balance API, not treated as a failure');
       return;
     }
     // The assertion is on OK, not on a balance: what matters is whether the next real
     // Autopilot trade will be recorded, which is exactly what silently stopped being true.
-    expect(h.ok, `writer cannot pay for a receipt (${h.reason}) — fund ${h.address} with SUI`).toBe(true);
-    if (h.low) console.log('  WARNING: nearly dry, top it up before the next session');
+    // The reason names the coin to send, because the two failures look identical from here.
+    const coin = h.reason === 'no_wal' || h.reason === 'low_wal' ? 'WAL' : 'SUI';
+    expect(h.ok, `writer cannot pay for a receipt (${h.reason}): fund ${h.address} with ${coin}`).toBe(true);
+    if (h.low) console.log(`  WARNING: nearly dry on ${coin}, top it up before the next session`);
   }, 120_000);
 });
