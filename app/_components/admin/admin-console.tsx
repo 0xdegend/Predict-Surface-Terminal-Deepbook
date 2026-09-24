@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { LuCoins, LuWallet, LuUsers, LuTrophy, LuShieldCheck, LuPercent } from 'react-icons/lu';
-import { isAdminAddress } from '@/config/predict';
+import { isAdminAddress, feeRouterV2Enabled } from '@/config/predict';
 import { useMounted } from '@/lib/hooks/use-mounted';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useBuilderFeeSummary } from '@/lib/hooks/use-builder-code';
@@ -23,6 +23,17 @@ import { UserStatsPanel } from './user-stats-panel';
 
 type Tab = 'fees' | 'skew' | 'users';
 
+/**
+ * The Skew fee blurb has to follow reality, because the tab looks identical either way: the
+ * rate stepper and the earnings table render in both modes, and in projection mode every
+ * number is hypothetical. Stating "charged on-chain" on a network where `skew_fee_v2` is not
+ * published would have the console quietly claim revenue that nothing is collecting. Mainnet
+ * launched in exactly that state, by decision — the package ships after the first trades.
+ */
+const SKEW_FEE_BLURB = feeRouterV2Enabled
+  ? 'The Skew fee: a percentage of each bet, charged on-chain on top of the builder fee. Set the live rate here and see what it earns against your real volume. Instant-trading (session) bets aren’t charged it yet.'
+  : 'Not live on this network. The skew_fee_v2 package is not published here, so no trader is charged anything and every figure below is a projection of what a rate would earn. Publish the package and set its ids to turn this on.';
+
 const TABS: { key: Tab; label: string; icon: typeof LuCoins; blurb: string }[] = [
   {
     key: 'fees',
@@ -35,8 +46,7 @@ const TABS: { key: Tab; label: string; icon: typeof LuCoins; blurb: string }[] =
     key: 'skew',
     label: 'Skew fee',
     icon: LuPercent,
-    blurb:
-      'The Skew fee: a percentage of each bet, charged on-chain on top of the builder fee. Set the live rate here and see what it earns against your real volume. Instant-trading (session) bets aren’t charged it yet.',
+    blurb: SKEW_FEE_BLURB,
   },
   {
     key: 'users',

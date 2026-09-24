@@ -57,6 +57,17 @@ is a config swap and an operations project, not a protocol migration. No shape f
       Verified both ways: on testnet it carries 3 seeds / 979 traders / 784,863.55 points;
       on mainnet it carries nothing. `network` is now a field on `DeploymentSnapshot`
       (absent means testnet, since every seed we hold predates mainnet).
+- [x] **The starter-grant ledger is network-scoped.** Found the hard way on mainnet's first
+      day: 34 testnet grant wallets appeared on the freshly-empty Skew board, one
+      participation point each, badged "Starter", on a chain where nobody had traded. The
+      markers were correctly scoped by collateral coin, and a coin type is chain-specific,
+      but `listFaucetClaimers` threw the scope away and enumerated the whole store. Same
+      class of bug as the carryover seeds, in the one overlay that guard did not cover.
+      `grantScope` now prefixes non-testnet networks (testnet keeps its exact historical
+      spelling, so no existing wallet is silently re-offered a grant) and
+      `listFaucetClaimers(network)` filters on it, with absent meaning testnet. Verified
+      against the real store: testnet still reads 34, mainnet reads 0, and
+      `/api/v2/leaderboard?fresh=1` returns an empty Skew board.
 - [x] **The /v2/admin wallet is switched.** `adminAddresses` now defaults to
       `0x06a6f0f02ee7883cc37dfc0fd72834559cf008dde1cd7f2ee86e4a65688cfa48` instead of the
       old deployer key `0x33a8c3…f3f4`, replacing it rather than joining it (founder,
@@ -146,12 +157,22 @@ None of this is code. All of it has to exist before a single real trade.
       is the failure that hit 8-06. `builderCodeEnabled` is now true on mainnet.
       Deliberately has no testnet fallback: a stale id attaches a code this registry never
       issued and mints silently earn nothing. See [[builder-code-every-deployment]].
-- [ ] **Publish `skew_fee_v2` on mainnet** and create its FeeConfig + AdminCap. The package
-      is framework-only, but it still has to exist on this chain and the FeeConfig is a
-      per-object thing. Set `NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID_MAINNET` and
-      `NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID_MAINNET`. **Publish from `0x06a6f0…fa48`**: `init`
-      transfers the `AdminCap` to `ctx.sender()`, so signing from the new wallet makes it the
-      fee admin by construction, with nothing to transfer afterwards.
+- [ ] ~~**Publish `skew_fee_v2` on mainnet.**~~ **DEFERRED** by founder decision 2026-09-24:
+      the Skew fee ships after the contract is deployed on mainnet, not before launch. It is
+      already off and cannot accidentally charge, because `feeRouterV2Enabled` requires BOTH
+      `NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID_MAINNET` and `..._CONFIG_ID_MAINNET`, and a fee
+      cannot be taken through a package that does not exist. So mainnet earns the protocol's
+      native builder fee only, which IS live. The note below is what has to be true to turn
+      it on later: the package is framework-only, but it still has to exist on this chain and
+      the FeeConfig is a per-object thing. **Publish from `0x06a6f0…fa48`**: `init` transfers
+      the `AdminCap` to `ctx.sender()`, so signing from the new wallet makes it the fee admin
+      by construction, with nothing to transfer afterwards.
+
+      Verified 2026-09-24 that "off" is clean everywhere, not just unconfigured: the trade
+      ticket hides both fee rows (`chargesSkewFee` false), the options net-payout maths reads
+      the rate as 0, `addSkewFeeCharge` returns `0n` before touching the transaction, and the
+      admin tab's own blurb now says it is not live on this network instead of asserting the
+      fee is charged on-chain.
 
 > **What the admin switch does NOT move, on testnet.** Neither the BuilderCode nor the fee
 > `AdminCap` follows `adminAddresses`. The testnet BuilderCode `0x10aea977…` is owned by
@@ -212,7 +233,12 @@ Walrus does get turned on.
 
 - [ ] The **leaderboard and history KV are scoped per predict package**, so mainnet starts
       empty. That is correct and expected.
-- [ ] **Do not register testnet carryover seeds on mainnet.** Every seed in
+- [x] ~~**Do not register testnet carryover seeds on mainnet.**~~ DONE, and note there were
+      TWO overlays, not one: the carryover seeds AND the starter-grant faucet participants.
+      Only the first was gated on 2026-09-24; the second shipped to mainnet and had to be
+      fixed live. If a third address-keyed overlay is ever added to the Skew board, gate it
+      at the same time.
+- [ ] ~~**Do not register testnet carryover seeds on mainnet.**~~ Every seed in
       `lib/leaderboard/legacy-carryover.ts` is testnet play money. `carriedSnapshots`
       excludes a seed whose deployment is active, but nothing stops a testnet seed appearing
       on a mainnet board. Gate seeds on network. See [[leaderboard-carryover]].
@@ -231,6 +257,24 @@ Walrus does get turned on.
 4. Place **one** real trade with a small amount, end to end: deposit, mint, watch it settle,
    redeem. Confirm the builder code actually attached and the fee landed.
 5. Only then open it up.
+
+## Known cross-network KV, not yet scoped
+
+Not urgent, because both features are OFF on mainnet for this launch, but they are the same
+bug waiting to happen:
+
+- `grant:daily:<utc-day>` and `sgas:daily:<utc-day>` are GLOBAL spend circuit breakers with
+  no network segment. Once the starter grant or the session gas drip is enabled on mainnet,
+  testnet payouts will eat the mainnet daily cap. Deliberately left alone rather than fixed
+  in passing: changing the key resets a live spend counter, and that is a money-touching
+  change nobody asked for.
+- `reward:<campaign>:done:<addr>` (Founding Traders) has no network segment either, but the
+  campaign name is an env knob (`NEXT_PUBLIC_REWARD_CAMPAIGN`), so a mainnet campaign under a
+  new name is already separate. The feature is off by default.
+
+Checked and already correct: `skew-iv:<predict package>` (IV history) and
+`lb:idx:<predict package>` (the leaderboard tally) are both keyed by the predict package, so
+they are network-correct for free.
 
 ## What we are knowingly shipping without
 
