@@ -51,7 +51,6 @@ import { CommandCenter, PageHeader, PerformanceOverview, RecentRuns, StatTiles }
 import { SessionGasModal } from '@/app/_components/session-gas-modal';
 import { ResultsView } from './results';
 import { SessionShareModal } from './session-share-modal';
-import { StageScreen } from './stage/stage-view';
 
 interface Props {
   markets: V2Market[];
@@ -98,8 +97,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
   const setRules = useAutopilotStore((s) => s.setRules);
   const setLimits = useAutopilotStore((s) => s.setLimits);
   const setDryRun = useAutopilotStore((s) => s.setDryRun);
-  const stageMode = useAutopilotStore((s) => s.stageMode);
-  const setStageMode = useAutopilotStore((s) => s.setStageMode);
   const arm = useAutopilotStore((s) => s.arm);
   const disarm = useAutopilotStore((s) => s.disarm);
   const history = useAutopilotStore((s) => s.history);
@@ -573,34 +570,24 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
             ranForMs={ranForMs}
             armDurationMs={limits.armDurationMs}
           />
-          <WatchAsToggle stageMode={stageMode} onChange={setStageMode} />
-          {stageMode ? (
-            <>
-              <StageScreen engine={engine} now={now} />
+          {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <PerformancePanel perf={engine.perf} positions={engine.positions} />
               <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
-            </>
+            </div>
           ) : (
-            <>
-              {engine.positions.length > 0 || engine.perf.wins + engine.perf.losses > 0 ? (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <PerformancePanel perf={engine.perf} positions={engine.positions} />
-                  <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
-                </div>
-              ) : (
-                <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
-              )}
-              <PlanCard
-                rules={rules}
-                limits={limits}
-                live={null}
-                presetId={activePreset}
-                avatar={false}
-                variant="compact"
-                surface="card"
-              />
-              <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
-            </>
+            <RunLogPanel log={log} tape={tape} now={now} armed={armed} paused={paused} ready={engine.ready} />
           )}
+          <PlanCard
+            rules={rules}
+            limits={limits}
+            live={null}
+            presetId={activePreset}
+            avatar={false}
+            variant="compact"
+            surface="card"
+          />
+          <StatBand spot={engine.spot} watching={engine.candidates.length} history={history} />
         </div>
       )}
 
@@ -634,40 +621,6 @@ export function AutopilotPanel({ markets, pricerSeeds }: Props) {
       {/* Session-gas top-up for a paused run. Same dialog as the wallet menu's, so the
           free (Google) and fund-from-wallet (Slush) paths both work from here. */}
       <SessionGasModal open={gasOpen} onClose={() => setGasOpen(false)} />
-    </div>
-  );
-}
-
-/**
- * Which way to watch a live run.
- *
- * Sits UNDER the run rather than in the page header on purpose: it is a preference about
- * the view, not an action on the run, and the header is where Stop lives. Deliberately
- * plain and always present while a run is up, so nobody who dislikes the scene has to go
- * looking for the instruments they had before.
- */
-function WatchAsToggle({ stageMode, onChange }: { stageMode: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-end gap-2">
-      <span className="eyebrow">Watch as</span>
-      <div className="flex items-center gap-0.5 rounded-md border border-(--hairline) p-0.5">
-        {[
-          { on: true, label: 'Stage' },
-          { on: false, label: 'Dashboard' },
-        ].map((o) => (
-          <button
-            key={o.label}
-            type="button"
-            onClick={() => onChange(o.on)}
-            aria-pressed={stageMode === o.on}
-            className={`rounded px-2.5 py-1 text-[11px] transition-colors ${
-              stageMode === o.on ? 'bg-(--accent-soft) text-text-1' : 'text-text-3 hover:text-text-2'
-            }`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

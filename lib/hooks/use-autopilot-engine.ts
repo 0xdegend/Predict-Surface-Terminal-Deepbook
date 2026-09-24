@@ -38,7 +38,6 @@ import { useV2Spot } from './use-v2-spot';
 import { useBtcInsights, type BtcInsights } from './use-btc-insights';
 import { usePredictAccountV2 } from './use-predict-account-v2';
 import { respondToIntent, type BetCandidate, type BetSuggestion } from '@/lib/copilot/respond';
-import type { ScanRow } from '@/lib/autopilot/scan';
 import { pickRange, shapeOrder, type RangePick } from '@/lib/copilot/range-pick';
 import { recommendation } from '@/lib/insights/market-read';
 import { closeDecision, isClose, leanTurnedAgainst, closeReasonLabel, type OpenRead } from '@/lib/autopilot/close-policy';
@@ -137,32 +136,6 @@ type ShapePick =
 /** The pick's value edge (empirical rate minus what it costs), whichever shape it is.
  *  This is what the run ranks on, so it has to read the same field off both. */
 const edgeOf = (sh: ShapePick): number => (sh.kind === 'range' ? sh.range.edge : (sh.bet.edge ?? 0));
-
-/** The side a shape would buy, for the Stage's scan snapshot. Display only. */
-const sideOf = (sh: ShapePick): TradeSide => (sh.kind === 'range' ? 'range' : sh.bet.isUp ? 'up' : 'down');
-
-/** One evaluated market, in the shape the Stage draws. Display only: building this
- *  changes nothing about what the tick decides, it only records what it decided. */
-const scanRow = (cand: BetCandidate, sh: ShapePick, clears: boolean): ScanRow => ({
-  marketId: cand.market.expiry_market_id,
-  expiry: cand.market.expiry,
-  prob: sh.prob,
-  edge: edgeOf(sh),
-  side: sideOf(sh),
-  clears,
-  k: logMoneyness(sh, cand.pricer.forward),
-});
-
-/** Where on the strike axis a shape sits, as ln(strike / forward). A band is drawn at its
- *  midpoint. Falls back to at-the-money rather than throwing: this is scenery, and a bad
- *  forward must never be able to take down a tick that is about to place a trade. */
-function logMoneyness(sh: ShapePick, forward: number): number {
-  if (!(forward > 0)) return 0;
-  const level = sh.kind === 'range' ? (sh.range.lower + sh.range.higher) / 2 : sh.bet.strikePrice;
-  if (!(level > 0)) return 0;
-  const k = Math.log(level / forward);
-  return Number.isFinite(k) ? k : 0;
-}
 
 interface Args {
   markets: V2Market[];
@@ -502,17 +475,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
         lastHoldRef.current = 'no_fit';
         st.noteHold(gateReasonLabel('settles_after_session'), '', now);
       }
-      // Display only. Publishing the empty result matters as much as publishing a full
-      // one: without it the Stage would keep presenting the previous tick's ranking after
-      // the markets behind it had rolled off.
-      st.publishScan({
-        at: now,
-        consideredCount: 0,
-        offeredCount: 0,
-        ranked: [],
-        best: null,
-        holdReason: noneFit ? gateReasonLabel('settles_after_session') : null,
-      });
       return;
     }
 
@@ -530,10 +492,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     const wantsRange = rules.sides.includes('range');
     const lean = recommendation(insights)?.pick ?? null;
     let offered = 0;
-    /** Display only (the Stage): the strongest shape SEEN this tick, cleared or not, so a
-     *  quiet stretch can still stand Kelly on the market she rates highest and say why she
-     *  is not buying it. Never read by anything that decides. */
-    let bestOffered: { cand: BetCandidate; sh: ShapePick; clears: boolean } | null = null;
     const picks = allowed.flatMap((c) => {
       const bet = wantsBinary
         ? respondToIntent({ kind: 'best_value' }, { insights, candidates: [c], now, spot, closes, selection: null }).bet
@@ -554,9 +512,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       // MIN_RANGE_PROB and judged on value instead. Applying one floor to both is what
       // stopped a careful run ever buying a band (see clearsProbFloor).
       const clear = shapes.filter((sh) => clearsProbFloor(sh.kind === 'range' ? 'range' : sh.bet.isUp ? 'up' : 'down', sh.prob, rules));
-      for (const sh of shapes) {
-        if (!bestOffered || sh.prob > bestOffered.sh.prob) bestOffered = { cand: c, sh, clears: clear.includes(sh) };
-      }
       return clear.length > 0
         ? [{ cand: c, shapes: clear, prob: clear[0].prob, edge: edgeOf(clear[0]), expiry: c.market.expiry }]
         : [];
@@ -564,27 +519,7 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
     // Best value first, not highest win chance: a binary is bought AT its win chance, so
     // sorting by it just buys the most expensive bets (see rankPicks).
     const ranked = rankPicks(picks);
-    /**
-     * Hand the Stage what this tick actually evaluated.
-     *
-     * Deliberately AFTER rankPicks, so the scene draws the real order the engine would
-     * attempt rather than a second scoring pass written for the UI, which would drift from
-     * the firing path the first time either one changed. Pure record: it reads `ranked`
-     * and `bestOffered` and changes nothing.
-     */
-    const publishScan = (holdReason: string | null): void => {
-      const best = bestOffered;
-      st.publishScan({
-        at: now,
-        consideredCount: allowed.length,
-        offeredCount: offered,
-        ranked: ranked.map((pk) => scanRow(pk.cand, pk.shapes[0], true)),
-        best: best ? scanRow(best.cand, best.sh, best.clears) : null,
-        holdReason,
-      });
-    };
     if (ranked.length === 0) {
-      publishScan(offered > 0 ? gateReasonLabel('below_min_prob') : null);
       // Everything on offer is under the floor. Said once per change of the candidate
       // set rather than every six seconds.
       if (offered > 0) {
@@ -596,7 +531,6 @@ export function useAutopilotEngine({ markets: initialMarkets, pricerSeeds, acct 
       }
       return;
     }
-    publishScan(null);
 
     // One at a time: the rest of the tick is async (chain quotes, then the fire), so the
     // guard stops the next tick starting a second pass before this one lands.

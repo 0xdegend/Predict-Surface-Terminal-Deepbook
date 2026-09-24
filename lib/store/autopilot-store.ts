@@ -30,7 +30,6 @@ import {
 } from '@/lib/autopilot/policy';
 import { presetPatch, matchPreset, DEFAULT_PRESET, PRESET_BY_ID, legacyPresetOf, paceFor, perBetFor, isAutoSized, LEGACY_SHAPE_V4, LEGACY_SHAPE_V5, type PresetId } from '@/lib/autopilot/presets';
 import { emptyIntent, type SetupIntent } from '@/lib/autopilot/setup-parser';
-import type { ScanSnapshot } from '@/lib/autopilot/scan';
 
 /** One line of Kelly's Auto-mode setup conversation. */
 export interface SetupTurn {
@@ -508,30 +507,6 @@ interface AutopilotState {
    *  skeleton until then, so a reload never flashes the default idle state before the
    *  saved one lands. */
   hydrated: boolean;
-  /**
-   * The engine's most recent evaluation, for the Stage to draw. Not persisted (it is a
-   * snapshot of a six-second tick, meaningless once the tab has been closed) and read by
-   * nothing that decides anything: the engine publishes it AFTER it has already ranked
-   * its picks, so the scene shows the real ranking instead of a second scoring pass
-   * written for the UI, which would drift from the firing path the first time either one
-   * changed. Null until the first tick of an armed run.
-   */
-  scan: ScanSnapshot | null;
-  /**
-   * The last settlement this run scored, for the Stage's reaction beat. Not persisted: a
-   * reload must not replay a win face for a trade that resolved an hour ago. Carries the
-   * settlement time, which the results tape does not (it records when a trade was PLACED),
-   * and the outcome as a boolean, so nothing has to read it back out of log prose.
-   */
-  lastSettlement: { marketId: string; won: boolean; at: number } | null;
-
-  /**
-   * Watch a live run as the Stage (Kelly on the surface) rather than the instrument
-   * dashboard. Persisted, because it is a taste about how someone wants to watch their
-   * own money and it should survive a reload. The dashboard is always one click away and
-   * is unchanged underneath: this only chooses which of the two is on screen.
-   */
-  stageMode: boolean;
 
   // --- results archive (persisted) ---
   /** Finished runs, newest first. A run is saved when it stops and completes in
@@ -552,7 +527,6 @@ interface AutopilotState {
   setRules: (patch: Partial<AutopilotRules>) => void;
   setLimits: (patch: Partial<AutopilotLimits>) => void;
   setDryRun: (on: boolean) => void;
-  setStageMode: (on: boolean) => void;
 
   // --- run actions ---
   arm: (now: number) => void;
@@ -588,10 +562,6 @@ interface AutopilotState {
   /** Append an informational hold/skip line (engine dedupes; store just stores). */
   noteHold: (text: string, marketId: string, now: number) => void;
 
-  /** Record what the engine just evaluated, for the Stage. Display only: it changes no
-   *  decision and is never read back by the tick. */
-  publishScan: (scan: ScanSnapshot | null) => void;
-
   // --- results archive actions ---
   /** Remove one saved run from the archive. */
   deleteResult: (id: string) => void;
@@ -620,7 +590,6 @@ export const useAutopilotStore = create<AutopilotState>()(
       rules: DEFAULT_RULES,
       limits: DEFAULT_LIMITS,
       dryRun: true,
-      stageMode: true,
 
       status: 'idle',
       run: freshRun(0),
@@ -630,8 +599,6 @@ export const useAutopilotStore = create<AutopilotState>()(
       log: [],
       interruptedByReload: false,
       hydrated: false,
-      scan: null,
-      lastSettlement: null,
       history: [],
       setupChat: freshSetupChat(),
 
@@ -649,7 +616,6 @@ export const useAutopilotStore = create<AutopilotState>()(
       setRules: (patch) => set((s) => ({ rules: { ...s.rules, ...patch } })),
       setLimits: (patch) => set((s) => ({ limits: { ...s.limits, ...patch } })),
       setDryRun: (on) => set({ dryRun: on }),
-      setStageMode: (on) => set({ stageMode: on }),
 
       arm: (now) =>
         set((s) => ({
@@ -659,10 +625,6 @@ export const useAutopilotStore = create<AutopilotState>()(
           pauseReason: null,
           stoppedAt: null,
           interruptedByReload: false,
-          // A new run must not open on the last one's ranking, or replay its last
-          // result, even for the one tick before the engine publishes its own.
-          scan: null,
-          lastSettlement: null,
           log: appendLog(s.log, {
             id: nextId(now),
             at: now,
@@ -723,8 +685,6 @@ export const useAutopilotStore = create<AutopilotState>()(
           stoppedAt: null,
           log: [],
           interruptedByReload: false,
-          scan: null,
-          lastSettlement: null,
         }),
 
       pruneExpired: (now, graceMs = 0, longGraceMs = graceMs) => {
@@ -818,7 +778,6 @@ export const useAutopilotStore = create<AutopilotState>()(
               s.status === 'stopped' && run.tradeCount > 0
                 ? upsertHistory(s.history, snapshotRun(run, s.dryRun, s.limits, matchPreset(s.rules, s.limits), s.stopReason ?? 'manual', now))
                 : s.history,
-            lastSettlement: { marketId, won, at: now },
             log: appendLog(s.log, {
               id: nextId(now),
               at: now,
@@ -863,8 +822,6 @@ export const useAutopilotStore = create<AutopilotState>()(
         set((s) => ({
           log: appendLog(s.log, { id: nextId(now), at: now, kind: 'held', text, marketId }),
         })),
-
-      publishScan: (scan) => set({ scan }),
 
       deleteResult: (id) => set((s) => ({ history: s.history.filter((r) => r.id !== id) })),
       clearHistory: () => set({ history: [] }),
@@ -943,7 +900,6 @@ export const useAutopilotStore = create<AutopilotState>()(
         rules: s.rules,
         limits: s.limits,
         dryRun: s.dryRun,
-        stageMode: s.stageMode,
         history: s.history,
         status: s.status,
         run: s.run,
