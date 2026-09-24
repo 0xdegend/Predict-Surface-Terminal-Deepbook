@@ -57,6 +57,13 @@ is a config swap and an operations project, not a protocol migration. No shape f
       Verified both ways: on testnet it carries 3 seeds / 979 traders / 784,863.55 points;
       on mainnet it carries nothing. `network` is now a field on `DeploymentSnapshot`
       (absent means testnet, since every seed we hold predates mainnet).
+- [x] **The /v2/admin wallet is switched.** `adminAddresses` now defaults to
+      `0x06a6f0f02ee7883cc37dfc0fd72834559cf008dde1cd7f2ee86e4a65688cfa48` instead of the
+      old deployer key `0x33a8c3…f3f4`, replacing it rather than joining it (founder,
+      2026-09-24). Verified on chain before the swap: funded and active on mainnet, zero
+      balance and zero owned objects on testnet. The list is UI-only and **not network
+      aware**, so testnet `/v2/admin` answers to the new wallet too. See the caveat under
+      the fee rail for what the switch does not move.
 - [x] **`V2_MAINNET` in `config/predict.ts` is filled** with the verified IDs. It is inert
       until `NEXT_PUBLIC_SUI_NETWORK=mainnet`, so this is safe to sit in the tree. It no
       longer spreads `...V2_TESTNET` (which was the stale 6-24 block) and is now a complete
@@ -128,15 +135,32 @@ None of this is code. All of it has to exist before a single real trade.
 
 ### The fee rail (nothing earns until this is done)
 
-- [ ] **Register a BuilderCode on mainnet.** It is bound to the registry that created it and
-      its owner is **permanent**, with no reassignment. Register from the wallet that should
-      own it forever, ideally a multisig. Set `NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET`.
+- [x] **BuilderCode registered on mainnet — DONE 2026-09-24.**
+      `0x78b2d0b394f1ae956c97797b2488c5516ca6405fcf6ea0cc5079efa89d13907f`, index 0, owner
+      `0x06a6f0…fa48`, shared. Verified on chain before wiring, all four checks that matter:
+      the env var is `NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET` (the one `V2_MAINNET` actually
+      reads, which is what went wrong on 9-17); the type prefix is
+      `0x89aea622…::builder_code::BuilderCode`, so it belongs to THIS registry; the internal
+      `owner` is the switched admin wallet; and it resolves as a live shared object. Also
+      hardcoded as the config default so a deploy that forgets the env var still earns, which
+      is the failure that hit 8-06. `builderCodeEnabled` is now true on mainnet.
       Deliberately has no testnet fallback: a stale id attaches a code this registry never
       issued and mints silently earn nothing. See [[builder-code-every-deployment]].
 - [ ] **Publish `skew_fee_v2` on mainnet** and create its FeeConfig + AdminCap. The package
       is framework-only, but it still has to exist on this chain and the FeeConfig is a
       per-object thing. Set `NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID_MAINNET` and
-      `NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID_MAINNET`.
+      `NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID_MAINNET`. **Publish from `0x06a6f0…fa48`**: `init`
+      transfers the `AdminCap` to `ctx.sender()`, so signing from the new wallet makes it the
+      fee admin by construction, with nothing to transfer afterwards.
+
+> **What the admin switch does NOT move, on testnet.** Neither the BuilderCode nor the fee
+> `AdminCap` follows `adminAddresses`. The testnet BuilderCode `0x10aea977…` is owned by
+> `0x33a8c3…` permanently, so testnet builder fees stay claimable only by the old wallet,
+> and the testnet `skew_fee_v2` `AdminCap` `0x49787e25…` is still held by it, so the Skew
+> fee panel reads but cannot sign from the new wallet. That cap is `key, store`, so a plain
+> transfer fixes it whenever it is wanted. The new wallet also holds **zero testnet SUI**,
+> so it cannot sign anything there until it is funded. None of this applies to mainnet,
+> where neither object exists yet.
 
 > **Founder decisions for the first mainnet launch (2026-09-24):** Enoki OFF, starter grant
 > OFF, and every Walrus feature OFF (receipts, memory, chat history, Seal). All are opt-in

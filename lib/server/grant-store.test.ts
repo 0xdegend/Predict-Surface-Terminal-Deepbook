@@ -55,8 +55,9 @@ describe('grantScope — one ledger per collateral coin', () => {
   });
 
   it('is readable enough to diagnose from a raw key', () => {
-    expect(grantScope(USDC)).toBe('usdc-c02855');
-    expect(grantScope(DUSDC)).toBe('dusdc-e95040');
+    // Spelled out per network, so these stay true whatever chain the build points at.
+    expect(grantScope(USDC, 'testnet')).toBe('usdc-c02855');
+    expect(grantScope(DUSDC, 'testnet')).toBe('dusdc-e95040');
   });
 
   it('separates two packages that reuse the same module name', () => {
@@ -100,10 +101,64 @@ describe('grantScope — one ledger per collateral coin', () => {
 
   it('the leaderboard still counts a claimer once across both scopes', async () => {
     const addr = '0xClaimer-D';
-    await markGranted(grantScope(DUSDC), addr, 'old');
-    await markGranted(grantScope(USDC), addr, 'new');
-    const claimers = await listFaucetClaimers();
+    await markGranted(grantScope(DUSDC, 'testnet'), addr, 'old');
+    await markGranted(grantScope(USDC, 'testnet'), addr, 'new');
+    const claimers = await listFaucetClaimers('testnet');
     expect(claimers.filter((c) => c === addr.toLowerCase())).toHaveLength(1);
+  });
+});
+
+// Added 2026-09-24. On the day mainnet went live, 34 testnet grant wallets appeared on the
+// freshly-empty mainnet Skew board, each carrying a participation point, on a chain where
+// nobody had traded yet — so the board read as busy when it should have read as day one.
+// The markers were correctly keyed by collateral, and a coin type is chain-specific, but
+// `listFaucetClaimers` threw the scope away and enumerated every marker in the store. Same
+// class of bug as the leaderboard carryover seeds, in the one overlay that guard missed.
+describe('grantScope — one ledger per network', () => {
+  const TESTNET_USDC = '0xc028557a1ed49e42ed091e115aedefd70a442b184c18fbec5c48d5b6c0b8c184::usdc::USDC';
+  const MAINNET_USDC = '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC';
+
+  it('leaves the testnet spelling untouched, so no existing wallet is re-offered a grant', () => {
+    expect(grantScope(TESTNET_USDC, 'testnet')).toBe('usdc-c02855');
+  });
+
+  it('gives mainnet its own ledger, and a single key segment like every other scope', () => {
+    expect(grantScope(MAINNET_USDC, 'mainnet')).toBe('mainnet-usdc-dba346');
+    expect(grantScope(MAINNET_USDC, 'mainnet')).not.toContain(':');
+  });
+
+  it('separates the two chains even for a coin that looks identical', () => {
+    expect(grantScope(TESTNET_USDC, 'mainnet')).not.toBe(grantScope(TESTNET_USDC, 'testnet'));
+  });
+
+  it('keeps a testnet onboard off the mainnet board', async () => {
+    const addr = '0xnetgate-a';
+    await markGranted(grantScope(TESTNET_USDC, 'testnet'), addr, 'testnetpayout');
+    expect(await listFaucetClaimers('testnet')).toContain(addr.toLowerCase());
+    expect(await listFaucetClaimers('mainnet')).not.toContain(addr.toLowerCase());
+  });
+
+  it('and a mainnet onboard off the testnet board', async () => {
+    const addr = '0xnetgate-b';
+    await markGranted(grantScope(MAINNET_USDC, 'mainnet'), addr, 'mainnetpayout');
+    expect(await listFaucetClaimers('mainnet')).toContain(addr.toLowerCase());
+    expect(await listFaucetClaimers('testnet')).not.toContain(addr.toLowerCase());
+  });
+
+  it('counts a wallet that onboarded on both chains once on each', async () => {
+    const addr = '0xnetgate-c';
+    await markGranted(grantScope(TESTNET_USDC, 'testnet'), addr, 'one');
+    await markGranted(grantScope(MAINNET_USDC, 'mainnet'), addr, 'two');
+    const only = (list: string[]) => list.filter((c) => c === addr.toLowerCase());
+    expect(only(await listFaucetClaimers('testnet'))).toHaveLength(1);
+    expect(only(await listFaucetClaimers('mainnet'))).toHaveLength(1);
+  });
+
+  it('a legacy un-scoped marker still reads as testnet', async () => {
+    const addr = '0xnetgate-d';
+    // A marker carrying no network segment, the shape everything written before today has.
+    await markGranted('', addr, 'legacy');
+    expect(await listFaucetClaimers('mainnet')).not.toContain(addr.toLowerCase());
   });
 });
 

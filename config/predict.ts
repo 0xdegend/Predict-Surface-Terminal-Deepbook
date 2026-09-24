@@ -647,11 +647,20 @@ const V2_MAINNET: PredictV2Config = {
     sessionsConfig: '0xb2fba483748aac7508676020d4e691d68239b66f8bf7c5e7634dd1a76a329317',
     deepbookRegistry: '0xaf16199a2dff736e9f07a845f23c5da6df6f756eddb631aed9d24a93efc4549d',
   },
-  // MUST be registered fresh on mainnet, from the wallet that will own it permanently
-  // (`create_builder_code` binds the owner and there is no reassignment). Deliberately
-  // has NO testnet fallback: a stale id attaches a code this registry never issued, and
-  // mints would silently earn nothing. Blank means no-fee mints, which is the safe miss.
-  builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET || '',
+  // REGISTERED 2026-09-24, index 0, owner 0x06a6f0…fa48 (the switched admin wallet — see
+  // `adminAddresses`). Verified on chain before wiring: shared object, type prefix
+  // 0x89aea622…::builder_code::BuilderCode so it belongs to THIS registry, internal
+  // `owner` == the intended wallet. That owner is PERMANENT; there is no reassignment.
+  //
+  // Hardcoded as the default on purpose, the way 6-24/7-29 do. On 8-06 the code was
+  // registered but the env var was left unset in prod, so `builderCodeEnabled` stayed
+  // false and mints attached nothing while everything looked healthy. A verified default
+  // means a deploy that forgets the env var still earns. NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET
+  // still overrides. Still deliberately NO testnet fallback: a stale id from another
+  // registry is a real, resolvable, correctly typed object that silently earns nothing.
+  builderCodeId:
+    process.env.NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET ||
+    '0x78b2d0b394f1ae956c97797b2488c5516ca6405fcf6ea0cc5079efa89d13907f',
   // skew_fee_v2 is framework-only, but the PACKAGE still has to exist on this chain and
   // its FeeConfig is a per-object thing. Inheriting testnet's would point real money at a
   // testnet object id that does not exist here.
@@ -1076,11 +1085,28 @@ export const v2SkewFeeTarget = (fn: string): `${string}::fee_router::${string}` 
  * claiming is enforced by the chain's `assert_owner`. The list exists so founder
  * tooling isn't served to whoever guesses the URL.
  *
+ * SWITCHED 2026-09-24, at the founder's call and ahead of the mainnet cutover: the list
+ * was the old deployer key 0x33a8c3…f3f4 and is now 0x06a6f0…fa48, which REPLACES it
+ * rather than joining it. Verified live before the swap: funded and active on mainnet,
+ * completely untouched on testnet.
+ *
+ * What this does NOT move, because none of it follows this list:
+ *   - the testnet BuilderCode 0x10aea977… is owned by 0x33a8c3… PERMANENTLY (no setter),
+ *     so testnet builder fees are still claimable only by the old wallet;
+ *   - the testnet skew_fee_v2 AdminCap 0x49787e25… is still held by 0x33a8c3…, so from
+ *     the new wallet the Skew fee panel reads but cannot sign. The cap is `key, store`,
+ *     so a plain transfer fixes that whenever it's wanted.
+ *
+ * On MAINNET neither exists yet, so registering the BuilderCode and publishing
+ * skew_fee_v2 FROM THIS WALLET makes it the owner by construction, with nothing to
+ * transfer afterwards. The BuilderCode owner has no setter: that registration is
+ * one-shot. See the builder-code-every-deployment rule and MIGRATION-MAINNET.md.
+ *
  * Override with NEXT_PUBLIC_ADMIN_ADDRESSES (comma-separated).
  */
 export const adminAddresses: string[] = (
   process.env.NEXT_PUBLIC_ADMIN_ADDRESSES ||
-  '0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4'
+  '0x06a6f0f02ee7883cc37dfc0fd72834559cf008dde1cd7f2ee86e4a65688cfa48'
 )
   .split(',')
   .map((a) => a.trim().toLowerCase())

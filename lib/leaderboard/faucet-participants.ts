@@ -8,11 +8,13 @@
  * UI badges the ones that haven't traded yet as "Starter" (viaFaucet + 0 trades) so
  * they're never presented as if they traded. See leaderboard-panel.
  *
- * The faucet ledger (grant:done:<addr>) is keyed by address only, so its wallets
- * already span every deployment (6-24 / 7-29 / 8-06) — this overlay is cumulative by
- * construction, matching the legacy-carryover model. Applied server-side in
- * /api/v2/leaderboard AFTER mergeLegacyCarryover, so real traders (live + carried
- * over) win and a claimer who also traded keeps their real stats.
+ * The claimer list arrives SCOPED TO ONE NETWORK and cumulative across the deployments
+ * within it, which matches the legacy-carryover model. The network half of that is not
+ * free: until 2026-09-24 the ledger was enumerated whole, so 34 testnet onboards landed on
+ * the mainnet board's first day. The gate lives in `listFaucetClaimers`, beside the keys it
+ * reasons about; this function stays pure and merges whatever it is handed. Applied
+ * server-side in /api/v2/leaderboard AFTER mergeLegacyCarryover, so real traders (live +
+ * carried over) win and a claimer who also traded keeps their real stats.
  *
  * Pure + deterministic (the claimer list is injected), so it unit-tests cleanly.
  */

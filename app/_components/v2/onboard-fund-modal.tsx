@@ -186,7 +186,15 @@ export function OnboardFundModal() {
           Maybe later
         </button>
         <button onClick={fundAndStart} disabled={busy} className={BTN_PRIMARY}>
-          {phase === 'funding' ? `Adding ${sym}…` : phase === 'creating' ? 'Setting up…' : 'Fund & start'}
+          {/* "Fund & start" is a promise the button cannot keep when there is no grant to
+              pay: fundAndStart skips funding entirely and only creates the account. */}
+          {phase === 'funding'
+            ? `Adding ${sym}…`
+            : phase === 'creating'
+              ? 'Setting up…'
+              : canFund
+                ? 'Fund & start'
+                : 'Create account'}
         </button>
       </>
     );
@@ -202,7 +210,7 @@ export function OnboardFundModal() {
           <p>{errMsg}</p>
           {predictV2Config.faucetUrl && (
             <p className="text-[12px] text-text-3">
-              You can also grab testnet {sym} from the{' '}
+              You can also grab {sym} from the{' '}
               <a href={predictV2Config.faucetUrl} target="_blank" rel="noreferrer" className="text-accent underline-offset-2 hover:underline">
                 faucet
               </a>{' '}
@@ -215,13 +223,38 @@ export function OnboardFundModal() {
           <li className="flex items-start gap-2.5">
             <Dot />
             <span>
+              {/* Four real states, because `canFund` is false for two very different
+                  reasons and the old copy answered neither. It said "Get testnet USDC to
+                  start (from the faucet)", which was wrong three ways once the grant was
+                  turned off: it hardcodes "testnet" (on mainnet this is real USDC), it
+                  points at a faucet that 9-12 deliberately does not have and mainnet never
+                  will, and it says it to traders who are already funded. */}
               {canFund ? (
                 <>
                   <span className="text-text-1">{grantLabel}</span> added to your wallet to start
                   {!acct.gasless && <span className="text-text-3">, plus a little SUI for gas</span>}
                 </>
+              ) : alreadyFunded ? (
+                <>
+                  Your <span className="text-text-1">{sym}</span> is ready to trade with
+                </>
+              ) : predictV2Config.faucetUrl ? (
+                <>
+                  Add {sym} to your wallet to start (free from the{' '}
+                  <a
+                    href={predictV2Config.faucetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent underline-offset-2 hover:underline"
+                  >
+                    faucet
+                  </a>
+                  )
+                </>
               ) : (
-                <>Get testnet {sym} to start (from the faucet)</>
+                <>
+                  Add {sym} to your wallet to start
+                </>
               )}
             </span>
           </li>

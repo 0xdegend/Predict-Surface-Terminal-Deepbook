@@ -35,9 +35,9 @@ const CACHE = 'public, s-maxage=30, stale-while-revalidate=300';
 /**
  * Fold the starter-grant faucet claimers into a Skew board: a wallet that onboarded
  * through Skew shows on the board even before it trades (0-trade rows are badged
- * "Starter" in the UI). The faucet ledger is keyed by address, so this is cumulative
- * across deployments (6-24 / 7-29 / 8-06) and only ever touches the Skew board — the
- * `all` venue board stays pure live data. Never throws — a store hiccup just yields the
+ * "Starter" in the UI). Cumulative across the deployments of ONE network (the ledger is
+ * network-scoped in `listFaucetClaimers`, so testnet onboards never reach a mainnet board),
+ * and only ever touches the Skew board — the `all` venue board stays pure live data. Never throws — a store hiccup just yields the
  * board unchanged. Legacy 6-24 carryover is applied by the caller BEFORE this, and only
  * on 729-plus (overlaying the 6-24 seed on 6-24's own board would double-count).
  */

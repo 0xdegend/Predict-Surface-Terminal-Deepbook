@@ -15,12 +15,14 @@
  *
  * Three pieces of state, keyed per address / per UTC day:
  *   grant:done:<scope>:<addr>  permanent "already funded" marker (set only after payout),
- *                      scoped to the COLLATERAL COIN the grant paid in — see grantScope
+ *                      scoped to the NETWORK and the COLLATERAL COIN the grant paid in —
+ *                      see grantScope
  *   grant:lock:<addr>  short-lived in-flight lock (NX + TTL) — kills the race
  *                      where two concurrent requests both pass the done-check
  *   grant:daily:<day>  shared daily payout counter (global spend circuit breaker)
  */
 import { Redis } from '@upstash/redis';
+import { ACTIVE_NETWORK, type SuiNetwork } from '@/config/predict';
 
 const REST_URL = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
 const REST_TOKEN = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -56,11 +58,31 @@ const DAY_TTL = 60 * 60 * 26;
  * deployment a marker belongs to. Module name + package prefix keeps it one key segment
  * (no `:`) and distinct across packages that reuse a module name.
  */
-export function grantScope(coinType: string): string {
+export function grantScope(coinType: string, network: SuiNetwork = ACTIVE_NETWORK): string {
   const [pkg = '', module] = coinType.split('::');
   const short = pkg.replace(/^0x/, '').slice(0, 6).toLowerCase();
   const mod = (module ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return mod || short ? `${mod || 'coin'}-${short || 'none'}` : 'unscoped';
+  const tag = mod || short ? `${mod || 'coin'}-${short || 'none'}` : 'unscoped';
+  // Testnet keeps its historical spelling, so the ledger built up to 2026-09-24 is
+  // untouched and no existing wallet is silently re-offered a grant. Everything else is
+  // prefixed. See NETWORK_PREFIX.
+  return network === 'testnet' ? tag : `${network}-${tag}`;
+}
+
+/**
+ * The marker prefix that says "not testnet".
+ *
+ * Every key written before 2026-09-24 predates mainnet and carries no network segment, so
+ * ABSENT MEANS TESTNET — the same rule `carriedSnapshots` uses for leaderboard seeds with
+ * no `network` field. Both rules exist for the same reason: play-money onboarding must
+ * never appear on a real-money board.
+ */
+const NETWORK_PREFIX = 'mainnet-';
+
+/** Which network a done-marker key body belongs to. Addresses are 0x-hex, so a legacy
+ *  un-scoped body can never collide with the prefix. */
+function networkFromDoneKey(body: string): SuiNetwork {
+  return body.startsWith(NETWORK_PREFIX) ? 'mainnet' : 'testnet';
 }
 
 const doneKey = (scope: string, addr: string) => `grant:done:${scope}:${addr}`;
@@ -156,8 +178,12 @@ export async function markGranted(scope: string, address: string, digest = '1'):
  * permanent `grant:done:*` markers via a cursor SCAN (bounded per iteration so it
  * never blocks the store), deduped.
  *
- * This list is CUMULATIVE ACROSS DEPLOYMENTS by design (the leaderboard badges anyone who
- * onboarded through the app, whenever they did). Markers used to be keyed by address alone;
+ * SCOPED TO ONE NETWORK, and cumulative across DEPLOYMENTS within it (the leaderboard
+ * badges anyone who onboarded through the app on this chain, whenever they did). The network
+ * gate was added 2026-09-24 after 34 testnet grant wallets appeared on the freshly-empty
+ * mainnet Skew board, each carrying a participation point, on a chain where nobody had
+ * traded yet: the board read as busy when it should have read as day one. Markers used to be
+ * keyed by address alone;
  * they are now scoped by collateral coin (see grantScope), so both shapes coexist in the
  * store — `grant:done:<addr>` written before the 9-12 coin swap, `grant:done:<scope>:<addr>`
  * after. `addressFromDoneKey` reads the address out of either, so no historical claimer
@@ -167,7 +193,7 @@ export async function markGranted(scope: string, address: string, digest = '1'):
  * Never throws — a store hiccup yields the last good list (or empty), so the board renders.
  */
 const CLAIMERS_TTL_MS = 5 * 60_000;
-let claimersCache: { at: number; list: string[] } | null = null;
+let claimersCache: { at: number; network: SuiNetwork; list: string[] } | null = null;
 
 /** The address out of a done-marker key body, for BOTH shapes: a legacy un-scoped
  *  `<addr>` (no colon — the whole thing is the address) and a scoped `<scope>:<addr>`
@@ -177,9 +203,15 @@ function addressFromDoneKey(body: string): string {
   return body.slice(body.lastIndexOf(':') + 1).toLowerCase();
 }
 
-export async function listFaucetClaimers(): Promise<string[]> {
-  if (claimersCache && Date.now() - claimersCache.at < CLAIMERS_TTL_MS) return claimersCache.list;
+export async function listFaucetClaimers(network: SuiNetwork = ACTIVE_NETWORK): Promise<string[]> {
+  // The cache exists to spare Redis a full SCAN on every leaderboard request. The
+  // in-process fallback is a local Map, so caching it buys nothing and would only hide a
+  // marker written moments ago.
+  if (redis && claimersCache && claimersCache.network === network && Date.now() - claimersCache.at < CLAIMERS_TTL_MS) {
+    return claimersCache.list;
+  }
   const prefix = 'grant:done:';
+  const mine = (body: string) => networkFromDoneKey(body) === network;
   try {
     let list: string[];
     if (redis) {
@@ -188,17 +220,21 @@ export async function listFaucetClaimers(): Promise<string[]> {
       let guard = 0;
       do {
         const [next, keys] = await redis.scan(cursor, { match: `${prefix}*`, count: 500 });
-        for (const k of keys) seen.add(addressFromDoneKey(k.slice(prefix.length)));
+        for (const k of keys) {
+          const body = k.slice(prefix.length);
+          if (mine(body)) seen.add(addressFromDoneKey(body));
+        }
         cursor = next;
       } while (cursor !== '0' && ++guard < 1000);
       list = [...seen];
     } else {
-      list = [...new Set([...memDone.keys()].map(addressFromDoneKey))];
+      list = [...new Set([...memDone.keys()].filter(mine).map(addressFromDoneKey))];
     }
-    claimersCache = { at: Date.now(), list };
+    if (redis) claimersCache = { at: Date.now(), network, list };
     return list;
   } catch {
-    return claimersCache?.list ?? [];
+    // Only ever serve a stale list back to the network it was built for.
+    return claimersCache?.network === network ? claimersCache.list : [];
   }
 }
 
