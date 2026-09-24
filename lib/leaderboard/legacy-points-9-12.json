@@ -1,0 +1,16 @@
+{
+  "deployment": "9-12",
+  "capturedAt": "2026-09-24T14:35:12.607Z",
+  "rows": [
+    {
+      "owner": "0x33a8c34ae6f4dd41288ddb81c521b3c2a49c251abcc0926fe54c6376757ff3f4",
+      "points": 6328.05382694374,
+      "volume": 3799.967857,
+      "trades": 11,
+      "netPnl": 904.8668019999991,
+      "skewVolume": 3799.967857,
+      "skewTrades": 11,
+      "lastActiveMs": 1790085607635
+    }
+  ]
+}

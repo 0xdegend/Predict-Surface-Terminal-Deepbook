@@ -22,7 +22,8 @@
 import seed624 from './legacy-points-6-24.json';
 import seed806 from './legacy-points-8-06.json';
 import seed821 from './legacy-points-8-21.json';
-import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import seed912 from './legacy-points-9-12.json';
+import { ACTIVE_V2_DEPLOYMENT, ACTIVE_NETWORK } from '@/config/predict';
 import { carriedSnapshots, type LegacyRow } from './seed-registry';
 import type { V2LeaderboardRow } from './v2';
 import { sortV2Rows } from './v2';
@@ -40,11 +41,24 @@ const ALL_SEEDS: LegacySeed[] = [
   seed624 as unknown as LegacySeed,
   seed806 as unknown as LegacySeed,
   seed821 as unknown as LegacySeed,
+  // Captured 2026-09-24, before the mainnet cutover. Inert while we are running ON 9-12
+  // (carriedSnapshots excludes a seed from the live deployment), and inert on mainnet
+  // (the network guard). Registered NOW because the 9-12 cutover shipped with the 8-21
+  // seed unregistered and the board silently lost 40% of its trades; the fix is to
+  // register at capture time rather than at cutover time.
+  seed912 as unknown as LegacySeed,
 ];
 
-/** The ones that apply right now: every seed EXCEPT one captured from the deployment we are
- *  reading live, whose trades are already in the live board and would otherwise be doubled. */
-const CARRIED: LegacySeed[] = carriedSnapshots(ALL_SEEDS, ACTIVE_V2_DEPLOYMENT);
+/**
+ * The ones that apply right now: every seed EXCEPT one captured from the deployment we are
+ * reading live (whose trades are already in the live board and would otherwise be doubled),
+ * and EXCEPT any from another network.
+ *
+ * On mainnet this is empty, by design and by founder decision: the mainnet board starts at
+ * zero for everyone. Every seed here is testnet play money, and carrying it across would
+ * put wallets that never risked a cent above traders using real USDC.
+ */
+const CARRIED: LegacySeed[] = carriedSnapshots(ALL_SEEDS, ACTIVE_V2_DEPLOYMENT, ACTIVE_NETWORK);
 
 /** owner (lowercased) → the sum of that wallet's totals across every carried snapshot. */
 const LEGACY: Map<string, LegacyRow> = (() => {

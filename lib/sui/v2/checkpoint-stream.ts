@@ -135,7 +135,10 @@ function connect(): void {
   }
   connectUrl = activeGrpcUrl();
   controller = new AbortController();
-  const client = new SuiGrpcClient({ network: 'testnet', baseUrl: connectUrl });
+  // The chain follows the config, never a literal: `activeGrpcUrl()` already resolves to
+  // the active network's endpoint, and hardcoding the name here would mislabel the client
+  // the moment the app runs anywhere but testnet.
+  const client = new SuiGrpcClient({ network: predictV2Config.network, baseUrl: connectUrl });
   setStatus(status === 'live' ? 'reconnecting' : 'connecting');
 
   const call = client.subscriptionService.subscribeCheckpoints(

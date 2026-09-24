@@ -30,9 +30,30 @@
 import { SuiGrpcClient } from '@mysten/sui/grpc';
 import { predictV2Config, type SuiNetwork, getPredictV2Config } from '@/config/predict';
 
-/** The historical failover peer. Kept in the list because it costs nothing while the
- *  primary is healthy and it may come back; it was timing out as of 2026-08-21. */
-const DEFAULT_FALLBACK = 'https://rpc-testnet.suiscan.xyz';
+/**
+ * Failover peers we ship by default, PER NETWORK.
+ *
+ * Scoped by network because an endpoint is not just an address, it is a CHAIN. This was a
+ * bare testnet constant appended to every candidate list, which was harmless while testnet
+ * was the only network and became a real hazard the moment mainnet was on the table: a
+ * testnet node in a mainnet pool can only ever serve the wrong chain's state, and the UI
+ * reading it has no way to tell. The freshness probe would most likely have rejected it
+ * (it reads the ACTIVE network's poolVault, which the other chain does not have), but
+ * "most likely rejected" is luck, not a design, and the thing it is protecting is real
+ * money.
+ *
+ * Testnet keeps its historical peer: it costs nothing while the primary is healthy and it
+ * may come back, though it was timing out as of 2026-08-21. Mainnet ships none, because a
+ * peer has to be verified to speak gRPC v2 and be in sync before it belongs here. Add one
+ * without a deploy via NEXT_PUBLIC_SUI_GRPC_FALLBACK, which takes a comma-separated list.
+ */
+const DEFAULT_FALLBACKS: Record<SuiNetwork, string[]> = {
+  testnet: ['https://rpc-testnet.suiscan.xyz'],
+  mainnet: [],
+};
+
+/** The chain every client and candidate in this module belongs to. */
+const NETWORK: SuiNetwork = predictV2Config.network;
 
 /** Split a comma-separated endpoint list, so either env var can carry several. */
 const urlList = (raw: string | undefined): string[] =>
@@ -59,7 +80,7 @@ const PRIMARY_URL = ENV_PRIMARY[0] || predictV2Config.grpcUrl;
  * below is real, and the bench is one deep until a keyed endpoint is added here.
  * See [[testnet-grpc-fullnode-stall]].
  */
-const CANDIDATES: string[] = [...new Set([PRIMARY_URL, ...ENV_PRIMARY.slice(1), ...ENV_FALLBACK, DEFAULT_FALLBACK])];
+const CANDIDATES: string[] = [...new Set([PRIMARY_URL, ...ENV_PRIMARY.slice(1), ...ENV_FALLBACK, ...DEFAULT_FALLBACKS[NETWORK]])];
 
 /** A hot shared object we use as the freshness yardstick: the pool vault mutates on
  *  every market create/settle (~every minute), so a stalled node reports a much lower
@@ -120,10 +141,15 @@ export function activeGrpcUrl(): string {
   return active;
 }
 
-/** Sync resolver for client factories (e.g. dapp-kit's createClient). Only testnet
- *  has a failover peer wired; other networks use their configured endpoint. */
+/**
+ * Sync resolver for client factories (e.g. dapp-kit's createClient).
+ *
+ * The health-aware choice applies to the ACTIVE network only, since that is the only one
+ * this module probes. Asking for any other network gets its plain configured endpoint,
+ * which is also what stops a mainnet caller being handed a testnet failover choice.
+ */
 export function resolveGrpcUrl(network: SuiNetwork): string {
-  return network === 'testnet' ? active : getPredictV2Config(network).grpcUrl;
+  return network === NETWORK ? active : getPredictV2Config(network).grpcUrl;
 }
 
 /* ----------------------------- change subscription ----------------------------- */
@@ -156,7 +182,7 @@ let _readUrl = '';
 export function v2ReadClient(): SuiGrpcClient {
   if (!_read || _readUrl !== active) {
     _readUrl = active;
-    _read = new SuiGrpcClient({ network: 'testnet', baseUrl: active });
+    _read = new SuiGrpcClient({ network: NETWORK, baseUrl: active });
   }
   return _read;
 }
@@ -169,7 +195,7 @@ const clients = new Map<string, SuiGrpcClient>();
 function clientFor(url: string): SuiGrpcClient {
   let c = clients.get(url);
   if (!c) {
-    c = new SuiGrpcClient({ network: 'testnet', baseUrl: url });
+    c = new SuiGrpcClient({ network: NETWORK, baseUrl: url });
     clients.set(url, c);
   }
   return c;

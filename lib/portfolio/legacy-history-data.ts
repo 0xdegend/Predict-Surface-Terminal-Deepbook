@@ -1,11 +1,12 @@
 /**
  * legacy-history-data.ts — the carried-over trade history snapshots. SERVER ONLY.
  *
- * These files are large: 53 KB for 6-24, 1.5 MB for 8-06 and 657 KB for 8-21, and they grow
- * with every release. The 6-24 seed was small enough to import straight into the history
- * hook and ship to the browser without anyone noticing. The later ones are not: bundling
- * them would put over two megabytes of JSON into the client for a feature that, for any one
- * visitor, needs the handful of rows belonging to their own wallet.
+ * These files are large: 53 KB for 6-24, 1.5 MB for 8-06, 657 KB for 8-21 and 143 KB
+ * for 9-12, and they grow with every release. The 6-24 seed was small enough to import
+ * straight into the history hook and ship to the browser without anyone noticing. The
+ * later ones are not: bundling them would put over two megabytes of JSON into the client
+ * for a feature that, for any one visitor, needs the handful of rows belonging to their
+ * own wallet.
  *
  * So the data lives here, behind /api/v2/legacy-history, and the browser asks for one
  * wallet's slice. Nothing imports this module from a client component. The pure merge
@@ -17,7 +18,8 @@
 import seed624 from './legacy-history-6-24.json';
 import seed806 from './legacy-history-8-06.json';
 import seed821 from './legacy-history-8-21.json';
-import { ACTIVE_V2_DEPLOYMENT } from '@/config/predict';
+import seed912 from './legacy-history-9-12.json';
+import { ACTIVE_V2_DEPLOYMENT, ACTIVE_NETWORK } from '@/config/predict';
 import { carriedSnapshots } from '@/lib/leaderboard/seed-registry';
 import type { PastPrediction } from './history';
 
@@ -32,10 +34,15 @@ const ALL_SEEDS: HistorySeed[] = [
   seed624 as unknown as HistorySeed,
   seed806 as unknown as HistorySeed,
   seed821 as unknown as HistorySeed,
+  // Captured 2026-09-24 alongside the points seed. Same two guards apply: excluded while
+  // we run ON 9-12, and excluded on mainnet.
+  seed912 as unknown as HistorySeed,
 ];
 
 /** The ones that apply while running on this deployment (never its own). */
-const CARRIED: HistorySeed[] = carriedSnapshots(ALL_SEEDS, ACTIVE_V2_DEPLOYMENT);
+// Empty on mainnet, for the same reason the points board is: these are testnet trades, and
+// a mainnet portfolio showing them would be claiming a history that never cost anything.
+const CARRIED: HistorySeed[] = carriedSnapshots(ALL_SEEDS, ACTIVE_V2_DEPLOYMENT, ACTIVE_NETWORK);
 
 /** Which releases are being carried, for a "history from …" note. */
 export const LEGACY_HISTORY_SOURCE: string = CARRIED.map((s) => s.deployment).join(' + ');

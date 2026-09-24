@@ -15,24 +15,62 @@ import seed624 from './legacy-points-6-24.json';
 import seed806 from './legacy-points-8-06.json';
 import type { V2LeaderboardRow } from './v2';
 
-const seed = (deployment: string) => ({ deployment, capturedAt: '2026-01-01T00:00:00.000Z' });
+const seed = (deployment: string, network?: 'testnet' | 'mainnet') => ({
+  deployment,
+  capturedAt: '2026-01-01T00:00:00.000Z',
+  ...(network ? { network } : {}),
+});
 const ALL = [seed('6-24'), seed('8-06'), seed('8-21')];
 
 describe('carriedSnapshots', () => {
   it('never overlays a snapshot on the deployment it was captured from', () => {
     // The whole point. Running ON 8-06 with the 8-06 seed loaded would add each trader's
     // own live trades to themselves.
-    expect(carriedSnapshots(ALL, '8-06').map((s) => s.deployment)).toEqual(['6-24', '8-21']);
-    expect(carriedSnapshots(ALL, '6-24').map((s) => s.deployment)).toEqual(['8-06', '8-21']);
+    expect(carriedSnapshots(ALL, '8-06', 'testnet').map((s) => s.deployment)).toEqual(['6-24', '8-21']);
+    expect(carriedSnapshots(ALL, '6-24', 'testnet').map((s) => s.deployment)).toEqual(['8-06', '8-21']);
   });
 
   it('chains every other snapshot, so standing accumulates across releases', () => {
     // A trader who played 6-24 and 8-06 must arrive on 8-21 carrying both, not the later one.
-    expect(carriedSnapshots(ALL, '8-21').map((s) => s.deployment)).toEqual(['6-24', '8-06']);
+    expect(carriedSnapshots(ALL, '8-21', 'testnet').map((s) => s.deployment)).toEqual(['6-24', '8-06']);
   });
 
   it('is a no-op when nothing has been retired yet', () => {
-    expect(carriedSnapshots([seed('6-24')], '6-24')).toEqual([]);
+    expect(carriedSnapshots([seed('6-24')], '6-24', 'testnet')).toEqual([]);
+  });
+
+  describe('the network guard', () => {
+    it('carries NOTHING onto mainnet, however different the deployment ids look', () => {
+      // The reason this guard exists. Every id in ALL is "different" from a mainnet
+      // deployment, so the deployment check alone passes all three straight through and
+      // testnet play money lands on a real-money board.
+      expect(carriedSnapshots(ALL, 'mainnet-1', 'mainnet')).toEqual([]);
+    });
+
+    it('treats a seed with no network as testnet, since all of ours predate mainnet', () => {
+      expect(carriedSnapshots(ALL, '9-12', 'testnet').map((s) => s.deployment)).toEqual([
+        '6-24',
+        '8-06',
+        '8-21',
+      ]);
+    });
+
+    it('carries a mainnet seed on mainnet once one is captured', () => {
+      const all = [...ALL, seed('mainnet-1', 'mainnet'), seed('mainnet-2', 'mainnet')];
+      // Still both guards: the live deployment is excluded, and testnet stays out.
+      expect(carriedSnapshots(all, 'mainnet-2', 'mainnet').map((s) => s.deployment)).toEqual([
+        'mainnet-1',
+      ]);
+    });
+
+    it('keeps a mainnet seed off a testnet board too, so the guard cuts both ways', () => {
+      const all = [...ALL, seed('mainnet-1', 'mainnet')];
+      expect(carriedSnapshots(all, '9-12', 'testnet').map((s) => s.deployment)).toEqual([
+        '6-24',
+        '8-06',
+        '8-21',
+      ]);
+    });
   });
 });
 

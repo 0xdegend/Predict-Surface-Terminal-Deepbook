@@ -591,24 +591,111 @@ const V2_TESTNET_806: PredictV2Config = {
   faucetUrl: 'https://tally.so/r/Xx102L',
 };
 
-// Mainnet v2 placeholders — fill on the eventual mainnet redeploy.
+/**
+ * MAINNET — DeepBook Predict, live since the mainnet publish (manifest schemaVersion 9,
+ * sourceCommit 7b169bde2c2a, chainId 35834a8a). IDs verbatim from
+ * `packages/predict/deployment/deployment.mainnet.json` on `main`.
+ *
+ * VERIFIED LIVE ON CHAIN 2026-09-24, not just read off the manifest: every shared object
+ * below resolves, the Pyth Lazer feed had written 1.6s earlier, the Block Scholes value
+ * store writes every 500ms, the two spot sources agreed to about two dollars, and the
+ * registry was rolling fresh 1m and 5m markets minute by minute.
+ *
+ * SAME PROTOCOL SHAPE AS 9-12. A full structural diff of the two manifests found zero
+ * differing keys and zero differing values in `initialConfiguration`: identical units,
+ * identical pricing freshness windows, identical market template, identical cadence
+ * ladder. So this is a config swap, not a protocol migration, and every shape flag
+ * (V2_IS_729_PLUS and friends) stays correct without being touched.
+ *
+ * WHAT IS GENUINELY DIFFERENT, and each is handled below:
+ *   1. The quote asset is REAL. Circle's native USDC on Sui, not a test coin, so the
+ *      `symbol` here is a plain statement of fact rather than the deliberate divergence
+ *      9-12 carries. Losses are real money from the first trade.
+ *   2. There are NO HTTP indexers. The manifest ships only a start checkpoint. Harmless:
+ *      every `beta<>` read in lib/api/v2/client.ts sits behind `V2_IS_729_PLUS ?`, so the
+ *      indexer path has been dead code since 7-29 and the app already reads on chain.
+ *   3. The fee rail does not exist here yet. A BuilderCode is bound to the registry that
+ *      created it and its owner is permanent, and skew_fee_v2 must be published on
+ *      mainnet rather than inherited, so both are deliberately blank. See MIGRATION-MAINNET.md.
+ */
 const V2_MAINNET: PredictV2Config = {
-  ...V2_TESTNET,
   network: 'mainnet',
-  grpcUrl: 'https://fullnode.mainnet.sui.io:443',
+  deployment: 'v2',
+  grpcUrl: process.env.NEXT_PUBLIC_SUI_GRPC_URL || 'https://fullnode.mainnet.sui.io:443',
+  // No indexers on mainnet. Left empty rather than pointed at a testnet host: the only
+  // readers are a status `detail` string on the page headers and the frozen v1 screen.
   serverUrl: '',
   oracleServerUrl: '',
-  // Must NOT inherit testnet's code — a BuilderCode is bound to its registry and
-  // its owner is permanent. Register a fresh one on mainnet FROM A MULTISIG (the
-  // owning wallet must sign `create_builder_code` itself; there is no way to
-  // reassign it later) and paste the id here.
-  builderCodeId: '',
-  // Must NOT inherit testnet's skew_fee_v2 — publish it on mainnet (from a multisig) and
-  // paste the ids here, or the app would charge against a testnet FeeConfig.
-  skewFeeV2PackageId: '',
-  feeConfigV2Id: '',
-  // Testnet demo wallets must not leak onto a mainnet board; opt in explicitly.
-  featuredWallets: [],
+  packages: {
+    predict: '0x89aea622e7bb3bdd598bde87dde40ee31c9eed4971b9546e23ec83de3c48bbba',
+    account: '0x4e1dd01465713c9d832313fed5f45c222a4d5c62a533d6da96764c8b2a245d58',
+    propbook: '0xa6c8f32015b5b41d34ee09995a2e9d7a21cdecf0e1910a50b264fd252cd33831',
+    // oracleDependencies.blockScholesOraclePackage. Still read by nothing in the app.
+    blockScholesOracle: '0xa408bcdeb8e7607b1cbb92c088147d61664a6255a3ea5696a8fef44711e113d8',
+    fixedMath: '0x52ec2d263bb9ad545d1be1c00f6779cc577ed7c0408cdea8d589c2664adc22db',
+    sessions: '0x9a068beffa019ae756f4a6d2611e9899d3c6dd888812dd9eca87535d2ac55e2a',
+    // Freshly published at v1, so published-at IS the type origin (same as 8-21 / 9-12).
+    sessionsEventOrigin: '0x9a068beffa019ae756f4a6d2611e9899d3c6dd888812dd9eca87535d2ac55e2a',
+    deepbookCoreAccount: '0xd71b5a341dc8dc7e187517849edf61e54670b60fe496e07186c09a65fa7afdb7',
+  },
+  shared: {
+    protocolConfig: '0x5fa6efbe7691809565a660adde23f0c184ca1d19cefafa4e1c88d655fe279580',
+    poolVault: '0x4d227a1baf8cfcaf6e652a9182d0e63f85f9ce82cd542fdf3356bb3581be3b99',
+    registry: '0x94327dbc256a2cfabd164c2bf4b3fe033bfaa4771f7a6f716954e07cb1b4beba',
+    oracleRegistry: '0x5d62c0d9be43efa769a708ade53fbe5bea98c15c865b64ca7c498c87b045a698',
+    accountRegistry: '0x8c52c6f5b2374e33f4a726d9c32337b1aee3a71410d41c18faa91d938d66e4bc',
+    sessionsConfig: '0xb2fba483748aac7508676020d4e691d68239b66f8bf7c5e7634dd1a76a329317',
+    deepbookRegistry: '0xaf16199a2dff736e9f07a845f23c5da6df6f756eddb631aed9d24a93efc4549d',
+  },
+  // MUST be registered fresh on mainnet, from the wallet that will own it permanently
+  // (`create_builder_code` binds the owner and there is no reassignment). Deliberately
+  // has NO testnet fallback: a stale id attaches a code this registry never issued, and
+  // mints would silently earn nothing. Blank means no-fee mints, which is the safe miss.
+  builderCodeId: process.env.NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET || '',
+  // skew_fee_v2 is framework-only, but the PACKAGE still has to exist on this chain and
+  // its FeeConfig is a per-object thing. Inheriting testnet's would point real money at a
+  // testnet object id that does not exist here.
+  skewFeeV2PackageId: process.env.NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID_MAINNET || '',
+  feeConfigV2Id: process.env.NEXT_PUBLIC_SKEW_FEE_V2_CONFIG_ID_MAINNET || '',
+  // Leverage does not exist on this protocol (#1236), so the window is a ceiling on a
+  // removed feature, not a setting that happens to be zero. See [[no-leverage-on-mainnet]].
+  noLeverageWindowMs: 0,
+  accumulatorRootId: '0x0000000000000000000000000000000000000000000000000000000000000acc',
+  clockId: '0x0000000000000000000000000000000000000000000000000000000000000006',
+  quote: {
+    // Circle's NATIVE USDC on Sui mainnet. Unlike every testnet deployment, the ticker
+    // here needs no apology: the chain, the wallet, and the app all say USDC because it
+    // is USDC. Six decimals, matching `initialConfiguration.units.quoteCoinDecimals`.
+    coinType: '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC',
+    currencyId: '0x75cfbbf8c962d542e99a1d15731e6069f60a00db895407785b15d14f606f2b4a',
+    decimals: 6,
+    symbol: 'USDC',
+  },
+  plpCoinType: '0x89aea622e7bb3bdd598bde87dde40ee31c9eed4971b9546e23ec83de3c48bbba::plp::PLP',
+  deepPackageId: '0xdeeb7a4662eec9f2f3def03fb937a663dddaa2e215b8078a284d026b7946c270',
+  asset: {
+    name: 'BTC_USD',
+    propbookUnderlyingId: 1,
+    pythFeedId: '0x4c5d2b4c8238f04b7687c3a8df915b69c50d5f4d291fc49aea44bdb6b52e1a20',
+    // Same two-feed shape as every deployment since 7-29: value store, then svi store.
+    bsFeedIds: [
+      '0xe83f843b15ae63045b2cea445fb8ea7ad85c5fc2a05f66db122a511e1f2c67bc',
+      '0xfdd447be39d847747caf18ecf3355031bb33979c472581f1a5481375d3748bfb',
+    ],
+  },
+  // TWO enabled cadences, exactly as on 9-12. 1h, 1d, 1w and 1mo all ship
+  // `enabled: false` with tick 0, so the Autopilot day/week ladder stays dormant on
+  // mainnet too. Verbatim from initialConfiguration.cadences.BTC.
+  cadences: [
+    { id: 0, name: '1m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '10000000000', initialExpiryCash: '2000000000', windowSize: '2' },
+    { id: 1, name: '5m', tickSize: '10000000', admissionTickSize: '1000000000', maxExpiryAllocation: '10000000000', initialExpiryCash: '2000000000', windowSize: '2' },
+  ],
+  // Testnet demo wallets must never leak onto a mainnet board. Opt in explicitly.
+  featuredWallets: process.env.NEXT_PUBLIC_FEATURED_WALLETS_MAINNET
+    ? process.env.NEXT_PUBLIC_FEATURED_WALLETS_MAINNET.split(',').map((s) => s.trim()).filter(Boolean)
+    : [],
+  // No faucet, and there never will be one: this is real USDC. Funding a new trader is
+  // the starter grant's job, paid out of a treasury that now holds real money.
 };
 
 /**
