@@ -247,6 +247,106 @@ Walrus does get turned on.
 
 ---
 
+## The Vercel environment
+
+Written 2026-09-24 for the first mainnet deploy. Grouped by ACTION, because the dangerous
+items are not the ones you add, they are the ones already sitting there from testnet.
+
+### 1. The one that fails silently and takes everything with it
+
+- [ ] **`NEXT_PUBLIC_SUI_GRPC_URL` — DELETE it if it is set.** It is a SINGLE GLOBAL
+      override with no network dimension: `V2_MAINNET.grpcUrl` reads it too
+      (`config/predict.ts:624`), and so do `lib/sui/grpc-core.ts`, `lib/server/kelly-auth.ts`
+      and `lib/walrus/client.ts`. Prod very likely holds
+      `https://rpc-testnet.suiscan.xyz` from the 2026-07-31 fullnode stall. Left in place, a
+      mainnet build reads a TESTNET node for every object, price and event: not an error
+      page, just an app confidently showing the wrong chain.
+- [ ] **`NEXT_PUBLIC_SUI_GRPC_FALLBACK` — DELETE it if it is set.** Same reasoning, and its
+      entries are testnet peers. The per-network `DEFAULT_FALLBACKS` already ships mainnet
+      the correct (empty) bench.
+
+### 2. Set or change
+
+- [ ] `NEXT_PUBLIC_SUI_NETWORK` = `mainnet`. This is the switch. Everything else here is
+      about making sure nothing testnet rides along with it.
+- [ ] `NEXT_PUBLIC_PREDICT_DEPLOYMENT` = `9-12`, or delete it. Either is correct: the
+      fallback is already `9-12`, and mainnet needs the shape flags it implies
+      (`V2_IS_729_PLUS` and `V2_IS_821_PLUS` both true). **Never set it to an older value on
+      a mainnet build** — `8-06` or earlier silently flips `V2_IS_821_PLUS` false, which
+      changes the order-value stride, the PLP arguments and the session entry shape.
+- [ ] `NEXT_PUBLIC_BUILDER_CODE_ID_MAINNET` =
+      `0x78b2d0b394f1ae956c97797b2488c5516ca6405fcf6ea0cc5079efa89d13907f`. Optional now that
+      the verified id is the config default, but set it anyway so the fee rail is visible in
+      the dashboard rather than implied by a file.
+- [ ] `NEXT_PUBLIC_SITE_URL` — only if the mainnet deploy lives on a different domain.
+      It drives share-card and OG absolute URLs.
+
+### 3. Delete
+
+- [ ] **`NEXT_PUBLIC_ENOKI_API_KEY`** — this is the one that actually turns Enoki off.
+      `enokiEnabled = !!apiKey && !!googleClientId`, so removing the key is sufficient and
+      Google sign-in disappears. Leaving it set means zkLogin runs against mainnet with
+      testnet-issued credentials.
+- [ ] **`ENOKI_PRIVATE_API_KEY`** — the server-side sponsorship half. Same decision.
+- [ ] `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — optional. Inert once the Enoki key is gone; delete it
+      only to make the intent unambiguous.
+- [ ] **`STARTER_GRANT_PRIVATE_KEY`** — delete. The grant is off, so it does nothing, and
+      this specific key was exposed in a transcript on 2026-09-24. A treasury key with no
+      job should not be sitting in a production environment.
+- [ ] `WALRUS_WRITER_KEY`, `WALRUS_WRITER_ADDRESS`, `WALRUS_DELEGATE_KEY`,
+      `WALRUS_DELEGATE_PUBLIC_KEY`, `WALRUS_MEMORY_ACCOUNT_ID`, `KELLY_MEMORY_SECRET` — all
+      testnet-bound and unreachable with the Kelly flags at 0. Delete rather than carry a
+      set of credentials that point at the wrong network.
+- [ ] `NEXT_PUBLIC_SEAL_PACKAGE_ID`, `NEXT_PUBLIC_SEAL_KEY_SERVERS`,
+      `NEXT_PUBLIC_SEAL_THRESHOLD` — testnet Seal. Unused with `KELLY_CHAT_SEAL=0`.
+- [ ] **`NEXT_PUBLIC_ADMIN_ADDRESSES`** — delete if it is set, so the switched default
+      (`0x06a6f0…fa48`) wins. If prod pins the OLD deployer key here it overrides the config
+      and the admin switch does not take effect on the deployed site.
+- [ ] `STARTER_GRANT_RPC_URL` — only the local dry-run test reads it.
+
+### 4. Confirm they are off (do not just assume)
+
+- [ ] `NEXT_PUBLIC_STARTER_GRANT_ENABLED` = `0`
+- [ ] `NEXT_PUBLIC_KELLY_RECEIPTS` = `0`, `NEXT_PUBLIC_KELLY_MEMORY` = `0`,
+      `NEXT_PUBLIC_KELLY_HISTORY` = `0`, `NEXT_PUBLIC_KELLY_CHAT_SEAL` = `0`
+- [ ] `NEXT_PUBLIC_REWARD_ENABLED` = `0`, `NEXT_PUBLIC_REWARD_PREVIEW` empty
+- [ ] `NEXT_PUBLIC_SKEW_FEE_V2_PACKAGE_ID_MAINNET` and `..._CONFIG_ID_MAINNET` **NOT SET**.
+      Deferred by decision; both are required for `feeRouterV2Enabled`.
+
+### 5. Leave exactly as they are
+
+`ANTHROPIC_API_KEY`, `CLAWBY_API_KEY`, `COPILOT_AI_MODEL`, the AI daily caps,
+`KV_REST_API_URL` / `KV_REST_API_TOKEN` (Vercel's Redis integration injects these; sharing
+one store with testnet is now safe, since the leaderboard tally is keyed by predict package
+and the grant ledger is keyed by network), and the product flags
+`NEXT_PUBLIC_SIMPLE_MODE=1`, `NEXT_PUBLIC_OPTIONS_LIVE=1`, `NEXT_PUBLIC_COPILOT_LIVE=1`,
+`NEXT_PUBLIC_COPILOT_AI=1`, `NEXT_PUBLIC_EXPERIENCE_PROMPT=1`,
+`NEXT_PUBLIC_ANALYSIS_ACTIVE=false`.
+
+The testnet-suffixed ids (`NEXT_PUBLIC_BUILDER_CODE_ID`, `..._821`, `..._912`,
+`NEXT_PUBLIC_SKEW_FEE_V2_*` unsuffixed, `NEXT_PUBLIC_FEATURED_WALLETS`) are read only by the
+testnet config blocks and are unreachable on a mainnet build. Harmless to keep, and keeping
+them makes a rollback to testnet one variable instead of ten.
+
+### 6. Two that are decisions, not settings
+
+- **`NEXT_PUBLIC_SESSIONS` = `1` with `SESSION_GAS_DRIP_ENABLED` = `0` is CORRECT here, and
+  worth understanding rather than copying.** The drip exists for GASLESS (Google) wallets,
+  whose session key cannot self-fund: `sessionActive` requires `(!gasless || sessionFunded)`.
+  With Enoki off, every trader is an external wallet, which tops its own session key up from
+  its own SUI and falls back to the owner path when that runs low. So sessions work on
+  mainnet with no gas treasury at all. Fund one only when Enoki comes back.
+- **`NEXT_PUBLIC_AUTOPILOT` = `1` means unattended trading with real money on day one.**
+  Nothing technical blocks it and it is well tested, but it was built and tuned against
+  testnet play money. Worth a deliberate yes or no rather than inheriting the testnet value.
+
+### 7. Also remove the duplicate
+
+`.env` sets `NEXT_PUBLIC_SESSIONS` twice (lines 51 and 75). Vercel will not let you, but fix
+the local file so the two do not drift.
+
+---
+
 ## Cutover day
 
 1. Set `NEXT_PUBLIC_SUI_NETWORK=mainnet` plus every mainnet env var above.
