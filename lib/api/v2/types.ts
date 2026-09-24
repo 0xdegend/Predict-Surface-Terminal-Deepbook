@@ -36,6 +36,13 @@ export interface V2Market {
   expiry_fee_window_ms: number;
   expiry_fee_max_multiplier: number;
   trading_loss_rebate_rate: number;
+  /**
+   * Ceiling on the per-trade `inventory_impact_charge`, 1e9-scaled. NEW ON 9-12 and absent
+   * on every earlier deployment, hence optional. It is the last term in the cost-vs-payout
+   * assert that raises `expiry_market` #11, so `mint-policy` reserves it when sizing the
+   * top of the mintable odds band; missing ⇒ a conservative constant is reserved instead.
+   */
+  inventory_impact_max_rate?: string;
   kind: string; // "market_created"
 }
 

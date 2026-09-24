@@ -21,6 +21,12 @@ const V2_ABORTS: Record<string, string> = {
   'expiry_market:8': 'The “price to beat” isn’t ready for this market yet.',
   'expiry_market:9': 'The “price to beat” timing didn’t line up. Try again shortly.',
   'expiry_market:10': 'Can’t open and close in the same instant. Wait a moment and retry.',
+  // 11 is new since 6-24 — raised by `compute_mint_quote` when
+  // premium + (trading fee − subsidy) + builder fee + inventory impact charge > quantity,
+  // i.e. the all-in cost is more than the position could ever pay out. Almost always odds
+  // too close to certain; see mint-policy's cost ceiling, which should stop it reaching here.
+  'expiry_market:11':
+    'The fees on this bet add up to more than it could win. Pick odds further from certain, or bet a bit more.',
   // expiry_cash (per-market exposure backing)
   'expiry_cash:0': 'This market is at capacity right now. Try the next expiry, or a smaller bet.',
   // order (id encoding — quantities must be whole $0.01 lots)

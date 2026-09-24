@@ -21,6 +21,7 @@ import { grpcRead, activeGrpcUrl } from '@/lib/sui/grpc-core';
 import {
   predictV2Config,
   V2_IS_821_PLUS,
+  V2_IS_912_PLUS,
   ACTIVE_V2_DEPLOYMENT,
   predictConfigFor,
   deploymentForPredictPackage,
@@ -519,6 +520,8 @@ const STATE_FNS: readonly string[] = [
   'reference_tick',
   'is_settled',
   'try_settlement_price',
+  // 9-12 only. Gated because an unknown name makes the whole PTB fail to resolve.
+  ...(V2_IS_912_PLUS ? ['inventory_impact_max_rate'] : []),
 ];
 
 /**
@@ -560,6 +563,9 @@ export async function onchainMarketState(marketId: string): Promise<V2MarketStat
     max_entry_probability: TEMPLATE.max_entry_probability,
     expiry_fee_window_ms: u64Of('expiry_fee_window_ms'),
     expiry_fee_max_multiplier: u64Of('expiry_fee_max_multiplier'),
+    // Feeds mint-policy's cost ceiling. Omitted (not zeroed) pre-9-12: a zero would read
+    // as "no inventory charge" and widen the odds band instead of falling back.
+    ...(V2_IS_912_PLUS ? { inventory_impact_max_rate: u64LE(slot('inventory_impact_max_rate')).toString() } : {}),
     kind: 'market_created',
   };
   const referenceTick = optU64(slot('reference_tick'));

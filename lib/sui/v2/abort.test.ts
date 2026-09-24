@@ -43,3 +43,14 @@ describe('humanizeV2Error', () => {
     expect(out).not.toMatch(/gas object|input objects/);
   });
 });
+
+describe('expiry_market #11 — cost exceeds payout (new since 6-24)', () => {
+  it('decodes the cost-over-payout abort instead of showing a raw module/code line', () => {
+    // The founder's screen on 2026-09-24, opening a position on 9-12.
+    const raw =
+      "MoveAbort in 7th command, abort code: 11, in '0x59d71119e990573a738dd3ff9c4c7d28d6893af69c87c1a7f3a2e90e280ce2f4::expiry_market::compute_mint_quote' (instruction 49)";
+    expect(humanizeV2Error(raw)).toBe(
+      'The fees on this bet add up to more than it could win. Pick odds further from certain, or bet a bit more.',
+    );
+  });
+});

@@ -222,6 +222,20 @@ export const V2_IS_729_PLUS: boolean = ACTIVE_V2_DEPLOYMENT !== '6-24';
 export const V2_IS_821_PLUS: boolean =
   KNOWN_V2_DEPLOYMENTS.indexOf(ACTIVE_V2_DEPLOYMENT) >= KNOWN_V2_DEPLOYMENTS.indexOf('8-21');
 
+/**
+ * True from 9-12 on. 9-12 added the INVENTORY IMPACT mechanism: a per-trade
+ * `inventory_impact_charge` that `expiry_market::compute_mint_quote` folds into the
+ * cost-vs-payout assert (abort 11), plus the getters `inventory_impact_max_rate`,
+ * `inventory_impact_scale` and `inventory_impact_reserve` on `ExpiryMarket`.
+ *
+ * This is a READ-SHAPE flag, unlike the two above which are about entry-function arity.
+ * It exists because `onchainMarketState` resolves every name in `STATE_FNS` in one PTB:
+ * naming a getter an older package does not have makes the WHOLE state read throw, not
+ * just that field, and that read is the only path able to describe an expired market.
+ */
+export const V2_IS_912_PLUS: boolean =
+  KNOWN_V2_DEPLOYMENTS.indexOf(ACTIVE_V2_DEPLOYMENT) >= KNOWN_V2_DEPLOYMENTS.indexOf('9-12');
+
 export interface PredictV2Config {
   network: SuiNetwork;
   deployment: 'v2';

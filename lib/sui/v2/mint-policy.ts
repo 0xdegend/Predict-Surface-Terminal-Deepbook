@@ -38,7 +38,63 @@ export interface ProbabilityBand {
 /** The 9-12 protocol template, used only when no market is available. */
 export const FALLBACK_BAND: ProbabilityBand = { min: 0.01, max: 0.99 };
 
-type BandSource = { min_entry_probability?: string | number; max_entry_probability?: string | number } | undefined;
+type BandSource =
+  | {
+      min_entry_probability?: string | number;
+      max_entry_probability?: string | number;
+      /** Trading fee as a fraction of quantity (1e9-scaled on chain). Template: 2%. */
+      base_fee?: string | number;
+      /** `expiry_market::inventory_impact_max_rate`, new on 9-12. Absent ⇒ fallback below. */
+      inventory_impact_max_rate?: string | number;
+    }
+  | undefined;
+
+/**
+ * THE SECOND, TIGHTER CEILING: cost must not exceed the payout.
+ *
+ * `expiry_market::compute_mint_quote` asserts (verified by disassembling the live 9-12
+ * module, 2026-09-24):
+ *
+ *     premium + (trading_fee − fee_incentive_subsidy) + builder_fee + inventory_impact_charge
+ *       ≤ quantity            else abort 11
+ *
+ * `quantity` is the MAX PAYOUT, and premium ≈ entry_probability × quantity, so the fees
+ * only fit while `entry_probability ≤ 1 − (fee rates)`. With the 9-12 template that is
+ * roughly 97.8% BEFORE any inventory charge — well under the 99% the market advertises as
+ * `max_entry_probability`. Betting between the two is not a bad price, it is a transaction
+ * the chain refuses, which is exactly the dead zone this module exists to close.
+ *
+ * Builder fee is `min(10% of trading_fee, 0.5% of quantity)` — read off the same bytecode
+ * (`builder_fee_amount`: `mul_down(fee, 100_000_000)` vs `mul_down(quantity, 5_000_000)`).
+ *
+ * The inventory charge is per-trade and depends on pool inventory we cannot see, so we
+ * reserve the market's own `inventory_impact_max_rate` when it is present and a modest
+ * constant when it is not. Reserving too much only declines a bet the chain might have
+ * taken; reserving too little quotes one it will certainly reject.
+ */
+const BUILDER_FEE_SHARE_OF_TRADING_FEE = 0.1;
+const BUILDER_FEE_CAP_RATE = 0.005;
+/** Template `base_fee` (2%), used when a caller has no market in hand. */
+const FALLBACK_BASE_FEE = 0.02;
+/** Reserved for `inventory_impact_charge` when the market's max rate is unknown. */
+export const INVENTORY_IMPACT_FALLBACK_RATE = 0.005;
+
+const num = (v: string | number | undefined): number | null => {
+  if (v == null) return null;
+  const n = toFloat(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/**
+ * The highest entry probability whose all-in cost still fits inside the payout.
+ * Always ≤ 1; callers take the lower of this and the market's declared max.
+ */
+export function costCeilingProbability(market?: BandSource): number {
+  const baseFee = num(market?.base_fee) ?? FALLBACK_BASE_FEE;
+  const builderFee = Math.min(BUILDER_FEE_SHARE_OF_TRADING_FEE * baseFee, BUILDER_FEE_CAP_RATE);
+  const inventory = num(market?.inventory_impact_max_rate) ?? INVENTORY_IMPACT_FALLBACK_RATE;
+  return 1 - baseFee - builderFee - inventory;
+}
 
 /**
  * The band this market will mint in. A market missing either bound falls back rather than
@@ -54,10 +110,27 @@ export function mintProbabilityBand(market?: BandSource): ProbabilityBand {
 }
 
 /**
+ * The band a bet must ACTUALLY land in — the market's declared bounds intersected with the
+ * cost ceiling. The chain enforces the two independently, in different modules, so a bet
+ * has to satisfy both:
+ *
+ *   `strike_exposure_config::assert_mint_probability_policy` → the declared band
+ *   `expiry_market::compute_mint_quote`                      → cost ≤ payout, else abort 11
+ *
+ * Use this for anything user-facing (a slider bound, a quotable check). `mintProbabilityBand`
+ * stays the DECLARED band so each function keeps mapping to exactly one on-chain rule, which
+ * is what makes them cheap to re-verify at a cutover.
+ */
+export function effectiveMintBand(market?: BandSource): ProbabilityBand {
+  const declared = mintProbabilityBand(market);
+  return { min: declared.min, max: Math.min(declared.max, costCeilingProbability(market)) };
+}
+
+/**
  * Whether a mint at these odds would be admitted. Exclusive at both ends: the chain asserts
  * a strict comparison, so a probability exactly on the bound is not mintable.
  */
 export function probabilityMintable(entryProb: number, market?: BandSource): boolean {
-  const { min, max } = mintProbabilityBand(market);
+  const { min, max } = effectiveMintBand(market);
   return entryProb > min && entryProb < max;
 }

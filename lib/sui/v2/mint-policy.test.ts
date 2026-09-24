@@ -7,7 +7,13 @@
  * app being broken.
  */
 import { describe, it, expect } from 'vitest';
-import { mintProbabilityBand, probabilityMintable, FALLBACK_BAND } from './mint-policy';
+import {
+  mintProbabilityBand,
+  effectiveMintBand,
+  costCeilingProbability,
+  probabilityMintable,
+  FALLBACK_BAND,
+} from './mint-policy';
 
 const market = (min: string, max: string) =>
   ({ min_entry_probability: min, max_entry_probability: max }) as const;
@@ -53,5 +59,57 @@ describe('probabilityMintable', () => {
     expect(probabilityMintable(0.05, tight)).toBe(false);
     expect(probabilityMintable(0.5, tight)).toBe(true);
     expect(probabilityMintable(0.95, tight)).toBe(false);
+  });
+});
+
+describe('cost ceiling — the second bound that raises expiry_market #11', () => {
+  // 1e9-scaled, as the chain and the MarketCreated event carry them.
+  const market = (over: Record<string, string> = {}) => ({
+    min_entry_probability: '10000000', // 1%
+    max_entry_probability: '990000000', // 99%
+    base_fee: '20000000', // 2% of quantity
+    ...over,
+  });
+
+  it('caps the EFFECTIVE band below the advertised 99%, because fees cannot fit there', () => {
+    // The declared band is untouched — it is a different on-chain rule.
+    expect(mintProbabilityBand(market()).max).toBe(0.99);
+    const { max } = effectiveMintBand(market());
+    // 1 − 2% fee − 0.2% builder (min(10% of fee, 0.5%)) − 0.5% inventory reserve
+    expect(max).toBeCloseTo(0.973, 6);
+    expect(max).toBeLessThan(0.99);
+  });
+
+  it('refuses a 98.5% bet that the old band would have quoted and the chain would reject', () => {
+    // premium .985 + fee .02 + builder .002 = 1.007 × quantity > quantity ⇒ abort 11
+    expect(probabilityMintable(0.985, market())).toBe(false);
+  });
+
+  it('still allows a normal bet well inside the ceiling', () => {
+    expect(probabilityMintable(0.9, market())).toBe(true);
+    expect(probabilityMintable(0.5, market())).toBe(true);
+  });
+
+  it('uses the market’s own inventory rate when 9-12 supplies it', () => {
+    const wide = effectiveMintBand(market({ inventory_impact_max_rate: '30000000' })); // 3%
+    expect(wide.max).toBeCloseTo(0.948, 6); // 1 − .02 − .002 − .03
+    expect(wide.max).toBeLessThan(effectiveMintBand(market()).max);
+  });
+
+  it('a lower trading fee raises the ceiling, but never above the declared max', () => {
+    const cheap = effectiveMintBand(market({ base_fee: '1000000' })); // 0.1%
+    expect(cheap.max).toBe(0.99); // declared max still wins
+  });
+
+  it('falls back conservatively when no market is in hand', () => {
+    expect(costCeilingProbability(undefined)).toBeCloseTo(0.973, 6);
+    expect(effectiveMintBand(undefined).max).toBeLessThan(FALLBACK_BAND.max);
+    // ...while the declared fallback itself is unchanged.
+    expect(mintProbabilityBand(undefined)).toEqual(FALLBACK_BAND);
+  });
+
+  it('leaves the lower bound untouched', () => {
+    expect(effectiveMintBand(market()).min).toBeCloseTo(0.01, 6);
+    expect(probabilityMintable(0.005, market())).toBe(false);
   });
 });
