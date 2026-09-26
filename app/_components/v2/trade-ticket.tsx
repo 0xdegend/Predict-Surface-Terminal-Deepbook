@@ -90,6 +90,19 @@ import type { LivePricer } from '@/lib/sui/v2/pricer';
 import { probabilityMintable } from '@/lib/sui/v2/mint-policy';
 
 const SLIPPAGE_BPS = 100; // 1% cost-cap headroom (deposit sizing)
+/**
+ * Headroom on the CHAIN's own quote when sizing the deposit.
+ *
+ * Wider than SLIPPAGE_BPS because the quote is taken seconds before the mint lands and a
+ * wallet approval sits in between, and the protocol's fee is not constant over that gap:
+ * inside `expiry_fee_window_ms` (60s on the live config) the trading fee ramps toward
+ * `expiry_fee_max_multiplier` (3x), so a bet placed near expiry costs measurably more at
+ * landing than at quoting. Over-depositing is harmless, the surplus stays in the trader's
+ * own account; under-depositing aborts the mint. So this pads the DEPOSIT only. The
+ * pre-flight refusal below tests the UNPADDED cost, so the pad can never refuse a trade
+ * the trader could actually afford.
+ */
+const CHAIN_QUOTE_PAD_BPS = 500; // 5%
 // "Share this trade with a friend" is still being finished, so it's gated behind an env
 // flag and stays dark until we flip it on. Off (unset) = hidden. Gating `shareBase` hides
 // every entry point at once (both buttons + the share modal all branch on it).
@@ -385,16 +398,25 @@ export function V2TradeTicket({
   const shortfall = requiredBase > acct.balanceBase ? requiredBase - acct.balanceBase : 0n;
   const fundedFromAccount =
     estCostBase + skewFeeDue < acct.balanceBase ? estCostBase + skewFeeDue : acct.balanceBase;
-  // Can the trade actually be funded? The mint auto-deposits the shortfall from
-  // the wallet in the same transaction, so the real ceiling is account + wallet
-  // USDC. If that's below the (slippage-padded) cost + fee the deposit would revert,
-  // so we block the review up front instead of letting the user walk into a
-  // guaranteed on-chain failure. Only judged once the wallet balance is known
-  // (undefined while loading) so it never flashes on first paint.
+  // Can the trade POSSIBLY be funded? The mint auto-deposits the shortfall from the
+  // wallet in the same transaction, so the ceiling is account + wallet USDC.
+  //
+  // This tests a LOWER BOUND on cost, not our estimate of it, and that is deliberate.
+  // `requiredBase` is `stake + base_fee × quantity`, which measurement on 2026-09-26
+  // showed is not what the protocol charges: on a live mainnet market it demanded $2.84
+  // from a $2.43 account for a bet the chain prices at $2.25, so gating on it silently
+  // refused trades the trader could afford. The floor below cannot do that, because a
+  // mint always costs at least the premium plus the builder fee, and the builder fee is
+  // the one term with a known closed form (`min(10% of trading fee, 0.5% of quantity)`,
+  // confirmed against a real fill). Everything between the floor and the truth is settled
+  // by asking the chain in `handleMint`, which refuses with an exact figure before the
+  // wallet ever opens. Only judged once the wallet balance is known (undefined while
+  // loading) so it never flashes on first paint.
+  const costFloorBase = stakeBase + (quantity * 5n) / 1000n + skewFeeDue;
   const insufficientFunds =
     quotable &&
     acct.walletDusdcBase !== undefined &&
-    requiredBase > acct.balanceBase + acct.walletDusdcBase;
+    costFloorBase > acct.balanceBase + acct.walletDusdcBase;
 
   // The trader's spendable USDC = trading account + wallet (the mint auto-deposits
   // any wallet shortfall), i.e. exactly what they can stake. Undefined until the
@@ -494,6 +516,55 @@ export function V2TradeTicket({
   async function handleMint() {
     // Turn instant trading on in THIS approval only when armed and none is live yet.
     const wasArming = armInstant && !acct.sessionActive;
+
+    // THE FUNDING NUMBER COMES FROM THE CHAIN, NOT FROM US.
+    //
+    // `estCostBase` is `stake + base_fee × quantity`, and that is NOT what the protocol
+    // charges. Measured on mainnet 2026-09-26: a live 5m market's simulated `OrderMinted`
+    // reported `trading_fee` at 9.148% of quantity while the same market's `base_fee`
+    // field read 20.4%, and the real charge also carries inventory impact, a penalty fee,
+    // a referral cut and a fee-incentive subsidy, none of which this file can see. The
+    // estimate is therefore wrong in BOTH directions depending on the market, and when it
+    // is wrong downward the trader is refused mid-trade: a real account holding $2.43 was
+    // told a $1.70 bet would fit, then got `account::EInsufficientBalance` from the chain.
+    //
+    // So simulate the exact mint and fund from its total. No signature, no gas, ~0.5s, and
+    // it happens once per attempt at the one moment the number actually has to be right.
+    const chainQuote = await acct.quoteMintBudget({
+      marketId: market!.expiry_market_id,
+      lowerTick,
+      higherTick,
+      amount,
+      leverage: leverageScaled(lev),
+    });
+
+    // `undefined` = no account to quote against, so keep our estimate. `null` = the chain
+    // parsed no mint, which is usually a refusal; fall back rather than block, because a
+    // transport hiccup must never stop a fundable trade.
+    const trueCostBase = chainQuote ? chainQuote.totalCostBase + skewFeeDue : requiredBase;
+    const walletBase = acct.walletDusdcBase ?? 0n;
+
+    // Refuse BEFORE the wallet opens, against the unpadded truth. This is the check the
+    // old estimate was getting wrong, and saying it here means the trader reads it on the
+    // ticket instead of watching a signature prompt fail.
+    if (trueCostBase > acct.balanceBase + walletBase) {
+      const short = fromQuote(trueCostBase - acct.balanceBase - walletBase);
+      acct.reportError(
+        `This bet costs ${fmtQuote(fromQuote(trueCostBase))} ${sym} all in, including the protocol's fee. ` +
+          `You are ${fmtQuote(short)} ${sym} short. Lower the amount or add a little ${sym}.`,
+      );
+      setConfirmOpen(false);
+      return;
+    }
+
+    // Deposit the padded figure, but never more than the wallet actually holds. The
+    // surplus stays in the trader's own account either way.
+    const fundTarget = chainQuote
+      ? maxCostWithSlippage(chainQuote.totalCostBase, CHAIN_QUOTE_PAD_BPS) + skewFeeDue
+      : requiredBase;
+    const want = fundTarget > acct.balanceBase ? fundTarget - acct.balanceBase : 0n;
+    const depositBase = want > walletBase ? walletBase : want;
+
     const digest = await acct.mintBudget(
       {
         marketId: market!.expiry_market_id,
@@ -502,7 +573,7 @@ export function V2TradeTicket({
         amount,
         minQuantity,
         leverage: leverageScaled(lev),
-        deposit: shortfall > 0n ? shortfall : undefined,
+        deposit: depositBase > 0n ? depositBase : undefined,
         // The ticket sized `deposit` for cost + fee, so pass the fee explicitly (the hook
         // then leaves funding to us). Omitted when this trade routes fee-free via a session.
         skewFee: chargesSkewFee

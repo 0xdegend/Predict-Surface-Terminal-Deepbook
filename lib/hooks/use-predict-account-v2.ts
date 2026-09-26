@@ -710,6 +710,11 @@ export function usePredictAccountV2() {
     busy,
     error,
     /** Clear the last action error — lets a caller dismiss the error banner. */
+    /** Surface a message on the ticket's own error rail WITHOUT attempting a
+     *  transaction. For a pre-flight refusal: the ticket now asks the chain what a mint
+     *  will cost before it sends the trader to their wallet, and a refusal there should
+     *  read exactly like a refusal from the chain, in the same place. */
+    reportError: (message: string) => setError(message),
     clearError: () => {
       errorRef.current = null;
       setError(null);
