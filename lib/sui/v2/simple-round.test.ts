@@ -8,7 +8,20 @@ import type { SviFloat } from '@/lib/svi/svi';
 // BTC market grid from the live 8-06 deployment: tick $0.01 (1e9-scaled), admission $1.
 const TICK = '10000000';
 const ADMISSION = '1000000000';
-const MARKET = { tick_size: TICK, base_fee: '20000000' }; // base_fee = 2%
+// The whole fee policy, because the fee is `base_fee × sqrt(p(1−p))` now, not a flat rate.
+// These are the shipped template values; `expiry` is far out so the expiry ramp is inert.
+const MARKET = {
+  tick_size: TICK,
+  base_fee: '20000000', // 2% variance coefficient
+  min_fee: '22000000', // 2.2% per-leg floor
+  expiry_fee_window_ms: 60_000,
+  expiry_fee_max_multiplier: 3_000_000_000,
+  min_entry_probability: '10000000',
+  max_entry_probability: '990000000',
+  max_expiry_allocation: '10000000000',
+  backing_buffer_lambda: 310_000_000,
+  expiry: Date.now() + 3_600_000,
+};
 
 // A near-symmetric SVI so at-the-money sits ~50/50 (matches the live probe).
 const SVI: SviFloat = { a: 0.02, b: 0.1, rho: 0, m: 0, sigma: 0.3 };

@@ -32,6 +32,7 @@ import { LuShare2 } from 'react-icons/lu';
 import { usePredictAccountV2, qkV2Account } from '@/lib/hooks/use-predict-account-v2';
 import { useSkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
 import { skewFeeBase } from '@/lib/sui/v2/skew-fee';
+import { localQuantityCost } from '@/lib/sui/v2/fee-quote';
 import { useStarterGrant } from '@/lib/hooks/use-starter-grant';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance, betPresets } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
@@ -40,7 +41,7 @@ import { useMounted } from '@/lib/hooks/use-mounted';
 import { upFair, rangeFair, defaultBand, type SviFloat } from '@/lib/svi/svi';
 import { fromFloat, toFloat, fromQuote, toQuote } from '@/config/scale';
 import { dateUTC, countdown, pct, quote as fmtQuote, leverage as fmtLev } from '@/lib/format';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, builderCodeEnabled } from '@/config/predict';
 import { starterGrant, STARTER_GRANT_BALANCE_CEILING } from '@/config/starter-grant';
 import { isClosingSoon, isTooCloseToExpiry, cadenceOf } from '@/lib/markets/v2-discovery';
 import {
@@ -361,8 +362,44 @@ export function V2TradeTicket({
   // What a WIN actually pays: max payout minus the leverage floor (= full qty at
   // 1×). Fees below still charge on the notional `quantity`, not this.
   const winBase = winPayout(quantity, entryProb, lev);
-  const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
-  const estCostBase = stakeBase + feeBase;
+
+  // THE PROTOCOL'S OWN FEE ARITHMETIC, not ours.
+  //
+  // This used to be `base_fee × quantity`, which read the 20.4% `base_fee` as a flat rate.
+  // It is not one: `base_fee` MULTIPLIES `sqrt(p·(1−p))`, so the trading fee is a variance
+  // fee that peaks at `base_fee/2` on even odds and falls away toward either extreme. Our
+  // flat rate was therefore at least 2x the true fee at every probability and 6.5x at the
+  // tails. Verified against live mainnet mints on 2026-09-27: at p=0.69 the chain charged
+  // 0.2321 where we displayed 0.5018, and at p=0.02 it charged 2.1927 where we displayed
+  // 14.2106. A trader reading a $100 ticket saw a $28.61 fee on a bet that costs $12.
+  //
+  // `localQuantityCost` is Mysten's exact integer port of the deployed fee path
+  // (@mysten/deepbook-v3 2.6.0, ts-sdks#1278), so it carries the per-boundary legs, the
+  // `min_fee` floor, the expiry ramp, the builder cut, the sponsor subsidy and inventory
+  // impact. `fee-quote.live.test.ts` asserts it equals the chain to the integer.
+  //
+  // A binary UP is the range [strike, +inf) and a binary DOWN is (-inf, strike], so the
+  // infinite side is `null` and pays no fee leg. It is arithmetic, NOT a preflight: what we
+  // FUND still comes from the chain simulate in `handleMint`.
+  const rawProb = (v: number) => BigInt(Math.round(Math.min(1, Math.max(0, v)) * 1e9));
+  const bounds = rangeMode
+    ? { lowerUp: rawProb(upFair(lowerStrike, pricer.forward, svi)), higherUp: rawProb(upFair(higherStrike, pricer.forward, svi)) }
+    : isUp
+      ? { lowerUp: rawProb(upProb), higherUp: null }
+      : { lowerUp: null, higherUp: rawProb(upProb) };
+  const localCost = localQuantityCost({
+    market,
+    ...bounds,
+    builderCode: builderCodeEnabled,
+    quantityBase: quantity,
+    nowMs: now,
+  });
+  // Fall back to the old estimate only when the SDK refuses to price (an admission check
+  // the chain would also abort on). Wrong-but-pessimistic beats a blank ticket.
+  const feeBase = localCost
+    ? localCost.raw.cost - toQuote(localCost.premium)
+    : BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
+  const estCostBase = localCost ? localCost.raw.cost : stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
 
   // Ticks: range = two finite ticks; binary = one finite + a ±∞ sentinel.

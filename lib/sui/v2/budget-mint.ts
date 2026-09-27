@@ -14,6 +14,12 @@
  */
 import { toFloat, fromFloat, toQuote } from '@/config/scale';
 import { snapStrikeToAdmission, binaryTicks, rangeTicks, leverageScaled, maxCostWithSlippage } from './ticks';
+import { localQuantityCost } from './fee-quote';
+import { builderCodeEnabled } from '@/config/predict';
+
+/** A 0..1 probability as the chain's raw 1e9 integer. */
+const rawProbability = (v: number) => BigInt(Math.round(Math.min(1, Math.max(0, v)) * 1e9));
+
 import { quantityForStake, leverageSliderMax, minQuantityForBudget, mintAmountBase, MIN_STAKE_BASE } from './quote';
 import { upFair, rangeFair, type SviFloat } from '@/lib/svi/svi';
 import type { V2Market } from '@/lib/api/v2/types';
@@ -80,8 +86,21 @@ export function planBinaryBudgetMint(p: BinaryBetParams): BinaryMintPlan {
   const amount = mintAmountBase(stakeBase);
   const quantity = quantityForStake(amount, entryProb, lev);
   const minQuantity = minQuantityForBudget(quantity);
-  const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
-  const estCostBase = stakeBase + feeBase;
+  // The protocol's own fee arithmetic. `base_fee` multiplies `sqrt(p(1−p))`, so the old
+  // flat read overstated this by at least 2x, which for Autopilot meant declining bets on
+  // economics that were never real. See lib/sui/v2/fee-quote.ts.
+  const local = localQuantityCost({
+    market,
+    ...(p.isUp
+      ? { lowerUp: rawProbability(upProb), higherUp: null }
+      : { lowerUp: null, higherUp: rawProbability(upProb) }),
+    builderCode: builderCodeEnabled,
+    quantityBase: quantity,
+  });
+  const feeBase = local
+    ? local.raw.cost - stakeBase
+    : BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
+  const estCostBase = local ? local.raw.cost : stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
 
   const { lowerTick, higherTick } = binaryTicks(
@@ -167,8 +186,19 @@ export function planRangeBudgetMint(p: RangeBetParams): RangeMintPlan {
   const amount = mintAmountBase(stakeBase);
   const quantity = quantityForStake(amount, entryProb, lev);
   const minQuantity = minQuantityForBudget(quantity);
-  const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
-  const estCostBase = stakeBase + feeBase;
+  // Same as the binary path above: the chain's real fee, not `base_fee × quantity`.
+  // A range has two FINITE legs, so both boundaries carry a fee leg.
+  const local = localQuantityCost({
+    market,
+    lowerUp: rawProbability(upFair(lower, forward, svi)),
+    higherUp: rawProbability(upFair(higher, forward, svi)),
+    builderCode: builderCodeEnabled,
+    quantityBase: quantity,
+  });
+  const feeBase = local
+    ? local.raw.cost - stakeBase
+    : BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
+  const estCostBase = local ? local.raw.cost : stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
 
   const { lowerTick, higherTick } = rangeTicks(lowerSnap, higherSnap, BigInt(market.tick_size));

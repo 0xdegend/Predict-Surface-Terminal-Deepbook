@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  tradingFeeRate,
   mintProbabilityBand,
   effectiveMintBand,
   costCeilingProbability,
@@ -75,8 +76,11 @@ describe('cost ceiling — the second bound that raises expiry_market #11', () =
     // The declared band is untouched — it is a different on-chain rule.
     expect(mintProbabilityBand(market()).max).toBe(0.99);
     const { max } = effectiveMintBand(market());
-    // 1 − 2% fee − 0.2% builder (min(10% of fee, 0.5%)) − 0.5% inventory reserve
-    expect(max).toBeCloseTo(0.973, 6);
+    // Up here the variance fee `base_fee × sqrt(p(1−p))` has collapsed to almost nothing
+    // (0.02 × sqrt(0.97 × 0.03) ≈ 0.34%), so the `min_fee` FLOOR of 2.2% is what actually
+    // binds: 1 − 2.2% floor − 0.22% builder (10% of the fee) − 0.5% inventory reserve.
+    // The old flat-fee model gave 0.973 by ignoring the floor entirely.
+    expect(max).toBeCloseTo(0.9708, 4);
     expect(max).toBeLessThan(0.99);
   });
 
@@ -92,17 +96,44 @@ describe('cost ceiling — the second bound that raises expiry_market #11', () =
 
   it('uses the market’s own inventory rate when 9-12 supplies it', () => {
     const wide = effectiveMintBand(market({ inventory_impact_max_rate: '30000000' })); // 3%
-    expect(wide.max).toBeCloseTo(0.948, 6); // 1 − .02 − .002 − .03
+    expect(wide.max).toBeCloseTo(0.9458, 4); // 1 − 2.2% floor − 0.22% builder − 3%
     expect(wide.max).toBeLessThan(effectiveMintBand(market()).max);
   });
 
   it('a lower trading fee raises the ceiling, but never above the declared max', () => {
-    const cheap = effectiveMintBand(market({ base_fee: '1000000' })); // 0.1%
+    // Drop BOTH the variance coefficient and the floor, or the floor keeps the ceiling down.
+    const cheap = effectiveMintBand(market({ base_fee: '1000000', min_fee: '1000000' })); // 0.1%
     expect(cheap.max).toBe(0.99); // declared max still wins
   });
 
+  // The bug this whole model replaced. Mainnet's `base_fee` is 20.4%, and reading that as a
+  // FLAT rate put the ceiling at 1 − 0.204 − 0.005 − 0.005 = 0.786, so the app refused to
+  // quote any bet above 78.6% while the chain was happily accepting them. The real fee at
+  // p = 0.9 is 0.204 × sqrt(0.9 × 0.1) = 6.1%, not 20.4%.
+  it('does not strangle the band on a market with a high variance coefficient', () => {
+    const mainnet = market({ base_fee: '204000000', min_fee: '22000000', inventory_impact_max_rate: '0' });
+    const { max } = effectiveMintBand(mainnet);
+    expect(max).toBeGreaterThan(0.93);
+    expect(max).toBeLessThan(0.96);
+    // The band the old flat model threw away, all of it quotable and all of it accepted.
+    expect(probabilityMintable(0.80, mainnet)).toBe(true);
+    expect(probabilityMintable(0.90, mainnet)).toBe(true);
+    // And it still refuses what the chain would actually abort.
+    expect(probabilityMintable(0.98, mainnet)).toBe(false);
+  });
+
+  it('prices the fee as variance, peaking on a coin flip and vanishing at the extremes', () => {
+    // 20.4% base_fee — the live mainnet value.
+    expect(tradingFeeRate(0.5, 0.204, 0)).toBeCloseTo(0.102, 6); // peak = base_fee / 2
+    expect(tradingFeeRate(0.7329, 0.204, 0)).toBeCloseTo(0.0903, 4); // measured 0.09026
+    expect(tradingFeeRate(0.2587, 0.204, 0)).toBeCloseTo(0.0893, 4); // measured 0.08934
+    expect(tradingFeeRate(0.99, 0.204, 0)).toBeLessThan(tradingFeeRate(0.5, 0.204, 0));
+    // The floor takes over once the variance term falls under it.
+    expect(tradingFeeRate(0.999, 0.204, 0.022)).toBe(0.022);
+  });
+
   it('falls back conservatively when no market is in hand', () => {
-    expect(costCeilingProbability(undefined)).toBeCloseTo(0.973, 6);
+    expect(costCeilingProbability(undefined)).toBeCloseTo(0.9708, 4);
     expect(effectiveMintBand(undefined).max).toBeLessThan(FALLBACK_BAND.max);
     // ...while the declared fallback itself is unchanged.
     expect(mintProbabilityBand(undefined)).toEqual(FALLBACK_BAND);

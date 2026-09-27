@@ -44,6 +44,8 @@ type BandSource =
       max_entry_probability?: string | number;
       /** Trading fee as a fraction of quantity (1e9-scaled on chain). Template: 2%. */
       base_fee?: string | number;
+      /** `min_fee` — the per-boundary-leg floor under the variance fee. Template 2.2%. */
+      min_fee?: string | number;
       /** `expiry_market::inventory_impact_max_rate`, new on 9-12. Absent ⇒ fallback below. */
       inventory_impact_max_rate?: string | number;
     }
@@ -74,8 +76,17 @@ type BandSource =
  */
 const BUILDER_FEE_SHARE_OF_TRADING_FEE = 0.1;
 const BUILDER_FEE_CAP_RATE = 0.005;
-/** Template `base_fee` (2%), used when a caller has no market in hand. */
-const FALLBACK_BASE_FEE = 0.02;
+/**
+ * Template `base_fee` (10% on the shipped config), used when a caller has no market.
+ *
+ * This is NOT a flat rate. `base_fee` multiplies `sqrt(p·(1−p))`, so the fee it produces
+ * peaks at `base_fee/2` on even odds and vanishes at the extremes. The old value here was
+ * 0.02, a stale copy of an early template AND read as a flat rate, which is two errors that
+ * happened to partly cancel. See `tradingFeeRate` below.
+ */
+const FALLBACK_BASE_FEE = 0.10;
+/** Template `min_fee` (2.2%) — the per-leg floor under the variance fee. */
+const FALLBACK_MIN_FEE = 0.022;
 /** Reserved for `inventory_impact_charge` when the market's max rate is unknown. */
 export const INVENTORY_IMPACT_FALLBACK_RATE = 0.005;
 
@@ -89,11 +100,51 @@ const num = (v: string | number | undefined): number | null => {
  * The highest entry probability whose all-in cost still fits inside the payout.
  * Always ≤ 1; callers take the lower of this and the market's declared max.
  */
+/**
+ * The protocol's trading fee as a fraction of quantity, at entry probability `p`.
+ *
+ * `base_fee` MULTIPLIES `sqrt(p·(1−p))` — a Bernoulli variance fee, not a flat rate. It is
+ * highest on a coin flip and falls away toward either certainty, with `min_fee` as a floor.
+ * Confirmed two ways on 2026-09-27: the `FeePolicy` docs in `@mysten/deepbook-v3`, and live
+ * mainnet mints where `base_fee` 20.4% produced 9.026% at p=0.733 and 8.934% at p=0.259,
+ * both matching `0.204 × sqrt(p(1−p))` to three decimals.
+ *
+ * Reading it as flat is what made this ceiling refuse every bet above 78.6% on mainnet.
+ */
+export function tradingFeeRate(p: number, baseFee: number, minFee: number): number {
+  const v = p * (1 - p);
+  return Math.max(baseFee * Math.sqrt(v > 0 ? v : 0), minFee);
+}
+
 export function costCeilingProbability(market?: BandSource): number {
   const baseFee = num(market?.base_fee) ?? FALLBACK_BASE_FEE;
-  const builderFee = Math.min(BUILDER_FEE_SHARE_OF_TRADING_FEE * baseFee, BUILDER_FEE_CAP_RATE);
+  const minFee = num(market?.min_fee) ?? FALLBACK_MIN_FEE;
   const inventory = num(market?.inventory_impact_max_rate) ?? INVENTORY_IMPACT_FALLBACK_RATE;
-  return 1 - baseFee - builderFee - inventory;
+  // Cost as a fraction of payout at `p`: premium `p`, plus the variance fee, plus the
+  // builder cut (`min(10% of the trading fee, 0.5% of quantity)`, from the bytecode), plus
+  // the inventory reserve. Mintable while this stays at or under 1.
+  const over = (p: number) => {
+    const fee = tradingFeeRate(p, baseFee, minFee);
+    const builder = Math.min(BUILDER_FEE_SHARE_OF_TRADING_FEE * fee, BUILDER_FEE_CAP_RATE);
+    return p + fee + builder + inventory;
+  };
+  // The cost curve is not monotone in `p` (the fee term rises to p=0.5 then falls), so
+  // solve numerically on the upper branch rather than inverting it. 48 bisection steps on a
+  // pure function is exact to well past the tick grid and cannot get the algebra wrong.
+  if (over(1) <= 1) return 1;
+  let lo = 0.5;
+  let hi = 1;
+  if (over(lo) > 1) {
+    // Even the worst point fits under nothing — degrade to the old conservative answer
+    // rather than returning a ceiling below the band's own floor.
+    return Math.max(0, 1 - baseFee - inventory);
+  }
+  for (let i = 0; i < 48; i++) {
+    const mid = (lo + hi) / 2;
+    if (over(mid) <= 1) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /**

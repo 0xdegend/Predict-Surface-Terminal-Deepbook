@@ -14,6 +14,7 @@
     "@anthropic-ai/sdk": "^0.115.0",
     "@mysten-incubation/memwal": "^0.1.2",
     "@mysten/dapp-kit-react": "^2.0.3",
+    "@mysten/deepbook-v3": "^2.6.4",
     "@mysten/enoki": "^1.0.8",
     "@mysten/seal": "^1.4.3",
     "@mysten/sui": "^2.24.0",

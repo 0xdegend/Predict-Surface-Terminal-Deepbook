@@ -25,12 +25,13 @@ import { LuArrowLeft } from 'react-icons/lu';
 import { usePredictAccountV2 } from '@/lib/hooks/use-predict-account-v2';
 import { useSkewFeeV2, type SkewFeeV2 } from '@/lib/hooks/use-skew-fee-v2';
 import { skewFeeBase, isRangeTicks } from '@/lib/sui/v2/skew-fee';
+import { localQuantityCost } from '@/lib/sui/v2/fee-quote';
 import { useV2TradeStore, STARTER_DEFAULT_STAKE, defaultStakeForBalance } from '@/lib/store/v2-trade-store';
 import { useSessionPrefs } from '@/lib/store/session-prefs-store';
 import { upFair, rangeFair } from '@/lib/svi/svi';
 import { toFloat, fromFloat, fromQuote, toQuote } from '@/config/scale';
 import { price, pct, signed, countdown, dateUTC, leverage as fmtLev } from '@/lib/format';
-import { predictV2Config } from '@/config/predict';
+import { predictV2Config, builderCodeEnabled } from '@/config/predict';
 import { isClosingSoon, isTooCloseToExpiry } from '@/lib/markets/v2-discovery';
 import {
   snapStrikeToAdmission,
@@ -72,7 +73,18 @@ const AMOUNT_PRESETS = [1, 5, 10, 25];
 const usd = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
 /** The mint sizing shared by both bodies — mirrors the rail ticket line-for-line. */
-function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage: number) {
+/** The two boundary UP probabilities of the order, raw 1e9. `null` is an infinite side:
+ *  the +inf higher of an UP binary, the -inf lower of a DOWN one. A range has both finite. */
+type Bounds = { lowerUp: bigint | null; higherUp: bigint | null };
+const rawP = (v: number) => BigInt(Math.round(Math.min(1, Math.max(0, v)) * 1e9));
+export const binaryBounds = (upProb: number, isUp: boolean): Bounds =>
+  isUp ? { lowerUp: rawP(upProb), higherUp: null } : { lowerUp: null, higherUp: rawP(upProb) };
+export const rangeBounds = (lowerUp: number, higherUp: number): Bounds => ({
+  lowerUp: rawP(lowerUp),
+  higherUp: rawP(higherUp),
+});
+
+function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage: number, bounds: Bounds) {
   // Cap by the protocol's PROBABILITY-SCALED admission curve, not the market-wide
   // `max_admission_leverage` — that ceiling (e.g. 3×) is only the p→1 asymptote, so
   // offering it at real odds always aborts with strike_exposure_config #6. The
@@ -89,8 +101,13 @@ function sizeTrade(market: V2Market, entryProb: number, stake: number, leverage:
   // What a WIN actually pays: max payout minus the leverage floor (= full qty at
   // 1×). Fees still charge on the notional `quantity`, not this.
   const win = winPayout(quantity, entryProb, lev);
-  const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
-  const estCostBase = stakeBase + feeBase;
+  // The protocol's own fee arithmetic — `base_fee` multiplies `sqrt(p(1−p))`, it is not a
+  // flat rate. See lib/sui/v2/fee-quote.ts for the measurement that caught this.
+  const localCost = localQuantityCost({ market, ...bounds, quantityBase: quantity, builderCode: builderCodeEnabled });
+  const feeBase = localCost
+    ? localCost.raw.cost - stakeBase
+    : BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
+  const estCostBase = localCost ? localCost.raw.cost : stakeBase + feeBase;
   const maxCost = maxCostWithSlippage(estCostBase, SLIPPAGE_BPS);
   return { maxLev, lev, stakeBase, quantity, win, amount, minQuantity, feeBase, estCostBase, maxCost };
 }
@@ -215,7 +232,7 @@ function BinaryBody({
   const closingSoon = isClosingSoon(market, now);
   const expired = isTooCloseToExpiry(market, now);
 
-  const s = sizeTrade(market, entryProb, stake, leverage);
+  const s = sizeTrade(market, entryProb, stake, leverage, binaryBounds(upProb, isUp));
   // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
   const quotable = probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
   const { shortfall, skewFeeDue, chargesSkewFee } = skewFunding(s, acct, skewFee);
@@ -500,7 +517,7 @@ function RangeBody({
   const closingSoon = isClosingSoon(market, now);
   const expired = isTooCloseToExpiry(market, now);
 
-  const s = sizeTrade(market, entryProb, stake, leverage);
+  const s = sizeTrade(market, entryProb, stake, leverage, rangeBounds(upFair(lower, forward, svi), upFair(higher, forward, svi)));
   // stakeBase must clear the chain's $1 min_net_premium or the mint aborts.
   const quotable = bandSet && probOk && s.stakeBase >= MIN_STAKE_BASE && !expired;
   const { shortfall, skewFeeDue, chargesSkewFee } = skewFunding(s, acct, skewFee);

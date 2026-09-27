@@ -23,6 +23,12 @@ import {
   MIN_STAKE_BASE,
 } from '@/lib/sui/v2/quote';
 import type { V2Market } from '@/lib/api/v2/types';
+import { binaryCost, type FeeMarket } from './fee-quote';
+import { builderCodeEnabled } from '@/config/predict';
+
+/** What `quoteSide` needs off a market: the ticks to build the order, plus the whole fee
+ *  policy, because the fee is no longer a single rate we can multiply by. */
+export type SimpleQuoteMarket = Pick<V2Market, 'tick_size'> & FeeMarket;
 
 /** Simple mode always trades at 1x with the ticket's 1% deposit-buffer slippage. */
 export const SIMPLE_SLIPPAGE_BPS = 100;
@@ -133,7 +139,7 @@ export interface SideQuote {
 
 /** Quote one side (UP or DOWN) of the round at the pinned line, at 1x. */
 export function quoteSide(
-  market: Pick<V2Market, 'tick_size' | 'base_fee'>,
+  market: SimpleQuoteMarket,
   pricer: LivePricer,
   lineScaled: bigint,
   stake: number,
@@ -147,8 +153,13 @@ export function quoteSide(
   const quantity = quantityForStake(amount, entryProb, 1);
   const minQuantity = minQuantityForBudget(quantity);
   const winBase = winPayout(quantity, entryProb, 1); // = quantity at 1x
-  const feeBase = BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
-  const maxCost = maxCostWithSlippage(stakeBase + feeBase, SIMPLE_SLIPPAGE_BPS);
+  // The protocol's own fee arithmetic. `base_fee` multiplies `sqrt(p(1−p))`, so reading it
+  // as a flat rate overstated this by at least 2x everywhere. See lib/sui/v2/fee-quote.ts.
+  const local = binaryCost({ market, upProb, isUp, quantityBase: quantity, builderCode: builderCodeEnabled });
+  const feeBase = local
+    ? local.raw.cost - stakeBase
+    : BigInt(Math.round(toFloat(market.base_fee) * Number(quantity)));
+  const maxCost = maxCostWithSlippage(local ? local.raw.cost : stakeBase + feeBase, SIMPLE_SLIPPAGE_BPS);
   const multiplier = stakeBase > 0n ? Number(winBase) / Number(stakeBase) : 0;
   const ticks = binaryTicks(lineScaled, isUp, market.tick_size);
   const quotable =
